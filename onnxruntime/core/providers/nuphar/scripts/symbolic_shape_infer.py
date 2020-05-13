@@ -34,7 +34,7 @@ def handle_negative_axis(axis, rank):
     assert axis < rank and axis >= -rank
     return axis if axis >= 0 else rank + axis
 
-def get_opset(mp, domain=['', 'onnx']):
+def get_opset(mp, domain=['', 'onnx', 'ai.onnx']):
     if type(domain) != list:
         domain = [domain]
     for opset in mp.opset_import:
@@ -645,9 +645,12 @@ class SymbolicShapeInference:
     def _infer_Expand(self, node):
         expand_to_shape = self._try_get_value(node, 1)
         if expand_to_shape is not None:
-            input_shape = self._get_shape(node, 0)
-            target_shape = get_shape_from_sympy_shape(expand_to_shape)
-            new_shape = self._broadcast_shapes(input_shape, target_shape)
+            sympy_shape = self._get_sympy_shape(node, 0)
+            new_sympy_shape = self._broadcast_shapes(sympy_shape, expand_to_shape)
+
+            # new_shape's dim can come from 'Expand' computation
+            self._update_computed_dims(new_sympy_shape)
+            new_shape = get_shape_from_sympy_shape(new_sympy_shape)
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, new_shape))
 
@@ -805,6 +808,7 @@ class SymbolicShapeInference:
         else:
             new_dim = self._new_symbolic_dim_from_output(node)
             new_shape = [self.symbolic_dims_[new_dim]]
+        self._update_computed_dims(new_shape)
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, get_shape_from_sympy_shape(new_shape)))
 
     def _infer_ReduceProd(self, node):
@@ -899,7 +903,11 @@ class SymbolicShapeInference:
         scan_input_axes = get_attribute(node, 'scan_input_axes', [0]*num_scan_inputs)
         num_scan_states = len(node.input) - num_scan_inputs
         scan_input_axes = [handle_negative_axis(ax, self._get_shape_rank(node, i + num_scan_states)) for i, ax in enumerate(scan_input_axes)]
-        for i, si in enumerate(subgraph.input):
+        # We may have cases where the subgraph has optionial inputs that appear in both subgraph's input and initializer,
+        # but not in the node's input. In such cases, the input model might be invalid, but let's skip those optional inputs.
+        assert len(subgraph.input) >= len(node.input)
+        subgraph_inputs = subgraph.input[:len(node.input)]
+        for i, si in enumerate(subgraph_inputs):
             subgraph_name = si.name
             si.CopyFrom(self.known_vi_[node.input[i]])
             if i >= num_scan_states:

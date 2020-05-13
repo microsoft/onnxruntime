@@ -25,6 +25,7 @@ limitations under the License.
 #include "core/common/logging/severity.h"
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena.h"
+#include "core/common/safeint.h"
 #include "onnxruntime_config.h"
 
 #if defined(PLATFORM_WINDOWS)
@@ -38,6 +39,11 @@ namespace onnxruntime {
 #endif
 #endif
 
+enum class ArenaExtendStrategy : int32_t {
+  kNextPowerOfTwo = 0,
+  kSameAsRequested,
+};
+
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
 // malloc (dlmalloc).
@@ -48,7 +54,9 @@ namespace onnxruntime {
 // all requests to allocate memory go through this interface.
 class BFCArena : public IArenaAllocator {
  public:
-  BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator, size_t total_memory);
+  BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
+           size_t total_memory,
+           ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
 
   ~BFCArena() override;
 
@@ -367,6 +375,7 @@ class BFCArena : public IArenaAllocator {
 
   // Structures immutable after construction
   size_t memory_limit_ = 0;
+  ArenaExtendStrategy arena_extend_strategy_ = ArenaExtendStrategy::kNextPowerOfTwo;
 
   int Log2FloorNonZeroSlow(uint64_t n) {
     int r = 0;
@@ -420,7 +429,7 @@ class BFCArena : public IArenaAllocator {
   char bins_space_[sizeof(Bin) * kNumBins];
 
   // The size of the current region allocation.
-  size_t curr_region_allocation_bytes_;
+  SafeInt<size_t> curr_region_allocation_bytes_;
 
   std::unique_ptr<IDeviceAllocator> device_allocator_;
 

@@ -49,7 +49,7 @@ public class SequenceInfo implements ValueInfo {
   }
 
   /**
-   * Constructs a sequence of known lenght containing maps.
+   * Constructs a sequence of known length containing maps.
    *
    * @param length The length of the sequence.
    * @param keyType The map key type.

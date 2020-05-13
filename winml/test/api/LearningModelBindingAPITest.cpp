@@ -7,23 +7,16 @@
 #include "LearningModelBindingAPITest.h"
 #include "SqueezeNetValidator.h"
 
-#include <winrt/Windows.Graphics.Imaging.h>
-#include <winrt/Windows.Media.h>
-#include "winrt/Windows.Storage.h"
 #include <sstream>
+
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Storage;
+using namespace winml;
+using namespace wfc;
+using namespace wgi;
+using namespace wm;
+using namespace ws;
 
-static void LearningModelBindingAPITestSetup() {
-  init_apartment();
-}
-
-static void LearningModelBindingAPITestGpuSetup() {
-  GPUTEST;
+static void LearningModelBindingAPITestsClassSetup() {
   init_apartment();
 }
 
@@ -107,7 +100,7 @@ static void DictionaryVectorizerMapInt64()
     // Bind as IMap
     auto abiMap = winrt::single_threaded_map(std::move(map));
     binding.Bind(mapInputName, abiMap);
-    auto mapInputInspectable = abiMap.as<winrt::Windows::Foundation::IInspectable>();
+    auto mapInputInspectable = abiMap.as<wf::IInspectable>();
     auto first = binding.First();
     WINML_EXPECT_TRUE(first.Current().Key() == mapInputName);
     WINML_EXPECT_TRUE(first.Current().Value() == mapInputInspectable);
@@ -116,7 +109,7 @@ static void DictionaryVectorizerMapInt64()
     // Bind as IMapView
     auto mapView = abiMap.GetView();
     binding.Bind(mapInputName, mapView);
-    mapInputInspectable = mapView.as<winrt::Windows::Foundation::IInspectable>();
+    mapInputInspectable = mapView.as<wf::IInspectable>();
     first = binding.First();
     WINML_EXPECT_TRUE(first.Current().Key() == mapInputName);
     WINML_EXPECT_TRUE(first.Current().Value() == mapView);
@@ -152,7 +145,7 @@ static void DictionaryVectorizerMapString()
     auto abiMap = winrt::single_threaded_map(std::move(map));
     binding.Bind(mapInputName, abiMap);
 
-    auto mapInputInspectable = abiMap.as<winrt::Windows::Foundation::IInspectable>();
+    auto mapInputInspectable = abiMap.as<wf::IInspectable>();
     auto first = binding.First();
     WINML_EXPECT_TRUE(first.Current().Key() == mapInputName);
     WINML_EXPECT_TRUE(first.Current().Value() == mapInputInspectable);
@@ -162,7 +155,7 @@ static void DictionaryVectorizerMapString()
 }
 
 static void RunZipMapInt64(
-    winrt::Windows::AI::MachineLearning::LearningModel model,
+    winml::LearningModel model,
     OutputBindingStrategy bindingStrategy)
 {
     auto outputFeatures = model.OutputFeatures();
@@ -697,7 +690,7 @@ static void SequenceConstructTensorString()
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"tensor2", input2));
   auto results = learningModelSession.Evaluate(learningModelBinding, L"");
 
-  auto output_sequence = results.Outputs().Lookup(L"output_sequence").as<winrt::Windows::Foundation::Collections::IVectorView<TensorInt64Bit>>();
+  auto output_sequence = results.Outputs().Lookup(L"output_sequence").as<wfc::IVectorView<TensorInt64Bit>>();
   WINML_EXPECT_EQUAL(static_cast<uint32_t>(2), output_sequence.Size());
   WINML_EXPECT_EQUAL(2, output_sequence.GetAt(0).Shape().GetAt(0));
   WINML_EXPECT_EQUAL(3, output_sequence.GetAt(0).Shape().GetAt(1));
@@ -714,11 +707,10 @@ static void SequenceConstructTensorString()
   WINML_EXPECT_EQUAL(3, bound_output_sequence.GetAt(1).Shape().GetAt(1));
 }
 
-const LearningModelBindingAPITestApi& getapi() {
-  static constexpr LearningModelBindingAPITestApi api =
+const LearningModelBindingAPITestsApi& getapi() {
+  static LearningModelBindingAPITestsApi api =
   {
-    LearningModelBindingAPITestSetup,
-    LearningModelBindingAPITestGpuSetup,
+    LearningModelBindingAPITestsClassSetup,
     CpuSqueezeNet,
     CpuSqueezeNetEmptyOutputs,
     CpuSqueezeNetUnboundOutputs,
@@ -740,5 +732,17 @@ const LearningModelBindingAPITestApi& getapi() {
     SequenceLengthTensorFloat,
     SequenceConstructTensorString
   };
+
+  if (SkipGpuTests()) {
+    api.GpuSqueezeNet = SkipTest;
+    api.GpuSqueezeNetEmptyOutputs = SkipTest;
+    api.GpuSqueezeNetUnboundOutputs = SkipTest;
+  }
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
+    api.ImageBindingDimensions = SkipTest;
+    api.BindInvalidInputName = SkipTest;
+    api.VerifyOutputAfterImageBindCalledTwice = SkipTest;
+    api.VerifyInvalidBindExceptions = SkipTest;
+  }
   return api;
 }

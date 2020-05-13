@@ -7,14 +7,6 @@
 #pragma warning(disable : 4267)
 #endif
 
-#include <algorithm>
-#include <functional>
-#include <future>
-#include <string>
-#include <vector>
-
-#include "gsl/gsl"
-
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
@@ -22,6 +14,8 @@
 #include "core/util/math_cpuonly.h"
 
 #include "core/platform/threadpool.h"
+
+#include "gsl/gsl"
 
 namespace onnxruntime {
 class Tensor;
@@ -112,14 +106,11 @@ void ReverseSequence(gsl::span<const T> inputs,
                      const int max_sequence_length,
                      const int batch_size,
                      const int input_size,
-                     const int num_directions) {
+                     const int num_directions,
+                     concurrency::ThreadPool*) {
   for (int i = 0; i < batch_size; i++) {
     int seq_len = sequence_lengths[i];
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
     for (int j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
@@ -128,10 +119,6 @@ void ReverseSequence(gsl::span<const T> inputs,
       gsl::copy(src, dest);
     }
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
     for (int j = seq_len; j < max_sequence_length; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * j * batch_size * input_size + i * input_size, input_size);
@@ -208,82 +195,6 @@ template <typename T>
 T* SafeRawPointer(typename gsl::span<T> span, size_t offset, size_t size) {
   ORT_ENFORCE(offset + size <= size_t(span.size()));
   return span.data() + offset;
-}
-
-template <typename TLambda>
-void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, int step,
-                             onnxruntime::concurrency::ThreadPool& ttp,
-                             const ::onnxruntime::logging::Logger& logger) {
-  // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
-
-#ifdef NOTHREADS
-  ORT_UNUSED_PARAMETER(ttp);
-  ORT_UNUSED_PARAMETER(logger);
-
-  for (int i = 0; i < max; i += step) {
-    (void)name;
-    std::bind(lambda, i)();
-  }
-#else
-
-  ORT_UNUSED_PARAMETER(name);
-  ORT_UNUSED_PARAMETER(logger);
-
-  // ORT_ENFORCE may and does throw at times from within the tasks that run
-  // on a thread-pool. Without propagating exceptions the process exits silently
-  // which will make diagnosing bugs more difficult.
-
-  // \! UGLY
-  // We have a problem here with the current thread-pool is that it takes std::function
-  // by value and copies it more than once (even though it is movable).
-  //
-  // To report status and exceptions properly it's better to use
-  // futures and promises but they are not copyable, so we can't come up with a functor
-  // with a promise member and we are downgrading to C++11 where we can't have captures that moved in.
-  //
-  // At the same time promises MUST live in the child thread so if we throw from the main thread
-  // we don't destroy any promises that are on the main thread stack which children threads may still be using.
-  //
-  // The only solution with the current Eigen that comes to mind is to have shared_ptr to with std::promise.
-  //
-  const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  std::vector<std::future<void> > futures;
-  futures.reserve(total_tasks);
-
-  for (int i = 0, t = 0; i < max; i += step, ++t) {
-    auto p_ptr = std::make_shared<std::promise<void> >();
-    futures.push_back(p_ptr->get_future());
-    ttp.Schedule([p_ptr, lambda, i]() {
-      try {
-        lambda(i);
-        p_ptr->set_value();
-      } catch (...) {
-        p_ptr->set_exception(std::current_exception());
-      }
-    });
-  }
-
-  // We'd like to wait until all of the tasks have finished
-  // even though one or more have already thrown. We will store
-  // the first exception and then will re-throw at the end.
-  std::exception_ptr pending_exception;
-  for (auto& fut : futures) {
-    try {
-      // get() will re-throw any exceptions
-      // the running task may throw
-      fut.get();
-    } catch (...) {
-      if (!pending_exception) {
-        pending_exception = std::current_exception();
-      }
-    }
-  }
-
-  if (pending_exception) {
-    std::rethrow_exception(pending_exception);
-  }
-
-#endif
 }
 
 void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,

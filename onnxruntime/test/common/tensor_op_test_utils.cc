@@ -3,26 +3,13 @@
 
 #include "test/common/tensor_op_test_utils.h"
 
-#include <chrono>
-
-#include "test/random_seed.h"
-
 namespace onnxruntime {
 namespace test {
 
-static uint32_t GetSeedValue(RandomValueGenerator::RandomSeedType random_seed_type) {
-  switch (random_seed_type) {
-    case RandomValueGenerator::RandomSeedType::kStatic:
-      return 42;
-    case RandomValueGenerator::RandomSeedType::kPerProcess:
-      return GetStaticRandomSeed();
-    default:  // dynamic
-      return static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
-  }
-}
-
-RandomValueGenerator::RandomValueGenerator(RandomSeedType random_seed_type)
-    : generator_{static_cast<decltype(generator_)::result_type>(GetSeedValue(random_seed_type))} {
+RandomValueGenerator::RandomValueGenerator()
+    : random_seed_{GetTestRandomSeed()},
+      generator_{static_cast<decltype(generator_)::result_type>(random_seed_)},
+      output_trace_{__FILE__, __LINE__, "ORT test random seed: " + std::to_string(random_seed_)} {
 }
 
 }  // namespace test

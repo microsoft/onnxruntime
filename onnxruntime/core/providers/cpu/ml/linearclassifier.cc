@@ -114,7 +114,7 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE || add_second_class) {
     ml::batched_update_scores_inplace(scores_output_data, num_batches, num_targets, post_transform,
-                                      add_second_class ? 1 : -1,
+                                      add_second_class ? 1 : -1, false,
                                       threadpool);
   }
 }

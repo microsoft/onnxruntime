@@ -27,17 +27,19 @@ namespace ws = ::winrt::Windows::Storage;
 namespace winrt::Windows::Storage::Streams {}
 namespace wss = ::winrt::Windows::Storage::Streams;
 
-namespace winrt::Windows::AI::MachineLearning {}
-namespace winml = ::winrt::Windows::AI::MachineLearning;
+#define WINML winrt::WINML_ROOT_NS::AI::MachineLearning
+namespace WINML {}
+namespace winml = WINML;
 
-namespace winrt::Windows::AI::MachineLearning::implementation {}
-namespace winmlp = ::winrt::Windows::AI::MachineLearning::implementation;
+#define WINMLP winrt::WINML_ROOT_NS::AI::MachineLearning::implementation
+namespace WINMLP {}
+namespace winmlp = WINMLP;
 
-namespace Windows::AI::MachineLearning::Adapter {}
-namespace winmla = ::Windows::AI::MachineLearning::Adapter;
+namespace _winml::Adapter {}
+namespace winmla = ::_winml::Adapter;
 
-namespace Windows::AI::MachineLearning {}
-namespace WinML = ::Windows::AI::MachineLearning;
+namespace _winml::Telemetry {}
+namespace _winmlt = ::_winml::Telemetry;
 
-namespace Windows::AI::MachineLearning::Telemetry {}
-namespace _winmlt = ::Windows::AI::MachineLearning::Telemetry;
+namespace _winml::Imaging {}
+namespace _winmli = ::_winml::Imaging;

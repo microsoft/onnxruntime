@@ -12,8 +12,7 @@
 namespace onnxruntime {
 namespace ml {
 
-// stuffs shared by SVMClassifier and SVMRegressor
-template <typename T>
+// code shared by SVMClassifier and SVMRegressor
 class SVMCommon {
  protected:
   SVMCommon(const OpKernelInfo& info)
@@ -31,6 +30,7 @@ class SVMCommon {
   void set_kernel_type(KERNEL new_kernel_type) { kernel_type_ = new_kernel_type; }
   KERNEL get_kernel_type() const { return kernel_type_; }
 
+  template <typename T>
   void batched_kernel_dot(const gsl::span<const T> a, const gsl::span<const T> b,
                           int64_t m, int64_t n, int64_t k,
                           float scalar_C,
@@ -95,57 +95,25 @@ class SVMCommon {
     }
   }
 
-  float kernel_dot(const T* A, int64_t a, const std::vector<float>& B, int64_t b, int64_t len, KERNEL k) const {
-    double sum = 0;
-    const T* pA = A + a;
-    const float* pB = B.data() + b;
-    switch (k) {
-      case KERNEL::POLY:
-        for (int64_t i = len; i > 0; --i)
-          sum += *pA++ * *pB++;
-        sum = gamma_ * sum + coef0_;
-        sum = std::pow(sum, degree_);
-        break;
-      case KERNEL::SIGMOID:
-        for (int64_t i = len; i > 0; --i)
-          sum += *pA++ * *pB++;
-        sum = gamma_ * sum + coef0_;
-        sum = std::tanh(sum);
-        break;
-      case KERNEL::RBF:
-        for (int64_t i = len; i > 0; --i) {
-          double val = *pA++ - *pB++;
-          sum += val * val;
-        }
-        sum = std::exp(-gamma_ * sum);
-        break;
-      case KERNEL::LINEAR:
-        for (int64_t i = len; i > 0; --i)
-          sum += *pA++ * *pB++;
-        break;
-    }
-    return (float)sum;
-  }
-
  private:
   KERNEL kernel_type_;
-  float gamma_;
-  float coef0_;
-  float degree_;
+  float gamma_{0.f};
+  float coef0_{0.f};
+  float degree_{0.f};
 };
 
-template <typename T>
-class SVMClassifier final : public OpKernel, private SVMCommon<T> {
-  using SVMCommon<T>::batched_kernel_dot;
-  using SVMCommon<T>::kernel_dot;
-  using SVMCommon<T>::set_kernel_type;
-  using SVMCommon<T>::get_kernel_type;
+class SVMClassifier final : public OpKernel, private SVMCommon {
+  using SVMCommon::batched_kernel_dot;
+  using SVMCommon::set_kernel_type;
+  using SVMCommon::get_kernel_type;
 
  public:
   SVMClassifier(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  Status ComputeImpl(OpKernelContext& ctx, gsl::span<const float> x_data, const TensorShape& x_shape) const;
+
   bool weights_are_all_positive_;
   int64_t feature_count_;
   int64_t class_count_;

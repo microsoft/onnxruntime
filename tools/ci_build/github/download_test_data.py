@@ -151,10 +151,6 @@ else:
         print("Starting test data download %s" % url)
         download_and_unzip(args.build_dir, url, models_folder)
 
-        # On windows download additional data
-        if is_windows():
-            download_additional_data(args.build_dir, azure_region)
-
         all_downloads_done = True
 
     except Exception as e:

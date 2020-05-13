@@ -16,9 +16,6 @@
 #ifdef USE_NUPHAR
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #endif
-#if USE_BRAINSLICE
-#include "onnxruntime/core/providers/brainslice/brainslice_provider_factory.h"
-#endif
 #ifdef USE_TENSORRT
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif

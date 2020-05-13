@@ -43,77 +43,86 @@ namespace Onnx {
             "IAEoCSKWAQoJTm9kZVByb3RvEg0KBWlucHV0GAEgAygJEg4KBm91dHB1dBgC",
             "IAMoCRIMCgRuYW1lGAMgASgJEg8KB29wX3R5cGUYBCABKAkSDgoGZG9tYWlu",
             "GAcgASgJEicKCWF0dHJpYnV0ZRgFIAMoCzIULm9ubnguQXR0cmlidXRlUHJv",
-            "dG8SEgoKZG9jX3N0cmluZxgGIAEoCSK7AgoKTW9kZWxQcm90bxISCgppcl92",
-            "ZXJzaW9uGAEgASgDEi4KDG9wc2V0X2ltcG9ydBgIIAMoCzIYLm9ubnguT3Bl",
-            "cmF0b3JTZXRJZFByb3RvEhUKDXByb2R1Y2VyX25hbWUYAiABKAkSGAoQcHJv",
-            "ZHVjZXJfdmVyc2lvbhgDIAEoCRIOCgZkb21haW4YBCABKAkSFQoNbW9kZWxf",
-            "dmVyc2lvbhgFIAEoAxISCgpkb2Nfc3RyaW5nGAYgASgJEh8KBWdyYXBoGAcg",
-            "ASgLMhAub25ueC5HcmFwaFByb3RvEiYKCWZ1bmN0aW9ucxhkIAMoCzITLm9u",
-            "bnguRnVuY3Rpb25Qcm90bxI0Cg5tZXRhZGF0YV9wcm9wcxgOIAMoCzIcLm9u",
-            "bnguU3RyaW5nU3RyaW5nRW50cnlQcm90byI0ChZTdHJpbmdTdHJpbmdFbnRy",
-            "eVByb3RvEgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCSJrChBUZW5zb3JB",
-            "bm5vdGF0aW9uEhMKC3RlbnNvcl9uYW1lGAEgASgJEkIKHHF1YW50X3BhcmFt",
-            "ZXRlcl90ZW5zb3JfbmFtZXMYAiADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0Vu",
-            "dHJ5UHJvdG8i2AIKCkdyYXBoUHJvdG8SHQoEbm9kZRgBIAMoCzIPLm9ubngu",
-            "Tm9kZVByb3RvEgwKBG5hbWUYAiABKAkSJgoLaW5pdGlhbGl6ZXIYBSADKAsy",
-            "ES5vbm54LlRlbnNvclByb3RvEjMKEnNwYXJzZV9pbml0aWFsaXplchgPIAMo",
-            "CzIXLm9ubnguU3BhcnNlVGVuc29yUHJvdG8SEgoKZG9jX3N0cmluZxgKIAEo",
-            "CRIjCgVpbnB1dBgLIAMoCzIULm9ubnguVmFsdWVJbmZvUHJvdG8SJAoGb3V0",
-            "cHV0GAwgAygLMhQub25ueC5WYWx1ZUluZm9Qcm90bxIoCgp2YWx1ZV9pbmZv",
-            "GA0gAygLMhQub25ueC5WYWx1ZUluZm9Qcm90bxI3ChdxdWFudGl6YXRpb25f",
-            "YW5ub3RhdGlvbhgOIAMoCzIWLm9ubnguVGVuc29yQW5ub3RhdGlvbiK4BQoL",
-            "VGVuc29yUHJvdG8SDAoEZGltcxgBIAMoAxIRCglkYXRhX3R5cGUYAiABKAUS",
-            "KgoHc2VnbWVudBgDIAEoCzIZLm9ubnguVGVuc29yUHJvdG8uU2VnbWVudBIW",
-            "CgpmbG9hdF9kYXRhGAQgAygCQgIQARIWCgppbnQzMl9kYXRhGAUgAygFQgIQ",
-            "ARITCgtzdHJpbmdfZGF0YRgGIAMoDBIWCgppbnQ2NF9kYXRhGAcgAygDQgIQ",
-            "ARIMCgRuYW1lGAggASgJEhIKCmRvY19zdHJpbmcYDCABKAkSEAoIcmF3X2Rh",
-            "dGEYCSABKAwSMwoNZXh0ZXJuYWxfZGF0YRgNIAMoCzIcLm9ubnguU3RyaW5n",
-            "U3RyaW5nRW50cnlQcm90bxI1Cg1kYXRhX2xvY2F0aW9uGA4gASgOMh4ub25u",
-            "eC5UZW5zb3JQcm90by5EYXRhTG9jYXRpb24SFwoLZG91YmxlX2RhdGEYCiAD",
-            "KAFCAhABEhcKC3VpbnQ2NF9kYXRhGAsgAygEQgIQARolCgdTZWdtZW50Eg0K",
-            "BWJlZ2luGAEgASgDEgsKA2VuZBgCIAEoAyLaAQoIRGF0YVR5cGUSDQoJVU5E",
-            "RUZJTkVEEAASCQoFRkxPQVQQARIJCgVVSU5UOBACEggKBElOVDgQAxIKCgZV",
-            "SU5UMTYQBBIJCgVJTlQxNhAFEgkKBUlOVDMyEAYSCQoFSU5UNjQQBxIKCgZT",
-            "VFJJTkcQCBIICgRCT09MEAkSCwoHRkxPQVQxNhAKEgoKBkRPVUJMRRALEgoK",
-            "BlVJTlQzMhAMEgoKBlVJTlQ2NBANEg0KCUNPTVBMRVg2NBAOEg4KCkNPTVBM",
-            "RVgxMjgQDxIMCghCRkxPQVQxNhAQIikKDERhdGFMb2NhdGlvbhILCgdERUZB",
-            "VUxUEAASDAoIRVhURVJOQUwQASJoChFTcGFyc2VUZW5zb3JQcm90bxIhCgZ2",
-            "YWx1ZXMYASABKAsyES5vbm54LlRlbnNvclByb3RvEiIKB2luZGljZXMYAiAB",
-            "KAsyES5vbm54LlRlbnNvclByb3RvEgwKBGRpbXMYAyADKAMilQEKEFRlbnNv",
-            "clNoYXBlUHJvdG8SLQoDZGltGAEgAygLMiAub25ueC5UZW5zb3JTaGFwZVBy",
-            "b3RvLkRpbWVuc2lvbhpSCglEaW1lbnNpb24SEwoJZGltX3ZhbHVlGAEgASgD",
-            "SAASEwoJZGltX3BhcmFtGAIgASgJSAASEgoKZGVub3RhdGlvbhgDIAEoCUIH",
-            "CgV2YWx1ZSLCBAoJVHlwZVByb3RvEi0KC3RlbnNvcl90eXBlGAEgASgLMhYu",
-            "b25ueC5UeXBlUHJvdG8uVGVuc29ySAASMQoNc2VxdWVuY2VfdHlwZRgEIAEo",
-            "CzIYLm9ubnguVHlwZVByb3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5cGUYBSAB",
-            "KAsyEy5vbm54LlR5cGVQcm90by5NYXBIABI6ChJzcGFyc2VfdGVuc29yX3R5",
-            "cGUYCCABKAsyHC5vbm54LlR5cGVQcm90by5TcGFyc2VUZW5zb3JIABItCgtv",
-            "cGFxdWVfdHlwZRgHIAEoCzIWLm9ubnguVHlwZVByb3RvLk9wYXF1ZUgAEhIK",
-            "CmRlbm90YXRpb24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEo",
-            "BRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90bxouCghT",
-            "ZXF1ZW5jZRIiCgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQcm90bxo8",
-            "CgNNYXASEAoIa2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgCIAEoCzIP",
-            "Lm9ubnguVHlwZVByb3RvGkgKDFNwYXJzZVRlbnNvchIRCgllbGVtX3R5cGUY",
-            "ASABKAUSJQoFc2hhcGUYAiABKAsyFi5vbm54LlRlbnNvclNoYXBlUHJvdG8a",
-            "JgoGT3BhcXVlEg4KBmRvbWFpbhgBIAEoCRIMCgRuYW1lGAIgASgJQgcKBXZh",
-            "bHVlIjUKEk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASABKAkSDwoH",
-            "dmVyc2lvbhgCIAEoAyK/AQoNRnVuY3Rpb25Qcm90bxIMCgRuYW1lGAEgASgJ",
-            "EhUKDXNpbmNlX3ZlcnNpb24YAiABKAMSJAoGc3RhdHVzGAMgASgOMhQub25u",
-            "eC5PcGVyYXRvclN0YXR1cxINCgVpbnB1dBgEIAMoCRIOCgZvdXRwdXQYBSAD",
-            "KAkSEQoJYXR0cmlidXRlGAYgAygJEh0KBG5vZGUYByADKAsyDy5vbm54Lk5v",
-            "ZGVQcm90bxISCgpkb2Nfc3RyaW5nGAggASgJKrEBCgdWZXJzaW9uEhIKDl9T",
-            "VEFSVF9WRVJTSU9OEAASGQoVSVJfVkVSU0lPTl8yMDE3XzEwXzEwEAESGQoV",
-            "SVJfVkVSU0lPTl8yMDE3XzEwXzMwEAISGAoUSVJfVkVSU0lPTl8yMDE3XzEx",
-            "XzMQAxIYChRJUl9WRVJTSU9OXzIwMTlfMV8yMhAEEhgKFElSX1ZFUlNJT05f",
-            "MjAxOV8zXzE4EAUSDgoKSVJfVkVSU0lPThAGKi4KDk9wZXJhdG9yU3RhdHVz",
-            "EhAKDEVYUEVSSU1FTlRBTBAAEgoKBlNUQUJMRRABYgZwcm90bzM="));
+            "dG8SEgoKZG9jX3N0cmluZxgGIAEoCSLWAQoRVHJhaW5pbmdJbmZvUHJvdG8S",
+            "KAoOaW5pdGlhbGl6YXRpb24YASABKAsyEC5vbm54LkdyYXBoUHJvdG8SIwoJ",
+            "YWxnb3JpdGhtGAIgASgLMhAub25ueC5HcmFwaFByb3RvEjwKFmluaXRpYWxp",
+            "emF0aW9uX2JpbmRpbmcYAyADKAsyHC5vbm54LlN0cmluZ1N0cmluZ0VudHJ5",
+            "UHJvdG8SNAoOdXBkYXRlX2JpbmRpbmcYBCADKAsyHC5vbm54LlN0cmluZ1N0",
+            "cmluZ0VudHJ5UHJvdG8i6wIKCk1vZGVsUHJvdG8SEgoKaXJfdmVyc2lvbhgB",
+            "IAEoAxIuCgxvcHNldF9pbXBvcnQYCCADKAsyGC5vbm54Lk9wZXJhdG9yU2V0",
+            "SWRQcm90bxIVCg1wcm9kdWNlcl9uYW1lGAIgASgJEhgKEHByb2R1Y2VyX3Zl",
+            "cnNpb24YAyABKAkSDgoGZG9tYWluGAQgASgJEhUKDW1vZGVsX3ZlcnNpb24Y",
+            "BSABKAMSEgoKZG9jX3N0cmluZxgGIAEoCRIfCgVncmFwaBgHIAEoCzIQLm9u",
+            "bnguR3JhcGhQcm90bxImCglmdW5jdGlvbnMYZCADKAsyEy5vbm54LkZ1bmN0",
+            "aW9uUHJvdG8SNAoObWV0YWRhdGFfcHJvcHMYDiADKAsyHC5vbm54LlN0cmlu",
+            "Z1N0cmluZ0VudHJ5UHJvdG8SLgoNdHJhaW5pbmdfaW5mbxgUIAMoCzIXLm9u",
+            "bnguVHJhaW5pbmdJbmZvUHJvdG8iNAoWU3RyaW5nU3RyaW5nRW50cnlQcm90",
+            "bxILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAkiawoQVGVuc29yQW5ub3Rh",
+            "dGlvbhITCgt0ZW5zb3JfbmFtZRgBIAEoCRJCChxxdWFudF9wYXJhbWV0ZXJf",
+            "dGVuc29yX25hbWVzGAIgAygLMhwub25ueC5TdHJpbmdTdHJpbmdFbnRyeVBy",
+            "b3RvItgCCgpHcmFwaFByb3RvEh0KBG5vZGUYASADKAsyDy5vbm54Lk5vZGVQ",
+            "cm90bxIMCgRuYW1lGAIgASgJEiYKC2luaXRpYWxpemVyGAUgAygLMhEub25u",
+            "eC5UZW5zb3JQcm90bxIzChJzcGFyc2VfaW5pdGlhbGl6ZXIYDyADKAsyFy5v",
+            "bm54LlNwYXJzZVRlbnNvclByb3RvEhIKCmRvY19zdHJpbmcYCiABKAkSIwoF",
+            "aW5wdXQYCyADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEiQKBm91dHB1dBgM",
+            "IAMoCzIULm9ubnguVmFsdWVJbmZvUHJvdG8SKAoKdmFsdWVfaW5mbxgNIAMo",
+            "CzIULm9ubnguVmFsdWVJbmZvUHJvdG8SNwoXcXVhbnRpemF0aW9uX2Fubm90",
+            "YXRpb24YDiADKAsyFi5vbm54LlRlbnNvckFubm90YXRpb24iuAUKC1RlbnNv",
+            "clByb3RvEgwKBGRpbXMYASADKAMSEQoJZGF0YV90eXBlGAIgASgFEioKB3Nl",
+            "Z21lbnQYAyABKAsyGS5vbm54LlRlbnNvclByb3RvLlNlZ21lbnQSFgoKZmxv",
+            "YXRfZGF0YRgEIAMoAkICEAESFgoKaW50MzJfZGF0YRgFIAMoBUICEAESEwoL",
+            "c3RyaW5nX2RhdGEYBiADKAwSFgoKaW50NjRfZGF0YRgHIAMoA0ICEAESDAoE",
+            "bmFtZRgIIAEoCRISCgpkb2Nfc3RyaW5nGAwgASgJEhAKCHJhd19kYXRhGAkg",
+            "ASgMEjMKDWV4dGVybmFsX2RhdGEYDSADKAsyHC5vbm54LlN0cmluZ1N0cmlu",
+            "Z0VudHJ5UHJvdG8SNQoNZGF0YV9sb2NhdGlvbhgOIAEoDjIeLm9ubnguVGVu",
+            "c29yUHJvdG8uRGF0YUxvY2F0aW9uEhcKC2RvdWJsZV9kYXRhGAogAygBQgIQ",
+            "ARIXCgt1aW50NjRfZGF0YRgLIAMoBEICEAEaJQoHU2VnbWVudBINCgViZWdp",
+            "bhgBIAEoAxILCgNlbmQYAiABKAMi2gEKCERhdGFUeXBlEg0KCVVOREVGSU5F",
+            "RBAAEgkKBUZMT0FUEAESCQoFVUlOVDgQAhIICgRJTlQ4EAMSCgoGVUlOVDE2",
+            "EAQSCQoFSU5UMTYQBRIJCgVJTlQzMhAGEgkKBUlOVDY0EAcSCgoGU1RSSU5H",
+            "EAgSCAoEQk9PTBAJEgsKB0ZMT0FUMTYQChIKCgZET1VCTEUQCxIKCgZVSU5U",
+            "MzIQDBIKCgZVSU5UNjQQDRINCglDT01QTEVYNjQQDhIOCgpDT01QTEVYMTI4",
+            "EA8SDAoIQkZMT0FUMTYQECIpCgxEYXRhTG9jYXRpb24SCwoHREVGQVVMVBAA",
+            "EgwKCEVYVEVSTkFMEAEiaAoRU3BhcnNlVGVuc29yUHJvdG8SIQoGdmFsdWVz",
+            "GAEgASgLMhEub25ueC5UZW5zb3JQcm90bxIiCgdpbmRpY2VzGAIgASgLMhEu",
+            "b25ueC5UZW5zb3JQcm90bxIMCgRkaW1zGAMgAygDIpUBChBUZW5zb3JTaGFw",
+            "ZVByb3RvEi0KA2RpbRgBIAMoCzIgLm9ubnguVGVuc29yU2hhcGVQcm90by5E",
+            "aW1lbnNpb24aUgoJRGltZW5zaW9uEhMKCWRpbV92YWx1ZRgBIAEoA0gAEhMK",
+            "CWRpbV9wYXJhbRgCIAEoCUgAEhIKCmRlbm90YXRpb24YAyABKAlCBwoFdmFs",
+            "dWUiwgQKCVR5cGVQcm90bxItCgt0ZW5zb3JfdHlwZRgBIAEoCzIWLm9ubngu",
+            "VHlwZVByb3RvLlRlbnNvckgAEjEKDXNlcXVlbmNlX3R5cGUYBCABKAsyGC5v",
+            "bm54LlR5cGVQcm90by5TZXF1ZW5jZUgAEicKCG1hcF90eXBlGAUgASgLMhMu",
+            "b25ueC5UeXBlUHJvdG8uTWFwSAASOgoSc3BhcnNlX3RlbnNvcl90eXBlGAgg",
+            "ASgLMhwub25ueC5UeXBlUHJvdG8uU3BhcnNlVGVuc29ySAASLQoLb3BhcXVl",
+            "X3R5cGUYByABKAsyFi5vbm54LlR5cGVQcm90by5PcGFxdWVIABISCgpkZW5v",
+            "dGF0aW9uGAYgASgJGkIKBlRlbnNvchIRCgllbGVtX3R5cGUYASABKAUSJQoF",
+            "c2hhcGUYAiABKAsyFi5vbm54LlRlbnNvclNoYXBlUHJvdG8aLgoIU2VxdWVu",
+            "Y2USIgoJZWxlbV90eXBlGAEgASgLMg8ub25ueC5UeXBlUHJvdG8aPAoDTWFw",
+            "EhAKCGtleV90eXBlGAEgASgFEiMKCnZhbHVlX3R5cGUYAiABKAsyDy5vbm54",
+            "LlR5cGVQcm90bxpICgxTcGFyc2VUZW5zb3ISEQoJZWxlbV90eXBlGAEgASgF",
+            "EiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFwZVByb3RvGiYKBk9w",
+            "YXF1ZRIOCgZkb21haW4YASABKAkSDAoEbmFtZRgCIAEoCUIHCgV2YWx1ZSI1",
+            "ChJPcGVyYXRvclNldElkUHJvdG8SDgoGZG9tYWluGAEgASgJEg8KB3ZlcnNp",
+            "b24YAiABKAMi7wEKDUZ1bmN0aW9uUHJvdG8SDAoEbmFtZRgBIAEoCRIVCg1z",
+            "aW5jZV92ZXJzaW9uGAIgASgDEiQKBnN0YXR1cxgDIAEoDjIULm9ubnguT3Bl",
+            "cmF0b3JTdGF0dXMSDQoFaW5wdXQYBCADKAkSDgoGb3V0cHV0GAUgAygJEhEK",
+            "CWF0dHJpYnV0ZRgGIAMoCRIdCgRub2RlGAcgAygLMg8ub25ueC5Ob2RlUHJv",
+            "dG8SEgoKZG9jX3N0cmluZxgIIAEoCRIuCgxvcHNldF9pbXBvcnQYCSADKAsy",
+            "GC5vbm54Lk9wZXJhdG9yU2V0SWRQcm90byrLAQoHVmVyc2lvbhISCg5fU1RB",
+            "UlRfVkVSU0lPThAAEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8xMBABEhkKFUlS",
+            "X1ZFUlNJT05fMjAxN18xMF8zMBACEhgKFElSX1ZFUlNJT05fMjAxN18xMV8z",
+            "EAMSGAoUSVJfVkVSU0lPTl8yMDE5XzFfMjIQBBIYChRJUl9WRVJTSU9OXzIw",
+            "MTlfM18xOBAFEhgKFElSX1ZFUlNJT05fMjAxOV85XzE5EAYSDgoKSVJfVkVS",
+            "U0lPThAHKi4KDk9wZXJhdG9yU3RhdHVzEhAKDEVYUEVSSU1FTlRBTBAAEgoK",
+            "BlNUQUJMRRABYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ValueInfoProto), global::Onnx.ValueInfoProto.Parser, new[]{ "Name", "Type", "DocString" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TrainingInfoProto), global::Onnx.TrainingInfoProto.Parser, new[]{ "Initialization", "Algorithm", "InitializationBinding", "UpdateBinding" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps", "TrainingInfo" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorAnnotation), global::Onnx.TensorAnnotation.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "SparseInitializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null, null),
@@ -126,7 +135,7 @@ namespace Onnx {
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString", "OpsetImport" }, null, null, null, null)
           }));
     }
     #endregion
@@ -151,7 +160,7 @@ namespace Onnx {
     /// The version field is always serialized and we will use it to store the
     /// version that the  graph is generated from. This helps us set up version
     /// control. 
-    /// For the IR, we are using simple numbers starting with with 0x00000001, 
+    /// For the IR, we are using simple numbers starting with 0x00000001,
     /// which was the version we published on Oct 10, 2017.
     /// </summary>
     [pbr::OriginalName("IR_VERSION_2017_10_10")] IrVersion20171010 = 1,
@@ -186,7 +195,19 @@ namespace Onnx {
     ///   - Add message SparseTensorProto
     ///   - Add sparse initializers
     /// </summary>
-    [pbr::OriginalName("IR_VERSION")] IrVersion = 6,
+    [pbr::OriginalName("IR_VERSION_2019_9_19")] IrVersion2019919 = 6,
+    /// <summary>
+    /// IR VERSION 7 published on &lt;TBD>
+    /// - Add support to allow function body graph to rely on multiple external opreator sets.
+    /// - Add a list to promote inference graph's initializers to global and
+    ///   mutable variables. Global variables are visible in all graphs of the
+    ///   stored models.
+    /// - Add message TrainingInfoProto to store initialization
+    ///   method and training algorithm. The execution of TrainingInfoProto
+    ///   can modify the values of mutable variables.
+    /// - Make inference graph callable from TrainingInfoProto via GraphCall operator.
+    /// </summary>
+    [pbr::OriginalName("IR_VERSION")] IrVersion = 7,
   }
 
   /// <summary>
@@ -308,7 +329,7 @@ namespace Onnx {
     /// <summary>
     /// The type field MUST be present for this version of the IR.
     /// For 0.0.1 versions of the IR, this field was not defined, and
-    /// implementations needed to use has_field hueristics to determine
+    /// implementations needed to use has_field heuristics to determine
     /// which value field was in use.  For IR_VERSION 0.0.2 or later, this
     /// field MUST be set and match the f|i|s|t|... field in use.  This
     /// change was made to accommodate proto3 implementations.
@@ -1322,12 +1343,328 @@ namespace Onnx {
   }
 
   /// <summary>
+  /// Training information
+  /// TrainingInfoProto stores information for training a model.
+  /// In particular, this defines two functionalities: an initialization-step
+  /// and a training-algorithm-step. Initialization resets the model
+  /// back to its original state as if no training has been consumed.
+  /// Training algorithm improves the model based on input data.
+  ///
+  /// The semantics of the initialization-step is that the initializers
+  /// in ModelProto.graph and in TrainingInfoProto.algorithm are first
+  /// initialized as specified by the initializers in the graph, and then
+  /// updated by the "initialization_binding" in every instance in
+  /// ModelProto.training_info.
+  ///
+  /// The field "algorithm" defines a computation graph which represents a
+  /// training algorithm's step. After the execution of a
+  /// TrainingInfoProto.algorithm, the initializers specified by "update_binding"
+  /// may be immediately updated. If the targeted training algorithm contains
+  /// consecutive update stages (such as block coordinate descent methods),
+  /// the user needs to create a TrainingInfoProto for each stage.
+  /// </summary>
+  public sealed partial class TrainingInfoProto : pb::IMessage<TrainingInfoProto> {
+    private static readonly pb::MessageParser<TrainingInfoProto> _parser = new pb::MessageParser<TrainingInfoProto>(() => new TrainingInfoProto());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pb::MessageParser<TrainingInfoProto> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[3]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public TrainingInfoProto() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public TrainingInfoProto(TrainingInfoProto other) : this() {
+      initialization_ = other.initialization_ != null ? other.initialization_.Clone() : null;
+      algorithm_ = other.algorithm_ != null ? other.algorithm_.Clone() : null;
+      initializationBinding_ = other.initializationBinding_.Clone();
+      updateBinding_ = other.updateBinding_.Clone();
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public TrainingInfoProto Clone() {
+      return new TrainingInfoProto(this);
+    }
+
+    /// <summary>Field number for the "initialization" field.</summary>
+    public const int InitializationFieldNumber = 1;
+    private global::Onnx.GraphProto initialization_;
+    /// <summary>
+    /// This field describes a graph to compute the initial tensors
+    /// upon starting the training process. Initialization graph has no input
+    /// and can have multiple outputs. Usually, trainable tensors in neural
+    /// networks are randomly initialized. To achieve that, for each tensor,
+    /// the user can put a random number operator such as RandomNormal or
+    /// RandomUniform in TrainingInfoProto.initialization.node and assign its
+    /// random output to the specific tensor using "initialization_binding".
+    /// This graph can also set the initializers in "algorithm" in the same
+    /// TrainingInfoProto; a use case is resetting the number of training
+    /// iteration to zero.
+    ///
+    /// By default, this field is an empty graph and its evaluation does not
+    /// produce any output.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.GraphProto Initialization {
+      get { return initialization_; }
+      set {
+        initialization_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "algorithm" field.</summary>
+    public const int AlgorithmFieldNumber = 2;
+    private global::Onnx.GraphProto algorithm_;
+    /// <summary>
+    /// This field represents a training algorithm step. Given required inputs,
+    /// it computes outputs to update initializers in its own or inference graph's
+    /// initializer lists. In general, this graph contains loss node, gradient node,
+    /// optimizer node, increment of iteration count, and some calls to the inference
+    /// graph.
+    ///
+    /// The field algorithm.node is the only place the user can use GraphCall
+    /// operator. The only callable graph is the one stored in ModelProto.graph.
+    ///
+    /// By default, this field is an empty graph and its evaluation does not
+    /// produce any output.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public global::Onnx.GraphProto Algorithm {
+      get { return algorithm_; }
+      set {
+        algorithm_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "initialization_binding" field.</summary>
+    public const int InitializationBindingFieldNumber = 3;
+    private static readonly pb::FieldCodec<global::Onnx.StringStringEntryProto> _repeated_initializationBinding_codec
+        = pb::FieldCodec.ForMessage(26, global::Onnx.StringStringEntryProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> initializationBinding_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
+    /// <summary>
+    /// This field specifies the bindings from the outputs of "initialization" to
+    /// some initializers in "ModelProto.graph.initializer" and 
+    /// the "algorithm.initializer" in the same TrainingInfoProto.
+    /// See "update_binding" below for details.
+    ///
+    /// By default, this field is empty and no initializer would be changed
+    /// by the execution of "initialization".
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.StringStringEntryProto> InitializationBinding {
+      get { return initializationBinding_; }
+    }
+
+    /// <summary>Field number for the "update_binding" field.</summary>
+    public const int UpdateBindingFieldNumber = 4;
+    private static readonly pb::FieldCodec<global::Onnx.StringStringEntryProto> _repeated_updateBinding_codec
+        = pb::FieldCodec.ForMessage(34, global::Onnx.StringStringEntryProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.StringStringEntryProto> updateBinding_ = new pbc::RepeatedField<global::Onnx.StringStringEntryProto>();
+    /// <summary>
+    /// Gradient-based training is usually an iterative procedure. In one gradient
+    /// descent iteration, we apply
+    ///
+    /// x = x - r * g
+    ///
+    /// where "x" is the optimized tensor, "r" stands for learning rate, and "g" is
+    /// gradient of "x" with respect to a chosen loss. To avoid adding assignments
+    /// into the training graph, we split the update equation into
+    ///
+    /// y = x - r * g
+    /// x = y
+    ///
+    /// The user needs to save "y = x - r * g" into TrainingInfoProto.algorithm. To
+    /// tell that "y" should be assigned to "x", the field "update_binding" may
+    /// contain a key-value pair of strings, "x" (key of StringStringEntryProto)
+    /// and "y" (value of StringStringEntryProto).
+    /// For a neural network with multiple trainable (mutable) tensors, there can
+    /// be multiple key-value pairs in "update_binding".
+    ///
+    /// The initializers appears as keys in "update_binding" are considered
+    /// mutable and globally-visible variables. This implies some behaviors
+    /// as described below.
+    ///
+    ///  1. We have only unique keys in all "update_binding"s so that two global
+    ///     variables may not have the same name. This ensures that one
+    ///     global variable is assigned up to once.
+    ///  2. The keys must appear in names of "ModelProto.graph.initializer" or
+    ///     "TrainingInfoProto.algorithm.initializer".
+    ///  3. The values must be output names of "algorithm".
+    ///  4. If an optional input of a graph is omitted when using GraphCall, the
+    ///     global variable with the same name may be used.
+    ///  5. When using GraphCall, the users always can pass values to optional 
+    ///     inputs of the called graph even if the associated initializers appears
+    ///     as keys in "update_binding"s.
+    ///  6. The graphs in TrainingInfoProto's can use global variables as
+    ///     their operator inputs.
+    ///  7. Mutable variables are initialized to the value specified by the
+    ///     corresponding initializer, and then potentially updated by
+    ///     "initializer_binding"s and "update_binding"s in "TrainingInfoProto"s.
+    ///
+    /// This field usually contains names of trainable tensors
+    /// (in ModelProto.graph), optimizer states such as momentums in advanced
+    /// stochastic gradient methods (in TrainingInfoProto.graph),
+    /// and number of training iterations (in TrainingInfoProto.graph).
+    ///
+    /// By default, this field is empty and no initializer would be changed
+    /// by the execution of "algorithm".
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.StringStringEntryProto> UpdateBinding {
+      get { return updateBinding_; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override bool Equals(object other) {
+      return Equals(other as TrainingInfoProto);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool Equals(TrainingInfoProto other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (!object.Equals(Initialization, other.Initialization)) return false;
+      if (!object.Equals(Algorithm, other.Algorithm)) return false;
+      if(!initializationBinding_.Equals(other.initializationBinding_)) return false;
+      if(!updateBinding_.Equals(other.updateBinding_)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (initialization_ != null) hash ^= Initialization.GetHashCode();
+      if (algorithm_ != null) hash ^= Algorithm.GetHashCode();
+      hash ^= initializationBinding_.GetHashCode();
+      hash ^= updateBinding_.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void WriteTo(pb::CodedOutputStream output) {
+      if (initialization_ != null) {
+        output.WriteRawTag(10);
+        output.WriteMessage(Initialization);
+      }
+      if (algorithm_ != null) {
+        output.WriteRawTag(18);
+        output.WriteMessage(Algorithm);
+      }
+      initializationBinding_.WriteTo(output, _repeated_initializationBinding_codec);
+      updateBinding_.WriteTo(output, _repeated_updateBinding_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public int CalculateSize() {
+      int size = 0;
+      if (initialization_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Initialization);
+      }
+      if (algorithm_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Algorithm);
+      }
+      size += initializationBinding_.CalculateSize(_repeated_initializationBinding_codec);
+      size += updateBinding_.CalculateSize(_repeated_updateBinding_codec);
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(TrainingInfoProto other) {
+      if (other == null) {
+        return;
+      }
+      if (other.initialization_ != null) {
+        if (initialization_ == null) {
+          Initialization = new global::Onnx.GraphProto();
+        }
+        Initialization.MergeFrom(other.Initialization);
+      }
+      if (other.algorithm_ != null) {
+        if (algorithm_ == null) {
+          Algorithm = new global::Onnx.GraphProto();
+        }
+        Algorithm.MergeFrom(other.Algorithm);
+      }
+      initializationBinding_.Add(other.initializationBinding_);
+      updateBinding_.Add(other.updateBinding_);
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public void MergeFrom(pb::CodedInputStream input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+        switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            if (initialization_ == null) {
+              Initialization = new global::Onnx.GraphProto();
+            }
+            input.ReadMessage(Initialization);
+            break;
+          }
+          case 18: {
+            if (algorithm_ == null) {
+              Algorithm = new global::Onnx.GraphProto();
+            }
+            input.ReadMessage(Algorithm);
+            break;
+          }
+          case 26: {
+            initializationBinding_.AddEntriesFrom(input, _repeated_initializationBinding_codec);
+            break;
+          }
+          case 34: {
+            updateBinding_.AddEntriesFrom(input, _repeated_updateBinding_codec);
+            break;
+          }
+        }
+      }
+    }
+
+  }
+
+  /// <summary>
   /// Models
   ///
   /// ModelProto is a top-level file/container format for bundling a ML model and
   /// associating its computation graph with metadata.
   ///
-  /// The semantics of the model are described by the associated GraphProto.
+  /// The semantics of the model are described by the associated GraphProto's.
   /// </summary>
   public sealed partial class ModelProto : pb::IMessage<ModelProto> {
     private static readonly pb::MessageParser<ModelProto> _parser = new pb::MessageParser<ModelProto>(() => new ModelProto());
@@ -1337,7 +1674,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[3]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[4]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1364,6 +1701,7 @@ namespace Onnx {
       graph_ = other.graph_ != null ? other.graph_.Clone() : null;
       functions_ = other.functions_.Clone();
       metadataProps_ = other.metadataProps_.Clone();
+      trainingInfo_ = other.trainingInfo_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1526,6 +1864,27 @@ namespace Onnx {
       get { return metadataProps_; }
     }
 
+    /// <summary>Field number for the "training_info" field.</summary>
+    public const int TrainingInfoFieldNumber = 20;
+    private static readonly pb::FieldCodec<global::Onnx.TrainingInfoProto> _repeated_trainingInfo_codec
+        = pb::FieldCodec.ForMessage(162, global::Onnx.TrainingInfoProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.TrainingInfoProto> trainingInfo_ = new pbc::RepeatedField<global::Onnx.TrainingInfoProto>();
+    /// <summary>
+    /// Training-specific information. Sequentially executing all stored
+    /// `TrainingInfoProto.algorithm`s and assigning their outputs following
+    /// the corresponding `TrainingInfoProto.update_binding`s is one training
+    /// iteration. Similarly, to initialize the model
+    /// (as if training hasn't happened), the user should sequentially execute
+    /// all stored `TrainingInfoProto.initialization`s and assigns their outputs
+    /// using `TrainingInfoProto.initialization_binding`s.
+    ///
+    /// If this field is empty, the training behavior of the model is undefined.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.TrainingInfoProto> TrainingInfo {
+      get { return trainingInfo_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as ModelProto);
@@ -1549,6 +1908,7 @@ namespace Onnx {
       if (!object.Equals(Graph, other.Graph)) return false;
       if(!functions_.Equals(other.functions_)) return false;
       if(!metadataProps_.Equals(other.metadataProps_)) return false;
+      if(!trainingInfo_.Equals(other.trainingInfo_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1565,6 +1925,7 @@ namespace Onnx {
       if (graph_ != null) hash ^= Graph.GetHashCode();
       hash ^= functions_.GetHashCode();
       hash ^= metadataProps_.GetHashCode();
+      hash ^= trainingInfo_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1608,6 +1969,7 @@ namespace Onnx {
       }
       opsetImport_.WriteTo(output, _repeated_opsetImport_codec);
       metadataProps_.WriteTo(output, _repeated_metadataProps_codec);
+      trainingInfo_.WriteTo(output, _repeated_trainingInfo_codec);
       functions_.WriteTo(output, _repeated_functions_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -1641,6 +2003,7 @@ namespace Onnx {
       }
       size += functions_.CalculateSize(_repeated_functions_codec);
       size += metadataProps_.CalculateSize(_repeated_metadataProps_codec);
+      size += trainingInfo_.CalculateSize(_repeated_trainingInfo_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -1679,6 +2042,7 @@ namespace Onnx {
       }
       functions_.Add(other.functions_);
       metadataProps_.Add(other.metadataProps_);
+      trainingInfo_.Add(other.trainingInfo_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -1729,6 +2093,10 @@ namespace Onnx {
             metadataProps_.AddEntriesFrom(input, _repeated_metadataProps_codec);
             break;
           }
+          case 162: {
+            trainingInfo_.AddEntriesFrom(input, _repeated_trainingInfo_codec);
+            break;
+          }
           case 802: {
             functions_.AddEntriesFrom(input, _repeated_functions_codec);
             break;
@@ -1751,7 +2119,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[4]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[5]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1908,7 +2276,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[5]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[6]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2071,7 +2439,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[6]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[7]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2403,7 +2771,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[7]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[8]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2490,7 +2858,7 @@ namespace Onnx {
     /// For float and complex64 values
     /// Complex64 tensors are encoded as a single array of floats,
     /// with the real components appearing in odd numbered positions,
-    /// and the corresponding imaginary component apparing in the
+    /// and the corresponding imaginary component appearing in the
     /// subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
     /// is encoded as [1.0, 2.0 ,3.0 ,4.0]
     /// When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -2648,7 +3016,7 @@ namespace Onnx {
     /// For double
     /// Complex128 tensors are encoded as a single array of doubles,
     /// with the real components appearing in odd numbered positions,
-    /// and the corresponding imaginary component apparing in the
+    /// and the corresponding imaginary component appearing in the
     /// subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
     /// is encoded as [1.0, 2.0 ,3.0 ,4.0]
     /// When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -3173,7 +3541,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[8]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[9]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3387,7 +3755,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[9]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[10]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3746,7 +4114,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[10]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[11]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -4937,7 +5305,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[11]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[12]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5104,7 +5472,7 @@ namespace Onnx {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[12]; }
+      get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[13]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -5129,6 +5497,7 @@ namespace Onnx {
       attribute_ = other.attribute_.Clone();
       node_ = other.node_.Clone();
       docString_ = other.docString_;
+      opsetImport_ = other.opsetImport_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -5252,6 +5621,27 @@ namespace Onnx {
       }
     }
 
+    /// <summary>Field number for the "opset_import" field.</summary>
+    public const int OpsetImportFieldNumber = 9;
+    private static readonly pb::FieldCodec<global::Onnx.OperatorSetIdProto> _repeated_opsetImport_codec
+        = pb::FieldCodec.ForMessage(74, global::Onnx.OperatorSetIdProto.Parser);
+    private readonly pbc::RepeatedField<global::Onnx.OperatorSetIdProto> opsetImport_ = new pbc::RepeatedField<global::Onnx.OperatorSetIdProto>();
+    /// <summary>
+    /// The OperatorSets this function body (graph) relies on.
+    /// A FunctionProto body (graph) may implicitly rely on the OperatorSet that
+    /// this function belongs to. It can also explicitly rely on more OperatorSets
+    /// with this field specified.
+    ///
+    /// All nodes in the function body (graph) will bind against the operator
+    /// with the same-domain/same-op_type operator with the HIGHEST version
+    /// in the referenced operator sets. This means at most one version can be relied
+    /// for one domain.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public pbc::RepeatedField<global::Onnx.OperatorSetIdProto> OpsetImport {
+      get { return opsetImport_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as FunctionProto);
@@ -5273,6 +5663,7 @@ namespace Onnx {
       if(!attribute_.Equals(other.attribute_)) return false;
       if(!node_.Equals(other.node_)) return false;
       if (DocString != other.DocString) return false;
+      if(!opsetImport_.Equals(other.opsetImport_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -5287,6 +5678,7 @@ namespace Onnx {
       hash ^= attribute_.GetHashCode();
       hash ^= node_.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
+      hash ^= opsetImport_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -5320,6 +5712,7 @@ namespace Onnx {
         output.WriteRawTag(66);
         output.WriteString(DocString);
       }
+      opsetImport_.WriteTo(output, _repeated_opsetImport_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -5344,6 +5737,7 @@ namespace Onnx {
       if (DocString.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(DocString);
       }
+      size += opsetImport_.CalculateSize(_repeated_opsetImport_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -5371,6 +5765,7 @@ namespace Onnx {
       if (other.DocString.Length != 0) {
         DocString = other.DocString;
       }
+      opsetImport_.Add(other.opsetImport_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -5412,6 +5807,10 @@ namespace Onnx {
           }
           case 66: {
             DocString = input.ReadString();
+            break;
+          }
+          case 74: {
+            opsetImport_.AddEntriesFrom(input, _repeated_opsetImport_codec);
             break;
           }
         }

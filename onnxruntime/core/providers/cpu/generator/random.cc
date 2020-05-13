@@ -17,12 +17,8 @@ limitations under the License.
 
 #include "core/providers/cpu/generator/random.h"
 
-// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
-// warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-// build\windows\relwithdebinfo\eigen\src\eigen\eigen-eigen-5a0156e40feb\unsupported\eigen\cxx11\src/Tensor/TensorChipping.h(52)
-// warning C4100: 'dim': unreferenced formal parameter
 #ifdef _WIN32
-#pragma warning(disable : 4554 4100)
+#pragma warning(disable : 28020)
 #endif
 
 #include <algorithm>
@@ -31,7 +27,7 @@ limitations under the License.
 
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/common/eigen_common_wrapper.h"
 #include "gsl/gsl"
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

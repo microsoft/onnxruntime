@@ -37,7 +37,11 @@ class DummyArena : public IArenaAllocator {
  public:
   explicit DummyArena(std::unique_ptr<IDeviceAllocator> resource_allocator)
       : allocator_(std::move(resource_allocator)),
-        info_(allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, allocator_->Info().device, allocator_->Info().id) {
+        info_(allocator_->Info().name,
+              OrtAllocatorType::OrtArenaAllocator,
+              allocator_->Info().device,
+              allocator_->Info().id,
+              allocator_->Info().mem_type) {
   }
 
   ~DummyArena() override = default;

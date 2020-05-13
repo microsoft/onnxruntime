@@ -10,7 +10,8 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
 
     <!--internal build related properties-->
-    <OnnxRuntimeCsharpRoot>..\..</OnnxRuntimeCsharpRoot>
+    <OnnxRuntimeRoot>..\..\..</OnnxRuntimeRoot>
+    <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeCsharpRoot)\..\build\Windows</OnnxRuntimeBuildDirectory>
     <NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
@@ -41,6 +42,7 @@
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
+    <Configurations>Debug;Release;RelWithDebInfo</Configurations>
   </PropertyGroup>
 
   <!--TODO: this works for single platform only. Need separate packaging scripts for multi-target packaging -->
@@ -90,60 +92,6 @@
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="false"
           CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\Windows.AI.MachineLearning.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\Windows.AI.MachineLearning.dll')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\Windows.AI.MachineLearning.lib"
-          Condition="Exists('$(NativeBuildOutputDir)\Windows.AI.MachineLearning.lib')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(NativeBuildOutputDir)\Windows.AI.MachineLearning.pdb"
-          Condition="Exists('$(NativeBuildOutputDir)\Windows.AI.MachineLearning.pdb')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.winmd"
-          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.winmd')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\metadata"
-          Pack="false"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h"
-          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
-          Visible="false"
-    />
-    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h"
-          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
-                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
-          PackagePath="\build\native\include"
-          Pack="false"
-          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\DirectML.dll"
@@ -216,18 +164,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE"/>
-    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml"/>
+    <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE" />
+    <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml" />
   </ItemGroup>
 
   <Target Name="CopyMiscFiles" BeforeTargets="Pack">
-    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
-    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
+    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
+    <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')" />
 
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
     <PackageReference Include="System.Memory" Version="4.5.3" />
   </ItemGroup>
 

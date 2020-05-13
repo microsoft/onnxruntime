@@ -1148,12 +1148,7 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
     }
 
 #if gsl_HAVE(TYPE_TRAITS)
-#if gsl_COMPILER_MSVC_VERSION
-    // Suppress MSVC level 4 warning C4127 (conditional expression is constant)
-    if (0, !detail::is_same_signedness<T, U>::value && ((t < T()) != (u < U())))
-#else
     if (!detail::is_same_signedness<T, U>::value && ((t < T()) != (u < U())))
-#endif
 #else
     // Don't assume T() works:
     if ((t < 0) != (u < 0))

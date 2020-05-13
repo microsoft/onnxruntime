@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
-#include "core/common/version.h"
+#include "onnxruntime_config.h"
 
 // ETW includes
 // need space after Windows.h to prevent clang-format re-ordering breaking the build.
@@ -56,7 +56,7 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 
 OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
-bool WindowsTelemetry::enabled_ = false;
+bool WindowsTelemetry::enabled_ = true;
 
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -105,7 +105,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingString(ONNXRUNTIME_VERSION_STRING, "runtimeVersion"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingBool(true, "isRedist"));
 
   process_info_logged = true;

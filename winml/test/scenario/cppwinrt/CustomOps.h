@@ -2,21 +2,19 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct CustomOpsTestApi
+struct CustomOpsTestsApi
 {
-    SetupTest CustomOpsScenarioTestSetup;
-    SetupTest CustomOpsScenarioGpuTestSetup;
+    SetupTest CustomOpsScenarioTestsClassSetup;
     VoidTest CustomOperatorFusion;
     VoidTest CustomKernelWithBuiltInSchema;
     VoidTest CustomKernelWithCustomSchema;
 };
-const CustomOpsTestApi& getapi();
+const CustomOpsTestsApi& getapi();
 
-WINML_TEST_CLASS_BEGIN_WITH_SETUP(CustomOpsScenarioTest, CustomOpsScenarioTestSetup)
-WINML_TEST(CustomOpsScenarioTest, CustomKernelWithBuiltInSchema)
-WINML_TEST(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
-WINML_TEST_CLASS_END()
-
-WINML_TEST_CLASS_BEGIN_WITH_SETUP(CustomOpsScenarioGpuTest, CustomOpsScenarioGpuTestSetup)
-WINML_TEST(CustomOpsScenarioGpuTest, CustomOperatorFusion)
+WINML_TEST_CLASS_BEGIN(CustomOpsScenarioTests)
+WINML_TEST_CLASS_SETUP_CLASS(CustomOpsScenarioTestsClassSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(CustomOpsScenarioTests, CustomKernelWithBuiltInSchema)
+WINML_TEST(CustomOpsScenarioTests, CustomKernelWithCustomSchema)
+WINML_TEST(CustomOpsScenarioTests, CustomOperatorFusion)
 WINML_TEST_CLASS_END()

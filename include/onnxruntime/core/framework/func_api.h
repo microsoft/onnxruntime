@@ -1,5 +1,6 @@
 #pragma once
-#include "core/common/common.h"
+#include "core/common/status.h"
+using onnxruntime::common::Status;
 
 namespace onnxruntime {
 

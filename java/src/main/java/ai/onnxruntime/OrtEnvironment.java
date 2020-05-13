@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -14,24 +14,6 @@ import java.util.logging.Logger;
  * specific models.
  */
 public class OrtEnvironment implements AutoCloseable {
-
-  /** The logging level for messages from the environment and session. */
-  public enum LoggingLevel {
-    ORT_LOGGING_LEVEL_VERBOSE(0),
-    ORT_LOGGING_LEVEL_INFO(1),
-    ORT_LOGGING_LEVEL_WARNING(2),
-    ORT_LOGGING_LEVEL_ERROR(3),
-    ORT_LOGGING_LEVEL_FATAL(4);
-    private final int value;
-
-    LoggingLevel(int value) {
-      this.value = value;
-    }
-
-    public int getValue() {
-      return value;
-    }
-  }
 
   private static final Logger logger = Logger.getLogger(OrtEnvironment.class.getName());
 
@@ -49,29 +31,29 @@ public class OrtEnvironment implements AutoCloseable {
 
   private static final AtomicInteger refCount = new AtomicInteger();
 
-  private static volatile LoggingLevel curLogLevel;
+  private static volatile OrtLoggingLevel curLogLevel;
 
   private static volatile String curLoggingName;
 
   /**
    * Gets the OrtEnvironment. If there is not an environment currently created, it creates one using
-   * {@link OrtEnvironment#DEFAULT_NAME} and {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
+   * {@link OrtEnvironment#DEFAULT_NAME} and {@link OrtLoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
    *
    * @return An onnxruntime environment.
    */
   public static OrtEnvironment getEnvironment() {
-    return getEnvironment(LoggingLevel.ORT_LOGGING_LEVEL_WARNING, DEFAULT_NAME);
+    return getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, DEFAULT_NAME);
   }
 
   /**
    * Gets the OrtEnvironment. If there is not an environment currently created, it creates one using
-   * the supplied name and {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
+   * the supplied name and {@link OrtLoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
    *
    * @param name The logging id of the environment.
    * @return An onnxruntime environment.
    */
   public static OrtEnvironment getEnvironment(String name) {
-    return getEnvironment(LoggingLevel.ORT_LOGGING_LEVEL_WARNING, name);
+    return getEnvironment(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, name);
   }
 
   /**
@@ -81,7 +63,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @param logLevel The logging level to use.
    * @return An onnxruntime environment.
    */
-  public static OrtEnvironment getEnvironment(LoggingLevel logLevel) {
+  public static OrtEnvironment getEnvironment(OrtLoggingLevel logLevel) {
     return getEnvironment(logLevel, DEFAULT_NAME);
   }
 
@@ -94,7 +76,8 @@ public class OrtEnvironment implements AutoCloseable {
    * @param name The log id.
    * @return The OrtEnvironment singleton.
    */
-  public static synchronized OrtEnvironment getEnvironment(LoggingLevel loggingLevel, String name) {
+  public static synchronized OrtEnvironment getEnvironment(
+      OrtLoggingLevel loggingLevel, String name) {
     if (INSTANCE == null) {
       try {
         INSTANCE = new OrtEnvironment(loggingLevel, name);
@@ -104,7 +87,7 @@ public class OrtEnvironment implements AutoCloseable {
         throw new IllegalStateException("Failed to create OrtEnvironment", e);
       }
     } else {
-      if ((loggingLevel.value != curLogLevel.value) || (!name.equals(curLoggingName))) {
+      if ((loggingLevel.getValue() != curLogLevel.getValue()) || (!name.equals(curLoggingName))) {
         logger.warning(
             "Tried to change OrtEnvironment's logging level or name while a reference exists.");
       }
@@ -125,7 +108,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the environment couldn't be created.
    */
   private OrtEnvironment() throws OrtException {
-    this(LoggingLevel.ORT_LOGGING_LEVEL_WARNING, "java-default");
+    this(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, "java-default");
   }
 
   /**
@@ -135,7 +118,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @param name The logging id of the environment.
    * @throws OrtException If the environment couldn't be created.
    */
-  private OrtEnvironment(LoggingLevel loggingLevel, String name) throws OrtException {
+  private OrtEnvironment(OrtLoggingLevel loggingLevel, String name) throws OrtException {
     nativeHandle = createHandle(OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name);
     defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
   }

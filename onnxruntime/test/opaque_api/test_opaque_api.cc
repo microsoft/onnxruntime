@@ -153,9 +153,10 @@ static void RegisterCustomKernel() {
   // Register kernel directly to KernelRegistry
   // because we can not create custom ops with Opaque types
   // as input
+  // TODO: But that registry is process-wide, such modification is super dangerous.
   BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSFeaturizersDomain, 1, OpaqueCApiTestKernel)>;
   auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
-  kernel_registry->Register(fn());
+  ORT_ENFORCE(kernel_registry->Register(fn()).IsOK());
 }
 
 namespace test {

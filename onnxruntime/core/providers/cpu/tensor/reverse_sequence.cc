@@ -121,10 +121,6 @@ static void ReverseSequenceImpl(const Tensor& X,
     if (seq_len == 0)
       continue;
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
     for (int64_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);
       gsl::span<T> dest = inputs_reverse.subspan(
@@ -134,10 +130,6 @@ static void ReverseSequenceImpl(const Tensor& X,
       gsl::copy(src, dest);
     }
 
-#ifdef USE_OPENMP
-// Parallel execute the loop.
-#pragma omp parallel for
-#endif
     for (int64_t j = seq_len; j < max_seq_len; j++) {
       const auto offset = input_offset(max_seq_len, batch_size, input_size, i, j);
       gsl::span<const T> src = inputs.subspan(offset, input_size);

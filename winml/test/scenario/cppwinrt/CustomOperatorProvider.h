@@ -9,7 +9,7 @@
 struct CustomOperatorProvider :
     winrt::implements<
         CustomOperatorProvider,
-        winrt::Windows::AI::MachineLearning::ILearningModelOperatorProvider,
+        winml::ILearningModelOperatorProvider,
         ILearningModelOperatorProviderNative>
 {
     HMODULE m_library;
@@ -17,10 +17,14 @@ struct CustomOperatorProvider :
 
     CustomOperatorProvider()
     {
+      std::wostringstream dll;
+      dll << BINARY_NAME;
+      auto winml_dll_name =  dll.str();
+
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-        m_library = LoadLibraryW(L"windows.ai.machinelearning.dll");
+        m_library = LoadLibraryExW(winml_dll_name.c_str(), nullptr, 0);
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
-        m_library = LoadPackagedLibrary(L"windows.ai.machinelearning.dll", 0 /*Reserved*/);
+        m_library = LoadPackagedLibrary(winml_dll_name.c_str(), 0 /*Reserved*/);
 #endif
         using create_registry_delegate = HRESULT WINAPI (_COM_Outptr_ IMLOperatorRegistry** registry);
         auto create_registry = reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));

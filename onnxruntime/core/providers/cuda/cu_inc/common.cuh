@@ -181,8 +181,11 @@ __device__ __inline__ half2 _Tanh(half2 a) {
   return __float22half2_rn(tmp);
 }
 
-template <typename T>
-__device__ __inline__ T _Pow(T a, T b);
+// Capture permutations of int32/64/float/double
+template <typename T, typename T1>
+__device__ __inline__ T _Pow(T a, T1 b) {
+  return static_cast<T>(pow(static_cast<double>(a), static_cast<double>(b)));
+}
 
 template <>
 __device__ __inline__ float _Pow(float a, float b) { return powf(a, b); }
@@ -219,18 +222,12 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
-
 #ifndef CUDA_LONG
 #define CUDA_LONG int32_t
 #endif
-
-#define IDX2C(i, j, ld) (((j) * (ld)) + (i))  // 0 based indexing
-
-// ---------------------------------------------------------------------------
-// GridDim -- helper to choose the CUDA grid dimensions
-// ---------------------------------------------------------------------------
 
 template <class INT, class INT2>
 static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
@@ -241,54 +238,14 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 struct GridDim {
   enum : CUDA_LONG {
     maxThreadsPerBlock = 256,  // max threads per block
-    maxWarpsPerBlock = 32,     // max warps per block
     maxElementsPerThread = 4,  // max element processed per thread
   };
-
-  // use these for launching
-  //   GridDim grid(NN);
-  //   kernel<<<grid.m_blocksPerGrid, grid.m_threadsPerBlock, ...>>>(...)
-  int blocks_per_grid_, threads_per_block_;  // (these may in the future be extended to multi-dimensional ones)
-  CUDA_LONG N_;
-
-  GridDim(CUDA_LONG N)  // linear grid
-  {
-    N_ = N;
-    if (N == 0)  // CUDA will fail to launch with 0 blocks
-      N = 1;
-
-    // get device information
-    const auto& props = DeviceProp::GetDeviceProps();
-    CUDA_LONG numProcs = props.multiProcessorCount;
-    CUDA_LONG warpSize = props.warpSize;
-
-    // distribute warps evenly over processors
-    CUDA_LONG warpsPerProc = CeilDiv(N, numProcs * warpSize);
-
-    // if too many warps per block then reduce #warps
-    // This limits the number of threads to 512.
-    if (warpsPerProc > maxWarpsPerBlock) {
-      CUDA_LONG overBy = CeilDiv(warpsPerProc, maxWarpsPerBlock);  // we are over by this factor
-      warpsPerProc = CeilDiv(warpsPerProc, overBy);
-    }
-
-    // put it back together
-    threads_per_block_ = warpsPerProc * warpSize;  // =a multiple of 32 that is as close to 1024 as makes sense given NN
-    blocks_per_grid_ = CeilDiv(N, threads_per_block_);
-    if (blocks_per_grid_ == 1)
-      threads_per_block_ = N;  // don't launch more than necessary
-    assert(blocks_per_grid_ * threads_per_block_ >= N);
-  }
-
-  // compute our location on the grid
-  static __device__ CUDA_LONG GetLinearThreadId() {
-    return blockDim.x * blockIdx.x + threadIdx.x;
-  }
 };
 
-#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \
-  CUDA_LONG id = GridDim::GetLinearThreadId();     \
-  if (id >= N)                                     \
+
+#define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)          \
+  CUDA_LONG id = blockDim.x * blockIdx.x + threadIdx.x;     \
+  if (id >= N)                                              \
     return;
 
 // CUDA_KERNEL_ASSERT is a macro that wraps an assert() call inside cuda kernels.
@@ -299,6 +256,49 @@ struct GridDim {
 #else // __APPLE__
 #define CUDA_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 #endif // __APPLE__
+
+// WARP related definitions and functions
+constexpr int GPU_WARP_SIZE = 32;
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_sync(mask, value, srcLane, width);
+#else
+  return __shfl(value, srcLane, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_xor_sync(mask, value, laneMask, width);
+#else
+  return __shfl_xor(value, laneMask, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_up_sync(mask, value, delta, width);
+#else
+  return __shfl_up(value, delta, width);
+#endif
+}
+
+template <typename T>
+__device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)
+{
+#if CUDA_VERSION >= 9000
+  return __shfl_down_sync(mask, value, delta, width);
+#else
+  return __shfl_down(value, delta, width);
+#endif
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

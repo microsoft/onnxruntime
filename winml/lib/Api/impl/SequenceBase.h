@@ -7,7 +7,7 @@
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
 
-namespace Windows::AI::MachineLearning {
+namespace _winml {
 
 // SequenceBase
 //
@@ -20,8 +20,8 @@ template <typename TDerived, typename T, typename TRaw>
 struct SequenceBase : public winrt::implements<
                           SequenceBase<TDerived, T, TRaw>,
                           winml::ILearningModelFeatureValue,
-                          WinML::ISequenceFeatureValue,
-                          WinML::ILotusValueProviderPrivate> {
+                          _winml::ISequenceFeatureValue,
+                          _winml::ILotusValueProviderPrivate> {
   using ABISequence = wfc::IIterable<T>;
   using AbiMapStringToFloat = wfc::IMap<winrt::hstring, float>;
   using AbiMapInt64BitToFloat = wfc::IMap<int64_t, float>;
@@ -40,7 +40,7 @@ struct SequenceBase : public winrt::implements<
           std::is_same<TRaw, int32_t>::value ||
           std::is_same<TRaw, uint64_t>::value ||
           std::is_same<TRaw, int64_t>::value ||
-          std::is_same<TRaw, WinML::Half>::value ||
+          std::is_same<TRaw, _winml::Half>::value ||
           std::is_same<TRaw, std::string>::value,
           "Only sequences of of map<string, float>, map<int64, float> and tensor<T> are supported.");
 
@@ -61,7 +61,7 @@ struct SequenceBase : public winrt::implements<
   void
   GetElementDescriptor(winml::ILearningModelFeatureDescriptor* result) {
     
-    *result = WinML::TensorFeatureDescriptorFrom<TRaw>::CreateAnonymous(std::vector<int64_t>{});
+    *result = _winml::TensorFeatureDescriptorFrom<TRaw>::CreateAnonymous(std::vector<int64_t>{});
   }
 
   template <>
@@ -70,7 +70,7 @@ struct SequenceBase : public winrt::implements<
       winml::ILearningModelFeatureDescriptor* result) {
     // zero dimensional tensor has empty shape
     auto value_descriptor =
-        WinML::TensorFeatureDescriptorFrom<float>::CreateAnonymous(
+        _winml::TensorFeatureDescriptorFrom<float>::CreateAnonymous(
             std::vector<int64_t>{});
     *result =
         winrt::make<winmlp::MapFeatureDescriptor>(
@@ -87,7 +87,7 @@ struct SequenceBase : public winrt::implements<
       winml::ILearningModelFeatureDescriptor* result) {
     // zero dimensional tensor has empty shape
     auto value_descriptor =
-        WinML::TensorFeatureDescriptorFrom<float>::CreateAnonymous(
+        _winml::TensorFeatureDescriptorFrom<float>::CreateAnonymous(
             std::vector<int64_t>{});
     *result =
         winrt::make<winmlp::MapFeatureDescriptor>(
@@ -128,12 +128,12 @@ struct SequenceBase : public winrt::implements<
   }
 
   STDMETHOD(GetValue)(
-    WinML::BindingContext& context,
+    _winml::BindingContext& context,
     IValue** out) {
-    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
 
-    if (context.type == WinML::BindingType::kInput) {
+    if (context.type == _winml::BindingType::kInput) {
       winml::ILearningModelFeatureDescriptor descriptor(nullptr);
       GetElementDescriptor<T>(&descriptor);
 
@@ -153,17 +153,17 @@ struct SequenceBase : public winrt::implements<
         // GetValue and delegating tensorization to each of those objects.
         //
         // The resulting tensors are collected into a vector.
-        std::vector<winrt::com_ptr<WinML::IValue>> sequence;
+        std::vector<winrt::com_ptr<_winml::IValue>> sequence;
         for (auto tensor : data_) {
-          auto value_provider = tensor.as<WinML::ILotusValueProviderPrivate>();
-          winrt::com_ptr<WinML::IValue> out_value;
+          auto value_provider = tensor.as<_winml::ILotusValueProviderPrivate>();
+          winrt::com_ptr<_winml::IValue> out_value;
           RETURN_IF_FAILED(value_provider->GetValue(context, out_value.put()));
           sequence.push_back(out_value);
         }
 
         // The collection of IValues needs wrapped into a single IValue
         // which represents the sequence<tensor> value.
-        std::vector<WinML::IValue*> sequence_values;
+        std::vector<_winml::IValue*> sequence_values;
         std::transform(
             std::begin(sequence),
             std::end(sequence),
@@ -208,9 +208,9 @@ struct SequenceBase : public winrt::implements<
   template <> auto CreatePlaceholderTensor<winml::TensorString>() { return winmlp::TensorString::Create(); }
   
   void AppendValue(
-      WinML::BindingContext& context, wfc::IVector<T> data, winrt::com_ptr<WinML::IValue> value) {
+      _winml::BindingContext& context, wfc::IVector<T> data, winrt::com_ptr<_winml::IValue> value) {
     auto tensor = CreatePlaceholderTensor();
-    auto value_provider = tensor.as<WinML::ILotusValueProviderPrivate>();
+    auto value_provider = tensor.as<_winml::ILotusValueProviderPrivate>();
     WINML_THROW_IF_FAILED(value_provider->UpdateSourceResourceData(context, value.get()));
     data.Append(tensor);
   }  
@@ -220,7 +220,7 @@ struct SequenceBase : public winrt::implements<
     auto writable_vector = data_.as<wfc::IVector<T>>();
     writable_vector.Clear();
 
-    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto session = context.session.as<winmlp::LearningModelSession>();
     auto engine = session->GetEngine();
 
     winml::ILearningModelFeatureDescriptor descriptor(nullptr);
@@ -231,7 +231,7 @@ struct SequenceBase : public winrt::implements<
       RETURN_IF_FAILED(engine->FillSequenceOfMapsValue(reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)), SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));
     } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
       // In opset 11, operators that require seq<tensor<t>> were added.
-      std::vector<winrt::com_ptr<WinML::IValue>> tensor_values;
+      std::vector<winrt::com_ptr<_winml::IValue>> tensor_values;
       RETURN_IF_FAILED(engine->GetSequenceOfTensorValues(out, tensor_values));
 
       for (auto tensor_value : tensor_values) {
@@ -254,4 +254,4 @@ struct SequenceBase : public winrt::implements<
   ABISequence data_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

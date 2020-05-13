@@ -35,7 +35,7 @@ OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
                             onnxruntime::common::Status& status,
-                            const ThreadingOptions* tp_options) {
+                            const OrtThreadingOptions* tp_options) {
   std::lock_guard<onnxruntime::OrtMutex> lock(m_);
   std::unique_ptr<LoggingManager> lmgr;
   std::string name = lm_info.logid;

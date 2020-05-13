@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/util/qmath.h"
 #include "core/common/common.h"
 #include "core/util/math_cpuonly.h"

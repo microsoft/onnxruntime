@@ -23,7 +23,7 @@ static Status SetIntraOpNumThreads(SessionOptions& session_options,
   }
 
   LOGS(logger, INFO) << "Setting intra_op_num_threads to " << value;
-  session_options.intra_op_num_threads = value;
+  session_options.intra_op_param.thread_pool_size = value;
   return Status::OK();
 }
 
@@ -36,7 +36,7 @@ static Status SetInterOpNumThreads(SessionOptions& session_options,
   }
 
   LOGS(logger, INFO) << "Setting inter_op_num_threads to " << value;
-  session_options.inter_op_num_threads = value;
+  session_options.inter_op_param.thread_pool_size= value;
   return Status::OK();
 }
 

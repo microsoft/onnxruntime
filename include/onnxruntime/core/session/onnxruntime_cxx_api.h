@@ -71,6 +71,7 @@ ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
+ORT_DEFINE_RELEASE(ThreadingOptions);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -123,7 +124,7 @@ struct ModelMetadata;
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
   Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
-  Env(ThreadingOptions tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -198,6 +199,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
   char* GetGraphName(OrtAllocator* allocator) const;
   char* GetDomain(OrtAllocator* allocator) const;
   char* GetDescription(OrtAllocator* allocator) const;
+  char** GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const;
   char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
   int64_t GetVersion() const;
 };

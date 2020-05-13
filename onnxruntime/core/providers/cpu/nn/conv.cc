@@ -207,7 +207,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  if (kernel_rank == 2 || kernel_rank == 3) {
+  if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
