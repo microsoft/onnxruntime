@@ -72,7 +72,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     concurrency::ThreadPool::TryParallelFor(tp, x_shape.Size(), 2.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       const T* input_tmp = input + begin;
       float* output_tmp = output + begin;
-      float zp = static_cast<int32_t>(*zero_point);
+      int32_t zp = static_cast<int32_t>(*zero_point);
       float sc = *scale;
       for (; output_tmp != output + end;) {
         *output_tmp++ = static_cast<float>(static_cast<int32_t>(*input_tmp++) - zp) * sc;
