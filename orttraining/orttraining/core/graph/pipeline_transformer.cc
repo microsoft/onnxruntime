@@ -525,26 +525,30 @@ Status TransformGraphForPipeline(
   
   // Different stages have different patterns of Send & Recv.
   // For different patterns, we add different WaitEvent and Record.
-  // 
-  // Current pattern of first stage:
+  //
+  // After applying all transformations above, the current patterns
+  // are listed below.
+  //
+  // 1. First stage:
   //  Wait -----------------> FW -> --------> Send -> Record ->
   //  Wait -> Recv ---------> BW -> ----------------> Record
-  // Current pattern of middle stage:
+  // 2. Middle stage:
   //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // Current pattern of last stage:
+  // 3. Last stage:
   //  Wait -> Recv ---------> FW ----------------------------->
   //  ----------------------> BW -----------> Send -> Record
   //
   // After applying all transformations below, we will have
+  // the following patterns.
   //
-  // At the end of this function, the pattern of first stage:
+  // 1. First stage:
   //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // At the end of this function, the pattern of middle stage:
+  // 2. Middle stage:
   //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // At the end of this function, the pattern of last stage:
+  // 3. Last stage:
   //  Wait -> Recv -> Wait -> FW ----------------------------->
   //  ----------------------> BW -> Record -> Send -> Record
   const bool is_first_stage = !recv_fw && send_fw && recv_bw && !send_bw;
@@ -552,13 +556,13 @@ Status TransformGraphForPipeline(
   const bool is_last_stage = recv_fw && !send_fw && !recv_bw && send_bw;
 
   // Now, we add Wait's in parentheses shown below.
-  // First stage is:
+  // 1. First stage:
   //  Wait ---------> (Wait) -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // Middle stage is:
+  // 2. Middle stage:
   //  Wait -> Recv -> (Wait) -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // Last stage is:
+  // 3. Last stage:
   //  Wait -> Recv -> (Wait) -> FW ----------------------------->
   //  ----------------------> BW -> Record -> Send -> Record
   if (is_first_stage) {
@@ -580,13 +584,13 @@ Status TransformGraphForPipeline(
   }
 
   // Now, we add Record's in parentheses shown below.
-  // First stage:
+  // 1. First stage:
   //  Wait ---------> Wait -> FW -> (Record) -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record ---------> Record
-  // Middle stage:
+  // 2. Middle stage:
   //  Wait -> Recv -> Wait -> FW -> (Record) -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> Record -> Send -> Record
-  // Last stage (no change):
+  // 3. Last stage (no change):
   //  Wait -> Recv -> Wait -> FW ----------------------------->
   //  ----------------------> BW -> Record -> Send -> Record
   if (is_first_stage || is_middle_stage) {
@@ -599,13 +603,13 @@ Status TransformGraphForPipeline(
   }
 
   // Now, we add Wait's in parentheses shown below.
-  // First stage:
+  // 1. First stage:
   //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> (Wait) -> BW -> Record ---------> Record
-  // Middle stage:
+  // 2. Middle stage:
   //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> (Wait) -> BW -> Record -> Send -> Record
-  // Last stage (no change):
+  // 3. Last stage (no change):
   //  Wait -> Recv -> Wait -> FW ----------------------------->
   //  ----------------------> BW -> Record -> Send -> Record
   if (is_first_stage || is_middle_stage) {
@@ -618,13 +622,13 @@ Status TransformGraphForPipeline(
   }
 
   // Now, we add Record's in parentheses shown below.
-  // First stage is:
+  // 1. First stage is:
   //  Wait ---------> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> (Record) ---------> Record
-  // Middle stage is:
+  // 2. Middle stage is:
   //  Wait -> Recv -> Wait -> FW -> Record -> Send -> Record ->
   //  Wait -> Recv -> Wait -> BW -> (Record) -> Send -> Record
-  // Final pattern of last stage is:
+  // 3. Final pattern of last stage is:
   //  Wait -> Recv -> Wait -> FW ----------------------------->
   //  ----------------------> BW -> (Record) -> Send -> Record
   if (is_first_stage) {
