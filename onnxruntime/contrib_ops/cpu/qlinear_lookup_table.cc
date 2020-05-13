@@ -42,11 +42,11 @@ static void BuildQLinearLeakyReluLookupTable(uint8_t table[256],
                                              float alpha) {
   ORT_ENFORCE(IsScalarOr1ElementVector(tensor_x_scale),
               "QLinearLeakyRelu : input X_scale must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_x_zero_point),
+  ORT_ENFORCE(tensor_x_zero_point == nullptr || IsScalarOr1ElementVector(tensor_x_zero_point),
               "QLinearLeakyRelu : input X_zero_point must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(tensor_y_scale),
               "QLinearLeakyRelu : input Y_scale must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(tensor_y_zero_point),
+  ORT_ENFORCE(tensor_y_zero_point == nullptr || IsScalarOr1ElementVector(tensor_y_zero_point),
               "QLinearLeakyRelu : input Y_zero_point must be a scalar or 1D tensor of size 1");
 
   const float X_scale = *(tensor_x_scale->Data<float>());
