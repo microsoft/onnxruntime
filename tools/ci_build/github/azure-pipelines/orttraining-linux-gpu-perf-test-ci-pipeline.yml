@@ -53,6 +53,8 @@ jobs:
   # process json files
   - script: >
       java -cp target/send_perf_metrics-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.msft.send_perf_metrics.App "$(Build.SourcesDirectory)/orttraining/tools/ci_test/results"
+    env:
+      ORT_PERF_PASSWORD: $(ortperf) 
     displayName: 'Populate perf metrics'
     workingDirectory: $(Build.SourcesDirectory)/tools/perf_util
 

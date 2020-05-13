@@ -12,9 +12,9 @@ public class JdbcUtil {
 			Properties props = new Properties();
 			props.load(in);
 
-		//	String password = System.getenv("ORT_PERF_PASSWORD");
+			String password = System.getenv("ORT_PERF_PASSWORD");
 
-			String password = System.getProperty("ORT_PERF_PASSWORD") ;
+			//String password = System.getProperty("ORT_PERF_PASSWORD") ;
 
 			Map<String, String> env = System.getenv();
 			for (String envName : env.keySet()) {
