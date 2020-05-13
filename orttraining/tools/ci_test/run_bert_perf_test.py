@@ -23,7 +23,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    matrix = { # enable mixed-precision, sequence length, max batch size
+    matrix = { # enable mixed-precision, sequence length, max batch size, predictions per sequence
         "fp16-128": [True, 128, 66, 20],
         "fp16-512": [True, 512, 10, 80],
         "fp32-128": [False, 128, 33, 20],
