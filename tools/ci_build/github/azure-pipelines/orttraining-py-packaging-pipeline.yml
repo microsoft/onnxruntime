@@ -1,17 +1,17 @@
 trigger: none
 
 stages:
-- template: templates/py-packaging-stage.yml
-  parameters:
-    enable_training: true
-    enable_linux_cpu: false
-    enable_linux_gpu: true
-    enable_windows_cpu: false
-    enable_windows_gpu: false
-    enable_mac_cpu: false
-    python_version_strategy_matrix:
-      Python36:
-        python.version: '3.6'
+# - template: templates/py-packaging-stage.yml
+#   parameters:
+#     enable_training: true
+#     enable_linux_cpu: false
+#     enable_linux_gpu: true
+#     enable_windows_cpu: false
+#     enable_windows_gpu: false
+#     enable_mac_cpu: false
+#     python_version_strategy_matrix:
+#       Python36:
+#         python.version: '3.6'
 
 - stage: Test_Wheel
   condition: succeededOrFailed()
@@ -30,12 +30,26 @@ stages:
 
     - template: templates/set-py-packaging-variables-step.yml
 
+    # - task: DownloadPipelineArtifact@2
+    #   inputs:
+    #     source: current
+    #     artifact: onnxruntime_gpu
+    #     patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2014_x86_64.whl'
+    #     path: $(Pipeline.Workspace)/artifacts
+    #   displayName: 'Download wheel'
+
     - task: DownloadPipelineArtifact@2
       inputs:
-        source: current
-        artifact: onnxruntime_gpu
-        patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2014_x86_64.whl'
-        path: $(Pipeline.Workspace)/artifacts
+        buildType: 'specific'
+        project: '2a773b67-e88b-4c7f-9fc0-87d31fea8ef2'
+        definition: '99'
+        buildVersionToDownload: 'specific'
+        pipelineId: '20200512.2'
+        artifactName: 'onnxruntime_gpu'
+        itemPattern: '**/*-$(python.whl.impl.abi.tags)-manylinux2014_x86_64.whl'
+        targetPath: '$(Pipeline.Workspace)/artifacts'
+        allowFailedBuilds: true
+        allowPartiallySucceededBuilds: true
       displayName: 'Download wheel'
 
     - script: |
