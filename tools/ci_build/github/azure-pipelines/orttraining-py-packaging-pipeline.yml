@@ -34,7 +34,7 @@ stages:
       inputs:
         source: current
         artifact: onnxruntime_gpu
-        patterns: '**/*-$(python.whl.impl.abi.tags)-linux_x86_64.whl'
+        patterns: '**/*-$(python.whl.impl.abi.tags)-manylinux2014_x86_64.whl'
         path: $(Pipeline.Workspace)/artifacts
       displayName: 'Download wheel'
 
@@ -50,7 +50,7 @@ stages:
 
     - script: |
         HOST_WHEEL_PATH=$( \
-          find "$(Pipeline.Workspace)/artifacts" -name "*-$(python.whl.impl.abi.tags)-linux_x86_64.whl" \
+          find "$(Pipeline.Workspace)/artifacts" -name "*-$(python.whl.impl.abi.tags)-manylinux2014_x86_64.whl" \
           | tail -n 1 ) && \
         ls "${HOST_WHEEL_PATH}" && \
         docker run \
@@ -66,3 +66,5 @@ stages:
                 --wheel-path ${HOST_WHEEL_PATH/#"$(Pipeline.Workspace)/artifacts"/"/artifacts"} \
             "
       displayName: 'Run Python tests with wheel'
+
+    - template: templates/clean-agent-build-directory-step.yml
