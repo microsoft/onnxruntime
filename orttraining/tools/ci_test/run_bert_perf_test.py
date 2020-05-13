@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import sys
 import os
+from collections import namedtuple
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 
@@ -23,26 +24,28 @@ def parse_args():
 def main():
     args = parse_args()
 
-    matrix = { # enable mixed-precision, sequence length, max batch size, predictions per sequence
-        "fp16-128": [True, 128, 66, 20],
-        "fp16-512": [True, 512, 10, 80],
-        "fp32-128": [False, 128, 33, 20],
-        "fp32-512": [False, 512, 5, 80]}
+    Config = namedtuple('Config', ['name', 'use_mixed_precision', 'max_seq_length', 'batch_size', 'max_predictions_per_seq'])
+    configs = [
+        Config('fp16-128', True, 128, 66, 20),
+        Config('fp16-512', True, 512, 10, 80),
+        Config('fp32-128', False, 128, 33, 20),
+        Config('fp32-512', False, 512, 5, 80)
+    ]
 
     # run BERT training
-    for m in matrix:
-        print("######## testing name - " + m + " ##############")
+    for c in configs:
+        print("######## testing name - " + c.name + " ##############")
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name", os.path.join(
                 args.model_root, "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
             "--train_data_dir", os.path.join(
-                args.training_data_root, str(matrix[m][1]), "books_wiki_en_corpus/train"),
+                args.training_data_root, str(c.max_seq_length), "books_wiki_en_corpus/train"),
             "--test_data_dir", os.path.join(
-                args.training_data_root, str(matrix[m][1]), "books_wiki_en_corpus/test"),
-            "--train_batch_size", str(matrix[m][2]),
+                args.training_data_root, str(c.max_seq_length), "books_wiki_en_corpus/test"),
+            "--train_batch_size", str(c.batch_size),
             "--mode", "train",
-            "--max_seq_length", str(matrix[m][1]),
+            "--max_seq_length", str(c.max_seq_length),
             "--num_train_steps", "100",
             "--display_loss_steps", "5",
             "--optimizer", "Lamb",
@@ -50,13 +53,13 @@ def main():
             "--warmup_ratio", "0.2843",
             "--warmup_mode", "Poly",
             "--gradient_accumulation_steps", "1",
-            "--max_predictions_per_seq", str(matrix[m][3]),
+            "--max_predictions_per_seq", str(c.max_predictions_per_seq),
             "--lambda", "0",
             "--use_nccl",
             "--perf_output_dir", os.path.join(SCRIPT_DIR, "results"), 
         ]
 
-        if matrix[m][0]: 
+        if c.use_mixed_precision: 
             cmds.append("--use_mixed_precision"),
             cmds.append("--allreduce_in_fp16"),
 
