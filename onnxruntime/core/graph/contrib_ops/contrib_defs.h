@@ -26,5 +26,8 @@ namespace contrib {
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 void RegisterContribSchemas();
+
+constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;
+constexpr const float kDefaultEmbedLayerNormEpsilon = 1e-12f;
 }  // namespace contrib
 }  // namespace onnxruntime

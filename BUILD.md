@@ -23,10 +23,12 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
 
 
-#### Linux
+#### Linux/Mac OS X
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
+By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12. 
+The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+. 
 
 #### Notes
 
@@ -61,15 +63,17 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Windows 10   | YES          | YES         | VS2019 through the latest VS2015 are supported |
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
+|Mac OS X  | YES          | NO         |    |
 
 * GCC 4.x and below are not supported.
 
 ### OS/Compiler Matrix:
 
-| OS/Compiler | Supports VC  | Supports GCC     |
-|-------------|:------------:|:----------------:|
-|Windows 10   | YES          | Not tested       |
-|Linux        | NO           | YES(gcc>=4.8)    |
+| OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang  |
+|-------------|:------------:|:----------------:|:----------------:|
+|Windows 10   | YES          | Not tested       | Not tested       |
+|Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
+|Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 ## System Requirements
 For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
@@ -104,6 +108,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
 * [ARM Compute Library](#ARM-Compute-Library)
+* [Rockchip RKNPU](#RKNPU)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -124,7 +129,8 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 ### CUDA
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * ONNX Runtime is built and tested with CUDA 10.0 and cuDNN 7.6 using the Visual Studio 2017 14.11 toolset (i.e. Visual Studio 2017 v15.3). CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017.
+  * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
+    ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
   * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_7.dll is found.
@@ -447,6 +453,35 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ./build.sh --use_acl
 ```
 
+---
+
+### RKNPU
+See more information on the RKNPU Execution Provider [here](./docs/execution_providers/RKNPU-ExecutionProvider.md).
+
+#### Pre-Requisites
+
+* Supported platform: RK1808 Linux
+* See [Build ARM](#ARM) below for information on building for ARM devices
+* Use gcc-linaro-6.3.1-2017.05-x86_64_aarch64-linux-gnu instead of gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf, and modify CMAKE_CXX_COMPILER & CMAKE_C_COMPILER in tool.cmake:
+  ```
+  set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+  set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+  ```
+
+#### Build Instructions
+##### Linux
+1. Download [rknpu_ddk](#https://github.com/airockchip/rknpu_ddk.git) to any directory.
+
+2. Build ONNX Runtime library and test:
+    ```
+    ./build.sh --arm --use_rknpu --parallel --build_shared_lib --build_dir build_arm --config MinSizeRel --cmake_extra_defines RKNPU_DDK_PATH=<Path To rknpu_ddk> CMAKE_TOOLCHAIN_FILE=<Path To tool.cmake> ONNX_CUSTOM_PROTOC_EXECUTABLE=<Path To protoc>
+    ```
+3. Deploy ONNX runtime and librknpu_ddk.so on the RK1808 board:
+    ```
+    libonnxruntime.so.1.2.0
+    onnxruntime_test_all
+    rknpu_ddk/lib64/librknpu_ddk.so
+    ```
 ---
 
 ## Options

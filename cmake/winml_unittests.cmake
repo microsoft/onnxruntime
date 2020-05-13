@@ -70,7 +70,8 @@ function(get_winml_test_scenario_src
   else()
     set(winml_test_scenario_src
         "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.h"
-        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp"
+        )
   endif()
   set(${output_winml_test_scenario_src} ${winml_test_scenario_src} PARENT_SCOPE)
 endfunction()
@@ -80,11 +81,32 @@ function(get_winml_test_api_src
   output_winml_test_api_src
 )
   file(GLOB winml_test_api_src CONFIGURE_DEPENDS
-      "${winml_test_src_path}/api/*.h"
-      "${winml_test_src_path}/api/*.cpp"
-      "${winml_test_src_path}/api/raw/*.h"
-      "${winml_test_src_path}/api/raw/*.cpp")
-  set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
+      "${winml_test_src_path}/api/APITest.h"
+      "${winml_test_src_path}/api/LearningModelAPITest.h"
+      "${winml_test_src_path}/api/LearningModelBindingAPITest.h"
+      "${winml_test_src_path}/api/LearningModelSessionAPITest.h"
+      "${winml_test_src_path}/api/LearningModelAPITest.cpp"
+      "${winml_test_src_path}/api/LearningModelBindingAPITest.cpp"
+      "${winml_test_src_path}/api/LearningModelSessionAPITest.cpp")
+
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
+endfunction()
+
+function(get_winml_test_api_redist_only_src
+  winml_test_src_path
+  output_winml_test_api_src
+)
+  file(GLOB winml_redist_only_api_src CONFIGURE_DEPENDS
+  "${winml_test_src_path}/api/RawApiHelpers.h"
+  "${winml_test_src_path}/api/RawApiTests.h"
+  "${winml_test_src_path}/api/RawApiTestsGpu.h"
+  "${winml_test_src_path}/api/RawApiHelpers.cpp"
+  "${winml_test_src_path}/api/RawApiTests.cpp"
+  "${winml_test_src_path}/api/RawApiTestsGpu.cpp"
+  "${winml_test_src_path}/api/raw/*.h"
+  "${winml_test_src_path}/api/raw/*.cpp")
+
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
 endfunction()
 
 function(get_winml_test_concurrency_src
@@ -137,12 +159,17 @@ set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
 get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
+
+if (NOT ${winml_is_inbox})
+  get_winml_test_api_redist_only_src(${WINML_TEST_SRC_DIR} winml_test_api_redist_only_src)
+endif()
+
 add_winml_test(
   TARGET winml_test_api
-  SOURCES ${winml_test_api_src}
+  SOURCES ${winml_test_api_src} ${winml_test_api_redist_only_src}
   LIBS winml_test_common delayimp.lib
 )
-target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_link_options(winml_test_api PRIVATE /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
 endif()
@@ -246,6 +273,8 @@ add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.png")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.jpg")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/models/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/models/*.onnx")

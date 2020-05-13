@@ -15,7 +15,6 @@ import sys
 import hashlib
 import itertools
 
-
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
     level=logging.DEBUG)
@@ -257,6 +256,8 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
         "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
+    parser.add_argument(
+        "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
         help="Use pre-installed Eigen.")
@@ -562,10 +563,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
         "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
                 args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
-                args.android or (args.ios and is_macOS()))
+                args.android or (args.ios and is_macOS()) or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -1373,6 +1375,16 @@ def build_python_wheel(
 
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
                 'bdist_wheel']
+
+        # We explicitly override the platform tag in the name of the generated build wheel
+        # so that we can install the wheel on Mac OS X versions 10.12+.
+        # Without this explicit override, we will something like this while building on MacOS 10.14 -
+        # [WARNING] MACOSX_DEPLOYMENT_TARGET is set to a lower value (10.12)
+        # than the version on which the Python interpreter was compiled (10.14) and will be ignored.
+        # Since we need to support 10.12+, we explicitly override the platform tag.
+        # See PR #3626 for more details
+        if is_macOS():
+            args += ['-p', 'macosx_10_12_x86_64']
 
         # Any combination of the following arguments can be applied
         if nightly_build:

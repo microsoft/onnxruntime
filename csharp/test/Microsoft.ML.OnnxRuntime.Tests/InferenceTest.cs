@@ -38,7 +38,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("onnxruntime_profile_", opt.ProfileOutputPathPrefix);
                 Assert.True(opt.EnableCpuMemArena);
                 Assert.Equal("", opt.LogId);
-                Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
+                Assert.Equal(0, opt.LogVerbosityLevel);
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
                 Assert.Equal(0, opt.IntraOpNumThreads);
                 Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
@@ -63,8 +64,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogId = "MyLogId";
                 Assert.Equal("MyLogId", opt.LogId);
 
-                opt.LogVerbosityLevel = LogLevel.Error;
-                Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
+                opt.LogVerbosityLevel = 1;
+                Assert.Equal(1, opt.LogVerbosityLevel);
+
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
 
                 opt.IntraOpNumThreads = 4;
                 Assert.Equal(4, opt.IntraOpNumThreads);
@@ -113,15 +117,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 //verify default options
                 Assert.False(opt.Terminate);
-                Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
+                Assert.Equal(0, opt.LogVerbosityLevel);
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
                 Assert.Equal("", opt.LogId);
 
                 // try setting options
                 opt.Terminate = true;
                 Assert.True(opt.Terminate);
 
-                opt.LogVerbosityLevel = LogLevel.Error;
-                Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
+                opt.LogVerbosityLevel = 1;
+                Assert.Equal(1, opt.LogVerbosityLevel);
+
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
@@ -204,7 +212,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     runOptions.LogId = "CsharpTest";
                     runOptions.Terminate = false;  // TODO: Test terminate = true, it currently crashes
-                    runOptions.LogVerbosityLevel = LogLevel.Error;
+                    runOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
                     IReadOnlyCollection<string> outputNames = session.OutputMetadata.Keys.ToList();
 
                     using (var results = session.Run(container, outputNames, runOptions))  // results is an IReadOnlyList<NamedOnnxValue> container
