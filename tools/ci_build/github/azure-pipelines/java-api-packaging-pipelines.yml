@@ -298,21 +298,21 @@ jobs:
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/osx-x64'
       cleanDestinationFolder: true
 
+ 
   - task: CmdLine@2
-      displayName: 'Add Windows, Linux, OSX binaries to a single jar'
-      inputs:
-        script: |
-          pushd linux-x64\lib
-          jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
-          jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
-          popd
-          pushd osx-x64
-          jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib
-          jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dlib
-          jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dSYM
-          jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dSYM
-          popd
-      workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+    inputs:
+      script: |
+        pushd linux-x64\lib
+                jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
+                jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
+                popd
+                pushd osx-x64
+                jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib
+                jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dlib
+                jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dSYM
+                jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dSYM
+                popd
+    workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
   - task: PublishPipelineArtifact@1
     inputs:
