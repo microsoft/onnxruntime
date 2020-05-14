@@ -608,7 +608,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + (
             "ON" if args.use_armnn else "OFF"),
-        "-Donnxruntime_ARMNN_RELU_USECPU=" + (
+        "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
             "OFF" if args.armnn_relu else "ON"),
         # Training related flags
         "-Donnxruntime_ENABLE_TRAINING=" + (

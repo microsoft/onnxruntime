@@ -21,5 +21,5 @@ armnn::TensorShape ArmNNTensorShape(const TensorShape& tensorShape) {
   return armnn::TensorShape{static_cast<unsigned int>(dims.size()), dims.data()};
 }
 
-}  // namespace armnn
+}  // namespace armnn_ep
 }  // namespace onnxruntime

@@ -14,5 +14,5 @@ namespace armnn_ep {
 
 armnn::TensorShape ArmNNTensorShape(const TensorShape& tensorShape);
 
-}  // namespace acl
+}  // namespace armnn_ep
 }  // namespace onnxruntime

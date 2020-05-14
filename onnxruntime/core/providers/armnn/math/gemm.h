@@ -55,7 +55,7 @@ class Gemm : public onnxruntime::Gemm<T> {
     }
 
     int64_t K = helper.K();
-    LOGS_DEFAULT(VERBOSE) << "Gemm ACL:" << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "Gemm ArmNN:" << std::endl;
     if (X) LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str() << std::endl;
     if (W) LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str() << std::endl;
     if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str() << std::endl;
