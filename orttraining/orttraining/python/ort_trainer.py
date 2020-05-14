@@ -11,6 +11,7 @@ import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
+import onnxruntime.capi.pt_patch
 
 DEFAULT_OPSET_VERSION = 10
 
