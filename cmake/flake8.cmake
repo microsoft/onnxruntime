@@ -11,30 +11,24 @@ else()
 endif()
 
 if(flake8_BIN)
-    # ideally we could use GLOB_RECURSE here but the scripts in onnxruntime/python/tools 
-    # need a lot of work to be PEP8 compliant so deferring that for now and excluding them
-    # by just using GLOB_RECURSE for a subset of the onnxruntime/python subdirectories
-    file(GLOB python_scripts CONFIGURE_DEPENDS
-        "${ONNXRUNTIME_ROOT}/__init__.py"
-        "${ONNXRUNTIME_ROOT}/python/*.py"
-    )
-    
-    file(GLOB_RECURSE python_scripts_2 CONFIGURE_DEPENDS
-        "${ONNXRUNTIME_ROOT}/python/backend/*.py"
-        "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
-        "${ONNXRUNTIME_ROOT}/python/training/*.py"
+    # need to exclude a subset of scripts from ${ONNXRUNTIME_ROOT} so create a complete
+    # list and then filter it
+    file(GLOB_RECURSE python_scripts CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/*.py"
     )
 
-    file(GLOB_RECURSE tools_scripts CONFIGURE_DEPENDS
-        "${REPO_ROOT}/tools/*.py"
-    )
+    # scripts in these directories still need updating
+    list(FILTER python_scripts EXCLUDE REGEX "onnxruntime/core/providers/nuphar")
+    list(FILTER python_scripts EXCLUDE REGEX "onnxruntime/python/tools")
+    list(FILTER python_scripts EXCLUDE REGEX "onnxruntime/test")
 
-    # These also need a lot of work to make PEP8 compliant
+    # can just add the 'tools' directory and flake8 will recurse into it
+    list(APPEND python_scripts ${REPO_ROOT}/tools/)
+
+    # Training scripts need updating to make PEP8 compliant.
     # file(GLOB_RECURSE training_scripts CONFIGURE_DEPENDS
-    #     "${ORTTRAINING_ROOT}/tools/*.py"
+    #     "${ORTTRAINING_ROOT}/*.py"
     # )
-
-    list(APPEND python_scripts ${python_scripts_2} ${tools_scripts})
 
     source_group(TREE ${REPO_ROOT} FILES ${python_scripts})
 
@@ -43,7 +37,7 @@ if(flake8_BIN)
         DEPENDS ${python_scripts}
         WORKING_DIRECTORY 
         COMMAND echo "Checking python scripts for PEP8 conformance using flake8 with config ${FLAKE8_CONFIG}"
-        MESSAGE(${python_scripts})
+        #MESSAGE(${python_scripts})
         COMMAND ${flake8_BIN} --config ${FLAKE8_CONFIG} ${python_scripts}
     )
 endif()
