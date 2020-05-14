@@ -366,47 +366,34 @@ class IfOpTesterOnlyConstantNodesInConditionalBranches : public OpTester {
 
       auto& if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
 
-      // Then branch - it has "Constant" node only
-      Model model_then("Then", false, DefaultLoggingManager().DefaultLogger());
-      auto& graph_then = model_then.MainGraph();
-      auto& then_constant_node = graph_then.AddNode("Constant_Then", "Constant", "Constant_Then", {}, outputs);
+      auto CreateSubgraphWithConstantNode = [](bool then_branch, float value, std::vector<NodeArg*> outputs) {
+        // Then branch - it has "Constant" node only
+        Model model_then(then_branch ? "Then" : "Else", false, DefaultLoggingManager().DefaultLogger());
+        auto& graph_then = model_then.MainGraph();
+        auto& then_constant_node = graph_then.AddNode(
+            then_branch ? "Constant_Then" : "Constant_Else",
+            "Constant",
+            then_branch ? "Constant_Then" : "Constant_Else", {}, outputs);
 
-      AttributeProto then_constant_attr_proto;
-      then_constant_attr_proto.set_name("value");
-      then_constant_attr_proto.set_type(AttributeProto_AttributeType_TENSOR);
-      auto* then_constant_attr_tensor_proto = then_constant_attr_proto.mutable_t();
-      then_constant_attr_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);
-      then_constant_attr_tensor_proto->add_dims(1);
-      then_constant_attr_tensor_proto->add_float_data(10.f);  // Constant value of 10.f
+        AttributeProto then_constant_attr_proto;
+        then_constant_attr_proto.set_name("value");
+        then_constant_attr_proto.set_type(AttributeProto_AttributeType_TENSOR);
+        auto* then_constant_attr_tensor_proto = then_constant_attr_proto.mutable_t();
+        then_constant_attr_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);
+        then_constant_attr_tensor_proto->add_dims(1);
+        then_constant_attr_tensor_proto->add_float_data(value);  // Constant value of 10.f
 
-      then_constant_node.AddAttribute("value", then_constant_attr_proto);
+        then_constant_node.AddAttribute("value", then_constant_attr_proto);
 
-      auto status_then = graph_then.Resolve();
-      EXPECT_EQ(status_then, Status::OK());
+        auto status_then = graph_then.Resolve();
+        EXPECT_EQ(status_then, Status::OK());
 
-      auto& graphproto_then = graph_then.ToGraphProto();
-      if_node.AddAttribute("then_branch", graphproto_then);
+        auto& graphproto_then = graph_then.ToGraphProto();
+        return graphproto_then;
+      };
 
-      // Else branch - it has "Constant" node only
-      Model model_else("Else", false, DefaultLoggingManager().DefaultLogger());
-      auto& graph_else = model_else.MainGraph();
-      auto& else_constant_node = graph_else.AddNode("Constant_Else", "Constant", "Constant_Else", {}, outputs);
-
-      AttributeProto else_constant_attr_proto;
-      else_constant_attr_proto.set_name("value");
-      else_constant_attr_proto.set_type(AttributeProto_AttributeType_TENSOR);
-      auto* else_constant_attr_tensor_proto = else_constant_attr_proto.mutable_t();
-      else_constant_attr_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);
-      else_constant_attr_tensor_proto->add_dims(1);
-      else_constant_attr_tensor_proto->add_float_data(1000.f);  // Constant value of 1000.f
-
-      else_constant_node.AddAttribute("value", else_constant_attr_proto);
-
-      auto status_else = graph_else.Resolve();
-      EXPECT_EQ(status_else, Status::OK());
-
-      auto& graphproto_else = graph_else.ToGraphProto();
-      if_node.AddAttribute("else_branch", graphproto_else);
+      if_node.AddAttribute("then_branch", CreateSubgraphWithConstantNode(true, 10.f, outputs));
+      if_node.AddAttribute("else_branch", CreateSubgraphWithConstantNode(true, 1000.f, outputs));
     }
   }
 };
