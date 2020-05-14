@@ -696,8 +696,8 @@ namespace Microsoft.ML.OnnxRuntime
             string str = null;
 
             IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle,
-                                                NativeMemoryAllocator.DefaultInstance.Handle,
-                                                out nameHandle);
+                                                                 NativeMemoryAllocator.DefaultInstance.Handle,
+                                                                 out nameHandle);
 
             try
             {
