@@ -584,37 +584,187 @@ To disable this functionality after previously enabling, set onnxruntime_DEBUG_N
 ### ARM
 We have experimental support for Linux ARM builds. Windows on ARM is well tested.
 
-#### Cross compiling for ARM with Docker (Linux/Windows - FASTER, RECOMMENDED)
-This method allows you to compile using a desktop or cloud VM. This is much faster than compiling natively and avoids out-of-memory issues that may be encountered when on lower-powered ARM devices. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
+#### Cross compiling for ARM with simulation (Linux/Windows - EASY, SLOW, RECOMMENDED WAY)
+This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
-See the instructions for the the Dockerfile [here](./dockerfiles/README.md#arm-32v7).
+Here we have [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Please note, it doesn't work for Raspberrypi 1 or Zero. And if your operating system is different than the docker file uses, it also may not work. 
 
-#### Cross compiling on Linux (without Docker)
-1. Get the corresponding toolchain. For example, if your device is Raspberry Pi and the device os is Ubuntu 16.04, you may use gcc-linaro-6.3.1 from [https://releases.linaro.org/components/toolchain/binaries](https://releases.linaro.org/components/toolchain/binaries)
-2. Setup env vars
-    ```bash
-       export PATH=/opt/gcc-linaro-6.3.1-2017.05-x86_64_arm-linux-gnueabihf/bin:$PATH
-       export CC=arm-linux-gnueabihf-gcc
-       export CXX=arm-linux-gnueabihf-g++
-    ```
-3. Get a pre-compiled protoc:
+The whole build process may take hours.
 
+#### Cross compiling on Linux (Hard, Super Fast)
+You can get the package in minutes, but it's very hard to setup. Cross compiling was never easy. But if you have a large code base(e.g. you are adding a fancy execution provider to onnxruntime), this is the only way you can do.
+
+##### 1. Get the corresponding toolchain. 
+tldr: Go to https://www.linaro.org/downloads/, get one for "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
+
+You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both works, but here we only talk gcc. 
+
+In GCC's world, we use:
+1. "build" to describe the type of system on which GCC is being configured and compiled
+2. "host" to describe the type of system on which GCC runs.
+3. "target" to describe the type of system for which GCC produce code
+
+When not doing cross compile, usually "build" = "host" = "target".
+When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64.  In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
+
+Then you can either build GCC from source code by your self, or get a prebuilt one from a vendor like Ubuntu, [linaro](https://releases.linaro.org/components/toolchain/binaries). Please choose the same compiler version as your target operating system has, that would be the best. If you can't, choose the latest stable one and you'll have to static link to gcc libs. 
+
+When you get the compiler, please run
+
+```
+aarch64-linux-gnu-gcc -v
+```
+
+You'll see outputs like:
+
+Using built-in specs.    
+COLLECT_GCC=/usr/bin/aarch64-linux-gnu-gcc    
+COLLECT_LTO_WRAPPER=/usr/libexec/gcc/aarch64-linux-gnu/9/lto-wrapper    
+Target: aarch64-linux-gnu    
+Configured with: ../gcc-9.2.1-20190827/configure --bindir=/usr/bin **--build=x86_64-redhat-linux-gnu** --datadir=/usr/share --disable-decimal-float --disable-dependency-tracking --disable-gold --disable-libgcj --disable-libgomp --disable-libmpx --disable-libquadmath --disable-libssp --disable-libunwind-exceptions --disable-shared --disable-silent-rules --disable-sjlj-exceptions --disable-threads --with-ld=/usr/bin/aarch64-linux-gnu-ld --enable-\_\_cxa_atexit --enable-checking=release --enable-gnu-unique-object --enable-initfini-array --enable-languages=c,c++ --enable-linker-build-id --enable-lto --enable-nls --enable-obsolete --enable-plugin --enable-targets=all --exec-prefix=/usr **--host=x86_64-redhat-linux-gnu** --includedir=/usr/include --infodir=/usr/share/info --libexecdir=/usr/libexec --localstatedir=/var --mandir=/usr/share/man --prefix=/usr --program-prefix=aarch64-linux-gnu- --sbindir=/usr/sbin --sharedstatedir=/var/lib --sysconfdir=/etc **--target=aarch64-linux-gnu** --with-bugurl=http://bugzilla.redhat.com/bugzilla/ --with-gcc-major-version-only --with-isl --with-newlib --with-plugin-ld=/usr/bin/aarch64-linux-gnu-ld --with-sysroot=/usr/aarch64-linux-gnu/sys-root --with-system-libunwind --with-system-zlib --without-headers --enable-gnu-indirect-function --with-linker-hash-style=gnu    
+Thread model: single    
+gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)     
+
+Please check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". And you must know what kind of flags your target hardware need. It may largely differ. For example, if you just get normal ARMv7 compiler and use it for raspberry pi V1 straightly, it won't work, because raspberry pi only has ARMv6. Usually every hardware vendor will provide a toolchain for you, please check how that one was built. 
+
+A target env is identifed by four things:
+1. Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
+2. OS: bare-metal or linux.
+3. Libc: gnu libc/ulibc/musl/...
+4. ABI: ARM has mutilple ABIs like eabi, eabihf...
+
+You can get all these information from the previous output, please be sure they are all correct. 
+
+    
+##### 2. Get a pre-compiled protoc:    
    You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
-4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
-5. Save the following content as tool.cmake
-    ```
-    set(CMAKE_SYSTEM_NAME Linux)
-    set(CMAKE_SYSTEM_PROCESSOR arm)
-    set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-c++)
-    set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
-    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-    ```
-6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it.
+   The version must match the one onnxruntime is using. Currently we are using 3.11.2.
+   
+##### 3. (optional) Setup sysroot to enable python extension. 
+   (Skip this part if you don't use python)
+   
+   Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first.
+   
+   Below are some examples.
+   
+   If the target OS is raspbian-buster, please download the RAW image from [their website](https://www.raspberrypi.org/downloads/raspbian/) then run:
+```bash   
+$ fdisk -l 2020-02-13-raspbian-buster.img   
+```   
+Disk 2020-02-13-raspbian-buster.img: 3.54 GiB, 3787456512 bytes, 7397376 sectors    
+Units: sectors of 1 * 512 = 512 bytes    
+Sector size (logical/physical): 512 bytes / 512 bytes    
+I/O size (minimum/optimal): 512 bytes / 512 bytes    
+Disklabel type: dos    
+Disk identifier: 0xea7d04d6    
+  
+| Device                          | Boot | Start  | End     | Sectors | Size | Id | Type            |
+|---------------------------------|------|--------|---------|---------|------|----|-----------------|
+| 2020-02-13-raspbian-buster.img1 |      | 8192   | 532479  | 524288  | 256M | c  | W95 FAT32 (LBA) |
+| 2020-02-13-raspbian-buster.img2 |      | 532480 | 7397375 | 6864896 | 3.3G | 83 | Linux           |
+    
+You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.     
+Then run:
+```bash
+$ mkdir /mnt/pi
+$ mount -r -o loop,offset=272629760 2020-02-13-raspbian-buster.img /mnt/pi
+```
 
-#### Native compiling on Linux ARM device (SLOWER)
+You'll see all raspbian files at /mnt/pi. However you can't use it yet. Because some of the symlinks are broken, you must fix them first.
+In /mnt/pi, run
+```
+$ find . -type l -exec realpath  {} \; |grep 'No such file'
+```
+It will show which are broken.
+Then you can fix them by running:
+```bash
+$ mkdir /mnt/pi2
+$ cd /mnt/pi2
+$ sudo tar -C /mnt/pi -cf - . | sudo tar --transform 'flags=s;s,^/,/mnt/pi2/,' -xf -
+```
+Then /mnt/pi2 is the sysroot folder you'll use in the next step.
+
+If the target OS is Ubuntu, you can get an image from [https://cloud-images.ubuntu.com/](https://cloud-images.ubuntu.com/). But that image is in qcow2 format. Please convert it before run fdisk and mount.
+```bash
+qemu-img convert -p -O raw ubuntu-18.04-server-cloudimg-arm64.img ubuntu.raw
+```
+The remaining part is similar to raspbian.
+
+If the target OS is manylinux2014, you can get it by:
+Install qemu-user-static from apt or dnf.
+Then run the docker
+Ubuntu:
+```bash
+docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -it --rm quay.io/pypa/manylinux2014_aarch64 /bin/bash
+```
+The "-v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static" arg is not needed on Fedora.
+
+Then, inside the docker, run
+```bash
+cd /opt/python
+./cp35-cp35m/bin/python -m pip install numpy==1.16.6
+./cp36-cp36m/bin/python -m pip install numpy==1.16.6
+./cp37-cp37m/bin/python -m pip install numpy==1.16.6
+./cp38-cp38/bin/python -m pip install numpy==1.16.6
+```
+
+These commands will take a few hours because numpy doesn't have such a prebuilt package yet. When it is finished, open a second window and run
+```bash
+docker ps
+```
+From the output:
+```
+CONTAINER ID        IMAGE                                COMMAND             CREATED             STATUS              PORTS               NAMES
+5a796e98db05        quay.io/pypa/manylinux2014_aarch64   "/bin/bash"         3 minutes ago       Up 3 minutes                            affectionate_cannon
+```
+You'll see the docker instance id is: 5a796e98db05. Then please use the following command to export the root filesystem as the sysroot for future use.
+
+```bash
+docker export 5a796e98db05 -o manylinux2014_aarch64.tar
+```
+
+##### 4. Generate CMake toolchain file
+   Save the following content as tool.cmake
+   
+```cmake
+    SET(CMAKE_SYSTEM_NAME Linux)    
+    SET(CMAKE_SYSTEM_VERSION 1)    
+    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)    
+    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)            
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)    
+    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)    
+    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)    
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)    
+    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)    
+```
+If you don't have a sysroot, you can delete the last line.
+
+##### 5.  Run CMake and make
+6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build python package as well, you can use cmake args like:
+```
+-Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=/mnt/pi/usr/bin/python3 -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_DEV_MODE=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc "-DPYTHON_INCLUDE_DIR=/mnt/pi/usr/include;/mnt/pi/usr/include/python3.7m" -DNUMPY_INCLUDE_DIR=/mnt/pi/folder/to/numpy/headers
+```
+
+After running cmake, run
+```
+$ make
+```
+
+##### 6.  (optional) Build python package
+Copy the setup.py file from the source folder to the build folder and run
+```bash
+python3 setup.py bdist_wheel -p linux_aarch64
+```
+
+However, if your targets manylinux, unfortunately their tools doesn't work in cross-compiling scenario. You must run it in a docker like:
+
+```bash
+docker run  -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v `pwd`:/tmp/a -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/cp37-cp37m/bin/python3 setup.py bdist_wheel
+```
+If you only want to target a specfic Linux distro(like Ubuntu), you don't need to do that.
+
+
+#### Native compiling on Linux ARM device (EASY, SLOWER)
 Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
 ```bash
 sudo apt-get update
