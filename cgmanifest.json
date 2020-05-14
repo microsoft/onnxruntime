@@ -303,7 +303,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash":"647d4c3f4d47d9cf63fb90ec175c414a005adea7",
+               "commitHash": "647d4c3f4d47d9cf63fb90ec175c414a005adea7",
                "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
             }
          }
@@ -393,14 +393,14 @@
       {
          "component": {
             "git": {
-              "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
-              "repositoryUrl": "https://github.com/microsoft/wil"
+               "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
+               "repositoryUrl": "https://github.com/microsoft/wil"
             },
             "type": "git"
-          }
+         }
       },
       {
-         "component":{
+         "component": {
             "type": "other",
             "Other": {
                "Name": "Go",
@@ -461,6 +461,33 @@
             "git": {
                "commitHash": "39de59d5bca3a226a241b29571abe1493d15d07a",
                "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
+            },
+            "type": "git"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "680716940b397bde59476dbc0fa808d6285ecf4a",
+               "repositoryUrl": "https://github.com/horovod/horovod.git"
+            },
+            "type": "git"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "3c73d91c0b04e2b59462f0a741be8c07024c1bc0",
+               "repositoryUrl": "https://github.com/jarro2783/cxxopts.git"
+            },
+            "type": "git"
+         }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81",
+               "repositoryUrl": "https://github.com/tensorflow/tensorboard.git"
             },
             "type": "git"
          }
