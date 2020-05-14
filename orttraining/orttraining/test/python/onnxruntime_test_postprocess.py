@@ -1,6 +1,7 @@
 import unittest
 import pytest
 import sys
+import os
 import copy
 from numpy.testing import assert_allclose, assert_array_equal
 
@@ -53,7 +54,20 @@ class Test_PostPasses(unittest.TestCase):
                 nodes.append(node)
         return nodes
 
-    def testLayerNorm(self):
+    def get_name(self, name):
+        if os.path.exists(name):
+            return name
+        rel = os.path.join("testdata", name)
+        if os.path.exists(rel):
+            return rel
+        this = os.path.dirname(__file__)
+        data = os.path.join(this, "..", "..", "..", "..", "onnxruntime", "test", "testdata")
+        res = os.path.join(data, name)
+        if os.path.exists(res):
+            return res
+        raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+
+    def test_layer_norm(self):
         class LayerNormNet(nn.Module):
             def __init__(self, target):
                 super(LayerNormNet, self).__init__()
@@ -63,8 +77,6 @@ class Test_PostPasses(unittest.TestCase):
 
             def forward(self, x):
                 output1 = self.ln_1(x)
-                #output2 = self.ln_2(x)
-                #output1 = output1 + output2
                 loss = self.loss(output1, self.target)
                 return loss, output1
 
@@ -90,7 +102,7 @@ class Test_PostPasses(unittest.TestCase):
         assert count_layer_norm == 1
         assert count_nodes == 3
 
-    def testExpand(self):
+    def test_expand(self):
         class ExpandNet(nn.Module):
             def __init__(self, target):
                 super(ExpandNet, self).__init__()
@@ -98,8 +110,8 @@ class Test_PostPasses(unittest.TestCase):
                 self.target = target
 
             def forward(self, x, x1):
-                output = x1.expand_as(x1)
-                output = output+output
+                output = x.expand_as(x1)
+                output = output + output
                 loss = self.loss(output, self.target)
                 return loss, output
 
@@ -129,7 +141,7 @@ class Test_PostPasses(unittest.TestCase):
         assert model_info[0].name == expand_nodes[0].output[0]
         assert model_info[0].type == onnx_model.graph.input[1].type
 
-    def testBert(self):
+    def test_bert(self):
         device = torch.device("cpu")
 
         model_tester = BertModelTest.BertModelTester(self)
@@ -137,7 +149,7 @@ class Test_PostPasses(unittest.TestCase):
         
         model = BertForPreTraining(config=config)
         model.eval()
-        
+
         loss, prediction_scores, seq_relationship_score = model(input_ids,
                                                                 attention_mask=input_mask,
                                                                 token_type_ids=token_type_ids,
@@ -177,13 +189,42 @@ class Test_PostPasses(unittest.TestCase):
 
         onnx_model = self.get_onnx_model(model, model_desc, inputs, device)
 
+        self._bert_helper(onnx_model)
+
+    def test_bert_from_ONNX(self):
+        device = torch.device("cpu")
+        onnx_model = onnx.load(self.get_name("bert_no_postprocessing.onnx"))
+
+        vocab_size = 30528
+        input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
+        segment_ids_desc = IODescription('segment_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
+        input_mask_desc = IODescription('input_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
+        masked_lm_labels_desc = IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
+        next_sentence_labels_desc = IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
+        loss_desc = IODescription('loss', [], torch.float32)
+
+        model_desc = ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc, next_sentence_labels_desc], [loss_desc])
+
+
+        map_opimizer_attributes = None
+
+        # verify that the initial model is not processed
+        count_layer_norm = self.count_nodes(onnx_model, "LayerNormalization")
+        assert count_layer_norm == 0
+
+        model_info = onnx_model.graph.value_info
+        assert len(model_info) == 0
+
+        model = ORTTrainer(onnx_model, None, model_desc, "LambOptimizer",
+                           map_optimizer_attributes, IODescription('Learning_Rate', [1,], torch.float32),
+                           device, world_rank=0, world_size=1, _opset_version=12)
+
+        self._bert_helper(model.onnx_model_)
+
+    def _bert_helper(self, onnx_model):
         # count layer_norm
         count_layer_norm = self.count_nodes(onnx_model, "LayerNormalization")
         assert count_layer_norm == 12
-
-        # count transpose
-        count_transpose = self.count_nodes(onnx_model, "Transpose")
-        assert count_transpose == 21
 
         # get expand node and check output shape
         expand_nodes = self.find_nodes(onnx_model, "Expand")
