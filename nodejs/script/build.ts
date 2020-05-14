@@ -24,6 +24,7 @@ const REBUILD = !!buildArgs.rebuild;
 // build path
 const ROOT_FOLDER = path.join(__dirname, '..');
 const BIN_FOLDER = path.join(ROOT_FOLDER, 'bin');
+const BUILD_FOLDER = path.join(ROOT_FOLDER, 'build');
 
 const NPM_BIN_FOLDER = execSync('npm bin', {encoding: 'utf8'}).trim();
 const CMAKE_JS_FULL_PATH = path.join(NPM_BIN_FOLDER, 'cmake-js');
@@ -31,19 +32,27 @@ const CMAKE_JS_FULL_PATH = path.join(NPM_BIN_FOLDER, 'cmake-js');
 // if rebuild, clean up the dist folders
 if (REBUILD) {
   fs.removeSync(BIN_FOLDER);
+  fs.removeSync(BUILD_FOLDER);
 }
 
 const command = CMAKE_JS_FULL_PATH;
-const args = [(REBUILD ? 'rebuild' : 'compile'), '--arch=x64', '--CDnapi_build_version=3'];
-if (CONFIG === 'Debug') {
-  args.push('-D');
+const args = [(REBUILD ? 'reconfigure' : 'configure'), '--arch=x64', '--CDnapi_build_version=3'];
+
+// launch cmake-js configure
+const procCmakejs = spawnSync(command, args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
+if (procCmakejs.status !== 0) {
+  if (procCmakejs.error) {
+    console.error(procCmakejs.error);
+  }
+  process.exit(procCmakejs.status === null ? undefined : procCmakejs.status);
 }
 
-// launch cmake-js
-const proc = spawnSync(command, args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
-if (proc.status !== 0) {
-  if (proc.error) {
-    console.error(proc.error);
+// launch cmake to build
+const procCmake =
+    spawnSync('cmake', ['--build', '.', '--config', CONFIG], {shell: true, stdio: 'inherit', cwd: BUILD_FOLDER});
+if (procCmake.status !== 0) {
+  if (procCmake.error) {
+    console.error(procCmake.error);
   }
-  process.exit(proc.status === null ? undefined : proc.status);
+  process.exit(procCmake.status === null ? undefined : procCmake.status);
 }
