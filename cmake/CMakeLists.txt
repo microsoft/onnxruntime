@@ -9,6 +9,10 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
 
+# Support OS X versions 10.12+
+# This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+
 # Project
 project(onnxruntime C CXX)
 
@@ -124,12 +128,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
-  if (HAS_D2FH4)
-    message("Disabling /d2FH4")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
-  endif()
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!

@@ -3,10 +3,8 @@
 
 #include "test.h"
 
-struct LearningModelSesssionAPITestsApi {
+struct LearningModelSessionAPITestsApi {
   SetupClass LearningModelSessionAPITestsClassSetup;
-  SetupTest LearningModelSessionAPITestsGpuMethodSetup;
-  SetupTest LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup;
   VoidTest CreateSessionDeviceDefault;
   VoidTest CreateSessionDeviceCpu;
   VoidTest CreateSessionWithModelLoadedFromStream;
@@ -22,7 +20,7 @@ struct LearningModelSesssionAPITestsApi {
   VoidTest EvaluateSessionAndCloseModel;
   VoidTest CloseSession;
 };
-const LearningModelSesssionAPITestsApi& getapi();
+const LearningModelSessionAPITestsApi& getapi();
 
 WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITests)
 WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
@@ -34,22 +32,10 @@ WINML_TEST(LearningModelSessionAPITests,EvaluateFeatures)
 WINML_TEST(LearningModelSessionAPITests,EvaluateFeaturesAsync)
 WINML_TEST(LearningModelSessionAPITests,EvaluationProperties)
 WINML_TEST(LearningModelSessionAPITests,EvaluateSessionAndCloseModel)
-WINML_TEST_CLASS_END()
-
-WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITestsGpu)
-WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
-WINML_TEST_CLASS_SETUP_METHOD(LearningModelSessionAPITestsGpuMethodSetup)
-WINML_TEST_CLASS_BEGIN_TESTS
-WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
-WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
-WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
-WINML_TEST(LearningModelSessionAPITestsGpu, CreateSessionWithCastToFloat16InModel)
-WINML_TEST(LearningModelSessionAPITestsGpu, DISABLED_CreateSessionWithFloat16InitializersInModel)
-WINML_TEST_CLASS_END()
-
-WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITestsGpuSkipEdgeCore)
-WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
-WINML_TEST_CLASS_SETUP_METHOD(LearningModelSessionAPITestsGpuSkipEdgeCoreMethodSetup)
-WINML_TEST_CLASS_BEGIN_TESTS
-WINML_TEST(LearningModelSessionAPITestsGpuSkipEdgeCore, AdapterIdAndDevice)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectX)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXHighPerformance)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXMinimumPower)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
+WINML_TEST(LearningModelSessionAPITests, DISABLED_CreateSessionWithFloat16InitializersInModel)
+WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
 WINML_TEST_CLASS_END()

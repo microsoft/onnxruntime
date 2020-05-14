@@ -454,8 +454,12 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   upload_heap_->Unmap(0, &CD3DX12_RANGE(0, bufferSize));
 
   ResetCommandList(device_cache);
-  command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
 
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pOutputResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+  command_list_->ResourceBarrier(1, &barrier);
+
+  command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
+  
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
   device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);

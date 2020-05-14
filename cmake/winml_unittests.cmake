@@ -70,7 +70,8 @@ function(get_winml_test_scenario_src
   else()
     set(winml_test_scenario_src
         "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.h"
-        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp"
+        )
   endif()
   set(${output_winml_test_scenario_src} ${winml_test_scenario_src} PARENT_SCOPE)
 endfunction()
@@ -168,7 +169,7 @@ add_winml_test(
   SOURCES ${winml_test_api_src} ${winml_test_api_redist_only_src}
   LIBS winml_test_common delayimp.lib
 )
-target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_link_options(winml_test_api PRIVATE /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
 endif()
@@ -272,6 +273,8 @@ add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.png")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.jpg")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/models/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/models/*.onnx")
