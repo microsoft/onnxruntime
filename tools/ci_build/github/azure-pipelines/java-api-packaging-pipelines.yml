@@ -82,7 +82,7 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
-- job: Windows_Java_Build_CPU_x64
+- job: Windows_Java_API_Build_CPU_x64
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
@@ -172,7 +172,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 # Job does not run as we are not ready for GPU
-- job: Windows_Java_Packaging_GPU
+- job: Windows_Java_API_Build_GPU_x64
   workspace:
     clean: all
   pool: 'Win-GPU-2019'
@@ -254,11 +254,11 @@ jobs:
     clean: all
   pool: 'Win-CPU-2019'
   dependsOn:
-  - Windows_Java_Packaging_CPU
-#  - Windows_Java_Packaging_GPU
-  - Linux_Java_API_Packaging_CPU_x64
-#  - Linux_C_API_Packaging_GPU_x64
-  - MacOS_Java_API_Packaging_CPU_x64
+  - Windows_Java_API_Build_CPU_x64
+#  - Windows_Java_API_Build_GPU_x64
+  - Linux_Java_API_Build_CPU_x64
+#  - Linux_Java_API_Build_GPU_x64
+  - MacOS_Java_API_Build_CPU_x64
   condition: succeeded()
   steps:
 
