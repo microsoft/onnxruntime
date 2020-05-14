@@ -291,6 +291,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        /*
         [Fact]
         public void InferenceSessionManualDispose()
         {
@@ -315,9 +316,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
             }
 
-            ReadOnlySpan<int> expectedOutputDimensions = new int[] { 1, 1000, 1, 1 };
-            string[] expectedOutputNames = new string[] { "softmaxout_1" };
-
             // Run inference with named inputs and outputs created with in Run()
             using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
             {
@@ -333,6 +331,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
 
         }
+        */
 
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
         {
