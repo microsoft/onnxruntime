@@ -24,6 +24,14 @@ def replace_input_arg(model, arg, new_arg):
                 node.input[i] = new_arg
             i += 1
 
+def run_postprocess(model):
+    # this post pass is not required for pytorch > 1.6
+    model = fuse_softmaxNLL_to_softmaxCE(model)
+
+    model = layer_norm_transform(model)
+    model = fix_expand_shape(model)
+    return model
+
 def find_input_node(model, arg):
     result = []
     for node in model.graph.node:
@@ -210,18 +218,12 @@ def layer_norm_transform(model):
         if optional_mul is not None:
             remove_nodes.append(optional_mul)
             weight = optional_mul.input[1]
-        else:
-            weight = None # add_const(model, "layer_norm_" + str(id) + "_weight_node", "layer_norm_" + str(id) + ".weight", f_value=numpy_helper(np.ones(10, dtype=np.float32))).output[0]
-
-        layer_norm_input.append(weight)
+            layer_norm_input.append(weight)
 
         if optional_add is not None:
             remove_nodes.append(optional_add)
             bias = optional_add.input[1]
-        else:
-            bias = None #add_const(model, "layer_norm_" + str(id) + "_bias_node", "layer_norm_" + str(id) + ".bias", f_value=numpy_helper.from_array(np.zeros(10, dtype=np.float32))).output[0]
-
-        layer_norm_input.append(bias)
+            layer_norm_input.append(bias)
         
         if optional_add is not None:
             layer_norm_output.append(optional_add.output[0])
@@ -272,7 +274,7 @@ def layer_norm_transform(model):
 
 # Fuse SoftmaxCrossEntropy
 
-def fuse_sofmaxNLL_to_softmaxCE(onnx_model):
+def fuse_softmaxNLL_to_softmaxCE(onnx_model):
     nll_count = 0
     while True:
         nll_count = nll_count + 1
