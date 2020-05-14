@@ -53,6 +53,8 @@ then
     ln -s $NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib/$NATIVE_FOLDER/libonnxruntime4j_jni.so
 fi
 
+find $BINARY_DIR/$ARTIFACT_NAME -ls
+
 EXIT_CODE=$?
 
 set -e
