@@ -51,12 +51,12 @@ public class App {
 
 				if (!filename.startsWith(".") && filename.endsWith(".json")) {
 					perf_metrics.add(file);
+					System.out.println(filename);
 				}
 				return FileVisitResult.CONTINUE;
 			}
 
 		});
-		System.out.println(perf_metrics);
 
 		final Path cwd_dir = Paths.get(System.getProperty("user.dir"));
 		// git rev-parse HEAD
@@ -78,6 +78,7 @@ public class App {
 										   String batch_id) throws Exception {
 		try {
 			Connection conn = JdbcUtil.GetConn();
+			System.out.println("MySQL DB connection established.\n");
 			// go thru each json file
 			JSONParser jsonParser = new JSONParser();
 			for (Path metrics_json : perf_metrics) {

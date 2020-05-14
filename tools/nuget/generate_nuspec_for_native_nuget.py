@@ -150,7 +150,7 @@ def generate_files(list, args):
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.2\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.0.0.4\\LICENSE.txt') + '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb

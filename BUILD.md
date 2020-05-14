@@ -196,9 +196,35 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
-#### Jetson (ARM64 Builds)
+#### Jetson TX1/TX2/Nano(ARM64 Builds)
 
-See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips related to building Onnxruntime with TensorRT Execution Provider on Jetson platforms (TX1/TX2, Nano)
+
+1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated. 
+```
+git clone --single-branch --recursive --branch v1.1.2 https://github.com/Microsoft/onnxruntime
+```
+2. Indicate CUDA compiler. It's optional, cmake can automatically find the correct cuda. 
+```
+export CUDACXX="/usr/local/cuda/bin/nvcc"
+```
+3. Modify  tools/ci_build/build.py
+```
+- "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
++ "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "OFF"),
+```
+4. Modify cmake/CMakeLists.txt
+```
+-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
++  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # Jetson TX1/Nano 
++  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # Jetson TX2
+```
+5. Build onnxruntime with --use_tensorrt flag 
+```
+./build.sh --config Release --update --build --build_wheel --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu --tensorrt_home /usr/lib/aarch64-linux-gnu
+
+```
+
+See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips.
 
 ---
 
