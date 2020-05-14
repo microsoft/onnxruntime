@@ -48,7 +48,7 @@ set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 set_property(TARGET onnxruntime4j APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${JAVA_OUTPUT_DIR}")
 
 # Specify the native sources
-file(GLOB onnxruntime4j_native_src 
+file(GLOB onnxruntime4j_native_src
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
@@ -73,7 +73,7 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_TENSORRT=1)
 endif()
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NNAPI=1)
 endif()
 if (onnxruntime_USE_NUPHAR)
