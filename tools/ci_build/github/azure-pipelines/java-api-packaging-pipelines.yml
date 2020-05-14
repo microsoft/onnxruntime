@@ -312,7 +312,7 @@ jobs:
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dSYM
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dSYM
         popd
-    workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+      workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
   - task: PublishPipelineArtifact@1
     inputs:
