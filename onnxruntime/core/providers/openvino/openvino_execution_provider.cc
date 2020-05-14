@@ -77,11 +77,6 @@ bool IsDimensionSupported(const Node* node, std::string device) {
     }
 
     if (node->OpType() == "Softmax") {
-      auto attributes = node->GetAttributes();
-      auto axis = attributes["axis"].i();
-      if (input_dims - axis != 1)
-        return false;
-
       //3D input not supported on GPU, MYRIAD and HDDL
       if (device == "GPU" || device == "MYRIAD" || device == "HDDL") {
         if (input_dims == 3)
