@@ -367,7 +367,6 @@ class IfOpTesterOnlyConstantNodesInConditionalBranches : public OpTester {
       auto& if_node = graph.AddNode("if", "If", "If node", inputs, outputs);
 
       auto CreateSubgraphWithConstantNode = [](bool then_branch, float value, std::vector<NodeArg*> outputs) {
-        // Then branch - it has "Constant" node only
         Model model_then(then_branch ? "Then" : "Else", false, DefaultLoggingManager().DefaultLogger());
         auto& graph_then = model_then.MainGraph();
         auto& then_constant_node = graph_then.AddNode(
