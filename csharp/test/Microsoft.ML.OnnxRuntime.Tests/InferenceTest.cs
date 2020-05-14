@@ -291,7 +291,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        /*
         [Fact]
         public void InferenceSessionManualDispose()
         {
@@ -299,9 +298,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            options.EnableProfiling = true;
-            options.ProfileOutputPathPrefix = "Ort_P_";
+            options.EnableProfiling = false;
+            //options.ProfileOutputPathPrefix = "Ort_P_";
             var session = new InferenceSession(modelPath, options);
+
 
             var inputMeta = session.InputMetadata;
             var container = new List<NamedOnnxValue>();
@@ -331,7 +331,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
 
         }
-        */
 
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
         {

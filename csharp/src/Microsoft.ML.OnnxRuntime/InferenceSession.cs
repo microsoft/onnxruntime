@@ -695,20 +695,20 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle,
-                                                                 NativeMemoryAllocator.DefaultInstance.Handle,
-                                                                 out nameHandle);
+            IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle, 
+                                                              NativeMemoryAllocator.DefaultInstance.Handle,
+                                                              out nameHandle);
 
             try
             {
                 NativeApiStatus.VerifySuccess(status);
-                str = Marshal.PtrToStringAnsi(nameHandle); //assumes charset = ANSI
+                str = Marshal.PtrToStringAnsi(nameHandle);
             }
             finally
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                  NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
 
