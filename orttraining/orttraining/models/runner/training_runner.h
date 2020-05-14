@@ -193,13 +193,11 @@ class TrainingRunner {
   Status RunWithUpdate(VectorString& feed_names,
                        VectorString& fetch_names,
                        std::vector<MLValue>& feeds,
-                       std::vector<MLValue>& fetches,
-                       size_t batch_id); 
+                       std::vector<MLValue>& fetches); 
   Status RunWithoutUpdate(VectorString& feed_names,
                           VectorString& fetch_names,
                           std::vector<MLValue>& feeds,
-                          size_t& gradient_accumulation_step_count,
-                          size_t batch_id); 
+                          size_t& gradient_accumulation_step_count); 
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
 

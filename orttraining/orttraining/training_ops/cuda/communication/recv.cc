@@ -6,9 +6,6 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
 #include <mpi.h>
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
-#include <unistd.h>
-#include <thread>
 
 namespace onnxruntime {
 namespace cuda {
@@ -27,12 +24,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
     Recv);
 
-void CUDART_CB HostRecv(void* args) {
-  CommInfo_t* info = reinterpret_cast<CommInfo_t*>(args);
-  int mpi_code = MPI_Recv(info->buffer, info->size, MPI_CHAR, info->rank, info->tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-}
-
 Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   // Check if control signal is true.
   const Tensor* input_signal_tensor = ctx->Input<Tensor>(0);
@@ -43,8 +34,6 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int src = static_cast<int>(*remote_rank);
-
-  std::cout << getpid() << ": Batch " << onnxruntime::contrib::TidToBid::GetInstance().map[std::this_thread::get_id()] <<  " Recv " << src << " @ " << Node().Name() << ", " << Node().OutputDefs()[0]->Name() << std::endl;
 
   // Create buffers
   const int tensor_num = static_cast<int>(element_types_.size());
@@ -59,14 +48,6 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   ORT_ENFORCE(world_rank != src, "Receive data from rank ", src, " on the rank ", world_rank, ".");
 
-  // Enqueue communication functions to a GPU stream.
-  // Keep the local stream in the previous design
-  // TODO they can be moved to a new global stream after global streams becoming accessible
-  /*
-  cudaStream_t commStream;  // TODO change this
-  cudaStreamCreate(&commStream);
-  */
-
   // Receive shape sizes and aggregated size
   CommInfo_t info_shape_sizes{prefix_tensor_shape_sizes.data(),
                               tensor_num * static_cast<int>(sizeof(size_t)),
@@ -78,17 +59,19 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
                                   static_cast<int>(tag_)};
 
   int mpi_code = 0;
-  mpi_code = MPI_Recv(info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR, info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  mpi_code = MPI_Recv(info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR, info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  /*
-  cudaLaunchHostFunc(commStream, HostRecv, &info_shape_sizes);
-  cudaLaunchHostFunc(commStream, HostRecv, &info_aggregated_size);
-  cudaStreamSynchronize(commStream);
-  */
 
-  // Receive shapes and data buffer
+  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
+  // MPI_Recv may block the entire GPU until it returns.
+  mpi_code = MPI_Recv(
+    info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
+    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+  mpi_code = MPI_Recv(
+    info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
+    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+
+  // Prepare receive shapes and data buffer
   aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[tensor_num - 1]);
   IAllocatorUniquePtr<char> buffer =
       AllocateBufferOnCPUPinned<char>(static_cast<size_t>(aggregated_aligned_tensor_bytes));
@@ -100,16 +83,17 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
                        static_cast<int>(aggregated_aligned_tensor_bytes),
                        src,
                        static_cast<int>(tag_)};
-  mpi_code = MPI_Recv(info_shapes.buffer, info_shapes.size, MPI_CHAR, info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+  // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
+  // MPI_Recv may block the entire GPU until it returns.
+  mpi_code = MPI_Recv(
+    info_shapes.buffer, info_shapes.size, MPI_CHAR,
+    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  mpi_code = MPI_Recv(info_data.buffer, info_data.size, MPI_CHAR, info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  mpi_code = MPI_Recv(
+    info_data.buffer, info_data.size, MPI_CHAR,
+    info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  /*
-  cudaLaunchHostFunc(commStream, HostRecv, &info_shapes);
-  cudaLaunchHostFunc(commStream, HostRecv, &info_data);
-  cudaStreamSynchronize(commStream);
-  cudaStreamDestroy(commStream);
-  */
 
   // Create Tensors
   size_t begin = 0;

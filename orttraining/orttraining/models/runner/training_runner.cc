@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/models/runner/training_runner.h"
-#include <unistd.h>
 #include <algorithm>
 #include <memory>
 #include <sstream>
@@ -320,14 +319,6 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
   }
-  if (params_.mpi_context.world_rank == 0) {
-    pipeline_schedule_.Show();
-    session_.Save("/bert_ort/wechi/Stage_0.onnx", TrainingSession::SaveOption::NO_RELOAD);
-  } else if (params_.mpi_context.world_rank == 1) {
-    session_.Save("/bert_ort/wechi/Stage_1.onnx", TrainingSession::SaveOption::NO_RELOAD);
-  } else if (params_.mpi_context.world_rank == 2) {
-    session_.Save("/bert_ort/wechi/Stage_2.onnx", TrainingSession::SaveOption::NO_RELOAD);
-  }
 
   // maybe in the future we can support an evaluation-only run
   if (!training_data_loader) {
@@ -405,7 +396,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": forward wait-0 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -422,7 +412,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventIdAfterRecv(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": forward wait-1 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -438,7 +427,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventIdBeforeSend(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": forward record-0 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -454,7 +442,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": forward record-1 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -470,7 +457,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": backward wait-0 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -486,7 +472,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventIdAfterRecv(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": backward wait-1 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -502,7 +487,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventIdBeforeSend(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": backward record-0 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -518,7 +502,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(
       pipeline_context_.pipeline_stage_id,
       static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
-    std::cerr << getpid() << ": backward record-1 " << id << std::endl; 
     TrainingUtil::CreateCpuMLScalar(
       id,
       &event_id,
@@ -623,12 +606,11 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
   return Status::OK();
 }
 
+// Launch synced session.Run on the main thread.
 Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                      VectorString& fetch_names,
                                      std::vector<MLValue>& feeds,
-                                     std::vector<MLValue>& fetches,
-                                     size_t batch_id) {
-  onnxruntime::contrib::TidToBid::GetInstance().map[std::this_thread::get_id()] = batch_id;
+                                     std::vector<MLValue>& fetches) {
   // Sync launch of session. This model-update session runs on the main thread, so
   // no new async session will be launched until this model-update session is done.
   // This prevents the new sessions from using not-updated model.
@@ -675,11 +657,11 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
   return Status::OK();
 }
 
+// Launch async session.Run on non-main thread.
 Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
                                         VectorString& fetch_names,
                                         std::vector<MLValue>& feeds,
-                                        size_t& gradient_accumulation_step_count,
-                                        size_t batch_id) {
+                                        size_t& gradient_accumulation_step_count) {
   // Cyclically pick up a worker ID.
   const size_t worker_id = step_ % params_.pipeline_parallel_size;
 
@@ -696,17 +678,16 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 
   // Async launch of a session.
   pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-    const size_t worker_id, const size_t bid) {
+    const size_t worker_id) {
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
-    onnxruntime::contrib::TidToBid::GetInstance().map[std::this_thread::get_id()] = bid;
     ORT_ENFORCE(session_.Run(
       run_options,
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches)) == Status::OK());
-  }, worker_id, batch_id);
+  }, worker_id);
 
   // Add one after process one batch.
   ++step_;
@@ -780,7 +761,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           PrepareFetchNamesAndFetches(ModelUpdateStep,
                                       fetch_names,
                                       fetches);
-          RunWithUpdate(feed_names, fetch_names, feeds, fetches, batch);
+          RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
           PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                   training_data_loader,
@@ -792,7 +773,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           PrepareFetchNamesAndFetches(GradientAccumulateStep,
                                       fetch_names,
                                       fetches);
-          RunWithoutUpdate(feed_names, fetch_names, feeds, gradient_accumulation_step_count, batch); 
+          RunWithoutUpdate(feed_names, fetch_names, feeds,
+                           gradient_accumulation_step_count); 
         }
 
         auto end = std::chrono::high_resolution_clock::now();
