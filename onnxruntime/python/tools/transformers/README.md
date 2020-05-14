@@ -43,14 +43,14 @@ For tf2onnx, please refer to this notebook: https://github.com/onnx/tensorflow-o
 
 ## Model Optimization
 
-Example of using the script bert_model_optimization.py to convert a BERT-large model to run in V100 GPU:
+Example of using the script optimizer.py to convert a BERT-large model to run in V100 GPU:
 ```console
-python bert_model_optimization.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 16 --hidden_size 1024 --input_int32 --float16
+python optimizer.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 16 --hidden_size 1024 --input_int32 --float16
 ```
 
 ### Options
 
-See below for description of some options of bert_model_optimization.py:
+See below for description of some options of optimizer.py:
 
 - **input**: input model path
 - **output**: output model path

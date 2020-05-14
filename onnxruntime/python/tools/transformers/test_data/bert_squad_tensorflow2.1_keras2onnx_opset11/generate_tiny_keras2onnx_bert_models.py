@@ -29,7 +29,7 @@ import sys
 import argparse
 import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
-from bert_model_optimization import OnnxModel
+from optimizer import OnnxModel
 import os
 import onnxruntime
 import random
