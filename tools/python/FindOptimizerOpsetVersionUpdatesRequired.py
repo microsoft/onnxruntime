@@ -130,5 +130,3 @@ if __name__ == '__main__':
     arguments = parse_args()
     op_to_opset_map = get_latest_op_versions(arguments.ort_root)
     find_potential_issues(arguments.ort_root, op_to_opset_map)
-
-
