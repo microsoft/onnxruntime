@@ -1007,7 +1007,9 @@ void RetrieveEventOperators(
   Node** backward_wait_after_recv,
   Node** backward_record_before_send,
   Node** backward_record_after_send) {
-
+  // Initialize retrieved nodes.
+  // Non-existing nodes may hold NULL forever.
+  // Existing nodes may get valid pointers below.
   *forward_wait_before_recv = nullptr;
   *forward_wait_after_recv = nullptr;
   *forward_record_before_send = nullptr;
@@ -1017,9 +1019,12 @@ void RetrieveEventOperators(
   *backward_record_before_send = nullptr;
   *backward_record_after_send = nullptr;
 
+  // Declare container for WaitEvent's in topological order.
   std::vector<Node*> waits;
+  // Declare container for RecordEvent's in topological order.
   std::vector<Node*> records;
 
+  // Find out WaitEvent's and RecordEvent's.
   GraphViewer graph_viewer(graph);
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     Node* node = graph.GetNode(node_idx);
@@ -1065,18 +1070,24 @@ void RetrieveSendRecvOperators(
   Node** forward_send,
   Node** backward_recv,
   Node** backward_send) {
-
+  // Initialize retrieved nodes.
+  // Non-existing nodes may hold NULL forever.
+  // Existing nodes may get valid pointers below.
   *forward_recv = nullptr;
   *forward_send = nullptr;
   *backward_recv = nullptr;
   *backward_send = nullptr;
+
+  auto is_backward = [](Node& node) {
+    return (node.Description() == "Backward pass");
+  };
 
   // Search for Send's and Recv's by assuming that
   // there are only one Send and one Recv in forward/backward.
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Send") {
       if (is_backward(node)) {
-        *backward_send= &node;
+        *backward_send = &node;
       } else {
         *forward_send = &node;
       }
@@ -1110,9 +1121,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     ASSERT_TRUE(status.IsOK());
 
     Graph& graph = model->MainGraph();
-    auto is_backward = [](Node& node) {
-      return (node.Description() == "Backward pass");
-    };
 
     // Declare forward event nodes.
     // The nodes are declared according to their topological order.
@@ -1179,10 +1187,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     RetrieveSendRecvOperators(
       graph, 
-      forward_recv,
-      forward_send,
-      backward_recv,
-      backward_send);
+      &forward_recv,
+      &forward_send,
+      &backward_recv,
+      &backward_send);
 
     // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
