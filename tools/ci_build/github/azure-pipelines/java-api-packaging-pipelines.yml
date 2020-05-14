@@ -7,7 +7,7 @@ jobs:
     vmImage: 'ubuntu-latest'
   steps:
     - template: templates/set-version-number-variables-step.yml
-    - template: ../../templates/linux-set-variables-and-download.yml
+    - template: templates/linux-set-variables-and-download.yml
 
     - task: CmdLine@2
       inputs:
