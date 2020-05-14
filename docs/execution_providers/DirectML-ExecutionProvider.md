@@ -83,7 +83,7 @@ Creates a DirectML Execution Provider using the given DirectML device, and which
 
 ### ONNX opset support
 
-The DirectML execution provider currently supports ONNX opset 11 ([ONNX v1.1](https://github.com/onnx/onnx/releases/tag/v1.6.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
+The DirectML execution provider currently supports ONNX opset 11 ([ONNX v1.6](https://github.com/onnx/onnx/releases/tag/v1.6.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
 
 ### Multi-threading and supported session options
 
