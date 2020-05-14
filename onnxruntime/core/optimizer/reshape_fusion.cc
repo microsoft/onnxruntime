@@ -43,8 +43,8 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
 Apply Reshape Fusion. The following are subgraphs before and after fusion:
 (a[] and b[] are int64[] constant initializers; Concat may have any number of arguments,
 each of which is a constant initializer or a Shape->Gather->Unsqueeze chain with the
-index corresponding to the index of the argument, or a subgraph in which nodes have only 
-one input/output and linked to the subgraph root.)
+index corresponding to the index of the argument, or a subgraph linked to the subgraph root
+and in which nodes have only one input/output.)
 
 Before fusion:
    [Sub-graph    Root]
@@ -144,11 +144,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       // From the current node, find the subgraph bottom-up util it reaches the root input node. 
       while (p_cur_node != nullptr) {
         Node& cur_node = *p_cur_node;
-        // Each eligible node in the subgraph must have exactly one output edge and less than one input edge. 
+        // Each eligible node in the subgraph must have exactly one output node and less than one 
+        // input edge(the node input could be graph input). 
         if (cur_node.GetOutputEdgesCount() != 1 || cur_node.GetInputEdgesCount() > 1) {
           break;
         }
-        // The node input could be graph input.
+        // Match input of current node with root node.
         bool input_matched = false;
         for (int j = 0; j < cur_node.InputDefs().size(); j++) {
           if (graph_utils::GetNodeInputName(cur_node, j) == root_input.Name()) {
