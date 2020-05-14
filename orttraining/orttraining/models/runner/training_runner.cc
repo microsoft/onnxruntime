@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <memory>
 #include <sstream>
-#include <thread>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"

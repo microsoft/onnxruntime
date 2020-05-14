@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/pipeline_transformer.h"
-#include <unistd.h>
 
 using namespace onnxruntime::common;
 

@@ -9,7 +9,6 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
-#include <thread>
 
 namespace onnxruntime {
 namespace contrib {

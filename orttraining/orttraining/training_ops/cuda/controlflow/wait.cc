@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <unistd.h>
-#include <thread>
 #include "orttraining/training_ops/cuda/controlflow/wait.h"
 #include "core/providers/cpu/tensor/utils.h"
 // Include RecordEvent's utility functions shared by CPU and GPU implementations.
