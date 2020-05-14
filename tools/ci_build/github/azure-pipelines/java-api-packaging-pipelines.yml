@@ -39,10 +39,9 @@ jobs:
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
         java --version
         javac --version
-
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_java --build_shared_lib --use_openmp --config RelWithDebInfo'
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_java --build_shared_lib --use_openmp --config RelWithDebInfo
 
       displayName: 'Build and Test MacOS'
     - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
@@ -198,7 +197,7 @@ jobs:
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
         popd
-        pushd osx-x64
+        pushd osx-x64\lib
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dlib
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dSYM
