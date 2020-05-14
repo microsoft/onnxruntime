@@ -275,6 +275,26 @@
             },
             "comments": "used by onnxruntime"
          }
+      },
+      {
+         "component": {
+            "Type": "other",
+            "Other": {
+               "Name": "OpenMPI",
+               "Version": "4.0.0",
+               "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz"
+            }
+         }
+      },
+      {
+         "component": {
+            "Type": "other",
+            "Other": {
+               "Name": "NCCL",
+               "Version": "2.4.8",
+               "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
+            }
+         }
       }
    ],
    "Version": 1
