@@ -160,22 +160,22 @@ optimize_model_statistics = {}
 def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, fp16):
     optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx" if fp16 else "_fp32.onnx")
     if not os.path.exists(optimized_model_filename):
-        import bert_model_optimization as bert_opt
+        from optimizer import optimize_model
         # Use onnxruntime to optimize model, which will be saved to *_ort_cpu.onnx
-        opt_model = bert_opt.optimize_model(onnx_model_filename,
-                                            model_type,
-                                            num_heads=num_attention_heads,
-                                            hidden_size=hidden_size,
-                                            opt_level=99,
-                                            only_onnxruntime=True)
+        opt_model = optimize_model(onnx_model_filename,
+                                   model_type,
+                                   num_heads=num_attention_heads,
+                                   hidden_size=hidden_size,
+                                   opt_level=99,
+                                   only_onnxruntime=True)
         optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
-        opt_model = bert_opt.optimize_model(onnx_model_filename,
-                                            model_type,
-                                            num_heads=num_attention_heads,
-                                            hidden_size=hidden_size,
-                                            opt_level=0)
+        opt_model = optimize_model(onnx_model_filename,
+                                   model_type,
+                                   num_heads=num_attention_heads,
+                                   hidden_size=hidden_size,
+                                   opt_level=0)
         optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
 
         if fp16:
@@ -210,14 +210,14 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         torch.onnx.export(model=model,
-                            args=tuple(example_inputs.values()),
-                            f=onnx_model_filename,
-                            input_names=list(example_inputs.keys()),
-                            output_names=output_names,
-                            example_outputs=example_outputs,
-                            dynamic_axes=dynamic_axes,
-                            do_constant_folding=True,
-                            opset_version=MODELS[model_name][1])
+                          args=tuple(example_inputs.values()),
+                          f=onnx_model_filename,
+                          input_names=list(example_inputs.keys()),
+                          output_names=output_names,
+                          example_outputs=example_outputs,
+                          dynamic_axes=dynamic_axes,
+                          do_constant_folding=True,
+                          opset_version=MODELS[model_name][1])
     else:
         logger.info(f"Skip export since model existed: {onnx_model_filename}")
 
@@ -481,7 +481,7 @@ def parse_arguments():
                         "--optimize_onnx",
                         required=False,
                         action="store_true",
-                        help="Use bert_model_optimization.py to optimize onnx model")
+                        help="Use optimizer.py to optimize onnx model")
 
     parser.add_argument("-v", "--validate_onnx", required=False, action="store_true", help="Validate ONNX model")
 
