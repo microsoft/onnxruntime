@@ -392,7 +392,7 @@ class IfOpTesterOnlyConstantNodesInConditionalBranches : public OpTester {
       };
 
       if_node.AddAttribute("then_branch", CreateSubgraphWithConstantNode(true, 10.f, outputs));
-      if_node.AddAttribute("else_branch", CreateSubgraphWithConstantNode(true, 1000.f, outputs));
+      if_node.AddAttribute("else_branch", CreateSubgraphWithConstantNode(false, 1000.f, outputs));
     }
   }
 };
