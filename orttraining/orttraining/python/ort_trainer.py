@@ -495,7 +495,7 @@ class ORTTrainer():
         # we use self.global_step_ to count optimizations being performed.
         # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
         self.global_step_ = global_step
-        self.post_process_model_fn_ = _extra_postprocess
+        self._extra_postprocess = _extra_postprocess
         self.get_lr_this_step_ = get_lr_this_step
         self.loss_scaler_ = loss_scaler
 
@@ -524,6 +524,9 @@ class ORTTrainer():
 
         if self._enable_internal_postprocess:
             self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
+
+        if self._extra_postprocess:
+            self._extrapostprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -571,8 +574,6 @@ class ORTTrainer():
 
     def _init_onnx_model(self, inputs):
         if self.onnx_model_ is not None:
-            if self._enable_internal_postprocess:
-                self.onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
             return
 
         if self.torch_model_ is not None:
@@ -581,8 +582,8 @@ class ORTTrainer():
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
 
-            if self.post_process_model_fn_:
-                self.post_process_model_fn_(self.onnx_model_)
+            if self._extra_postprocess:
+                self._extra_post_process(self.onnx_model_)
 
         self._init_session()
 
