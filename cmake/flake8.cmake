@@ -3,11 +3,20 @@
 # NOTE: Currently skips the check if flake8 is not installed. PRs editing python scripts are rare
 #       so don't want to add a hard dependency on flake8 to all builds.
 #
+
 find_program(flake8_BIN NAMES flake8)
+
 if(NOT flake8_BIN)
-    message(WARNING "Could not find 'flake8' to check python scripts. Please install flake8 using pip.")
-else()    
-    set (FLAKE8_CONFIG ${REPO_ROOT}/.flake8)
+    # see if we can run the python module instead if there's no executable
+    set(FLAKE8_NOT_FOUND false)
+    exec_program("${PYTHON_EXECUTABLE}"
+                 ARGS "-m flake8 --version"
+                 RETURN_VALUE FLAKE8_NOT_FOUND)
+    if(${FLAKE8_NOT_FOUND})
+        message(WARNING "Could not find 'flake8' to check python scripts. Please install flake8 using pip.")
+    else()
+        set(flake8_BIN ${PYTHON_EXECUTABLE} "-m" "flake8")
+    endif(${FLAKE8_NOT_FOUND})
 endif()
 
 if(flake8_BIN)
@@ -36,8 +45,9 @@ if(flake8_BIN)
         ALL 
         DEPENDS ${python_scripts}
         WORKING_DIRECTORY 
-        COMMAND echo "Checking python scripts for PEP8 conformance using flake8 with config ${FLAKE8_CONFIG}"
+        COMMAND echo "Checking python scripts for PEP8 conformance using flake8"
         #MESSAGE(${python_scripts})
-        COMMAND ${flake8_BIN} --config ${FLAKE8_CONFIG} ${python_scripts}
+        COMMAND ${flake8_BIN} "--config" "${REPO_ROOT}/.flake8" ${python_scripts}
+        VERBATIM
     )
 endif()
