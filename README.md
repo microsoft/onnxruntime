@@ -8,40 +8,43 @@
 
 **ONNX Runtime** is a cross-platform model **inferencing and training accelerator** compatible with most popular ML/DNN frameworks, including PyTorch, Tensorflow/Keras, scikit-learn, CoreML, and more.
 
-For data scientists and ML engineers, this provides a high performance solution and common API inferface for systems to integrate with a single runtime for a variety of hardware options. Extensibility options support models with custom operators and the execution provider interface enables a growing list of emerging hardware accelerators.
+For data scientists and ML engineers, ONNX runtime provides a high performance solution and cross platform APIs for systems to integrate with a single runtime across a variety of hardware options. Extensibility options support models with custom operators and the execution provider interface enables a growing list of hardware accelerators.
 
 [ONNX Runtime Inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and provide inferencing latency acceleration compared with the native framework.
 
 [ONNX Runtime Training](./orttraining) APIs were introduced in May 2020 and currently supports PyTorch training acceleration on NVIDIA GPUs, with more to come soon.
 
 ***
+
 # Table of Contents
-  * **[Overview](#overview)**
-    * [Framework Interoperability](#framework-interoperability)
+
+* **[Overview](#overview)**
+  * [Framework Interoperability](#framework-interoperability)
     * [High Performance Model Inferencing](#high-performance-model-inferencing)
     * [Training Acceleration](#training-acceleration)
-  * **[Get Started](#get-started)**
-    * [ONNX Runtime Inferencing](#inferencing-start)
-    * [ONNX Runtime Training](#training-start)
+* **[Get Started](#get-started)**
+  * [ONNX Runtime Inferencing](#inferencing-start)
+  * [ONNX Runtime Training](#training-start)
 * **[Data/Telemetry](#Data/Telemetry)**
 * **[Contributions and Feedback](#contribute)**
 * **[License](#license)**
 
 ***
+
 # Overview
 
 ## Framework Interoperability
- 
- Supporting models based on the standard [ONNX](https://onnx.ai) format, the runtime is compatible with PyTorch, scikit-learn, Tensorflow, Keras, CoreML, and all other popular frameworks that support [conversion or export to the interoperable format](https://github.com/onnx/tutorials#getting-onnx-models).
- 
- ONNX Runtime is up to date and backwards compatible with all operators (both DNN and traditional ML) since ONNX v1.2.1+. [(ONNX opset compatibility details)](docs/Versioning.md). Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations.
- 
- * [Supported operators/types](./docs/OperatorKernels.md) 
-   * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
- * [Extensibility: Add a custom operator/kernel](docs/AddingCustomOp.md)
+
+Supporting models based on the standard [ONNX](https://onnx.ai) format, the runtime is compatible with PyTorch, scikit-learn, Tensorflow, Keras, CoreML, and all other popular frameworks that support [conversion or export to the interoperable format](https://github.com/onnx/tutorials#getting-onnx-models).
+
+ONNX Runtime is up to date and backwards compatible with all operators (both DNN and traditional ML) since ONNX v1.2.1+. [(ONNX opset compatibility details)](docs/Versioning.md). Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations.
+
+* [Supported operators/types](./docs/OperatorKernels.md)
+  * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
+* [Extensibility: Add a custom operator/kernel](docs/AddingCustomOp.md)
 
 ## High Performance Model Inferencing
- 
+
 The inference runtime provides a cross platform API compatible with Windows, Linux, and Mac across a variety of hardware architectures. Using graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
 
 * [Supported languages and architectures](#apis-and-official-builds)
@@ -50,8 +53,7 @@ The inference runtime provides a cross platform API compatible with Windows, Lin
 * [Extensibility: Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Extensibility: Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
 
-
-### Supported accelerators ("[Execution Providers](./docs/execution_providers))":
+### Supported accelerators ("[Execution Providers](./docs/execution_providers))"
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 |---|---|---|---|
@@ -61,16 +63,16 @@ The inference runtime provides a cross platform API compatible with Windows, Lin
 * [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
 * [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)
 
-
 ## Training Acceleration
+
 The training runtime works with existing training code from supported frameworks to accelerate computation of the operators in the model.
 
 The current version supports training acceleration for PyTorch-trained Transformer models on NVIDIA GPUs.
 
 * **[Get Started with ONNX Runtime Training](training-start)**
- 
 
 # Get Started
+
 [Frequently Asked Questions](./docs/FAQ.md)
 
 ## Inferencing: Start
@@ -87,10 +89,10 @@ To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/o
 * [Deploy ONNX Runtime Inferencing](#deploying-onnx-runtime)
 * [Samples](./samples)
 
-
 ### Binaries
 
 Official builds are available on PyPi (Python) and Nuget (C#/C/C++):
+
 * Default CPU Provider (Eigen + MLAS)
 * GPU Provider - NVIDIA CUDA
 * GPU Provider - DirectML (Windows)
@@ -115,8 +117,7 @@ Dev builds created from the master branch are available for testing newer change
     * Follow similar procedure to configure other locales on other platforms.
   
 * Default CPU
-  * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
-  system.
+  * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the system.
     * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
       [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
     * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
@@ -126,13 +127,14 @@ Dev builds created from the master branch are available for testing newer change
     * Version: **CUDA 10.1** and **cuDNN 7.6.5**
   * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
 
-
 ### Build from Source
+
 For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 * [Instructions for additional build flavors](./BUILD.md)
 
 ### Docker Images
+
 * [ONNX-Ecosystem](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem): includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started
 * [Additional dockerfiles](./dockerfiles)
 
@@ -151,8 +153,8 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 ### Deploying ONNX Runtime
 
-
 #### Cloud
+
 * ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service).
   * [Detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx)
   * [AzureML sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx)
@@ -162,12 +164,14 @@ For production scenarios, it's strongly recommended to build only from an [offic
   * [Image installation instructions](./dockerfiles#onnx-runtime-server-preview)
 
 #### IoT and edge devices
+
 * [Reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge)
 
-  The expanding focus and selection of IoT devices with sensors and consistent signal streams introduces new opportunities to move AI workloads to the edge.
-  This is particularly important when there are massive volumes of incoming data/signals that may not be efficient or useful to push to the cloud due to storage or latency considerations. Consider: surveillance tapes where 99% of footage is uneventful, or real-time person detection scenarios where immediate action is required. In these scenarios, directly executing model inferencing on the target device is crucial for optimal assistance.
+The expanding focus and selection of IoT devices with sensors and consistent signal streams introduces new opportunities to move AI workloads to the edge.
+This is particularly important when there are massive volumes of incoming data/signals that may not be efficient or useful to push to the cloud due to storage or latency considerations. Consider: surveillance tapes where 99% of footage is uneventful, or real-time person detection scenarios where immediate action is required. In these scenarios, directly executing model inferencing on the target device is crucial for optimal assistance.
 
 #### Client applications
+
 * Install or build the package you need to use in your application. ([sample implementations](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API)
 
 * On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). ([Tutorials for Windows Desktop or UWP app](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop))
@@ -175,48 +179,56 @@ For production scenarios, it's strongly recommended to build only from an [offic
 ***
 
 ## Training: Start
+
 **[End-to-End Sample Notebook]()**
 
 1. Build the ONNX Runtime wheel for training. ([Build instructions](BUILD.md#training))
 
 2. Use ONNX Runtime Training in your PyTorch pre-training script.
 High-level code fragment to include in your pre-training code:
-    ```
-    import torch
-    import onnxruntime.training.pytorch as ort
 
-    # Model definition
-    class Net(torch.nn.Module):
-        def __init__(self, D_in, H, D_out):
-            ...
-        def forward(self, x): 
-            ...
+  ```python
+  import torch
+  ...
+  import onnxruntime
+  from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 
-    model = Net(D_in, H, H_out)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
-    trainer = ort.trainer(model, criterion, optimizer, ...)
+  # Model definition
+  class Net(torch.nn.Module):
+    def __init__(self, D_in, H, D_out):
+      ...
+    def forward(self, x):
+      ...
 
-    # Training Loop
-    for t in range(1000):
-        # forward + backward + weight update 
-        loss, y_pred = trainer.step(x, y)
-        ...
-    ```
+  model = Net(D_in, H, H_out)
+  criterion = torch.nn.Functional.cross_entropy
+  description = ModelDescription(...)
+  optimizer = 'SGDOptimizer'
+  trainer = ORTTrainer(model, criterion, description, optimizer, ...)
 
+  # Training Loop
+  for t in range(1000):
+    # forward + backward + weight update
+    loss, y_pred = trainer.train_step(x, y, learning_rate)
+    ...
+  ```
 
 # Data/Telemetry
+
 This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
 
 # Contributions and Feedback
+
 We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
 
 For any feedback or to report a bug, please file a [GitHub Issue](https://github.com/Microsoft/onnxruntime/issues).
 
 ## Code of Conduct
+
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 # License
+
 This project is licensed under the [MIT License](LICENSE).
