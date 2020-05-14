@@ -196,6 +196,7 @@ def layer_norm_transform(model):
         optional_mul = find_output_node(model, div.output[0])
         if not is_type(optional_mul, "Mul"):
             optional_mul = None
+            continue # default bias and weight not supported
 
         # check if mul output is Add
         if optional_mul is not None:
@@ -204,6 +205,7 @@ def layer_norm_transform(model):
             optional_add = find_output_node(model, div.output[0])
         if not is_type(optional_add, "Add"):
             optional_add = None
+            continue # default bias and weight not supported
 
 
         # add nodes to remove_nodes
