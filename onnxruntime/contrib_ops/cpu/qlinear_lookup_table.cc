@@ -72,9 +72,9 @@ QLinearLeakyRelu<T>::QLinearLeakyRelu(const OpKernelInfo& info)
   const Tensor* tensor_y_zero_point = nullptr;
 
   bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
-  bool get_x_zero_point = info.TryGetConstantInput(2, &tensor_x_zero_point);
+  bool get_x_zero_point = !info.node().InputDefs()[2]->Exists() || info.TryGetConstantInput(2, &tensor_x_zero_point);
   bool get_y_scale = info.TryGetConstantInput(3, &tensor_y_scale);
-  bool get_y_zero_point = info.TryGetConstantInput(4, &tensor_y_zero_point);
+  bool get_y_zero_point = !info.node().InputDefs()[4]->Exists() || info.TryGetConstantInput(4, &tensor_y_zero_point);
   is_fixed_parameters_ = get_x_scale && get_x_zero_point && get_y_scale && get_y_zero_point;
 
   if (is_fixed_parameters_) {
