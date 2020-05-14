@@ -17,14 +17,13 @@ steps:
 
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
+        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}/lib'
         includeRootFolder: true
-        archiveType: 'tar' # Options: zip, 7z, tar, wim
-        tarCompression: 'gz'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
+        archiveType: 'zip' # Options: zip, 7z, tar, wim
+        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.zip'
         replaceExistingArchive: true
 
     - task: PublishBuildArtifacts@1
       inputs:
-        pathtoPublish: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.zip'
         artifactName: 'drop-${{parameters.artifactName}}'

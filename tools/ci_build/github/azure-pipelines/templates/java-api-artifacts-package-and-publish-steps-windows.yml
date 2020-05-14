@@ -15,6 +15,11 @@ steps:
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\
           echo "Directories created"
           copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          pushd $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          jar xf onnxruntime-${{parameters.version}}.jar META-INF\maven\ai.onnxruntime\onnxruntime\pom.xml
+          move META-INF\maven\ai.onnxruntime\onnxruntime\pom.xml onnxruntime-${{parameters.version}}.pom
+          rd /s /q META-INF
+          popd
           copy .\${{parameters.buildConfig}}\onnxruntime.pdb %NATIVE_FOLDER%
           copy .\${{parameters.buildConfig}}\onnxruntime4j_jni.pdb %NATIVE_FOLDER%
           copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\Privacy.md
