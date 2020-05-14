@@ -326,13 +326,13 @@ The basic build commands are below. There are also some other parameters for bui
 ##### Cross compiling on Windows
 
 ```bash
-./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
+./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
 ```
 
 ##### Cross compiling on Linux
 
 ```bash
-./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --dnnlibrary
+./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
 ```
 
 ---
