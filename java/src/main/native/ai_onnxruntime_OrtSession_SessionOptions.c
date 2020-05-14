@@ -456,12 +456,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIG
   #endif
 }
 
-=======
- * Method:    addDirectML
- * Signature: (JJI)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDirectML
-=======
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addDirectML
  * Signature: (JJI)V
  */

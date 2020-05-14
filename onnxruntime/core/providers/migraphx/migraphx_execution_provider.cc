@@ -577,14 +577,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (initializers.find(arg_depth->Name()) == initializers.end());    
   } else if (optype == "Pad") {
     const auto& args = node->InputDefs();
-    if (args.size() == 3)
-    {
-      const auto& val_arg = node->InputDefs()[2];
-      if (initializers.find(val_arg->Name()) == initializers.end()) {
-        return true;
-      }
-    }
-
+    // if pad size is not constant, migraphx cannot support
     if (args.size() >= 2)
     {
       const auto& shape_arg = node->InputDefs()[1];
@@ -596,11 +589,27 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const auto& attributes = node->GetAttributes();
     // Pad only support constant mode
     const auto mode_attr = attributes.find("mode");
+    std::string mode = "constant";
     if(mode_attr != attributes.end())
     {
-      const auto mode = mode_attr->second.s();
-      static const std::set<std::string> allowed_modes = {"constant"};
-      return allowed_modes.count(mode) == 0;
+      mode = mode_attr->second.s();
+    }
+    static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+    if (allowed_modes.count(mode) == 0)
+    {
+      return true;
+    }
+
+    // input value only applied to constant mode
+    if (mode == "constant")
+    {
+      if (args.size() == 3)
+      {
+        const auto& val_arg = node->InputDefs()[2];
+        if (initializers.find(val_arg->Name()) == initializers.end()) {
+          return true;
+        }
+      }
     }
   } else if (optype == "Reshape") {
     const auto& args = node->InputDefs();
@@ -1086,7 +1095,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     model_proto.SerializeToString(&onnx_string_buffer);
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
-    std::cout << "no_input_shape = " << no_input_shape << std::endl;
 
     // dump onnx file
     std::string name("ort_compile_");
@@ -1102,11 +1110,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
 
     if (!no_input_shape)
     {
-std::cout << "Loc1" << std::endl;
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
-std::cout << "Loc2" << std::endl;
       prog.compile(t_);
-std::cout << "Loc3" << std::endl;
 
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i)
@@ -1206,15 +1211,11 @@ std::cout << "Loc3" << std::endl;
       // re-compile the program
       if (!input_shape_match)
       {
-std::cout << "Loc4" << std::endl;
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
-std::cout << "Loc5" << std::endl;
         prog.compile(t);
-std::cout << "Loc6" << std::endl;
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();
         no_input_shape = false;
-std::cout << "Loc7" << std::endl;
       }
 
       migraphx::program_parameters m;
