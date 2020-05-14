@@ -7,7 +7,6 @@ parameters:
   comitId: ''
 steps:
     - task: CmdLine@2
-      displayName: 'Copy build artifacts for zipping'
       inputs:
         script: |
           set NATIVE_FOLDER=$(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\ai\onnxruntime\native\win-x64
