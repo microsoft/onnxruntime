@@ -1059,7 +1059,6 @@ void RetrieveEventOperators(
   }
 }
 
-/*
 void RetrieveSendRecvOperators(
   Graph& graph, 
   Node** forward_recv,
@@ -1067,14 +1066,35 @@ void RetrieveSendRecvOperators(
   Node** backward_recv,
   Node** backward_send) {
 
+  *forward_recv = nullptr;
+  *forward_send = nullptr;
+  *backward_recv = nullptr;
+  *backward_send = nullptr;
+
+  // Search for Send's and Recv's by assuming that
+  // there are only one Send and one Recv in forward/backward.
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Send") {
+      if (is_backward(node)) {
+        *backward_send= &node;
+      } else {
+        *forward_send = &node;
+      }
+    } else if (node.OpType() == "Recv") {
+      if (is_backward(node)) {
+        *backward_recv = &node;
+      } else {
+        *forward_recv = &node;
+      }
+    }
+  }
 }
-*/
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
-  PathString filename_base = ORT_TSTR("/bert_ort/wechi/onnxruntime/build/Linux/Debug/testdata/test_training_model_");
+  PathString filename_base = ORT_TSTR("testdata/test_training_model_");
 
-  auto load_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
+  auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
 
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe_config{};
@@ -1094,19 +1114,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
       return (node.Description() == "Backward pass");
     };
 
-    // check for wait/record node
     // Declare forward event nodes.
+    // The nodes are declared according to their topological order.
     Node* forward_wait_before_recv{nullptr};
     Node* forward_wait_after_recv{nullptr};
     Node* forward_record_before_send{nullptr};
     Node* forward_record_after_send{nullptr};
 
     // Declare backward event nodes.
+    // The nodes are declared according to their topological order.
     Node* backward_wait_before_recv{nullptr};
     Node* backward_wait_after_recv{nullptr};
     Node* backward_record_before_send{nullptr};
     Node* backward_record_after_send{nullptr};
 
+    // Find event nodes.
     RetrieveEventOperators(
       graph,
       &forward_wait_before_recv,
@@ -1118,8 +1140,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
       &backward_record_before_send,
       &backward_record_after_send);
 
-    // Check if the beginning and end of a pipeline stage exist. Thye must exist!
-    ASSERT_TRUE(forward_wait_before_recv && backward_record_after_send);
+    // Check event nodes.
     if (stageIdx == 2) {
       ASSERT_TRUE(forward_wait_before_recv);
       ASSERT_TRUE(forward_wait_after_recv);
@@ -1151,37 +1172,29 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
       ASSERT_TRUE(backward_record_after_send);
     }
 
-    // check for send/recv node
-    Node* send_fw{nullptr};
-    Node* send_bw{nullptr};
-    Node* recv_fw{nullptr};
-    Node* recv_bw{nullptr};
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "Send") {
-        if (is_backward(node)) {
-          send_bw = &node;
-        } else {
-          send_fw = &node;
-        }
-      } else if (node.OpType() == "Recv") {
-        if (is_backward(node)) {
-          recv_bw = &node;
-        } else {
-          recv_fw = &node;
-        }
-      }
-    }
-    // except the last partion, each partition should have send forward and recv backward
+    Node* forward_send{nullptr};
+    Node* forward_recv{nullptr};
+    Node* backward_recv{nullptr};
+    Node* backward_send{nullptr};
+
+    RetrieveSendRecvOperators(
+      graph, 
+      forward_recv,
+      forward_send,
+      backward_recv,
+      backward_send);
+
+    // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
-      ASSERT_TRUE(send_fw && recv_bw);
+      ASSERT_TRUE(forward_send && backward_recv);
     } else {
-      ASSERT_TRUE(!send_fw && !recv_bw);
+      ASSERT_TRUE(!forward_send && !backward_recv);
     }
-    // except the first partion, each partition should have recv forward and send backward
+    // Except the first partion, each partition should have recv forward and send backward.
     if (stageIdx == 1 || stageIdx == 2) {
-      ASSERT_TRUE(recv_fw && send_bw);
+      ASSERT_TRUE(forward_recv && backward_send);
     } else {
-      ASSERT_TRUE(!recv_fw && !send_bw);
+      ASSERT_TRUE(!forward_recv && !backward_send);
     }
 
     auto mp = model->ToProto();
@@ -1198,7 +1211,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 #endif
     PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
     PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
-    load_gradient_graph(i, input_file, output_file);
+    load_and_check_gradient_graph(i, input_file, output_file);
   }
 }
 
