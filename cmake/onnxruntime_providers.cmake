@@ -470,8 +470,9 @@ if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
   file(GLOB_RECURSE
     onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})

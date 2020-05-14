@@ -2,7 +2,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
-#include "core/providers/nnapi/nnapi_execution_provider.h"
+#include "core/providers/nnapi/nnapi_dnnlibrary/nnapi_execution_provider.h"
 #include "core/common/logging/logging.h"
 
 using namespace std;

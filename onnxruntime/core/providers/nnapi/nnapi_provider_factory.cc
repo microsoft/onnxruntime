@@ -1,7 +1,7 @@
 // Copyright 2019 JD.com Inc. JD AI
 
 #include "core/providers/nnapi/nnapi_provider_factory.h"
-#include "nnapi_execution_provider.h"
+#include "nnapi_dnnlibrary/nnapi_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
