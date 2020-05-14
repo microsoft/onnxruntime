@@ -463,6 +463,7 @@ endif()
 
 if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   add_definitions(-DUSE_NNAPI=1)
+  add_definitions(-DUSE_NNAPI_DNNLIBRARY=1)
   option(DNN_READ_ONNX "" ON)
   set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
   option(DNN_CMAKE_INSTALL "" OFF)
