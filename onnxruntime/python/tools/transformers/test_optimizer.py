@@ -16,7 +16,7 @@ from onnx import helper, TensorProto, ModelProto
 from onnx.helper import make_node, make_tensor_value_info
 import numpy as np
 from onnx import numpy_helper
-from bert_model_optimization import optimize_model, optimize_by_onnxruntime
+from optimizer import optimize_model, optimize_by_onnxruntime
 from OnnxModel import OnnxModel
 
 BERT_TEST_MODELS = {
@@ -131,10 +131,7 @@ class TestBertOptimization(unittest.TestCase):
 
     def test_pytorch_model_0(self):
         input = BERT_TEST_MODELS['bert_pytorch_0']
-        bert_model = optimize_model(input,
-                                    'bert',
-                                    num_heads=2,
-                                    hidden_size=8)
+        bert_model = optimize_model(input, 'bert', num_heads=2, hidden_size=8)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
@@ -148,19 +145,13 @@ class TestBertOptimization(unittest.TestCase):
 
     def test_pytorch_model_2(self):
         input = BERT_TEST_MODELS['bert_squad_pytorch1.4_opset10_fp32']
-        bert_model = optimize_model(input,
-                                    'bert',
-                                    num_heads=2,
-                                    hidden_size=8)
+        bert_model = optimize_model(input, 'bert', num_heads=2, hidden_size=8)
         self.assertTrue(bert_model.is_fully_optimized())
 
     def test_keras_model_1(self):
         input = BERT_TEST_MODELS['bert_keras_0']
 
-        bert_model = optimize_model(input,
-                                    'bert_keras',
-                                    num_heads=2,
-                                    hidden_size=8)
+        bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
@@ -176,19 +167,13 @@ class TestBertOptimization(unittest.TestCase):
     def test_keras_squad_model(self):
         input = BERT_TEST_MODELS['bert_keras_squad']
 
-        bert_model = optimize_model(input,
-                                    'bert_keras',
-                                    num_heads=2,
-                                    hidden_size=8)
+        bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
 
         self.assertTrue(bert_model.is_fully_optimized())
 
     def test_gpt2(self):
         input = BERT_TEST_MODELS['gpt2']
-        bert_model = optimize_model(input,
-                                    'gpt2',
-                                    num_heads=2,
-                                    hidden_size=4)
+        bert_model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
 
         expected_node_count = {
             'EmbedLayerNormalization': 0,
