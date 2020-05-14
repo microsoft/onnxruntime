@@ -67,6 +67,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<std::string>()->default_value(""))
       ("output_dir", "The output directory where the trained model files will be written.",
         cxxopts::value<std::string>()->default_value(""))
+      ("perf_output_dir", "The output directory where the trained perf metrics files will be written.",
+        cxxopts::value<std::string>()->default_value(""))
       ("checkpoints_dir", "The output directory where the checkpoint files will be written.",
         cxxopts::value<std::string>()->default_value(""))
       ("checkpoint_to_load_path",
@@ -239,6 +241,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
     }
+    params.perf_output_dir = ToPathString(flags["perf_output_dir"].as<std::string>());
+    if (params.perf_output_dir.empty()) {
+      printf("No perf output directory specified. Trained perf metrics will not be saved.\n");
+    }
     params.checkpoints_dir = ToPathString(flags["checkpoints_dir"].as<std::string>());
     if (params.checkpoints_dir.empty()) {
       printf("No checkpoints directory specified. Checkpoint files will not be saved.\n");
@@ -346,16 +352,14 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
           {"lambda", zero_lambda ? 0.f : lambda},
           {"epsilon", epsilon},
           {"ratio_min", ratio_min},
-          {"ratio_max", ratio_max}
-      };
+          {"ratio_max", ratio_max}};
     };
 
     // Optimizer's int attributes.
     params.optimizer_int_attributes = [=](const std::string& /*weight*/) {
       return std::unordered_map<std::string, int64_t>{
           {"do_bias_correction", do_bias_correction ? static_cast<int64_t>(1) : static_cast<int64_t>(0)},
-          {"weight_decay_mode", weight_decay_mode}
-      };
+          {"weight_decay_mode", weight_decay_mode}};
     };
 
     params.data_parallel_size = flags["data_parallel_size"].as<int>();
@@ -377,7 +381,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211; // Megatron needs a random seed.
+      seed = 8211;  // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
@@ -428,6 +432,12 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
+// mapping of max_sequence_length and max_predictions_per_sequence position derived from training data
+std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping;
+
+// generic properties for storing perf metrics
+MapStringToString mapped_dimensions;
+
 void setup_training_params(BertParameters& params) {
   params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
@@ -444,7 +454,7 @@ void setup_training_params(BertParameters& params) {
   }
 
   auto data_group_size = params.mpi_context.world_size / (params.horizontal_parallel_size * params.pipeline_parallel_size);
-  ORT_ENFORCE(data_group_size > 0, "Insufficient processes lead to zero-way data parallelism, which should be at least one-way."); 
+  ORT_ENFORCE(data_group_size > 0, "Insufficient processes lead to zero-way data parallelism, which should be at least one-way.");
   if (data_group_size != params.data_parallel_size) {
     LOGS_DEFAULT(WARNING) << "WARNING: data_parallel_size is not correct, tuned automatically to "
                           << data_group_size << std::endl;
@@ -479,7 +489,7 @@ void setup_training_params(BertParameters& params) {
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
-      "72",  // [BERT-tiny only] input of expand
+      "72",                     // [BERT-tiny only] input of expand
   };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
@@ -505,6 +515,19 @@ void setup_training_params(BertParameters& params) {
       {"masked_lm_ids", "masked_lm_ids"},
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
+
+  // use this table mapping to define what to be stored in mapped_dimensions, and ultimately in json structure
+  // Be mindful on the position, if it's invalid or out of bound, the property population process will be
+  // either incorrect or aborted. Also make sure to substract the index position by 1 to get valid correspondent value
+  // namely, in the graph, sequence is at position 1, but in initial tensor shape vector loaded from training data is at position 0,
+  // batch is not part of the initial tensor shape vector till later
+  // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
+  input_to_dimension_mapping = {
+      {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+      {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
+  };
+
+  params.model_type = "bert";
 
   params.skip_evaluation = params.is_perf_test;
 
@@ -655,14 +678,20 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
                                                               max_num_files_preload);
     }
 
-    ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get()));
+    if (!params.perf_output_dir.empty()) {
+      // collecting Bert related params from training data
+      auto training_data = training_data_loader->CurrentDataSet();
+      ORT_RETURN_IF_ERROR(training_data->GetTensorDimensionsFromInputs(input_to_dimension_mapping, mapped_dimensions));
+    }
+
+    ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), mapped_dimensions));
 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
   auto test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                                params_for_phase.test_data_dir,
-                                                                max_num_files_preload);
+                                                               params_for_phase.test_data_dir,
+                                                               max_num_files_preload);
   ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
 
   return Status::OK();

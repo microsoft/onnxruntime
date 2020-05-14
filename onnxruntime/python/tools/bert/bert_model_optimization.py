@@ -162,10 +162,7 @@ def parse_arguments():
                         help="disable LayerNormalization fusion")
     parser.set_defaults(disable_layer_norm=False)
 
-    parser.add_argument('--disable_gelu',
-                        required=False,
-                        action='store_true',
-                        help="disable Gelu fusion")
+    parser.add_argument('--disable_gelu', required=False, action='store_true', help="disable Gelu fusion")
     parser.set_defaults(disable_gelu=False)
 
     parser.add_argument('--enable_gelu_approximation',
@@ -215,13 +212,13 @@ def optimize_model(input,
                    num_heads,
                    hidden_size,
                    opt_level=99,
-                   optimization_options=None):
+                   optimization_options=None,
+                   only_onnxruntime=False):
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
     if run_onnxruntime and opt_level > 0:
         input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=opt_level)
-        logger.info("Use OnnxRuntime to optimize and save the optimized model to {}".format(input_model_path))
 
     model = ModelProto()
     with open(input_model_path, "rb") as f:
@@ -236,7 +233,9 @@ def optimize_model(input,
         optimization_options = BertOptimizationOptions(model_type)
 
     bert_model = optimizer_class(model, num_heads, hidden_size)
-    bert_model.optimize(optimization_options)
+
+    if not only_onnxruntime:
+        bert_model.optimize(optimization_options)
 
     return bert_model
 
@@ -255,8 +254,8 @@ def main():
 
     optimization_options = get_optimization_options(args)
 
-    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size,
-                                args.opt_level, optimization_options)
+    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size, args.opt_level,
+                                optimization_options)
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()

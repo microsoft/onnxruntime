@@ -9,6 +9,10 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
 
+# Support OS X versions 10.12+
+# This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+
 # Project
 project(onnxruntime C CXX)
 
@@ -53,6 +57,7 @@ option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_USE_JEMALLOC "Use jemalloc" OFF)
 option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
+option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
@@ -123,12 +128,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
-  if (HAS_D2FH4)
-    message("Disabling /d2FH4")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
-  endif()
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
@@ -270,6 +269,9 @@ else()
   elseif(onnxruntime_USE_AVX512)
     string(APPEND CMAKE_CXX_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
     string(APPEND CMAKE_C_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
+  endif()
+  if(onnxruntime_GCC_STATIC_CPP_RUNTIME)
+    string(APPEND CMAKE_CXX_FLAGS " -static-libstdc++")
   endif()
 endif()
 
