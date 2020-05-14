@@ -1536,6 +1536,8 @@ def main():
     if args.update:
         cmake_extra_args = []
         path_to_protoc_exe = args.path_to_protoc_exe
+        if not args.skip_submodule_sync:
+            update_submodules(source_dir)
         if is_windows():
             if args.cmake_generator == 'Ninja':
                 if args.x86 or args.arm or args.arm64:
@@ -1608,8 +1610,6 @@ def main():
                 install_python_deps()
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
-        if not args.skip_submodule_sync:
-            update_submodules(source_dir)
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
         generate_build_tree(
