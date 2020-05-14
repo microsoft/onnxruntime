@@ -346,7 +346,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionEndProfiling(
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
-                                                 out IntPtr /*(char**)*/profile_file);
+                                                out IntPtr /*(char**)*/profile_file);
         public static DOrtSessionEndProfiling OrtSessionEndProfiling;
 
         // release the typeinfo using OrtReleaseTypeInfo
