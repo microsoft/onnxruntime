@@ -335,10 +335,11 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_output_name,
                                    std::string& backward_recorded_output_name);
 
-  common::Status ApplyTransformationsToMainGraph();
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
+                                  const std::unordered_set<std::string>& weights_to_train,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
