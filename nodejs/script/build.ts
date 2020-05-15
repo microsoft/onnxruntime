@@ -36,7 +36,12 @@ if (REBUILD) {
 }
 
 const command = CMAKE_JS_FULL_PATH;
-const args = [(REBUILD ? 'reconfigure' : 'configure'), '--arch=x64', '--CDnapi_build_version=3'];
+const args = [
+  (REBUILD ? 'reconfigure' : 'configure'),
+  '--arch=x64',
+  '--CDnapi_build_version=3',
+  `--CDCMAKE_BUILD_TYPE=${CONFIG}`,
+];
 
 // launch cmake-js configure
 const procCmakejs = spawnSync(command, args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
