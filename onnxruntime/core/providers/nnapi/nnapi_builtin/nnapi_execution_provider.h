@@ -4,7 +4,6 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/graph/onnx_protobuf.h"
-#include "dnnlibrary/Model.h"
 
 namespace onnxruntime {
 class NnapiExecutionProvider : public IExecutionProvider {
@@ -18,8 +17,5 @@ class NnapiExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
- private:
-  std::unordered_map<std::string, std::unique_ptr<dnn::Model>> dnn_models_;
-  std::vector<std::vector<int>> GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 };
 }  // namespace onnxruntime
