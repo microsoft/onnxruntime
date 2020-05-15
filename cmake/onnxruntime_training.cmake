@@ -44,20 +44,16 @@ file(GLOB_RECURSE onnxruntime_training_runner_srcs
 
 # perf test utils
 set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
-set(onnxruntime_perf_test_src_patterns
+set(onnxruntime_perf_test_src
 "${onnxruntime_perf_test_src_dir}/utils.h")
 
 if(WIN32)
-  list(APPEND onnxruntime_perf_test_src_patterns
-    "${onnxruntime_perf_test_src_dir}/windows/*.cc")
+  list(APPEND onnxruntime_perf_test_src
+    "${onnxruntime_perf_test_src_dir}/windows/utils.cc")
 else ()
-  list(APPEND onnxruntime_perf_test_src_patterns
-    "${onnxruntime_perf_test_src_dir}/posix/*.cc")
+  list(APPEND onnxruntime_perf_test_src
+    "${onnxruntime_perf_test_src_dir}/posix/utils.cc")
 endif()
-
-file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
-  ${onnxruntime_perf_test_src_patterns}
-  )
 
 add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
 add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
