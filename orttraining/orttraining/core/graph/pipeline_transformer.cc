@@ -312,6 +312,12 @@ void ReplaceNodeArgs(std::vector<Node*>& nodes,
   }
 }
 
+void ReplaceNodeArgs(std::vector<Node*>& nodes,
+                     std::vector<NodeArg*>&& node_args,
+                     std::vector<NodeArg*>&& new_node_args) {
+  ReplaceNodeArgs(nodes, node_args, new_node_args);
+}
+
 std::string AddEventBeforeNode(
   Graph& graph,
   Node* node,
@@ -370,14 +376,14 @@ std::string AddEventAfterNode(
   // Declare outputs of the added event operator.
   std::vector<NodeArg*> new_node_args = CreateMirrorNodeArgs(graph, node_args);
 
-  // Convert graph.Nodes() to std::vector<Node*>.
-  std::vector<Node*> nodes;
-  for (auto& n: graph.Nodes()) {
-    nodes.push_back(&n);
+  // Find consumers of "node"
+  for (size_t i = 0; i < node_args.size(); ++i) {
+    // Find consumer of "node"'s i-th output.
+    std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(
+      node_args[i]->Name());
+    // Replace node_args[i] with new_node_args[i] in nodes.
+    ReplaceNodeArgs(consumer_nodes, {node_args[i]}, {new_node_args[i]}); 
   }
-
-  // Replace node_args[i] with new_node_args[i] in nodes.
-  ReplaceNodeArgs(nodes, node_args, new_node_args); 
 
   // Create node_arg for event ID.
   auto event_node_arg = &CreateInt64NodeArg(graph, event_id_name);
