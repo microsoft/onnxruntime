@@ -368,8 +368,8 @@ std::string AddEventAfterNode(
 
   // Convert graph.Nodes() to std::vector<Node*>.
   std::vector<Node*> nodes;
-  for (auto& node: graph.Nodes()) {
-    nodes.push_back(&node);
+  for (auto& n: graph.Nodes()) {
+    nodes.push_back(&n);
   }
 
   // Replace node_args[i] with new_node_args[i] in nodes.
