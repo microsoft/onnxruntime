@@ -1566,7 +1566,15 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::CreateThreadingOptions,
     &OrtApis::ReleaseThreadingOptions,
     &OrtApis::ModelMetadataGetCustomMetadataMapKeys,
-    &OrtApis::AddFreeDimensionOverrideByName};
+    &OrtApis::AddFreeDimensionOverrideByName,
+
+    &OrtApis::ExecutableKernelContext_Compute,
+    &OrtApis::ExecutableKernelContext_AddInput,
+    &OrtApis::ExecutableKernelContext_AddImplicitInput,
+    &OrtApis::ExecutableKernelContext_AddOutput,
+    &OrtApis::CreateExecutableKernelContext,
+    &OrtApis::CreateExecutableKernel
+};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'

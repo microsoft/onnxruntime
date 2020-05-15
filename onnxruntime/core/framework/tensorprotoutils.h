@@ -18,6 +18,7 @@
 namespace ONNX_NAMESPACE {
 class TensorProto;
 class TensorShapeProto;
+class NodeProto;
 
 /** Test if two TensorShapeProto dimensions are equal. */
 bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);

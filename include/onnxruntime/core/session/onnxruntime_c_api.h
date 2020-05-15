@@ -208,6 +208,13 @@ struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
+
+struct OrtExecutableKernel;
+typedef struct OrtExecutableKernel OrtExecutableKernel;
+
+struct OrtExecutableKernelContext;
+typedef struct OrtExecutableKernelContext OrtExecutableKernelContext;
+
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
 
@@ -817,6 +824,30 @@ struct OrtApi {
   ORT_API2_STATUS(AddFreeDimensionOverrideByName,
                   _Inout_ OrtSessionOptions* options, _In_ const char* dim_name,
                   _In_ int64_t dim_value);
+
+  ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
+
+  ORT_API2_STATUS(ExecutableKernelContext_AddInput,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  int index,
+                  _In_ OrtValue* value);
+
+  ORT_API2_STATUS(ExecutableKernelContext_AddImplicitInput,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  int index,
+                  _In_ OrtValue* value);
+
+  ORT_API2_STATUS(ExecutableKernelContext_AddOutput,
+                  _Inout_ OrtExecutableKernelContext* context,
+                  int index,
+                  _Inout_ OrtValue* value);
+
+  ORT_API2_STATUS(CreateExecutableKernelContext,
+                  _In_ const OrtExecutableKernel *kernel,
+                  _Outptr_ OrtExecutableKernelContext** context);
+
+  ORT_API2_STATUS(CreateExecutableKernel, _In_ const void* node_proto, _In_ const void* arg_to_type_map, _Outptr_ OrtExecutableKernel** kernel);
+
 };
 
 /*
