@@ -6,70 +6,33 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is a cross-platform model **inferencing and training accelerator** compatible with most popular ML/DNN frameworks, including PyTorch, Tensorflow/Keras, scikit-learn, CoreML, and more.
+**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more.
 
-For data scientists and ML engineers, ONNX runtime provides a high performance solution and cross platform APIs for systems to integrate with a single runtime across a variety of hardware options. Extensibility options support models with custom operators and the execution provider interface enables a growing list of hardware accelerators.
+Many users can benefit from ONNX Runtime, including those looking to:
+* Improve inference performance for a wide variety of ML models
+* Reduce time and cost of training large models
+* Train in Python but deploy into a C#/C++/Java app
+* Run on different hardware and operating systems
+* Support models created in several different frameworks
 
-[ONNX Runtime Inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and provide inferencing latency acceleration compared with the native framework.
+[ONNX Runtime inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
 
-[ONNX Runtime Training](./orttraining) APIs were introduced in May 2020 and currently supports PyTorch training acceleration on NVIDIA GPUs, with more to come soon.
+[ONNX Runtime training](./orttraining) APIs were introduced in May 2020 and currently support PyTorch training acceleration on NVIDIA GPUs for transformer models, with more to come soon.
+
 
 ***
 
 # Table of Contents
 
-* **[Overview](#overview)**
-  * [Framework Interoperability](#framework-interoperability)
-    * [High Performance Model Inferencing](#high-performance-model-inferencing)
-    * [Training Acceleration](#training-acceleration)
 * **[Get Started](#get-started)**
   * [ONNX Runtime Inferencing](#inferencing-start)
   * [ONNX Runtime Training](#training-start)
+* **[Overview](#overview)**
 * **[Data/Telemetry](#Data/Telemetry)**
 * **[Contributions and Feedback](#contribute)**
 * **[License](#license)**
 
 ***
-
-# Overview
-
-## Framework Interoperability
-
-Supporting models based on the standard [ONNX](https://onnx.ai) format, the runtime is compatible with PyTorch, scikit-learn, Tensorflow, Keras, CoreML, and all other popular frameworks that support [conversion or export to the interoperable format](https://github.com/onnx/tutorials#getting-onnx-models).
-
-ONNX Runtime is up to date and backwards compatible with all operators (both DNN and traditional ML) since ONNX v1.2.1+. [(ONNX opset compatibility details)](docs/Versioning.md). Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations.
-
-* [Supported operators/types](./docs/OperatorKernels.md)
-  * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
-* [Extensibility: Add a custom operator/kernel](docs/AddingCustomOp.md)
-
-## High Performance Model Inferencing
-
-The inference runtime provides a cross platform API compatible with Windows, Linux, and Mac across a variety of hardware architectures. Using graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
-
-* [Supported languages and architectures](#apis-and-official-builds)
-* [High level architectural design](docs/HighLevelDesign.md)
-* [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
-* [Extensibility: Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
-* [Extensibility: Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
-
-### Supported accelerators ("[Execution Providers](./docs/execution_providers))"
-
-|CPU|GPU|IoT/Edge/Mobile|Other|
-|---|---|---|---|
-|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML</ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)</li></ul>|
-
-* **[Get Started with ONNX Runtime Inferencing](inferencing-start)**
-* [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
-* [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)
-
-## Training Acceleration
-
-The training runtime works with existing training code from supported frameworks to accelerate computation of the operators in the model.
-
-The current version supports training acceleration for PyTorch-trained Transformer models on NVIDIA GPUs.
-
-* **[Get Started with ONNX Runtime Training](training-start)**
 
 # Get Started
 
@@ -77,17 +40,32 @@ The current version supports training acceleration for PyTorch-trained Transform
 
 ## Inferencing: Start
 
-To get an ONNX model, see [ONNX Tutorials](https://github.com/onnx/tutorials#getting-onnx-models).
-ONNX Runtime supports all versions of ONNX 1.2+. ([Full versioning compatibility](docs/Versioning.md#tool-compatibility))
-
 To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
 
+* [Compatibility](#compatibility)
 * [Binaries](#binaries)
 * [Build from source (includes additional combinations)](#build-from-source)
 * [Docker images](#docker-images)
-* [API Documentation](#api-documentation)
-* [Deploy ONNX Runtime Inferencing](#deploying-onnx-runtime)
+* [API documentation](#api-documentation)
+* [Hardware accelerators](#supported-accelerators)
+* [Deploy ONNX Runtime inferencing](#deploying-onnx-runtime)
 * [Samples](./samples)
+* [High level architectural design](docs/HighLevelDesign.md)
+* [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
+* [Extensibility: Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
+* [Extensibility: Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
+
+### Compatibility
+
+Supporting models based on the standard [ONNX](https://onnx.ai) format, the runtime is compatible with PyTorch, scikit-learn, TensorFlow, Keras, and all other frameworks and tools that support the interoperable format.
+
+* [Getting ONNX models - tutorials](https://github.com/onnx/tutorials#getting-onnx-models)
+
+ONNX Runtime is up to date and backwards compatible with all operators (both DNN and traditional ML) since ONNX v1.2.1+. [(ONNX compatibility details)](docs/Versioning.md). Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations. 
+
+* [Supported operators/types](./docs/OperatorKernels.md)
+  * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
+* [Extensibility: Add a custom operator/kernel](docs/AddingCustomOp.md)
 
 ### Binaries
 
@@ -149,15 +127,26 @@ For production scenarios, it's strongly recommended to build only from an [offic
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.4-2.7| [Samples](https://ankane.org/tensorflow-ruby)|
 |[Javascript (node.js)](./nodejs) | | [Samples](./nodejs/examples/README.md) |
 
+### Supported Accelerators
+
+[Execution Providers](./docs/execution_providers))
+
+|CPU|GPU|IoT/Edge/Mobile|Other|
+|---|---|---|---|
+|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML</ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)</li></ul>|
+
+* [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
+* [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)
+
 ### Deploying ONNX Runtime
 
 #### Cloud
 
-* ONNX Runtime can be deployed to the cloud for model inferencing using [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service).
+* ONNX Runtime can be deployed to any cloud for model inferencing, including [Azure Machine Learning Services](https://azure.microsoft.com/en-us/services/machine-learning-service).
   * [Detailed instructions](https://docs.microsoft.com/en-us/azure/machine-learning/service/how-to-build-deploy-onnx)
   * [AzureML sample notebooks](https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx)
 
-* **ONNX Runtime Server (beta)** is a hosted application for serving ONNX models using ONNX Runtime, providing a REST API for prediction.
+* **ONNX Runtime Server (beta)** is a hosting application for serving ONNX models using ONNX Runtime, providing a REST API for prediction.
   * [Usage details](./docs/ONNX_Runtime_Server_Usage.md)
   * [Image installation instructions](./dockerfiles#onnx-runtime-server-preview)
 
@@ -177,6 +166,8 @@ This is particularly important when there are massive volumes of incoming data/s
 ***
 
 ## Training: Start
+
+With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for PyTorch transformer models on NVIDIA GPUs.
 
 **[End-to-End Sample Notebook]()**
 
