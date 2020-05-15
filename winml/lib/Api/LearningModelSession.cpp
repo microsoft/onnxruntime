@@ -103,16 +103,16 @@ void LearningModelSession::Initialize() {
   engine_factory_.copy_from(model_impl->GetEngineFactory());
 
   com_ptr<_winml::IEngineBuilder> engine_builder;
-  engine_factory_->CreateEngineBuilder(engine_builder.put());
+  WINML_THROW_IF_FAILED(engine_factory_->CreateEngineBuilder(engine_builder.put()));
 
   if (device_impl->IsCpuDevice() == false) {
-    engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue());
-    engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled());
+    WINML_THROW_IF_FAILED(engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue()));
+    WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
 
   // Make onnxruntime apply the batch size override, if any
   if (session_options_ && session_options_.BatchSizeOverride() != 0) {
-    engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride());
+    WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
   }
 
   com_ptr<_winml::IEngine> engine;
@@ -123,7 +123,7 @@ void LearningModelSession::Initialize() {
   WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));
 
   // Register transformers - this should probably not be exposed on IEngine, but an internal call as this configuration step is ort specific.
-  engine->RegisterGraphTransformers();
+  WINML_THROW_IF_FAILED(engine->RegisterGraphTransformers());
 
   // Load the model into the session
   WINML_THROW_IF_FAILED(engine->LoadModel(model.get()));
@@ -229,17 +229,17 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
       std::back_inserter(outputs_raw),
       [&](auto& input) { return input.get(); });
 
-  engine_->Run(input_names_raw.data(),
+  WINML_THROW_IF_FAILED(engine_->Run(input_names_raw.data(),
                inputs_raw.data(),
                input_names_raw.size(),
                output_names_raw.data(),
                outputs_raw.data(),
-               output_names_raw.size());
+               output_names_raw.size()));
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
     // This allows us to wait without holding onto the lock in GetResults.
-    engine_->FlushContext();
+    WINML_THROW_IF_FAILED(engine_->FlushContext());
     return device->GetD3DDeviceCache()->QueueFenceToD3D12();
   }
 
@@ -268,10 +268,10 @@ LearningModelSession::GetResults(
   if (is_gpu_evaluation) {
     // For DML we aren't using the Sync function because we want to make fencing the
     // completed frame thread safe while not holding the lock while waiting for the gpu.
-    engine_->ReleaseCompletedReferences();
+    WINML_THROW_IF_FAILED(engine_->ReleaseCompletedReferences());
   } else {
     // For CPU call the standard Sync function
-    engine_->Sync();
+    WINML_THROW_IF_FAILED(engine_->Sync());
   }
 
   // This isn't the best we are holding the lock while we wait for detensorize on the GPU.

@@ -11,32 +11,18 @@
 
 namespace onnxruntime {
 
-void QGemmu8s8_s32(
+template <typename LeftScalar, typename RightScalar, typename OutputScalar>
+void QGemm(
     int M,
     int N,
     int K,
-    const uint8_t* lhs_data,
+    const LeftScalar* lhs_data,
     int lda,
-    const uint8_t lhs_offset,
-    const int8_t* rhs_data,
+    const LeftScalar lhs_offset,
+    const RightScalar* rhs_data,
     int ldb,
-    const int8_t rhs_offset,
-    int32_t* result_data,
+    const RightScalar rhs_offset,
+    OutputScalar* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool);
-
-void QGemmu8u8_s32(
-    int M,
-    int N,
-    int K,
-    const uint8_t* lhs_data,
-    int lda,
-    const uint8_t lhs_offset,
-    const uint8_t* rhs_data,
-    int ldb,
-    const uint8_t rhs_offset,
-    int32_t* result_data,
-    int ldc,
-    concurrency::ThreadPool* thread_pool);
-
 }  // namespace onnxruntime

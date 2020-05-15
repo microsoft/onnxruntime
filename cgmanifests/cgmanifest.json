@@ -4,98 +4,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "e7e1482087f58913b80a20b04d5c58d9d6d90155",
-               "repositoryUrl": "https://github.com/HowardHinnant/date.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "42c53187a56c12dc5518cc25e778e5e3e7dbaf72",
-               "repositoryUrl": "https://github.com/google/gemmlowp.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
-               "repositoryUrl": "https://github.com/google/googletest.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
                "commitHash": "58123b93bd7f12d17ac0c46379a0f2c0255d9213",
                "repositoryUrl": "https://github.com/martinmoene/gsl-lite.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
-               "repositoryUrl": "https://github.com/google/nsync.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "0c070abb0c40fec649f81a73a75b0098662ec486",
-               "repositoryUrl": "https://github.com/onnx/onnx.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "e776aa0275e293707b6a0901e0e8d8a8a3679508",
-               "repositoryUrl": "https://github.com/google/benchmark.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "00a0aa992953d6482114a0f539a21bb535a16383",
-               "repositoryUrl": "https://github.com/pybind/pybind11.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
-               "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "5b7683f49e1e9223cf9927b24f6fd3d6bd82e3f8",
-               "repositoryUrl": "https://github.com/google/benchmark.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "c3bb0ee2a63279a803aaad956b9b26d74bf9e6e2",
-               "repositoryUrl": "https://github.com/google/googletest.git"
             }
          }
       },
@@ -132,15 +42,6 @@
             "git": {
                "commitHash": "4d49691f1a9d944c3b0aa5e63f1db3cad1f941f8",
                "repositoryUrl": "https://github.com/dmlc/dmlc-core.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "54a0a9c9dd83aad42e79238ec8f0932b2a5e7881",
-               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
             }
          }
       },
@@ -238,24 +139,6 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
-               "repositoryUrl": "https://github.com/google/re2.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
-               "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
                "commitHash": "eeebdab16155d34ff8f5f42137da7df4d1c7eab0",
                "repositoryUrl": "https://github.com/BVLC/caffe.git"
             }
@@ -285,15 +168,6 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "c8ebe0da0776c1a6347139b074a901bd57fae499",
-               "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
                "commitHash": "950fbf183274ab7d2092f99bab6c809ae87c7054",
                "repositoryUrl": "https://github.com/NervanaSystems/ngraph.git"
             }
@@ -303,26 +177,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash":"647d4c3f4d47d9cf63fb90ec175c414a005adea7",
+               "commitHash": "647d4c3f4d47d9cf63fb90ec175c414a005adea7",
                "repositoryUrl": "https://github.com/JDAI-CV/DNNLibrary.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "9e7e8cbe9f675123dd41b7c62868acad39188cae",
-               "repositoryUrl": "https://github.com/google/flatbuffers.git"
-            }
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "8d7a107d68c127f3f494bb7807b796c8c5a97a82",
-               "repositoryUrl": "https://github.com/google/glog.git"
             }
          }
       },
@@ -392,15 +248,6 @@
       },
       {
          "component": {
-            "git": {
-              "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
-              "repositoryUrl": "https://github.com/microsoft/wil"
-            },
-            "type": "git"
-          }
-      },
-      {
-         "component":{
             "type": "other",
             "Other": {
                "Name": "Go",
@@ -431,38 +278,22 @@
       },
       {
          "component": {
-            "git": {
-               "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
-               "repositoryUrl": "https://github.com/NVlabs/cub.git"
-            },
-            "type": "git"
+            "Type": "other",
+            "Other": {
+               "Name": "OpenMPI",
+               "Version": "4.0.0",
+               "DownloadUrl": "https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz"
+            }
          }
       },
       {
          "component": {
-            "git": {
-               "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
-               "repositoryUrl": "https://github.com/nlohmann/json.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "fd5fe3de507d4a19f5923c5d4c267e3d730500a9",
-               "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
-            },
-            "type": "git"
-         }
-      },
-      {
-         "component": {
-            "git": {
-               "commitHash": "39de59d5bca3a226a241b29571abe1493d15d07a",
-               "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
-            },
-            "type": "git"
+            "Type": "other",
+            "Other": {
+               "Name": "NCCL",
+               "Version": "2.4.8",
+               "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
+            }
          }
       }
    ],

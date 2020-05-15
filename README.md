@@ -133,6 +133,7 @@ These system requirements must be met for using the compiled binaries.
   * Follow similar procedure to configure other locales on other platforms.
   
 #### Default CPU
+* Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
@@ -140,6 +141,7 @@ system.
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 
 #### Default GPU (CUDA)
+* Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 * The default GPU build requires CUDA runtime libraries being installed on the system:
 	 * Version: **CUDA 10.1** and **cuDNN 7.6.5**
 * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
