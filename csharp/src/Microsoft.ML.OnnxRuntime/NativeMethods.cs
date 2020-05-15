@@ -13,6 +13,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetVersionString;
     };
 
+    // NOTE: The order of the APIs in this struct should match exactly that in
+    // OrtApi ort_api_1_to_3 (onnxruntime_c_api.cc)
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
@@ -38,8 +40,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EnableCpuMemArena;
         public IntPtr DisableCpuMemArena;
         public IntPtr SetSessionLogId;
-        public IntPtr SetSessionLogSeverityLevel;
         public IntPtr SetSessionLogVerbosityLevel;
+        public IntPtr SetSessionLogSeverityLevel;
         public IntPtr SetSessionGraphOptimizationLevel;
         public IntPtr SetIntraOpNumThreads;
         public IntPtr SetInterOpNumThreads;
@@ -59,8 +61,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
         public IntPtr CreateRunOptions;
-        public IntPtr RunOptionsSetRunLogSeverityLevel;
         public IntPtr RunOptionsSetRunLogVerbosityLevel;
+        public IntPtr RunOptionsSetRunLogSeverityLevel;
         public IntPtr RunOptionsSetRunTag;
         public IntPtr RunOptionsGetRunLogVerbosityLevel;
         public IntPtr RunOptionsGetRunLogSeverityLevel;
