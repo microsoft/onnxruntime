@@ -3,6 +3,7 @@
 
 set(WINML_TEST_SRC_DIR ${REPO_ROOT}/winml/test)
 set(WINML_TEST_INC_DIR
+  ${REPO_ROOT}/winml/api
   ${REPO_ROOT}/winml/test/common
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
@@ -10,6 +11,7 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/cmake/external/googletest/googletest/include
   ${REPO_ROOT}/cmake/external/protobuf/src
   ${REPO_ROOT}/cmake/external/wil/include
+  ${REPO_ROOT}/cmake/external/SafeInt
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
@@ -47,7 +49,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -61,14 +63,15 @@ function(get_winml_test_scenario_src
   output_winml_test_scenario_libs
 )
   if (onnxruntime_USE_DML)
-    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS 
+    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS
         "${winml_test_src_path}/scenario/cppwinrt/*.h"
         "${winml_test_src_path}/scenario/cppwinrt/*.cpp")
     set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
   else()
     set(winml_test_scenario_src
         "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.h"
-        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+        "${winml_test_src_path}/scenario/cppwinrt/scenariotestscppwinrt.cpp"
+        )
   endif()
   set(${output_winml_test_scenario_src} ${winml_test_scenario_src} PARENT_SCOPE)
 endfunction()
@@ -77,10 +80,33 @@ function(get_winml_test_api_src
   winml_test_src_path
   output_winml_test_api_src
 )
-  file(GLOB winml_test_api_src CONFIGURE_DEPENDS 
-      "${winml_test_src_path}/api/*.h"
-      "${winml_test_src_path}/api/*.cpp")
-  set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
+  file(GLOB winml_test_api_src CONFIGURE_DEPENDS
+      "${winml_test_src_path}/api/APITest.h"
+      "${winml_test_src_path}/api/LearningModelAPITest.h"
+      "${winml_test_src_path}/api/LearningModelBindingAPITest.h"
+      "${winml_test_src_path}/api/LearningModelSessionAPITest.h"
+      "${winml_test_src_path}/api/LearningModelAPITest.cpp"
+      "${winml_test_src_path}/api/LearningModelBindingAPITest.cpp"
+      "${winml_test_src_path}/api/LearningModelSessionAPITest.cpp")
+
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
+endfunction()
+
+function(get_winml_test_api_redist_only_src
+  winml_test_src_path
+  output_winml_test_api_src
+)
+  file(GLOB winml_redist_only_api_src CONFIGURE_DEPENDS
+  "${winml_test_src_path}/api/RawApiHelpers.h"
+  "${winml_test_src_path}/api/RawApiTests.h"
+  "${winml_test_src_path}/api/RawApiTestsGpu.h"
+  "${winml_test_src_path}/api/RawApiHelpers.cpp"
+  "${winml_test_src_path}/api/RawApiTests.cpp"
+  "${winml_test_src_path}/api/RawApiTestsGpu.cpp"
+  "${winml_test_src_path}/api/raw/*.h"
+  "${winml_test_src_path}/api/raw/*.cpp")
+
+  set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
 endfunction()
 
 function(get_winml_test_concurrency_src
@@ -98,8 +124,8 @@ function(get_winml_test_adapter_src
   output_winml_test_adapter_src
   output_winml_test_adapter_libs
 )
-  set(${output_winml_test_adapter_libs} "onnxruntime" PARENT_SCOPE)
-  file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS 
+  set(${output_winml_test_adapter_libs} onnxruntime winml_lib_ort winml_test_common PARENT_SCOPE)
+  file(GLOB winml_test_adapter_src CONFIGURE_DEPENDS
       "${winml_test_src_path}/adapter/*.h"
       "${winml_test_src_path}/adapter/*.cpp")
   set(${output_winml_test_adapter_src} ${winml_test_adapter_src} PARENT_SCOPE)
@@ -118,7 +144,7 @@ function(get_winml_test_image_src
   set(${output_winml_test_image_src} ${winml_test_image_src} PARENT_SCOPE)
 endfunction()
 
-file(GLOB winml_test_common_src CONFIGURE_DEPENDS 
+file(GLOB winml_test_common_src CONFIGURE_DEPENDS
     "${WINML_TEST_SRC_DIR}/common/*.h"
     "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
@@ -133,12 +159,17 @@ set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
 get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
+
+if (NOT ${winml_is_inbox})
+  get_winml_test_api_redist_only_src(${WINML_TEST_SRC_DIR} winml_test_api_redist_only_src)
+endif()
+
 add_winml_test(
   TARGET winml_test_api
-  SOURCES ${winml_test_api_src}
+  SOURCES ${winml_test_api_src} ${winml_test_api_redist_only_src}
   LIBS winml_test_common delayimp.lib
 )
-target_link_options(winml_test_api PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_link_options(winml_test_api PRIVATE /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_api PRIVATE /DELAYLOAD:directml.dll)
 endif()
@@ -184,14 +215,36 @@ add_winml_test(
   LIBS winml_test_common
 )
 target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/winml/lib/Api.Ort)
 
 get_winml_test_adapter_src(${WINML_TEST_SRC_DIR} winml_test_adapter_src winml_test_adapter_libs)
 add_winml_test(
   TARGET winml_test_adapter
   SOURCES ${winml_test_adapter_src}
-  LIBS winml_test_common ${winml_test_adapter_libs}
+  LIBS ${winml_test_adapter_libs}
 )
 target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/adapter)
+target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml/lib/Api.Ort)
+
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
+
+target_include_directories(winml_test_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_include_directories(winml_test_adapter PRIVATE ${REPO_ROOT}/winml ${REPO_ROOT}/winml/lib/Api/inc)
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_core_dir})
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_api_ort_dir})
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)
+target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
+
+onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
+target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})
+target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
@@ -220,6 +273,8 @@ add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/images/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.jpg")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/groundTruth/*.png")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.jpg")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/image/batchGroundTruth/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/image/models/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/models/*.onnx")

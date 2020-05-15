@@ -1503,13 +1503,44 @@ void RegisterPCAFeaturizerVer1() {
 
 void RegisterRobustScalerFeaturizerVer1() {
   //static const char* doc = R"DOC(
-  //      MinMaxScalarEstimator + centering?
+    // Remove the median and scales the data according to the quantile range.
 
-  //      C++-style pseudo signature:
-  //          TODO
+    // C++-style pseudo signature:
+    //     float execute(TInputFloat const &value);
+    //     double execute(TInputDouble const &value);
 
-  //      Examples:
-  //        TODO
+    // Examples:
+    //   Assuming the Training data [[ 1, -2, 2], [-2, 1, 3], [ 4, 1,-2]]
+
+    //   There are 3 columns...
+    //       column 1          column 2          column 3
+    //          1                 -2                2
+    //         -2                  1                3
+    //          4                  1               -2
+
+    //   For each column, we calculate the median value...
+    //       column 1          column 2          column 3
+    //          1                  1                2
+
+    //   Also calculate the range for each column
+    //       column 1          column 2          column 3
+    //     4 - (-2) = 6      1 - (-2) = 3      3 - (-2) = 5
+
+    //   Apply quantile range(QR) to the ranges, assuming the QR is [q_min = 25, q_max = 75], we get the scaling value = range * (q_max% - q_min%) for each column
+    //       column 1          column 2          column 3
+    //     6 * 50% = 3       3 * 50% = 1.5     5 * 50% = 2.5
+
+    //   Remove the median and scales the original data per column
+    //       column 1          column 2          column 3
+    //     ( 1 - 1) / 3     (-2 - 1) / 1.5    ( 2 - 2) / 2.5
+    //     (-2 - 1) / 3     ( 1 - 1) / 1.5    ( 3 - 2) / 2.5
+    //     ( 4 - 1) / 3     ( 1 - 1) / 1.5    (-2 - 2) / 2.5
+
+    //   The final result is
+    //       column 1          column 2          column 3
+    //          0                 -2                0
+    //         -1                  0              0.4
+    //          1                  0             -1.6
   //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(RobustScalerTransformer)
@@ -1605,7 +1636,7 @@ void RegisterRollingWindowFeaturizerVer1() {
   //     +-----------+-------+-------------------+
   //)DOC";
 
-  MS_FEATURIZERS_OPERATOR_SCHEMA(RollingWindowTransformer)
+  MS_FEATURIZERS_OPERATOR_SCHEMA(AnalyticalRollingWindowTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
       .Input(
@@ -1655,6 +1686,104 @@ void RegisterRollingWindowFeaturizerVer1() {
 
               ONNX_NAMESPACE::TensorShapeProto shape;
               *shape.add_dim() = grains_shape.dim(0);
+              shape.add_dim();
+              shape.add_dim();
+              ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
+            }
+            if (hasInputShape(ctx, 2)) {
+              const auto& target_shape = getInputShape(ctx, 2);
+              if (target_shape.dim_size() != 1) {
+                fail_shape_inference("Expecting Target to have 1 dimensions");
+              }
+            }
+          });
+
+  //static const char* doc = R"DOC(
+      // Calculates data based on a rolling window. Currently supports minimum and maximum. Works for any data set that is already sorted.
+      //
+      // Input type for this featurizer is a tuple of the grain columns and target column to find the value. It is assumed that the data is sorted in the correct order.
+      //
+      // C++-style pseudo signature:
+      //   template <typename T> matrix<T> execute(std::tuple<std::vector<std::string> const &, T const &> value);
+      //
+      // Examples:
+      //     A simple example would be horizon = 1, maxWindowSize = 2, and we want to take the minimum.
+      //     +-----------+-------+-------------------+
+      //     | grain     | target| target_minimum    |
+      //     +===========+=======+===================+
+      //     | A         | 10    | [[NAN]]           |
+      //     +-----------+-------+-------------------+
+      //     | A         | 4     | [[10]]            |
+      //     +-----------+-------+-------------------+
+      //     | A         | 6     | [[4]]             |
+      //     +-----------+-------+-------------------+
+      //     | A         | 11    | [[4]]             |
+      //     +-----------+-------+-------------------+
+      //     A more complex example would be, assuming we have horizon = 2, maxWindowSize = 2, minWindowSize = 2, and we want the maximum value
+      //     +-----------+-------+-------------------+
+      //     | grain     | target| target_max        |
+      //     +===========+=======+===================+
+      //     | A         | 10    | [[NAN, NAN]]      |
+      //     +-----------+-------+-------------------+
+      //     | A         | 4     | [[NAN, NAN]]      |
+      //     +-----------+-------+-------------------+
+      //     | A         | 6     | [[NAN, 10]]       |
+      //     +-----------+-------+-------------------+
+      //     | A         | 11    | [[10, 6]]         |
+      //     +-----------+-------+-------------------+
+  //)DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(SimpleRollingWindowTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Grains",
+          "Grains tensor of shape [R][K].",
+          "GrainT")
+      .Input(
+          2,
+          "Target",
+          "Target tensor of shape [R]",
+          "T")
+      .Output(
+          0,
+          "Output",
+          "Output tensor of shape [R][M]",
+          "OutputT")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "GrainT",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(double)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT",
+          {"tensor(double)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
+            if (hasInputShape(ctx, 1)) {
+              const auto& grains_shape = getInputShape(ctx, 1);
+              if (grains_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting Grains to have 2 dimensions");
+              }
+
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              *shape.add_dim() = grains_shape.dim(0);
+              shape.add_dim();
               shape.add_dim();
               ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
             }
@@ -1730,13 +1859,23 @@ void RegisterNormalizeFeaturizerVer1() {
 
 void RegisterShortGrainDropperFeaturizerVer1() {
   // static const char* doc = R"DOC(
-  //     Drop rows of TimeSeriesDataFrame with short grains
+  //  Returns true to indicate that a row should be dropped if it wasn't encountered during training.
 
-  //     C++-style pseudo signature:
-  //       bool execute(std::vector<std::string> const &value);
+  //  C++-style pseudo signature:
+  //    bool execute(std::vector<std::string> const &value);
 
-  //     Examples:
-  //       todo:
+  //  Examples:
+  //    Consider the training data:
+
+  //    [ ["one"], ["two"], ["two"], ["three"], ["three"], ["three"] ]
+
+  //    and a ShortGrainDropper configured with minPoints set to 2. Grains ["two"] and ["three"] appear
+  //    enough times in the training data to remain, while any other grain should be dropped:
+
+  //    [ "one" ] -> true                         # drop
+  //    [ "two" ] -> false                        # dont' drop
+  //    [ "three" ] -> false                      # don't drop
+  //    [ "never seen during training" ] -> true  # drop
   // )DOC";
   MS_FEATURIZERS_OPERATOR_SCHEMA(ShortGrainDropperTransformer)
       .SinceVersion(1)
@@ -2066,11 +2205,20 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "Keys",
           "Composite keys tensor of shape [R][K]. R is the same as Input(1)",
           "T2")
+      // The first input in Input(3)(a variadic tensor that has multiple output) is the below commented input
+      // for the ONNX requirement that allow 0 size of variadic input
+      // .Input(
+      //     3,
+      //     "Data",
+      //     "It is a data tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
+      //     "T2")
       .Input(
           3,
-          "Data",
-          "It is a data tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
-          "T2")
+          "Input",
+          "Variadic number of Inputs containing tensors of different type",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .Output(
           0,
           "Added",
@@ -2086,12 +2234,21 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "ImputedKeys",
           "Contains keys along with the imputed keys. Tensor of shape [IR][K].",
           "T2")
+      // The first output in Output(3)(a variadic tensor that has multiple output) is the below commented output
+      // for the ONNX requirement that allow 0 size of variadic output
+      // .Output(
+      //     3,
+      //     "ImputedData",
+      //     "Tensor of shape [IR][C] where IR is the number of rows in the output."
+      //     "C is the number of columns.",
+      //     "T2")
       .Output(
           3,
-          "ImputedData",
-          "Tensor of shape [IR][C] where IR is the number of rows in the output."
-          "C is the number of columns.",
-          "T2")
+          "Output",
+          "Variadic number of Outputs containing tensors of different type",
+          "T",
+          ONNX_NAMESPACE::OpSchema::FormalParameterOption::Variadic,
+          false)
       .TypeConstraint(
           "T0",
           {"tensor(uint8)"},
@@ -2108,6 +2265,11 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "T3",
           {"tensor(bool)"},
           "Boolean Tensor")
+      .TypeConstraint(
+          "T",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)",
+           "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
+          "No information is available")
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
@@ -2132,12 +2294,12 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
               ONNX_NAMESPACE::updateOutputShape(ctx, 2, shape);
             }
 
-            // Data shape
+            //Data Shape & Variadic I/O shapes
             propagateElemTypeFromInputToOutput(ctx, 3, 3);
             if (hasInputShape(ctx, 3)) {
               const auto& input3_shape = getInputShape(ctx, 3);
               if (input3_shape.dim_size() != 2) {
-                fail_shape_inference("Expecting data to have 2 dimensions");
+                fail_shape_inference("Expecting data and variadic inputs to have 2 dimensions");
               }
               ONNX_NAMESPACE::TensorShapeProto shape;
               shape.add_dim();

@@ -28,6 +28,15 @@
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary
+[submodule "cmake/external/horovod"]
+	path = cmake/external/horovod
+	url = https://github.com/horovod/horovod.git
+[submodule "cmake/external/cxxopts"]
+	path = cmake/external/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
+[submodule "cmake/external/tensorboard"]
+	path = cmake/external/tensorboard
+	url = https://github.com/tensorflow/tensorboard.git
 [submodule "cmake/external/mimalloc"]
 	path = cmake/external/mimalloc
 	url = https://github.com/microsoft/mimalloc.git

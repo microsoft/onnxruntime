@@ -42,6 +42,11 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   return Status::OK();
 }
 
+void IOBinding::ClearInputs() {
+  feed_names_.clear();
+  feeds_.clear();
+}
+
 static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& node_info_map,
                                     const SessionState& session_state) {
   std::set<std::string> providers;
@@ -83,6 +88,11 @@ common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml
   output_names_.push_back(name);
   outputs_.push_back(ml_value);
   return Status::OK();
+}
+
+void IOBinding::ClearOutputs() {
+  output_names_.clear();
+  outputs_.clear();
 }
 
 const std::vector<std::string>& IOBinding::GetOutputNames() const {

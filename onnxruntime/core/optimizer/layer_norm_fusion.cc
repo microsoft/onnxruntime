@@ -12,6 +12,8 @@ namespace onnxruntime {
 
 // LayerNorm supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
+// Default epsilon
+static const float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -169,10 +171,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     nodes_to_remove.push_back(reduce_mean2_node);
-
+    
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         pow_node.GetOutputEdgesCount() != 1 ||
         !IsSupportedDataType(pow_node)) {
@@ -256,11 +258,12 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
-    if (tensor_proto != nullptr) {
-      if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (tensor_proto != nullptr &&
+      tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
         Initializer initializer{*tensor_proto, graph.ModelPath()};
         layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
-      }
+    } else {
+      layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.

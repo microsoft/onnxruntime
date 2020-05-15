@@ -22,7 +22,7 @@ struct CustomOperatorProvider :
       auto winml_dll_name =  dll.str();
 
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-        m_library = LoadLibraryW(winml_dll_name.c_str());
+        m_library = LoadLibraryExW(winml_dll_name.c_str(), nullptr, 0);
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PC_APP)
         m_library = LoadPackagedLibrary(winml_dll_name.c_str(), 0 /*Reserved*/);
 #endif

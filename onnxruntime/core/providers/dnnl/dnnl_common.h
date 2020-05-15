@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "gsl/gsl-lite.hpp"
 #include "dnnl.hpp"
 #include <unordered_map>
 #include <list>
@@ -65,9 +66,11 @@ class PrimitivePool {
  private:
   // For thread safety, the map needs to be kept in thread local storage.
   static inline std::unordered_map<std::string, std::unique_ptr<PrimitiveBase>>& GetMap() {
-    static thread_local std::unordered_map<std::string, std::unique_ptr<PrimitiveBase>> map;
-    return map;
+    using MapType = std::unordered_map<std::string, std::unique_ptr<PrimitiveBase>>;
+    static thread_local DeleteOnUnloadPtr<MapType> map(new MapType());
+    return *map;
   }
 };
+
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

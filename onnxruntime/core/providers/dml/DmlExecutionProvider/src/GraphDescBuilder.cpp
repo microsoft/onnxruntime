@@ -14,8 +14,21 @@ namespace Dml::GraphDescBuilder
     // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
     static std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
     {
-        // The suffix used when inserting mem copies is equal to the below, followed by an incrementing number.
-        const char* suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+        const char* suffix = nullptr;
+        
+        // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
+        if (!suffix) {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
+        }
+
+        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
+        if (!suffix) {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
+        }
+        
+        if (!suffix) {
+            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
+        }
 
         if (suffix)
         {
@@ -23,9 +36,9 @@ namespace Dml::GraphDescBuilder
                 fusedNodeArgeName.begin(),
                 fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
             );
+        } else {
+            return fusedNodeArgeName;
         }
-
-        return fusedNodeArgeName;
     }
 
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
@@ -88,9 +101,9 @@ namespace Dml::GraphDescBuilder
         StackAllocator<1024> allocator; // Used for converting abstract operator descs into DML_OPERATOR_DESC
 
         std::vector<NodeInfo> graphNodes;
-        std::vector<DML_PREVIEW_INPUT_GRAPH_EDGE> graphInputEdges;
-        std::vector<DML_PREVIEW_INTERMEDIATE_GRAPH_EDGE> graphIntermediateEdges;
-        std::vector<DML_PREVIEW_OUTPUT_GRAPH_EDGE> graphOutputEdges;
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> graphInputEdges;
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> graphIntermediateEdges;
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> graphOutputEdges;
 
         // Get the topological sorting of Lotus nodes
         // paulm: breaking change from LOTUS that removed GetNodesInTopologicalOrder from Graph
@@ -192,13 +205,21 @@ namespace Dml::GraphDescBuilder
                 if (arg->Exists())
                 {
                     auto iter = nameToFusedNodeInputIndex.find(arg->Name());
+
+                    // The graph input could be missing the suffix, so try to match without it.
+                    // This is part of a temporary workaround; see comments in GetFusedNodeArgNameMatchingGraph.
+                    if (iter == nameToFusedNodeInputIndex.end())
+                    {
+                        iter = nameToFusedNodeInputIndex.find(GetFusedNodeArgNameMatchingGraph(arg->Name()));
+                    }
+
                     if (iter != nameToFusedNodeInputIndex.end())
                     {
                         // This is a graph input
 
                         const uint32_t fusedNodeInputIndex = iter->second;
 
-                        DML_PREVIEW_INPUT_GRAPH_EDGE edge = {};
+                        DML_INPUT_GRAPH_EDGE_DESC edge = {};
                         edge.GraphInputIndex = fusedNodeInputIndex;
                         edge.ToNodeIndex = nodeIndex;
                         edge.ToNodeInputIndex = inputIndex;
@@ -216,7 +237,7 @@ namespace Dml::GraphDescBuilder
                     {
                         const auto& inputNodeAndIndex = nameToNodeAndIndexMap.at(arg->Name());
 
-                        DML_PREVIEW_INTERMEDIATE_GRAPH_EDGE edge = {};
+                        DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
                         edge.FromNodeIndex = inputNodeAndIndex.nodeIndex;
                         edge.FromNodeOutputIndex = inputNodeAndIndex.targetIndex;
                         edge.ToNodeIndex = nodeIndex;
@@ -259,7 +280,7 @@ namespace Dml::GraphDescBuilder
 
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 
-            DML_PREVIEW_OUTPUT_GRAPH_EDGE edge = {};
+            DML_OUTPUT_GRAPH_EDGE_DESC edge = {};
             edge.FromNodeIndex = outputNodeAndIndex.nodeIndex;
             edge.FromNodeOutputIndex = outputNodeAndIndex.targetIndex;
             edge.GraphOutputIndex = gsl::narrow_cast<uint32_t>(outputIndex);

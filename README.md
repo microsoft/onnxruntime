@@ -28,6 +28,7 @@ ONNX Runtime stays up to date with the ONNX standard and supports all operators 
   * [Builds and Packages](#Builds-and-Packages)
 * **[Usage](#usage)**
   * [Samples and Tutorials](./samples)
+  * [Frequently Asked Questions](./docs/FAQ.md)
   * [Getting ONNX Models](#getting-onnx-models)
   * [Deploying ONNX Runtime](#deploying-onnx-runtime)
   * [Data/Telemetry](#Data/Telemetry)
@@ -50,9 +51,11 @@ Using various graph optimizations and accelerators, ONNX Runtime can provide low
 ### Supported Accelerators
 The list of currently supported accelerators (termed [Execution Providers](./docs/execution_providers)) is below. Please see [BUILD.md](./BUILD.md) for build instructions. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
+Please refer to [Roadmap](./docs/Roadmap.md#accelerators-and-execution-providers) for a list of upcoming accelerators. 
+
 #### CPU
 * Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*
-* [Intel DNNL](./docs/execution_providers/MKL-DNN-ExecutionProvider.md)
+* [Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)
 * [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
 * Intel MKL-ML 
 
@@ -94,9 +97,16 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 
 ## Builds and Packages
 
-Official builds are published for the default CPU Provider (Eigen + MLAS), as well as GPU with CUDA. Python packages can be found on PyPi, and C#/C/C++ packages on Nuget. Please view the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
+Official builds are available for:
+* Default CPU Provider (Eigen + MLAS)
+* GPU Provider - NVIDIA CUDA
+  * *note: If your deployment target is Windows, the [DirectML execution provider](./docs/execution_providers/DirectML-ExecutionProvider.md) is recommended for optimal performance and compatibility with a broad set of GPUs. This will be an official package soon. In the meantime, see the build instructions at [BUILD.md](./BUILD.md#directml).* 
 
-For additional build flavors and/or dockerfiles, please see [BUILD.md](BUILD.md). For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
+Python packages can be found on PyPi, and C#/C/C++ packages on Nuget. Please view the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
+
+For additional build flavors and/or dockerfiles, please carefully read through [BUILD.md](./BUILD.md). If you encounter problems, please provide as much information as possible when filing an [issue](https://github.com/Microsoft/onnxruntime/issues). 
+
+For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 #### PyPi (Python):
 *If using `pip` to download the Python binaries, run `pip install --upgrade pip` prior to downloading.*
@@ -123,6 +133,7 @@ These system requirements must be met for using the compiled binaries.
   * Follow similar procedure to configure other locales on other platforms.
   
 #### Default CPU
+* Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
@@ -130,6 +141,7 @@ system.
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 
 #### Default GPU (CUDA)
+* Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 * The default GPU build requires CUDA runtime libraries being installed on the system:
 	 * Version: **CUDA 10.1** and **cuDNN 7.6.5**
 * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
@@ -138,7 +150,9 @@ system.
 * For requirements and dependencies of other build options, see detailed build instructions on the [BUILD.md](./BUILD.md#additional-build-instructions) page.
 ***
 # Usage
-Please see [Samples and Tutorials](./samples) for examples.
+## [Samples and Tutorials](./samples)
+
+## [Frequently Asked Questions](./docs/FAQ.md)
 
 ## Getting ONNX Models
 To get an ONNX model, please view these [ONNX Tutorials](https://github.com/onnx/tutorials#getting-onnx-models).
