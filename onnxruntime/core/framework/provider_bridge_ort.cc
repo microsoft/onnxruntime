@@ -504,11 +504,15 @@ struct ProviderHostImpl : ProviderHost {
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) {
-
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
     Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_)
       return;
+
+#ifdef _WIN32
+    HMODULE ignore;
+    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "vcomp140.dll", &ignore);
+#endif
 
     Provider* (*PGetProvider)();
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
