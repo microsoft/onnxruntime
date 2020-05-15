@@ -10,6 +10,8 @@
 jobs:
 - job: Manylinux2010_py_Wheels
   timeoutInMinutes: 90
+  workspace:
+     clean: all
   pool: Linux-CPU
   strategy:
     matrix:
@@ -344,6 +346,8 @@ jobs:
 
 - job: Linux_ARM_py_Wheels
   timeoutInMinutes: 60
+  workspace:
+     clean: all
   pool: 'Linux-CPU'
   strategy:
     matrix:
@@ -403,3 +407,4 @@ jobs:
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/dist'
         ArtifactName: onnxruntime
+    - template: templates/clean-agent-build-directory-step.yml
