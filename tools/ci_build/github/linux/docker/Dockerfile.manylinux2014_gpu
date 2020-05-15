@@ -1,11 +1,12 @@
 FROM quay.io/pypa/manylinux2014_x86_64:2020-05-03-c2ce11e
 
 ARG PYTHON_VERSION=3.5
+ARG BUILD_EXTR_PAR
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/install_centos.sh && \
-    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION && \
+    /tmp/scripts/install_deps.sh -d gpu -p $PYTHON_VERSION -x "$BUILD_EXTR_PAR" && \
     rm -rf /tmp/scripts
 
 RUN yum remove -y devtoolset-\* && \

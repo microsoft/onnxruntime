@@ -56,7 +56,6 @@ stages:
       actual_extra_build_py_parameters: >
         ${{ parameters.build_py_parameters }}
         --enable_training
-        --skip_python_training_tests
         --wheel_name_suffix training
       docker_image_prefix: onnxruntime-training
       linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
@@ -158,6 +157,7 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
+                --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}"
                 -f ${{ variables.linux_gpu_dockerfile }} .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 

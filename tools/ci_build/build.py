@@ -153,9 +153,6 @@ def parse_arguments():
     parser.add_argument(
         "--skip-keras-test", action='store_true',
         help="Skip tests with Keras if keras is installed")
-    parser.add_argument(
-        "--skip_python_training_tests", action='store_true',
-        help="Skip Python training tests.")
 
     # C-Sharp bindings
     parser.add_argument(
@@ -1105,7 +1102,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
-            if not args.skip_python_training_tests and args.enable_training and args.use_cuda:
+            if args.enable_training and args.use_cuda:
                 # run basic frontend tests
                 run_subprocess(
                     [sys.executable, 'onnxruntime_test_ort_trainer.py'],
