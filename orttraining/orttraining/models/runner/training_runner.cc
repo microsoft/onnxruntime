@@ -17,6 +17,7 @@
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
 #include "single_include/nlohmann/json.hpp"
+#include "test/perftest/utils.h"
 
 using json = nlohmann::json;
 
@@ -581,6 +582,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       params_.mpi_context.world_rank == 0 &&
       checkpoint_registry_ && params_.checkpoint_period > 0;
 
+  std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
+  if (!params_.perf_output_dir.empty()) {
+    cpu_usage_calculator = perftest::utils::CreateICPUUsage();
+  }
+
   if (test_data_loader) {
     ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
   }
@@ -726,10 +732,13 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   if (params_.perf_output_dir.empty()) {
     printf("No perf output directory specified, skipping save of trained perf metrics.\n");
   } else {
+    const short average_cpu_usage = cpu_usage_calculator->GetUsage();
+    const size_t peak_workingset_size = perftest::utils::GetPeakWorkingSetSize();
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
     ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, 
-                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, mapped_dimensions));
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, mapped_dimensions,
+                                        average_cpu_usage, peak_workingset_size));
   }
 
   std::cout << "Round: " << round_ << "\n"
@@ -748,7 +757,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                                        const size_t weight_update_steps, const double total_time,
                                        const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
-                                       const MapStringToString& mapped_dimensions) {
+                                       const MapStringToString& mapped_dimensions, 
+                                       const short average_cpu_usage, const size_t peak_workingset_size) {
   // populate metrics for reporting
   json perf_metrics;
   perf_metrics["Model"] = params_.model_type;  
@@ -789,10 +799,8 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
                              (seq_len.empty() ? "" : "_" + seq_len) + "_" + optimizer;
   perf_metrics["DisplayName"] = display_name;
 
-
-  // TODO - add memory/cpu
-  //j["Memory"] = ;
-  //j["AvgCPU"] = ;
+  perf_metrics["Memory"] = peak_workingset_size;
+  perf_metrics["AvgCPU"] = average_cpu_usage;
 
   //
   // we will get date/time and commitId in post-run pipeline
