@@ -403,4 +403,3 @@ jobs:
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/dist'
         ArtifactName: onnxruntime
-    - template: templates/clean-agent-build-directory-step.yml
