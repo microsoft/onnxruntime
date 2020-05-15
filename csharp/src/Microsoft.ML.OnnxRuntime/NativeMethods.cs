@@ -127,6 +127,14 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseTensorTypeAndShapeInfo;
         public IntPtr ReleaseSessionOptions;
         public IntPtr ReleaseCustomOpDomain;
+        public IntPtr GetDenotationFromTypeInfo;
+        public IntPtr CastTypeInfoToMapTypeInfo;
+        public IntPtr CastTypeInfoToSequenceTypeInfo;
+        public IntPtr GetMapKeyType;
+        public IntPtr GetMapValueType;
+        public IntPtr GetSequenceElementType;
+        public IntPtr ReleaseMapTypeInfo;
+        public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
     }
 
@@ -161,6 +169,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtSessionGetInputName = (DOrtSessionGetInputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputName, typeof(DOrtSessionGetInputName));
             OrtSessionGetOutputName = (DOrtSessionGetOutputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputName, typeof(DOrtSessionGetOutputName));
+            OrtSessionEndProfiling = (DOrtSessionEndProfiling)Marshal.GetDelegateForFunctionPointer(api_.SessionEndProfiling, typeof(DOrtSessionEndProfiling));
             OrtSessionGetOverridableInitializerName = (DOrtSessionGetOverridableInitializerName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerName, typeof(DOrtSessionGetOverridableInitializerName));
             OrtSessionGetInputTypeInfo = (DOrtSessionGetInputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputTypeInfo, typeof(DOrtSessionGetInputTypeInfo));
             OrtSessionGetOutputTypeInfo = (DOrtSessionGetOutputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputTypeInfo, typeof(DOrtSessionGetOutputTypeInfo));
@@ -226,7 +235,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
-            OrtSessionEndProfiling = (DOrtSessionEndProfiling)Marshal.GetDelegateForFunctionPointer(api_.SessionEndProfiling, typeof(DOrtSessionEndProfiling));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -315,6 +323,12 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(OrtAllocator*)*/ allocator,
                                                 out IntPtr /*(char**)*/name);
         public static DOrtSessionGetOutputName OrtSessionGetOutputName;
+
+        public delegate IntPtr /*(OrtStatus*)*/DOrtSessionEndProfiling(
+                                                IntPtr /*(const OrtSession*)*/ session,
+                                                IntPtr /*(OrtAllocator*)*/ allocator,
+                                                out IntPtr /*(char**)*/profile_file);
+        public static DOrtSessionEndProfiling OrtSessionEndProfiling;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerName(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -654,12 +668,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate void DOrtReleaseValue(IntPtr /*(OrtValue*)*/ value);
         public static DOrtReleaseValue OrtReleaseValue;
-
-        public delegate IntPtr /*(OrtStatus*)*/DOrtSessionEndProfiling(
-                IntPtr /*(const OrtSession*)*/ session,
-                IntPtr /*(OrtAllocator*)*/ allocator,
-                out IntPtr /*(char**)*/profile_file);
-        public static DOrtSessionEndProfiling OrtSessionEndProfiling;
 
         #endregion
 

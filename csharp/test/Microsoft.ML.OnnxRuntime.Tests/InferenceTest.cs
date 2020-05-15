@@ -292,14 +292,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        public void InferenceSessionManualDispose()
+        public void InferenceSessionManualDisposeAfterUse()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
             // Set the graph optimization level for this session.
             SessionOptions options = new SessionOptions();
-            options.EnableProfiling = false;
-            //options.ProfileOutputPathPrefix = "Ort_P_";
+            options.ProfileOutputPathPrefix = "Ort_P_";
+            options.EnableProfiling = true;
             var session = new InferenceSession(modelPath, options);
 
 
