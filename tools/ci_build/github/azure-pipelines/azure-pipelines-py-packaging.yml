@@ -65,6 +65,8 @@ jobs:
 
     - template: templates/component-governance-component-detection-steps.yml
 
+    - template: templates/clean-agent-build-directory-step.yml
+
 - job: Manylinux2010_py_GPU_Wheels
   timeoutInMinutes: 90
   workspace:
@@ -401,3 +403,4 @@ jobs:
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/dist'
         ArtifactName: onnxruntime
+    - template: templates/clean-agent-build-directory-step.yml
