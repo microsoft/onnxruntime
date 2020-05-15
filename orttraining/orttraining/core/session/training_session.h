@@ -186,10 +186,10 @@ class TrainingSession : public InferenceSession {
       std::string backward_recorded_event_before_send_name;
       std::string backward_recorded_event_name;
 
-      std::string forward_waited_output_name;
-      std::string forward_recorded_output_name;
-      std::string backward_waited_output_name;
-      std::string backward_recorded_output_name;
+      std::string forward_wait_output_name;
+      std::string forward_record_output_name;
+      std::string backward_wait_output_name;
+      std::string backward_record_output_name;
 
       // Tensors to feed at this pipeline stage.
       std::vector<std::string> feed_names;
@@ -338,7 +338,7 @@ class TrainingSession : public InferenceSession {
   //  WaitEvent --> Recv --> WaitEvent --> Backward --> RecordEvent --> Send --> RecordEvent
   //
   // As you can see, some event operators are inserted. For each event operator, its dependent
-  // event tensor name is written to an input references.
+  // event tensor name is written to an input references, for example, "forward_waited_event_name".
   //
   // This function asumes that 
   //  1. Only one Recv and only one Send present in forward pass.
@@ -350,10 +350,10 @@ class TrainingSession : public InferenceSession {
                                    std::string& forward_recorded_event_name,
                                    std::string& backward_waited_event_name,
                                    std::string& backward_recorded_event_name,
-                                   std::string& forward_waited_output_name,
-                                   std::string& forward_recorded_output_name,
-                                   std::string& backward_waited_output_name,
-                                   std::string& backward_recorded_output_name,
+                                   std::string& forward_wait_output_name,
+                                   std::string& forward_record_output_name,
+                                   std::string& backward_wait_output_name,
+                                   std::string& backward_record_output_name,
                                    std::string& forward_waited_event_after_recv_name,
                                    std::string& forward_recorded_event_before_send_name,
                                    std::string& backward_waited_event_after_recv_name,

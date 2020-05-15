@@ -1115,10 +1115,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     ASSERT_STATUS_OK(BuildBackPropGraph(input_file, config, backprop_model_file));
 
     std::shared_ptr<Model> model;
-    Status status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
-    if (!status.IsOK())
-      std::cout << status.ErrorMessage() << std::endl;
-    ASSERT_TRUE(status.IsOK());
+    ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
 
     Graph& graph = model->MainGraph();
 

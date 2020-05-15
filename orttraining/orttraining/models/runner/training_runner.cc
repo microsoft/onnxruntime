@@ -243,25 +243,25 @@ Status TrainingRunner::Initialize() {
     //                                      this event's operator.
     pipeline_context_.backward_recorded_event_name = config_result.pipeline_config_result.value().backward_recorded_event_name;
 
-    pipeline_context_.forward_waited_output_name = config_result.pipeline_config_result.value().forward_waited_output_name;
-    pipeline_context_.forward_recorded_output_name = config_result.pipeline_config_result.value().forward_recorded_output_name;
-    pipeline_context_.backward_waited_output_name = config_result.pipeline_config_result.value().backward_waited_output_name;
-    pipeline_context_.backward_recorded_output_name = config_result.pipeline_config_result.value().backward_recorded_output_name;
+    pipeline_context_.forward_wait_output_name = config_result.pipeline_config_result.value().forward_wait_output_name;
+    pipeline_context_.forward_record_output_name = config_result.pipeline_config_result.value().forward_record_output_name;
+    pipeline_context_.backward_wait_output_name = config_result.pipeline_config_result.value().backward_wait_output_name;
+    pipeline_context_.backward_record_output_name = config_result.pipeline_config_result.value().backward_record_output_name;
 
-    if (!pipeline_context_.forward_waited_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_waited_output_name);
+    if (!pipeline_context_.forward_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_wait_output_name);
     }
 
-    if (!pipeline_context_.forward_recorded_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.forward_recorded_output_name);
+    if (!pipeline_context_.forward_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.forward_record_output_name);
     }
 
-    if (!pipeline_context_.backward_waited_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_waited_output_name);
+    if (!pipeline_context_.backward_wait_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_wait_output_name);
     }
 
-    if (!pipeline_context_.backward_recorded_output_name.empty()) {
-      fetch_names.push_back(pipeline_context_.backward_recorded_output_name);
+    if (!pipeline_context_.backward_record_output_name.empty()) {
+      fetch_names.push_back(pipeline_context_.backward_record_output_name);
     }
 
     // Names of allowed inputs after pipeline partition.
@@ -564,17 +564,17 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     // Always execute event operators to avoid deadlock if pipeline is used.
     // TODO: create a list of must-to-fetch tensors and pass it to all graph transformer.
     if (params_.pipeline_parallel_size) {
-        if (!pipeline_context_.forward_waited_output_name.empty()) {
-          fetch_names.push_back(pipeline_context_.forward_waited_output_name);
+        if (!pipeline_context_.forward_wait_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.forward_wait_output_name);
         }
-        if (!pipeline_context_.forward_recorded_output_name.empty()) {
-          fetch_names.push_back(pipeline_context_.forward_recorded_output_name);
+        if (!pipeline_context_.forward_record_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.forward_record_output_name);
         }
-        if (!pipeline_context_.backward_waited_output_name.empty()) {
-          fetch_names.push_back(pipeline_context_.backward_waited_output_name);
+        if (!pipeline_context_.backward_wait_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.backward_wait_output_name);
         }
-        if (!pipeline_context_.backward_recorded_output_name.empty()) {
-          fetch_names.push_back(pipeline_context_.backward_recorded_output_name);
+        if (!pipeline_context_.backward_record_output_name.empty()) {
+          fetch_names.push_back(pipeline_context_.backward_record_output_name);
         }
     }
   } else if (mode == EvaluateStep) {

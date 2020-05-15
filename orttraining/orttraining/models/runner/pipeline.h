@@ -128,10 +128,10 @@ struct PipelineContext {
   std::string backward_recorded_event_before_send_name;
   std::string backward_recorded_event_name;
 
-  std::string forward_waited_output_name;
-  std::string forward_recorded_output_name;
-  std::string backward_waited_output_name;
-  std::string backward_recorded_output_name;
+  std::string forward_wait_output_name;
+  std::string forward_record_output_name;
+  std::string backward_wait_output_name;
+  std::string backward_record_output_name;
 
   // Allowed feed names.
   // It stands for inputs of a graph partition at this stage.
