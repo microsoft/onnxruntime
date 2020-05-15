@@ -660,7 +660,7 @@ class ORTTrainer():
             self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
 
         if self._extra_postprocess:
-            self._extrapostprocess(self.onnx_model_)
+            self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -720,7 +720,7 @@ class ORTTrainer():
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
 
             if self._extra_postprocess:
-                self._extra_post_process(self.onnx_model_)
+                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 
