@@ -12,12 +12,12 @@ steps:
       displayName: 'Copy build artifacts for zipping'
       inputs:
         scriptPath: 'tools/ci_build/github/linux/java_copy_strip_binary.sh'
-        args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -s $(Build.SourcesDirectory) -n {{parameters.nativeLibraryName}} -v {{parameters.version}} -t ${{parameters.commitId}}'
+        args: '-r $(Build.BinariesDirectory) -c ${{parameters.buildConfig}} -a ${{parameters.artifactName}} -l ${{parameters.libraryName}} -n ${{parameters.nativeLibraryName}} -v ${{parameters.version}} -t ${{parameters.commitId}}'
         workingDirectory: '$(Build.BinariesDirectory)/${{parameters.buildConfig}}'
 
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}/lib'
+        rootFolderOrFile: '$(Build.BinariesDirectory)/${{parameters.artifactName}}'
         includeRootFolder: true
         archiveType: 'zip' # Options: zip, 7z, tar, wim
         archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.zip'
