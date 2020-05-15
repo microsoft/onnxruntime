@@ -732,8 +732,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   if (params_.perf_output_dir.empty()) {
     printf("No perf output directory specified, skipping save of trained perf metrics.\n");
   } else {
-    short average_CPU_usage = p_ICPUUsage->GetUsage();
-    size_t peak_workingset_size = perftest::utils::GetPeakWorkingSetSize();
+    const short average_CPU_usage = p_ICPUUsage->GetUsage();
+    const size_t peak_workingset_size = perftest::utils::GetPeakWorkingSetSize();
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
     ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, 
