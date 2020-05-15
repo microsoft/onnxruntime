@@ -140,17 +140,8 @@ public class App {
 			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
 			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
 			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
-			// TODO - remove "if" check later
-			if (json_object.get("AvgCPU") == null)
-				st.setNull(++i, Types.FLOAT);
-			else
-				st.setFloat(++i, (float)(double) json_object.get("AvgCPU"));
-
-			if (json_object.get("Memory") == null)
-				st.setNull(++i, Types.INTEGER);
-			else
-				st.setInt(++i, (int)(long) json_object.get("Memory"));  // mb
-
+			st.setInt(++i, (int)(long) json_object.get("AvgCPU"));
+			st.setInt(++i, (int)((long) json_object.get("Memory") >> 20));  // mb
 			st.setString(++i, (String) json_object.get("RunConfig"));
 
 			// update section
@@ -158,15 +149,8 @@ public class App {
 			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
 			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
 			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
-			if (json_object.get("AvgCPU") == null)
-				st.setNull(++i, Types.FLOAT);
-			else
-				st.setFloat(++i, (float)(double) json_object.get("AvgCPU"));
-
-			if (json_object.get("Memory") == null)
-				st.setNull(++i, Types.INTEGER);
-			else
-				st.setInt(++i, (int)(long) json_object.get("Memory"));  // mb
+			st.setInt(++i, (int)((long) json_object.get("Memory") >> 20));  // mb
+			st.setString(++i, (String) json_object.get("RunConfig"));
 
 			st.executeUpdate();
 		} catch (Exception e) {
