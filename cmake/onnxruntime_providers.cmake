@@ -469,7 +469,7 @@ if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   option(DNN_CMAKE_INSTALL "" OFF)
   option(DNN_BUILD_BIN "" OFF)
   add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
-  file(GLOB_RECURSE
+  file(GLOB
     onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.h"
@@ -496,11 +496,11 @@ elseif (onnxruntime_USE_NNAPI_BUILTIN)
   option(DNN_CMAKE_INSTALL "" OFF)
   option(DNN_BUILD_BIN "" OFF)
   add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
-  file(GLOB_RECURSE
+  file(GLOB
     onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_dnnlibrary/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})

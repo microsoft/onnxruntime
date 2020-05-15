@@ -23,9 +23,7 @@
 #include "core/providers/openvino/openvino_provider_factory.h"
 #endif
 #ifdef USE_NNAPI
-# ifdef USE_NNAPI_DNNLIBRARY
-# include "core/providers/nnapi/nnapi_provider_factory.h"
-# endif
+#include "core/providers/nnapi/nnapi_provider_factory.h"
 #endif
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"

@@ -24,6 +24,8 @@
 #ifdef USE_NNAPI
 # ifdef USE_NNAPI_DNNLIBRARY
 # include "core/providers/nnapi/nnapi_dnnlibrary/nnapi_execution_provider.h"
+# elif USE_NNAPI_BUILTIN
+# include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 # endif
 #endif
 #ifdef USE_RKNPU
