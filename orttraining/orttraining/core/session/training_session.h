@@ -340,7 +340,7 @@ class TrainingSession : public InferenceSession {
   // As you can see, some event operators are inserted. For each event operator, its dependent
   // event tensor name is written to an input references, for example, "forward_waited_event_name".
   //
-  // This function asumes that 
+  // This function assumes that 
   //  1. Only one Recv and only one Send present in forward pass.
   //  2. Only one Recv and only one Send present in backward pass.
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to

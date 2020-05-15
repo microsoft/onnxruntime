@@ -26,8 +26,8 @@ NodeArg& CreateInt64NodeArg(Graph& graph, const std::string& name) {
   ONNX_NAMESPACE::TypeProto type_proto;
   type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   auto actual_name = graph.GenerateNodeArgName(name);
-  auto& event = graph.GetOrCreateNodeArg(actual_name, &type_proto);
-  return event;
+  auto& node_arg = graph.GetOrCreateNodeArg(actual_name, &type_proto);
+  return node_arg;
 }
 
 void AddInputEvent(Graph& graph, const std::string& op_name,
@@ -72,9 +72,12 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg* base_arg) {
   return graph.GetOrCreateNodeArg(new_name, &type_proto);
 }
 
-// Return mirror variables for node_args. The i-th output element mirrors node_args[i]
-// but with a different name.
-std::vector<NodeArg*> CreateNewNodeArgs(Graph& graph, const std::vector<NodeArg*>& node_args) {
+// Return mirror variables for node_args.
+// The i-th output element mirrors node_args[i] but with a different name.
+std::vector<NodeArg*> CreateMirrorNodeArgs(
+  Graph& graph,
+  const std::vector<NodeArg*>& node_args) {
+  // Declare output.
   std::vector<NodeArg*> new_node_args;
 
   for (auto& node_arg: node_args) {
@@ -325,7 +328,7 @@ std::string AddEventBeforeNode(
   std::vector<NodeArg*> node_args = node->MutableInputDefs();
 
   // Declare outputs of the added event operator.
-  std::vector<NodeArg*> new_node_args = CreateNewNodeArgs(graph, node_args);
+  std::vector<NodeArg*> new_node_args = CreateMirrorNodeArgs(graph, node_args);
 
   // Convert Node* to std::vector<Node*>.
   std::vector<Node*> nodes = {node};
@@ -365,7 +368,7 @@ std::string AddEventAfterNode(
   std::vector<NodeArg*> node_args = node->MutableOutputDefs();
 
   // Declare outputs of the added event operator.
-  std::vector<NodeArg*> new_node_args = CreateNewNodeArgs(graph, node_args);
+  std::vector<NodeArg*> new_node_args = CreateMirrorNodeArgs(graph, node_args);
 
   // Convert graph.Nodes() to std::vector<Node*>.
   std::vector<Node*> nodes;

@@ -1057,8 +1057,8 @@ void RetrieveEventOperators(
     *backward_record_after_send = records[3];
   } else if (waits.size() == size_t(2)) {
     // Last stage has 2 RecordEvent's.
-    *backward_record_before_send = records[2];
-    *backward_record_after_send = records[3];
+    *backward_record_before_send = records[0];
+    *backward_record_after_send = records[1];
   } else {
     ORT_THROW("Wrong number of RecordEvent operators: ", waits.size(), ". Expected value is either 2 or 4.");
   }

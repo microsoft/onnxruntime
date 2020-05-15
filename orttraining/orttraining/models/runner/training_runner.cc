@@ -409,7 +409,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   if (!pipeline_context_.forward_waited_event_after_recv_name.empty()) {
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_after_recv_name);
-    // TODO: Generate this event ID from the scheduler.
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventIdAfterRecv(
       pipeline_context_.pipeline_stage_id,
