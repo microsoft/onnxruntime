@@ -1749,6 +1749,10 @@ Return true if all elements are true and false otherwise.
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
+          if (!hasShape(*typeProto)) {
+              continue;
+          }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
@@ -1798,6 +1802,10 @@ Return true if all elements are true and false otherwise.
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
+          if (!hasShape(*typeProto)) {
+              continue;
+          }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
