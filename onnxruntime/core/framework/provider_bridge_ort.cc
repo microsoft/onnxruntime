@@ -509,9 +509,11 @@ struct ProviderLibrary {
     if (!handle_)
       return;
 
-#ifdef _WIN32
-    HMODULE ignore;
-    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "vcomp140.dll", &ignore);
+#if defined(_WIN32) && defined(_OPENMP)
+    // On Windows with OpenMP, we must pin the OpenMP DLL so that it doesn't unload when the provider DLL unloads otherwise we crash
+    HMODULE handle;
+    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "vcomp140.dll", &handle);
+    assert(handle);  // It should exist
 #endif
 
     Provider* (*PGetProvider)();
