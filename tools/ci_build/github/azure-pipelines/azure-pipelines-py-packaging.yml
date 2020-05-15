@@ -399,6 +399,7 @@ jobs:
             1) docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel --nightly_build;;
             *) docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel;;
           esac
+          chown -R jclient:jclient .
         workingDirectory: $(Build.BinariesDirectory)
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
