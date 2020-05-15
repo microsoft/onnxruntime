@@ -214,7 +214,7 @@ class TrainingRunner {
                          const size_t weight_update_steps, const double total_time,
                          const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
                          const MapStringToString& mapped_dimensions,
-                         const short average_CPU_usage, const size_t peak_workingset_size);
+                         const short average_cpu_usage, const size_t peak_workingset_size);
 
   size_t step_;
   size_t round_;
