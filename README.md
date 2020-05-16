@@ -163,7 +163,34 @@ This is particularly important when there are massive volumes of incoming data/s
 
 * On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). ([Tutorials for Windows Desktop or UWP app](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop))
 
-***
+
+#### System language
+* Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales. 
+* For Ubuntu, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
+  * Run the following commands:
+    `locale-gen en_US.UTF-8`
+    `update-locale LANG=en_US.UTF-8`
+  * Follow similar procedure to configure other locales on other platforms.
+  
+#### Visual Studios
+* Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
+
+
+#### Default CPU
+* ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
+system.
+  * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
+    [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
+  * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
+
+#### Default GPU (CUDA)
+* The default GPU build requires CUDA runtime libraries being installed on the system:
+	 * Version: **CUDA 10.1** and **cuDNN 7.6.5**
+* Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
+
+#### Other Execution Providers
+* For requirements and dependencies of other build options, see detailed build instructions on the [BUILD.md](./BUILD.md#additional-build-instructions) page.
+
 
 ## Training: Start
 

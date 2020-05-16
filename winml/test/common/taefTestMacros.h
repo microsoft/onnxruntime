@@ -13,7 +13,7 @@ using namespace WEX::TestExecution;
     TEST_CLASS(test_class_name);
 
 #define WINML_TEST_CLASS_SETUP_CLASS(setup_class) \
-    TEST_CLASS_SETUP(TestClassSetup) {           \
+    TEST_CLASS_SETUP(TestClassSetup) {            \
       getapi().setup_class();                     \
       return true;                                \
     }
@@ -25,9 +25,9 @@ using namespace WEX::TestExecution;
     }
 
 #define WINML_TEST_CLASS_SETUP_METHOD(setup_method) \
-    TEST_METHOD_SETUP(TestMethodSetup) {            \
-      getapi().setup_method();                      \
-      return true;                                  \
+    TEST_METHOD_SETUP(TestMethodSetup) {              \
+      getapi().setup_method();                        \
+      return true;                                    \
     }
 
 #define WINML_TEST_CLASS_TEARDOWN_METHOD(teardown_method) \
@@ -51,8 +51,7 @@ using namespace WEX::TestExecution;
   WINML_SUPRESS_UNREACHABLE_BELOW(                                                               \
     Log::Result(TestResults::Skipped,                                                            \
                 std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str()); \
-    return;                                                                                      \
-  )
+    return;)
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) VERIFY_IS_TRUE(statement)
@@ -61,34 +60,26 @@ using namespace WEX::TestExecution;
 #define WINML_EXPECT_NOT_EQUAL(val1, val2) VERIFY_ARE_NOT_EQUAL(val1, val2)
 #define WINML_LOG_ERROR(message) \
   VERIFY_FAIL(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str())
-#define WINML_LOG_COMMENT(message)\
+#define WINML_LOG_COMMENT(message) \
   WEX::Logging::Log::Comment(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str())
 #define WINML_EXPECT_HRESULT_SUCCEEDED(hresult_expression) VERIFY_SUCCEEDED(hresult_expression)
 #define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) VERIFY_THROWS_SPECIFIC(statement, exception, condition)
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) VERIFY_FAILED(hresult_expression)
 
-#ifndef USE_DML
-#define GPUTEST \
-  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
-#define GPUTEST_ENABLED alwaysFalse()
-#else
-#define GPUTEST                                                                               \
-  do {                                                                                        \
-    bool no_gpu_tests;                                                                          \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", no_gpu_tests)) && no_gpu_tests) { \
-      WINML_SKIP_TEST("This test is disabled by the no_gpu_tests runtime parameter.");          \
-      return;                                                                                 \
-    }                                                                                         \
-  } while (0)
-#define GPUTEST_ENABLED bool _no_gpu_tests; \
-    !SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", _no_gpu_tests)) || !_no_gpu_tests
-#endif
+static bool RuntimeParameterExists(std::wstring param) {
+  bool param_value;
+  return SUCCEEDED(RuntimeParameters::TryGetValue(param.c_str(), param_value)) && param_value;
+}
 
-#define SKIP_EDGECORE                                                                           \
-  do {                                                                                          \
-    bool is_edge_core;                                                                          \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"EdgeCore", is_edge_core)) && is_edge_core) { \
-      WINML_SKIP_TEST("This test is disabled by the EdgeCore runtime parameter.");              \
-      return;                                                                                   \
-    }                                                                                           \
-  } while (0)
+static bool SkipGpuTests() {
+#ifndef USE_DML
+  return true;
+#else
+  return RuntimeParameterExists(L"noGPUtests");
+#endif
+}
+
+#define GPUTEST                            \
+  if (SkipGpuTests()) {                    \
+    WINML_SKIP_TEST("Gpu tests disabled"); \
+  }

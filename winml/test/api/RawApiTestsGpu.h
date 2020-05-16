@@ -6,7 +6,6 @@
 struct RawApiTestsGpuApi
 {
   SetupClass RawApiTestsGpuApiTestsClassSetup;
-  SetupTest MethodSetup;
   VoidTest CreateDirectXDevice;
   VoidTest CreateD3D11DeviceDevice;
   VoidTest CreateD3D12CommandQueueDevice;
@@ -20,7 +19,6 @@ const RawApiTestsGpuApi& getapi();
 
 WINML_TEST_CLASS_BEGIN(RawApiTestsGpu)
 WINML_TEST_CLASS_SETUP_CLASS(RawApiTestsGpuApiTestsClassSetup)
-WINML_TEST_CLASS_SETUP_METHOD(MethodSetup)
 WINML_TEST_CLASS_BEGIN_TESTS
 WINML_TEST(RawApiTestsGpu, CreateDirectXDevice)
 WINML_TEST(RawApiTestsGpu, CreateD3D11DeviceDevice)

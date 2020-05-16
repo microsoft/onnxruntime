@@ -13,6 +13,7 @@ execute_process(COMMAND node -e "console.log(process.arch)"
 execute_process(COMMAND node -e "console.log(process.platform)"
                 OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
 file(READ ${CMAKE_SOURCE_DIR}/../VERSION_NUMBER ort_version)
+string(STRIP "${ort_version}" ort_version)
 set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${node_arch}/")
 
 include_directories(${CMAKE_JS_INC})

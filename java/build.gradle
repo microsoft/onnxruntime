@@ -1,7 +1,8 @@
 plugins {
-	id 'java'
-	id 'jacoco'
+	id 'java-library'
 	id 'maven-publish'
+	id 'signing'
+	id 'jacoco'
 	id 'com.diffplug.gradle.spotless' version '3.26.0'
 }
 
@@ -11,19 +12,17 @@ allprojects {
 	}
 }
 
+project.group = "ai.onnxruntime"
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
 	targetCompatibility = JavaVersion.VERSION_1_8
 }
 
-project.group = "ai.onnxruntime"
-version = rootProject.file('../VERSION_NUMBER').text.trim()
-
+// This jar tasks serves as a CMAKE signalling
+// mechanism. The jar will be overwritten by allJar task
 jar {
-	into("META-INF/maven/$project.group/$project.name") {
-		from { generatePomFileForMavenPublication }
-		rename ".*", "pom.xml"
-	}
 }
 
 // Add explicit sources jar with pom file.
@@ -70,6 +69,9 @@ def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
+def mavenUser = System.properties['mavenUser']
+def mavenPwd = System.properties['mavenPwd']
+
 compileJava {
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
 }
@@ -94,22 +96,12 @@ sourceSets.test {
 if (cmakeBuildDir != null) {
 	// generate tasks to be called from cmake
 
-	task jniJar(type: Jar) {
-		classifier = 'jni'
-		from cmakeNativeJniDir
-	}
-
-	task libJar(type: Jar) {
-		classifier = 'lib'
-		from cmakeNativeLibDir
-	}
-
+	// Overwrite jar location
 	task allJar(type: Jar) {
 		into("META-INF/maven/$project.group/$project.name") {
 			from { generatePomFileForMavenPublication }
 			rename ".*", "pom.xml"
 		}
-		classifier = 'all'
 		from sourceSets.main.output
 		from cmakeNativeJniDir
 		from cmakeNativeLibDir
@@ -121,9 +113,6 @@ if (cmakeBuildDir != null) {
 		include 'docs/**'
 		into cmakeBuildOutputDir
 	}
-	cmakeBuild.dependsOn jar
-	cmakeBuild.dependsOn jniJar
-	cmakeBuild.dependsOn libJar
 	cmakeBuild.dependsOn allJar
 	cmakeBuild.dependsOn sourcesJar
 	cmakeBuild.dependsOn javadocJar
@@ -189,7 +178,35 @@ publishing {
 					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
 					url = 'http://github.com/microsoft/onnxruntime'
 				}
+				developers {
+					developer {
+						id = 'onnxruntime'
+						name = 'ONNX Runtime'
+						email = 'onnxruntime@microsoft.com'
+					}
+				}
 			}
 		}
 	}
+	repositories {
+		maven {
+			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+			credentials {
+				username mavenUser
+				password mavenPwd
+			}
+		}
+	}
+}
+
+// Generates a task signMavenPublication that will
+// build all artifacts.
+signing {
+	// Queries env vars:
+	// ORG_GRADLE_PROJECT_signingKey
+	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
+	def signingKey = findProperty("signingKey")
+	def signingPassword = findProperty("signingPassword")
+	useInMemoryPgpKeys(signingKey, signingPassword)
+	sign publishing.publications.maven
 }
