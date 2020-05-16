@@ -379,10 +379,9 @@ std::string AddEventAfterNode(
   auto event_node_arg = &CreateInt64NodeArg(graph, event_id_name);
 
   // Create node which produces new_node_args from event ID and node_args.
-  auto name = graph.GenerateNodeName(event_op_name);
   CreateBottleneckNode(graph,
                        event_op_type,
-                       name,
+                       event_op_name,
                        "",
                        event_node_arg,
                        node_args,
