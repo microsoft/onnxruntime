@@ -18,5 +18,5 @@ jobs:
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
-    #BuildConfigurations: ['Debug', 'RelWithDebInfo']
-    BuildConfigurations: ['RelWithDebInfo']
+    BuildConfigurations: ['Debug', 'RelWithDebInfo']
+    EnableLto: false
