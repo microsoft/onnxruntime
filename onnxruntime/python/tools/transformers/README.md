@@ -18,13 +18,13 @@ pip install onnxruntime-tools
 
 After it is installed, you can use command like the following to optimize model:
 ```console
-python -m onnxruntime_tools.optimizer --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
+python -m onnxruntime_tools.transformers.optimizer --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
 
 In your python code, you can use it like the following:
 
 ```python
-from onnxruntime_tools import optimizer
+from onnxruntime_tools.transformers import optimizer
 optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768)
 optimized_model.convert_model_float32_to_float16()
 optimized_model.save_model_to_file("gpt2_fp16.onnx")
@@ -45,7 +45,7 @@ For tf2onnx, please refer to [its BERT tutorial](https://github.com/onnx/tensorf
 
 Example of using the script optimizer.py to optimize a BERT-large model to run in V100 GPU:
 ```console
-python -m onnxruntime_tools.optimizer --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
+python -m onnxruntime_tools.transformers.optimizer --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
 ```
 
 ### Options
@@ -91,7 +91,7 @@ The benchmark script requires PyTorch be installed.
 You can run benchmark script to see the inference speed of OnnxRuntime. Here is an example to run benchmark on a pretrained model bert-base-cased on GPU.
 
 ```console
-python -m onnxruntime_tools.benchmark -m bert-base-cased -g
+python -m onnxruntime_tools.transformers.benchmark -m bert-base-cased -g
 ```
 
 ## Model Verification
@@ -101,7 +101,7 @@ If your model has three inputs (like input_ids, token_type_ids and attention_mas
 Example of verifying models optimized for CPU:
 
 ```console
-python -m onnxruntime_tools.compare_bert_results --baseline_model original_model.onnx --optimized_model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100
+python -m onnxruntime_tools.transformers.compare_bert_results --baseline_model original_model.onnx --optimized_model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100
 ```
 
 For GPU, please append --use_gpu to the command.
@@ -111,7 +111,7 @@ For GPU, please append --use_gpu to the command.
 bert_perf_test.py can be used to check the model inference performance. Below are examples:
 
 ```console
-python -m onnxruntime_tools.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive
+python -m onnxruntime_tools.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive
 ```
 
 For GPU, please append --use_gpu to the command.
