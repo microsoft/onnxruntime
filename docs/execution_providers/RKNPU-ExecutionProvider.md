@@ -1,6 +1,7 @@
 # RKNPU Execution Provider
 RKNPU DDK is an advanced interface to access Rockchip NPU, currently support platform as follow:
-- RK1808 Linux
+
+*  RK1808 Linux
 
   Note: RK3399Pro platform is not supported.
 
