@@ -36,6 +36,19 @@ jobs:
       --model_root /build/bert_models
     displayName: 'Run bert performance tests'
 
+  - script: >
+      docker run --gpus all --rm --name onnxruntime-gpu-perf 
+      --volume $(Build.SourcesDirectory):/onnxruntime_src 
+      --volume $(Build.BinariesDirectory):/build 
+      --volume /bert_ort/gpt2_models:/build/gpt2_models:ro 
+      --volume /bert_data/gpt2_data:/build/gpt2_data:ro 
+      -e NIGHTLY_BUILD onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6
+      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
+      --binary_dir /build/RelWithDebInfo 
+      --training_data_root /build/gpt2_data 
+      --model_root /build/gpt2_models
+    displayName: 'Run gpt-2 performance tests'
+
   # generate jdbc.properties
   - script: >
       mkdir -p $(Build.SourcesDirectory)/tools/perf_util/src/main/resources &&
