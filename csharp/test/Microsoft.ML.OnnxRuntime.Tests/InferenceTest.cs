@@ -576,7 +576,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        /*
         [Theory]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
@@ -712,7 +711,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 throw new Exception(msg + "\n" + ex.StackTrace);
             }
         }
-        */
 
         [Fact]
         private void TestOverridableInitializerMetadata()
