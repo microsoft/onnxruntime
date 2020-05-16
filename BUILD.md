@@ -123,23 +123,9 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 ---
 
 ## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md).
+Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
-### Pre-Requisites
-* ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
-    See https://golang.org/doc/install for installation instructions.
-
-### Build Instructions
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel
-```
-
-ONNX Runtime Server supports sending logs to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`.
-
-Build command:
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1
-```
+Build instructions are [here](./docs/Server.md)
 
 ---
 
