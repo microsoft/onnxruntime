@@ -509,7 +509,7 @@ struct ProviderLibrary {
     if (!handle_)
       return;
 
-#if defined(_WIN32) && defined(_OPENMP)
+#ifdef _WIN32
     // On Windows with OpenMP, we must pin the OpenMP DLL so that it doesn't unload when the provider DLL unloads otherwise we crash
     HMODULE handle;
     ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "vcomp140.dll", &handle);
