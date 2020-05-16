@@ -1,6 +1,6 @@
-# Transformers Model Optimization Tool Overview
+# Transformer Model Optimization Tool Overview
 
-ONNX Runtime automatically applies most optimizations while loading a transformer model (like BERT and GPT-2). Some of the latest optimizations that have not yet been integrated into ONNX Runtime are available in this tool that tunes models for the best performance.
+ONNX Runtime automatically applies most optimizations while loading a transformer model. Some of the latest optimizations that have not yet been integrated into ONNX Runtime are available in this tool that tunes models for the best performance.
 
 This tool can help in the following senarios:
 * Model is exported by tf2onnx or keras2onnx, and ONNX Runtime does not have graph optimization for them right now.
