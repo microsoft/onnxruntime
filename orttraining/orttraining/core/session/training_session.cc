@@ -214,10 +214,14 @@ Status TrainingSession::ConfigureForTraining(
                                           pipeline_result.forward_recorded_event_name,
                                           pipeline_result.backward_waited_event_name,
                                           pipeline_result.backward_recorded_event_name,
-                                          pipeline_result.forward_waited_output_name,
-                                          pipeline_result.forward_recorded_output_name,
-                                          pipeline_result.backward_waited_output_name,
-                                          pipeline_result.backward_recorded_output_name));
+                                          pipeline_result.forward_wait_output_name,
+                                          pipeline_result.forward_record_output_name,
+                                          pipeline_result.backward_wait_output_name,
+                                          pipeline_result.backward_record_output_name,
+                                          pipeline_result.forward_waited_event_after_recv_name,
+                                          pipeline_result.forward_recorded_event_before_send_name,
+                                          pipeline_result.backward_waited_event_after_recv_name,
+                                          pipeline_result.backward_recorded_event_before_send_name));
     // The following loop is for not to fetch tensors not in this pipeline stage.
     for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
       auto name = config.pipeline_config.value().fetch_names[i];
@@ -528,20 +532,28 @@ Status TrainingSession::InsertPipelineOps(
   std::string& forward_recorded_event_name,
   std::string& backward_waited_event_name,
   std::string& backward_recorded_event_name,
-  std::string& forward_waited_output_name,
-  std::string& forward_recorded_output_name,
-  std::string& backward_waited_output_name,
-  std::string& backward_recorded_output_name) {
+  std::string& forward_wait_output_name,
+  std::string& forward_record_output_name,
+  std::string& backward_wait_output_name,
+  std::string& backward_record_output_name,
+  std::string& forward_waited_event_after_recv_name,
+  std::string& forward_recorded_event_before_send_name,
+  std::string& backward_waited_event_after_recv_name,
+  std::string& backward_recorded_event_before_send_name) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
     model_->MainGraph(),
     forward_waited_event_name,
     forward_recorded_event_name,
     backward_waited_event_name,
     backward_recorded_event_name,
-    forward_waited_output_name,
-    forward_recorded_output_name,
-    backward_waited_output_name,
-    backward_recorded_output_name));
+    forward_wait_output_name,
+    forward_record_output_name,
+    backward_wait_output_name,
+    backward_record_output_name,
+    forward_waited_event_after_recv_name,
+    forward_recorded_event_before_send_name,
+    backward_waited_event_after_recv_name,
+    backward_recorded_event_before_send_name));
   return DoPostLoadProcessing(*model_);
 }
 
