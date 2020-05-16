@@ -204,7 +204,7 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
 endif()
 
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
     )

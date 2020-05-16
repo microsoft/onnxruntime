@@ -1,8 +1,24 @@
-#-------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
-# Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# Copyright 2018 The HuggingFace Inc. team.
+# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """ Benchmarking the inference of pretrained transformer models
+    PyTorch/TorchScript benchmark is based on https://github.com/huggingface/transformers/blob/master/examples/benchmarks.py.
+
+    This will automatically export a pretrained model to ONNX, and do optimization (optional)
+
     Example commands:
         Export all models to ONNX, optimize and validate them:
             python benchmark.py -b 0 -o -v -i 1 2 3
@@ -40,11 +56,14 @@ MODELS = {
     "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, "bert"),
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, "bert"),
     "roberta-base": (["input_ids", "attention_mask"], 11, "bert"),
-    "gpt2": (["input_ids"], 11, "gpt2"),  # no past state
-    "distilgpt2": (["input_ids"], 11, "gpt2"),  # no past state
+
+    # No past state inputs for GPT models. You might set enable_cache=False in modeling_gpt2.py (need installing transformers from source) to disable past state output.
+    "gpt2": (["input_ids"], 11, "gpt2"),
+    "distilgpt2": (["input_ids"], 11, "gpt2"),
     "openai-gpt": (["input_ids"], 11, "gpt2"),
 
-    #  Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
+    # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
+    # Currently OnnxRuntime lacks cuda op for Einsum. GPU inference will be very slow.
     "albert-base-v2": (["input_ids"], 12, "bert"),
     "xlnet-base-cased": (["input_ids"], 12, "bert"),
 }
@@ -160,22 +179,22 @@ optimize_model_statistics = {}
 def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, fp16):
     optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx" if fp16 else "_fp32.onnx")
     if not os.path.exists(optimized_model_filename):
-        import bert_model_optimization as bert_opt
+        from optimizer import optimize_model
         # Use onnxruntime to optimize model, which will be saved to *_ort_cpu.onnx
-        opt_model = bert_opt.optimize_model(onnx_model_filename,
-                                            model_type,
-                                            num_heads=num_attention_heads,
-                                            hidden_size=hidden_size,
-                                            opt_level=99,
-                                            only_onnxruntime=True)
+        opt_model = optimize_model(onnx_model_filename,
+                                   model_type,
+                                   num_heads=num_attention_heads,
+                                   hidden_size=hidden_size,
+                                   opt_level=99,
+                                   only_onnxruntime=True)
         optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
-        opt_model = bert_opt.optimize_model(onnx_model_filename,
-                                            model_type,
-                                            num_heads=num_attention_heads,
-                                            hidden_size=hidden_size,
-                                            opt_level=0)
+        opt_model = optimize_model(onnx_model_filename,
+                                   model_type,
+                                   num_heads=num_attention_heads,
+                                   hidden_size=hidden_size,
+                                   opt_level=0)
         optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
 
         if fp16:
@@ -210,14 +229,14 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         torch.onnx.export(model=model,
-                            args=tuple(example_inputs.values()),
-                            f=onnx_model_filename,
-                            input_names=list(example_inputs.keys()),
-                            output_names=output_names,
-                            example_outputs=example_outputs,
-                            dynamic_axes=dynamic_axes,
-                            do_constant_folding=True,
-                            opset_version=MODELS[model_name][1])
+                          args=tuple(example_inputs.values()),
+                          f=onnx_model_filename,
+                          input_names=list(example_inputs.keys()),
+                          output_names=output_names,
+                          example_outputs=example_outputs,
+                          dynamic_axes=dynamic_axes,
+                          do_constant_folding=True,
+                          opset_version=MODELS[model_name][1])
     else:
         logger.info(f"Skip export since model existed: {onnx_model_filename}")
 
@@ -451,7 +470,7 @@ def parse_arguments():
                         required=False,
                         nargs="+",
                         type=str,
-                        default=list(MODELS.keys()),
+                        default=["bert-base-cased", "roberta-base", "gpt2"],
                         choices=list(MODELS.keys()),
                         help="Pre-trained models in the list: " + ", ".join(MODELS.keys()))
 
@@ -481,7 +500,7 @@ def parse_arguments():
                         "--optimize_onnx",
                         required=False,
                         action="store_true",
-                        help="Use bert_model_optimization.py to optimize onnx model")
+                        help="Use optimizer.py to optimize onnx model")
 
     parser.add_argument("-v", "--validate_onnx", required=False, action="store_true", help="Validate ONNX model")
 
