@@ -1,9 +1,11 @@
-// Copyright 2019 JD.com Inc. JD AI
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 
 #include "core/framework/execution_provider.h"
 #include "core/graph/onnx_protobuf.h"
+#include "model.h"
 
 namespace onnxruntime {
 class NnapiExecutionProvider : public IExecutionProvider {
@@ -17,5 +19,9 @@ class NnapiExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+ private:
+  std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
+
+  //std::vector<std::vector<int>> GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 };
 }  // namespace onnxruntime

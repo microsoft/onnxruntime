@@ -1,4 +1,5 @@
-// Copyright 2019 JD.com Inc. JD AI
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "nnapi_execution_provider.h"
 #include "core/framework/allocatormgr.h"
