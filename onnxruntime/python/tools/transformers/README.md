@@ -5,7 +5,7 @@ ONNX Runtime automatically applies most optimizations while loading a transforme
 This tool can help in the following senarios:
 * Model is exported by tf2onnx or keras2onnx, and ONNX Runtime does not have graph optimization for them right now.
 * Convert model to use float16 to boost performance using mixed precision on GPUs with Tensor Cores (like V100 or T4).
-* Model has inputs with dynamic axis, which blocks some optimizations to be applied in ONNX Runtime since it harder to get shape inference.
+* Model has inputs with dynamic axis, which blocks some optimizations to be applied in ONNX Runtime due to shape inference.
 * Disable or enable some fusions to see its impact on performance or accuracy.
 
 ## Installation
@@ -21,7 +21,7 @@ After it is installed, you can use command like the following to optimize model:
 python -m onnxruntime_tools.transformers.optimizer --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
 
-If you want to use the latest script, you can get script files from https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/. Then run it like the following:
+If you want to use the latest script, you can get script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
 ```console
 python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
