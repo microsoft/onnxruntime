@@ -6,7 +6,8 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more.
+**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
+
 
 Many users can benefit from ONNX Runtime, including those looking to:
 * Improve inference performance for a wide variety of ML models
@@ -27,9 +28,8 @@ Many users can benefit from ONNX Runtime, including those looking to:
 * **[Get Started](#get-started)**
   * [ONNX Runtime Inferencing](#inferencing-start)
   * [ONNX Runtime Training](#training-start)
-* **[Overview](#overview)**
-* **[Data/Telemetry](#Data/Telemetry)**
-* **[Contributions and Feedback](#contribute)**
+* **[Data/Telemetry](#DataTelemetry)**
+* **[Contributions and Feedback](#contributions-and-feedback)**
 * **[License](#license)**
 
 ***
