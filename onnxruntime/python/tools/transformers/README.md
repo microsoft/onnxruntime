@@ -1,15 +1,17 @@
 # Transformers Model Optimization Tool Overview
 
-This tool could optimize the ONNX graph of a Transformers model, and generate an optimized model to run faster with OnnxRuntime.
+ONNX Runtime automatically applies most optimizations while loading a transformer model (like BERT and GPT-2). Some of the latest optimizations that have not yet been integrated into ONNX Runtime are available in this tool that tunes models for the best performance.
 
-Onnx Runtime can apply most optimizations on Bert models exported from PyTorch automatically. However, ONNX Runtime has its limitations. This tool can help in the following senarios:
+This tool can help in the following senarios:
 * Model is exported by tf2onnx or keras2onnx, and ONNX Runtime does not have graph optimization for them right now.
 * Convert model to use float16 to boost performance using mixed precision on GPUs with Tensor Cores (like V100 or T4).
-* Model has inputs with dynamic axis, which makes it harder to get shape inference and blocks some optimizations to be applied in ONNX Runtime.
+* Model has inputs with dynamic axis, which blocks some optimizations to be applied in ONNX Runtime since it harder to get shape inference.
 * Disable or enable some fusions to see its impact on performance or accuracy.
 
 ## Installation
-First you need install onnxruntime or onnxruntime-gpu package. Then, this tool can be installed using pip as follows:
+First you need install onnxruntime or onnxruntime-gpu package for CPU or GPU inference. To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
+
+This tool can be installed using pip as follows:
 ```console
 pip install onnxruntime-tools
 ```
@@ -19,7 +21,7 @@ After it is installed, you can use command like the following to optimize model:
 python -m onnxruntime_tools.transformers.optimizer --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
 
-If you want to use the latest script, you can also copy *.py from https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/. Then run it like the following:
+If you want to use the latest script, you can get script files from https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/. Then run it like the following:
 ```console
 python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
@@ -30,9 +32,9 @@ Huggingface transformers has a [notebook](https://github.com/huggingface/transfo
 For Keras2onnx, please refere to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
 For tf2onnx, please refer to [its BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
     
-## Model Optimization
+## Model Optimizer
 
-Example of using the script optimizer.py to convert a BERT-large model to run in V100 GPU:
+Example of using the script optimizer.py to optimize a BERT-large model to run in V100 GPU:
 ```console
 python -m onnxruntime_tools.transformers.optimizer --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
 ```
@@ -58,9 +60,9 @@ See below for description of some options of optimizer.py:
 
 ### Supported Models
 
-Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs, and attention mask. A model with less or addtional inputs might not be optimized.
+Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs, and attention mask. A model with less or addtional inputs might not be fully optimized.
 
-Most optimizations require exact match of a subgraph. That means this tool could only support similar models with such subgraphs. Any layout change in subgraph might cause optimization not working. Note that different versions of training or export tool might lead to different graph layouts.
+Most optimizations require exact match of a subgraph. Any layout change in subgraph might cause some optimization not working. Note that different versions of training or export tool might lead to different graph layouts.
 
 Here is list of models from [Huggingface Transformers](https://github.com/huggingface/transformers/) that have been tested using this tool:
 - **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
@@ -75,7 +77,9 @@ For GPT2 models, current optimization does not support past state (both inputs a
 
 ## Benchmark
 
-You can run benchmark script to see the inference speed of OnnxRuntime. Here is example to run benchmark on a pretrained model bert-base-cased on GPU.
+The benchmark script requires PyTorch be installed.
+
+You can run benchmark script to see the inference speed of OnnxRuntime. Here is an example to run benchmark on a pretrained model bert-base-cased on GPU.
 
 ```console
 python -m onnxruntime_tools.transformers.benchmark -m bert-base-cased -g
@@ -85,31 +89,23 @@ python -m onnxruntime_tools.transformers.benchmark -m bert-base-cased -g
 
 If your model has three inputs (like input_ids, token_type_ids and attention_mask), a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
 
-Example of verifying models optimized for CPU and GPU:
+Example of verifying models optimized for CPU:
 
 ```console
-pip install onnxruntime
 python -m onnxruntime_tools.transformers.compare_bert_results --baseline_model original_model.onnx --optimized_model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100
-
-pip uninstall onnxruntime
-pip install onnxruntime-gpu
-python -m onnxruntime_tools.transformers.compare_bert_results --baseline_model original_model.onnx --optimized_model optimized_model_gpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --use_gpu
 ```
 
-To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
+For GPU, please append --use_gpu to the command.
 
 ## Performance Test
 
 bert_perf_test.py can be used to check the model inference performance. Below are examples:
 
 ```console
-pip install onnxruntime
 python -m onnxruntime_tools.transformers.bert_perf_test --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive
-
-pip uninstall onnxruntime
-pip install onnxruntime-gpu
-python -m onnxruntime_tools.transformers.bert_perf_test --model optimized_model_gpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --use_gpu --inclusive
 ```
+
+For GPU, please append --use_gpu to the command.
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
 
