@@ -9,7 +9,7 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '--gen_doc --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
