@@ -469,7 +469,7 @@ void addOpSchemaSubmodule(py::module& m) {
   auto schemadef = m.def_submodule("schemadef");
   schemadef.doc() = "Schema submodule";
 
-  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema");
+  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema", py::module_local());
   op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
       .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
       .def_property_readonly("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
