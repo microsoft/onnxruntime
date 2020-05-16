@@ -51,7 +51,7 @@ Additionally, we understand that lightweight devices and local applications may 
 |---|---|
 |X64|Additional as-needed|
 |X86| |
-|ARM64 (Limited)| |
+|ARM64 |
 |ARM32 (Limited)| |
 
 #### Platforms
@@ -65,12 +65,13 @@ Additionally, we understand that lightweight devices and local applications may 
 #### Languages
 |Supported|Future|
 |---|---|
-|Python (3.5, 3.6, 3.7)| Javascript |
+|Python (3.5, 3.6, 3.7)| |
 |C++| |
 |C#| |
 |C| |
 |Ruby (community project)| |
 |Java | |
+|Javascript - Node.js (Preview) | |
 
 
 ### Accelerators and Execution Providers
@@ -89,6 +90,8 @@ To achieve the best performance on a growing set of compute targets across cloud
 |Microsoft Direct ML| |
 |Android NN API (Preview)| |
 |ARM Compute Library (Preview)| |
+|Rockchip NPU (Preview)| |
+
 
 #### CUDA operator coverage
 To maximize performance potential, we will be continually adding additional CUDA implementations for supported operators.
