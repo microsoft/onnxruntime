@@ -38,9 +38,9 @@ def main():
             "--model_name", os.path.join(
                 args.model_root, "megatron-gpt2_hidden-size-1024_num-layers-24_vocab-size-50257_num-attention-heads-16_max-position-embeddings-1024_optimized"),
             "--train_data_dir", os.path.join(
-                args.training_data_root, "gpt2_data/train"),
+                args.training_data_root, "train"),
             "--test_data_dir", os.path.join(
-                args.training_data_root, "gpt2_data/test"),
+                args.training_data_root, "test"),
             "--train_batch_size", str(c.batch_size),
             "--mode", "train",
             "--max_seq_length", str(c.max_seq_length),
