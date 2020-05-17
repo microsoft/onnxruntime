@@ -184,7 +184,7 @@ def parse_arguments():
                         required=False,
                         type=int,
                         choices=[0, 1, 2, 99],
-                        default=99,
+                        default=0,
                         help="onnxruntime optimization level. 0 will disable onnxruntime.")
 
     args = parser.parse_args()
@@ -217,7 +217,7 @@ def optimize_model(input,
                    model_type,
                    num_heads,
                    hidden_size,
-                   opt_level=99,
+                   opt_level=0,
                    optimization_options=None,
                    use_gpu=False,
                    only_onnxruntime=False):

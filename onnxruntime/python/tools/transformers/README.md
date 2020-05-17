@@ -16,36 +16,32 @@ This tool can be installed using pip as follows:
 pip install onnxruntime-tools
 ```
 
+## Export a transformer model to ONNX
+PyTorch could export model to ONNX. The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
+Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX. 
+For Keras2onnx, please refer to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
+For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
+
+
+## Model Optimizer
+
 In your python code, you can use it like the following:
 
 ```python
 from onnxruntime_tools import optimizer
-optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768, use_gpu=True, opt_level=0)
+optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768)
 optimized_model.convert_model_float32_to_float16()
 optimized_model.save_model_to_file("gpt2_fp16.onnx")
 ```
 
-You can also use command like the following to optimize model:
-```console
-python -m onnxruntime_tools.optimizer_cli --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2 --use_gpu --opt_level 0
-```
-
-If you want to use the latest script, you can get script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
-```console
-python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2  --use_gpu --opt_level 0
-```
-
-## Export a transformer model to ONNX
-PyTorch could export model to ONNX. The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
-Huggingface transformers has a [notebook](https://github.com/huggingface/transformers/blob/master/notebooks/04-onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX. 
-For Keras2onnx, please refere to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
-For tf2onnx, please refer to [its BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb).
-    
-## Model Optimizer
-
-Example of using the script optimizer.py to optimize a BERT-large model to run in V100 GPU:
+You can also use command line. Example of optimizing a BERT-large model to use mixed precision (float16):
 ```console
 python -m onnxruntime_tools.optimizer_cli --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
+```
+
+You can also download the latest script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
+```console
+python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
 ```
 
 ### Options
@@ -64,6 +60,10 @@ See below for description of some options of optimizer.py:
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
+  **use_gpu**: (*optional*)
+    When opt_level > 1, please set this flag for GPU inference.
+- **opt_level**: (*optional*)
+    Set a proper graph optimization level of OnnxRuntime: 0 - disable all (default), 1 - basic, 2 - extended, 99 - all. If the value is positive, OnnxRuntime will be used to optimize graph first.
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
 

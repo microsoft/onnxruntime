@@ -58,15 +58,16 @@ MODELS = {
     # No past state inputs for GPT models.
     "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
     "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
-    "openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
+
+    #"openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
 
     # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     # Currently OnnxRuntime lacks cuda op for Einsum. GPU inference will be very slow.
-    "albert-base-v2": (["input_ids"], 12, False, "bert"),
-    "xlnet-base-cased": (["input_ids"], 12, False, "bert"),
+    #"albert-base-v2": (["input_ids"], 12, False, "bert"),
+    #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
     # This model is very large. Need use_external_data_format=True to export it.
-    "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
+    #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
@@ -181,14 +182,15 @@ def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_fla
 
     for i in range(len(example_outputs_flatten)):
         if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=1e-03, atol=1e-03):
-            logger.error(f"Value of output tensor {i} is not close to expected result")
+            abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu()))
+            logger.error(f"Output tensor {i} is not close to expected result. Max diff={abs_diff}")
             return False
 
     logger.info(f"inference result of onnxruntime is validated on {onnx_model_filename}")
     return True
 
 
-optimize_model_statistics = {}
+model_fusion_statistics = {}
 
 
 def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, use_gpu, fp16, overwrite):
@@ -210,7 +212,7 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
                                    optimization_options=optimization_options,
                                    use_gpu=use_gpu,
                                    only_onnxruntime=True)
-        optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
+        model_fusion_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
         # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16. 
@@ -221,8 +223,9 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
                                    hidden_size=hidden_size,
                                    opt_level=0,
                                    optimization_options=optimization_options,
-                                   use_gpu=use_gpu,)
-        optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
+                                   use_gpu=use_gpu,
+                                   only_onnxruntime=False)
+        model_fusion_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
 
         if fp16:
             opt_model.convert_model_float32_to_float16()
@@ -477,18 +480,18 @@ def output_summary(results, csv_filename, args):
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
 
 
-def output_fusion_statistics(optimize_model_statistics, csv_filename):
+def output_fusion_statistics(model_fusion_statistics, csv_filename):
     from transformers import __version__ as transformers_version
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["model_filename", "transformers", "torch"] + list(
-            next(iter(optimize_model_statistics.values())).keys())
+            next(iter(model_fusion_statistics.values())).keys())
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
-        for key in optimize_model_statistics.keys():
-            optimize_model_statistics[key]["transformers"] = transformers_version
-            optimize_model_statistics[key]["torch"] = torch.__version__
-            optimize_model_statistics[key]["model_filename"] = key
-            csv_writer.writerow(optimize_model_statistics[key])
+        for key in model_fusion_statistics.keys():
+            model_fusion_statistics[key]["transformers"] = transformers_version
+            model_fusion_statistics[key]["torch"] = torch.__version__
+            model_fusion_statistics[key]["model_filename"] = key
+            csv_writer.writerow(model_fusion_statistics[key])
     logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")
 
 
@@ -621,9 +624,9 @@ def main():
             logger.error(f"Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    if optimize_model_statistics:
+    if model_fusion_statistics:
         csv_filename = args.fusion_csv or f"benchmark_fusion_{time_stamp}.csv"
-        output_fusion_statistics(optimize_model_statistics, csv_filename)
+        output_fusion_statistics(model_fusion_statistics, csv_filename)
 
     if len(results) == 0:
         logger.warning("No any result avaiable.")
