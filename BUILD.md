@@ -105,20 +105,31 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
 |Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
+<<<<<<< HEAD
+=======
+## System Requirements
+For other system requirements and other dependencies, please see [this section](./README.md#system-requirements).
+
+
+>>>>>>> More doc cleanup
 ---
 ## Common Build Instructions
-|Description|Command|Additional description|
+|Description|Command|Additional details|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
 |**Debug build**|--config RelWithDebInfo|Debug build|
 |**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
-|**Build Python wheel**|--build_wheel||
-|**Build C# and C packages**|--build_csharp||
-|**Build WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library.|
-|**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
-|**Build node.js**||
+
+### APIs and Language Bindings
+|API|Command|Additional details|
+|-----------|-----------|-----------|
+|**Python**|--build_wheel||
+|**C# and C packages**|--build_csharp||
+|**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
+|**Java**|--build_java<br>--build_shared_lib|Creates an onnxruntime4j.jar in the build directory|
+|**Node.js**|--build_shared_lib|`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
 
 ---
 
@@ -574,62 +585,68 @@ OnnxRuntime supports build options for enabling debugging of intermediate tensor
 ---
 
 ### ARM
-We have experimental support for Linux ARM builds. Windows on ARM is well tested.
+Support on ARM may be limited. There are a few options for building for ARM.
 
-#### Cross compiling for ARM with simulation (Linux/Windows - EASY, SLOW, RECOMMENDED WAY)
+* [Cross compiling for ARM with simulation (Linux/Windows)](#Cross-compiling-for-ARM-with-simulation-LinuxWindows) - **Recommended**;  Easy, slow
+* [Cross compiling on Linux](#Cross-compiling-on-Linux) - Hard, very fast
+* [Native compiling on Linux ARM device](#Native-compiling-on-Linux-ARM-device) - Easy, slower
+* [Cross compiling on Windows](#Cross-compiling-on-Windows)
+
+
+#### Cross compiling for ARM with simulation (Linux/Windows)
+*EASY, SLOW, RECOMMENDED*
+
 This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
 Here we have [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Please note, it doesn't work for Raspberrypi 1 or Zero. And if your operating system is different than the docker file uses, it also may not work. 
 
 The whole build process may take hours.
 
-#### Cross compiling on Linux (Hard, Super Fast)
+#### Cross compiling on Linux
+*Hard, Very fast*
+
 You can get the package in minutes, but it's very hard to setup. Cross compiling was never easy. But if you have a large code base(e.g. you are adding a fancy execution provider to onnxruntime), this is the only way you can do.
 
 ##### 1. Get the corresponding toolchain. 
-tldr: Go to https://www.linaro.org/downloads/, get one for "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
+TLDR; Go to https://www.linaro.org/downloads/, get "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
 
-You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both works, but here we only talk gcc. 
+You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
 
-In GCC's world, we use:
-1. "build" to describe the type of system on which GCC is being configured and compiled
-2. "host" to describe the type of system on which GCC runs.
-3. "target" to describe the type of system for which GCC produce code
+In GCC terms:
+* "build" describes the type of system on which GCC is being configured and compiled
+* "host" describes the type of system on which GCC runs.
+"target" to describe the type of system for which GCC produce code
+When not cross compiling, usually "build" = "host" = "target". When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64. In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
 
-When not doing cross compile, usually "build" = "host" = "target".
-When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64.  In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
+Then you can either build GCC from source code by yourself, or get a prebuilt one from a vendor like Ubuntu, linaro. Choosing the same compiler version as your target operating system is best. If ths is not possible, choose the latest stable one and statically link to the GCC libs.
 
-Then you can either build GCC from source code by your self, or get a prebuilt one from a vendor like Ubuntu, [linaro](https://releases.linaro.org/components/toolchain/binaries). Please choose the same compiler version as your target operating system has, that would be the best. If you can't, choose the latest stable one and you'll have to static link to gcc libs. 
-
-When you get the compiler, please run
+When you get the compiler, run `aarch64-linux-gnu-gcc -v` This should produce an output like below:
 
 ```
-aarch64-linux-gnu-gcc -v
+Using built-in specs.
+COLLECT_GCC=/usr/bin/aarch64-linux-gnu-gcc
+COLLECT_LTO_WRAPPER=/usr/libexec/gcc/aarch64-linux-gnu/9/lto-wrapper
+Target: aarch64-linux-gnu
+Configured with: ../gcc-9.2.1-20190827/configure --bindir=/usr/bin --build=x86_64-redhat-linux-gnu --datadir=/usr/share --disable-decimal-float --disable-dependency-tracking --disable-gold --disable-libgcj --disable-libgomp --disable-libmpx --disable-libquadmath --disable-libssp --disable-libunwind-exceptions --disable-shared --disable-silent-rules --disable-sjlj-exceptions --disable-threads --with-ld=/usr/bin/aarch64-linux-gnu-ld --enable-__cxa_atexit --enable-checking=release --enable-gnu-unique-object --enable-initfini-array --enable-languages=c,c++ --enable-linker-build-id --enable-lto --enable-nls --enable-obsolete --enable-plugin --enable-targets=all --exec-prefix=/usr --host=x86_64-redhat-linux-gnu --includedir=/usr/include --infodir=/usr/share/info --libexecdir=/usr/libexec --localstatedir=/var --mandir=/usr/share/man --prefix=/usr --program-prefix=aarch64-linux-gnu- --sbindir=/usr/sbin --sharedstatedir=/var/lib --sysconfdir=/etc --target=aarch64-linux-gnu --with-bugurl=http://bugzilla.redhat.com/bugzilla/ --with-gcc-major-version-only --with-isl --with-newlib --with-plugin-ld=/usr/bin/aarch64-linux-gnu-ld --with-sysroot=/usr/aarch64-linux-gnu/sys-root --with-system-libunwind --with-system-zlib --without-headers --enable-gnu-indirect-function --with-linker-hash-style=gnu
+Thread model: single
+gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 ```
 
-You'll see outputs like:
+Check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". 
 
-Using built-in specs.    
-COLLECT_GCC=/usr/bin/aarch64-linux-gnu-gcc    
-COLLECT_LTO_WRAPPER=/usr/libexec/gcc/aarch64-linux-gnu/9/lto-wrapper    
-Target: aarch64-linux-gnu    
-Configured with: ../gcc-9.2.1-20190827/configure --bindir=/usr/bin **--build=x86_64-redhat-linux-gnu** --datadir=/usr/share --disable-decimal-float --disable-dependency-tracking --disable-gold --disable-libgcj --disable-libgomp --disable-libmpx --disable-libquadmath --disable-libssp --disable-libunwind-exceptions --disable-shared --disable-silent-rules --disable-sjlj-exceptions --disable-threads --with-ld=/usr/bin/aarch64-linux-gnu-ld --enable-\_\_cxa_atexit --enable-checking=release --enable-gnu-unique-object --enable-initfini-array --enable-languages=c,c++ --enable-linker-build-id --enable-lto --enable-nls --enable-obsolete --enable-plugin --enable-targets=all --exec-prefix=/usr **--host=x86_64-redhat-linux-gnu** --includedir=/usr/include --infodir=/usr/share/info --libexecdir=/usr/libexec --localstatedir=/var --mandir=/usr/share/man --prefix=/usr --program-prefix=aarch64-linux-gnu- --sbindir=/usr/sbin --sharedstatedir=/var/lib --sysconfdir=/etc **--target=aarch64-linux-gnu** --with-bugurl=http://bugzilla.redhat.com/bugzilla/ --with-gcc-major-version-only --with-isl --with-newlib --with-plugin-ld=/usr/bin/aarch64-linux-gnu-ld --with-sysroot=/usr/aarch64-linux-gnu/sys-root --with-system-libunwind --with-system-zlib --without-headers --enable-gnu-indirect-function --with-linker-hash-style=gnu    
-Thread model: single    
-gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)     
+You must also know what kind of flags your target hardware need. It may differ greatly. For example, if you just get normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
-Please check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". And you must know what kind of flags your target hardware need. It may largely differ. For example, if you just get normal ARMv7 compiler and use it for raspberry pi V1 straightly, it won't work, because raspberry pi only has ARMv6. Usually every hardware vendor will provide a toolchain for you, please check how that one was built. 
+A target env is identifed by:
 
-A target env is identifed by four things:
-1. Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
-2. OS: bare-metal or linux.
-3. Libc: gnu libc/ulibc/musl/...
-4. ABI: ARM has mutilple ABIs like eabi, eabihf...
+* Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
+* OS: bare-metal or linux.
+* Libc: gnu libc/ulibc/musl/...
+* ABI: ARM has mutilple ABIs like eabi, eabihf...
 
-You can get all these information from the previous output, please be sure they are all correct. 
-
+You can get all these information from the previous output, please be sure they are all correct.
     
 ##### 2. Get a pre-compiled protoc:    
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
+   Get this from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip and unzip after downloading.
    The version must match the one onnxruntime is using. Currently we are using 3.11.2.
    
 ##### 3. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
@@ -654,7 +671,8 @@ Disk identifier: 0xea7d04d6
 | 2020-02-13-raspbian-buster.img1 |      | 8192   | 532479  | 524288  | 256M | c  | W95 FAT32 (LBA) |
 | 2020-02-13-raspbian-buster.img2 |      | 532480 | 7397375 | 6864896 | 3.3G | 83 | Linux           |
     
-You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.     
+You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.
+
 Then run:
 ```bash
 $ mkdir /mnt/pi
@@ -699,7 +717,7 @@ cd /opt/python
 ./cp38-cp38/bin/python -m pip install numpy==1.16.6
 ```
 
-These commands will take a few hours because numpy doesn't have such a prebuilt package yet. When it is finished, open a second window and run
+These commands will take a few hours because numpy doesn't have a prebuilt package yet. When completed, open a second window and run
 ```bash
 docker ps
 ```
@@ -708,7 +726,7 @@ From the output:
 CONTAINER ID        IMAGE                                COMMAND             CREATED             STATUS              PORTS               NAMES
 5a796e98db05        quay.io/pypa/manylinux2014_aarch64   "/bin/bash"         3 minutes ago       Up 3 minutes                            affectionate_cannon
 ```
-You'll see the docker instance id is: 5a796e98db05. Then please use the following command to export the root filesystem as the sysroot for future use.
+You'll see the docker instance id is: 5a796e98db05. Use the following command to export the root filesystem as the sysroot for future use.
 
 ```bash
 docker export 5a796e98db05 -o manylinux2014_aarch64.tar
@@ -731,7 +749,7 @@ docker export 5a796e98db05 -o manylinux2014_aarch64.tar
 If you don't have a sysroot, you can delete the last line.
 
 ##### 5.  Run CMake and make
-6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build python package as well, you can use cmake args like:
+ Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build Python package as well, you can use cmake args like:
 ```
 -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=/mnt/pi/usr/bin/python3 -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_DEV_MODE=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc "-DPYTHON_INCLUDE_DIR=/mnt/pi/usr/include;/mnt/pi/usr/include/python3.7m" -DNUMPY_INCLUDE_DIR=/mnt/pi/folder/to/numpy/headers
 ```
@@ -741,21 +759,23 @@ After running cmake, run
 $ make
 ```
 
-##### 6.  (optional) Build python package
+##### 6.  (Optional) Build Python package
 Copy the setup.py file from the source folder to the build folder and run
 ```bash
 python3 setup.py bdist_wheel -p linux_aarch64
 ```
 
-However, if your targets manylinux, unfortunately their tools doesn't work in cross-compiling scenario. You must run it in a docker like:
+If targeting manylinux, unfortunately their tools do not work in the cross-compiling scenario. Run it in a docker like:
 
 ```bash
 docker run  -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v `pwd`:/tmp/a -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/cp37-cp37m/bin/python3 setup.py bdist_wheel
 ```
-If you only want to target a specfic Linux distro(like Ubuntu), you don't need to do that.
+This is not needed if you only want to target a specfic Linux distribution (i.e. Ubuntu).
 
 
-#### Native compiling on Linux ARM device (EASY, SLOWER)
+#### Native compiling on Linux ARM device
+*Easy, slower*
+
 Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
 ```bash
 sudo apt-get update
