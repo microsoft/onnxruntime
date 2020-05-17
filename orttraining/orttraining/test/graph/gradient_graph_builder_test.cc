@@ -1087,14 +1087,28 @@ void RetrieveSendRecvOperators(
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "Send") {
       if (is_backward(node)) {
+        // backward_send can only be assigned one valid pointer.
+        // If it is assigned more than once, it means we have multiple
+        // Send in backward pass and therefore our assumption doesn't hold. 
+        // This check ensure that only we only update *backward_send when
+        // its value is NULL and guards our one-Recv assumption. 
+        ASSERT_TRUE(!(*backward_send));
         *backward_send = &node;
       } else {
+        // Guard the uniqueness of Send in the forward pass by throwing
+        // when *forward_send already carries a valid pointer.
+        ASSERT_TRUE(!(*forward_send));
         *forward_send = &node;
       }
     } else if (node.OpType() == "Recv") {
       if (is_backward(node)) {
+        // Guard the uniqueness of Recv in the backward pass by throwing
+        // when *backward_recv already carries a valid pointer.
+        ASSERT_TRUE(!(*backward_recv));
         *backward_recv = &node;
       } else {
+        // Guard the uniqueness of Recv in the forwaard pass by throwing
+        // when *forward_recv already carries a valid pointer.
         *forward_recv = &node;
       }
     }
