@@ -143,7 +143,7 @@ public class App {
 			st.setInt(++i, (int)(long) json_object.get("AvgCPU"));
 
 			System.out.println("Memory: \n" + (long)json_object.get("Memory"));
-			System.out.println("Memory: \n" + (long)json_object.get("Memory") >> 20);
+			System.out.println("Memory: \n" + ((long)json_object.get("Memory") >> 20));
 
 			st.setInt(++i, (int)((long) json_object.get("Memory") >> 20));  // mb
 			st.setString(++i, (String) json_object.get("RunConfig"));
