@@ -87,7 +87,7 @@ class PipelineSchedule {
   // It equals to table_.size().
   int num_stages_;
   // Total number of batches scheduled in this pipeline.
-  // It equals to table_[i].size(), for i = 0, ..., num_stages_.
+  // It equals to table_[i].size(), for i = 0, ..., num_stages_ - 1.
   int num_batches_;
 };
 
