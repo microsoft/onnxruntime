@@ -93,9 +93,12 @@ def load_pretrained_model(model_name, config, cache_dir):
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu):
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if not enable_all_optimization:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
     if (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
         # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
@@ -160,9 +163,8 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
     return dynamic_axes, output_names
 
 
-def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten):
-    use_gpu = "_fp16" in onnx_model_filename
-    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu)
+def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu):
+    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu, enable_all_optimization=False)
     if test_session is None:
         logger.error(f"{onnx_model_filename} is an invalid ONNX model")
         return False
@@ -189,8 +191,9 @@ def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_fla
 optimize_model_statistics = {}
 
 
-def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, fp16, overwrite):
-    optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx" if fp16 else "_fp32.onnx")
+def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, use_gpu, fp16, overwrite):
+    suffix =  "_fp{}_{}.onnx".format(16 if fp16 else 32, "gpu" if use_gpu else "cpu")
+    optimized_model_filename = onnx_model_filename.replace(".onnx", suffix)
     if overwrite or not os.path.exists(optimized_model_filename):
         from optimizer import optimize_model
         from BertOnnxModel import BertOptimizationOptions
@@ -205,15 +208,20 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
                                    hidden_size=hidden_size,
                                    opt_level=99,
                                    optimization_options=optimization_options,
+                                   use_gpu=use_gpu,
                                    only_onnxruntime=True)
         optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
+        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16. 
+        # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
         opt_model = optimize_model(onnx_model_filename,
                                    model_type,
                                    num_heads=num_attention_heads,
                                    hidden_size=hidden_size,
-                                   opt_level=99)
+                                   opt_level=0,
+                                   optimization_options=optimization_options,
+                                   use_gpu=use_gpu,)
         optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
 
         if fp16:
@@ -224,7 +232,7 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
     return optimized_model_filename
 
 
-def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx, overwrite):
+def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -262,15 +270,16 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
 
     is_valid_onnx_model = True
     if validate_onnx:
-        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
+        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu)
 
     if optimize_onnx or fp16:
         model_type = MODELS[model_name][3]
         onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads,
-                                                  config.hidden_size, fp16, overwrite)
+                                                  config.hidden_size, use_gpu, fp16, overwrite)
 
         if validate_onnx:
-            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
+            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten,
+                                                      use_gpu)
 
     return onnx_model_filename, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
@@ -315,11 +324,11 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
 
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx, overwrite)
+                    model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite)
             if not is_valid_onnx_model:
                 continue
 
-            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu)
+            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True)
             if ort_session is None:
                 continue
 
