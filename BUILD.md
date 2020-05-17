@@ -126,7 +126,7 @@ For other system requirements and other dependencies, please see [this section](
 |**C# and C packages**|--build_csharp||
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java<br>--build_shared_lib|Creates an onnxruntime4j.jar in the build directory|
-|**Node.js**|--build_shared_lib|`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
+|**Node.js**|--build_nodejs<br>--build_shared_lib|`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
 
 ---
 
