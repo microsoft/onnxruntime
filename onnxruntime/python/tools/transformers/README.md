@@ -106,6 +106,8 @@ If you want to benchmark on CPU, you can remove -g option in the commands.
 
 Note that our current benchmark on GPT2 model has disabled past state from inputs and outputs.
 
+By default, ONNX model has only one input (input_ids). You can use -i parameter to test models with more inputs. For example, we can add "-i 3" to command line to test a bert model with 3 inputs (input_ids, token_type_ids and attention_mask). The performance result might be different. This option only supports OnnxRuntime right now.
+
 ## Model Verification
 
 If your model has three inputs (like input_ids, token_type_ids and attention_mask), a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
