@@ -55,4 +55,4 @@ For a list of available dockerfiles and published images to help with getting st
 
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)
-* [MNIST inference](../java/sample/ScoreMNIST.java)
+* [MNIST inference](../java/src/test/java/sample/ScoreMNIST.java)
