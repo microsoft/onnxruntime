@@ -95,7 +95,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |Mac OS X  | YES          | NO         |    |
 
-* GCC 4.x and below are not supported.
+GCC 4.x and below are not supported.
 
 ### OS/Compiler Matrix:
 
@@ -105,13 +105,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
 |Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
-<<<<<<< HEAD
-=======
-## System Requirements
-For other system requirements and other dependencies, please see [this section](./README.md#system-requirements).
 
-
->>>>>>> More doc cleanup
 ---
 ## Common Build Instructions
 |Description|Command|Additional details|
@@ -212,7 +206,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 
-#### Jetson TX1/TX2/Nano(ARM64 Builds)
+#### Jetson TX1/TX2/Nano (ARM64 Builds)
 
 1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated. 
 ```
@@ -588,7 +582,7 @@ OnnxRuntime supports build options for enabling debugging of intermediate tensor
 Support on ARM may be limited. There are a few options for building for ARM.
 
 * [Cross compiling for ARM with simulation (Linux/Windows)](#Cross-compiling-for-ARM-with-simulation-LinuxWindows) - **Recommended**;  Easy, slow
-* [Cross compiling on Linux](#Cross-compiling-on-Linux) - Hard, very fast
+* [Cross compiling on Linux](#Cross-compiling-on-Linux) - Difficult, fast
 * [Native compiling on Linux ARM device](#Native-compiling-on-Linux-ARM-device) - Easy, slower
 * [Cross compiling on Windows](#Cross-compiling-on-Windows)
 
@@ -603,9 +597,9 @@ Here we have [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#
 The whole build process may take hours.
 
 #### Cross compiling on Linux
-*Hard, Very fast*
+*Difficult, fast*
 
-You can get the package in minutes, but it's very hard to setup. Cross compiling was never easy. But if you have a large code base(e.g. you are adding a fancy execution provider to onnxruntime), this is the only way you can do.
+This option is very fast and allows the package to be built in minutes, but is challenging to setup. If you have a large code base (e.g. you are adding a new execution provider to onnxruntime), this may be the only feasible method.
 
 ##### 1. Get the corresponding toolchain. 
 TLDR; Go to https://www.linaro.org/downloads/, get "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
@@ -634,7 +628,7 @@ gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 
 Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`. 
 
-You must also know what kind of flags your target hardware need. It may differ greatly. For example, if you just get normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
+You must also know what kind of flags your target hardware need, which can differ greatly. For example, if you just get the normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
 A target env is identifed by:
 
@@ -817,10 +811,10 @@ cd /code/onnxruntime
 ./build.sh --config MinSizeRel --update --build
 
 # Build Shared Library
-./build.sh --config MinSizeRel --arm --build_shared_lib
+./build.sh --config MinSizeRel --build_shared_lib
 
 # Build Python Bindings and Wheel
-./build.sh --config MinSizeRel --arm --enable_pybind --build_wheel
+./build.sh --config MinSizeRel --enable_pybind --build_wheel
 
 # Build Output
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
