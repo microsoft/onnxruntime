@@ -153,8 +153,8 @@ public class App {
 			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
 			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
 			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
+			st.setInt(++i, (int)(long) json_object.get("AvgCPU"));
 			st.setInt(++i, (int)((long) json_object.get("Memory") >> 20));  // mb
-			st.setString(++i, (String) json_object.get("RunConfig"));
 
 			st.executeUpdate();
 		} catch (Exception e) {
