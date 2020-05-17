@@ -632,7 +632,7 @@ Thread model: single
 gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 ```
 
-Check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". 
+Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`. 
 
 You must also know what kind of flags your target hardware need. It may differ greatly. For example, if you just get normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
