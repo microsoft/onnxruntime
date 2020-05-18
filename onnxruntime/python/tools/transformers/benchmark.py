@@ -58,15 +58,16 @@ MODELS = {
     # No past state inputs for GPT models.
     "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
     "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
-    "openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
+
+    #"openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
 
     # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     # Currently OnnxRuntime lacks cuda op for Einsum. GPU inference will be very slow.
-    "albert-base-v2": (["input_ids"], 12, False, "bert"),
-    "xlnet-base-cased": (["input_ids"], 12, False, "bert"),
+    #"albert-base-v2": (["input_ids"], 12, False, "bert"),
+    #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
     # This model is very large. Need use_external_data_format=True to export it.
-    "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
+    #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
@@ -93,9 +94,12 @@ def load_pretrained_model(model_name, config, cache_dir):
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu):
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if not enable_all_optimization:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
     if (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
         # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
@@ -160,9 +164,8 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
     return dynamic_axes, output_names
 
 
-def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten):
-    use_gpu = "_fp16" in onnx_model_filename
-    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu)
+def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu):
+    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu, enable_all_optimization=False)
     if test_session is None:
         logger.error(f"{onnx_model_filename} is an invalid ONNX model")
         return False
@@ -179,18 +182,20 @@ def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_fla
 
     for i in range(len(example_outputs_flatten)):
         if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=1e-03, atol=1e-03):
-            logger.error(f"Value of output tensor {i} is not close to expected result")
+            abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu()))
+            logger.error(f"Output tensor {i} is not close to expected result. Max diff={abs_diff}")
             return False
 
     logger.info(f"inference result of onnxruntime is validated on {onnx_model_filename}")
     return True
 
 
-optimize_model_statistics = {}
+model_fusion_statistics = {}
 
 
-def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, fp16, overwrite):
-    optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx" if fp16 else "_fp32.onnx")
+def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, use_gpu, fp16, overwrite):
+    suffix =  "_fp{}_{}.onnx".format(16 if fp16 else 32, "gpu" if use_gpu else "cpu")
+    optimized_model_filename = onnx_model_filename.replace(".onnx", suffix)
     if overwrite or not os.path.exists(optimized_model_filename):
         from optimizer import optimize_model
         from BertOnnxModel import BertOptimizationOptions
@@ -205,16 +210,22 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
                                    hidden_size=hidden_size,
                                    opt_level=99,
                                    optimization_options=optimization_options,
+                                   use_gpu=use_gpu,
                                    only_onnxruntime=True)
-        optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
+        model_fusion_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
+        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16. 
+        # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
         opt_model = optimize_model(onnx_model_filename,
                                    model_type,
                                    num_heads=num_attention_heads,
                                    hidden_size=hidden_size,
-                                   opt_level=99)
-        optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
+                                   opt_level=0,
+                                   optimization_options=optimization_options,
+                                   use_gpu=use_gpu,
+                                   only_onnxruntime=False)
+        model_fusion_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
 
         if fp16:
             opt_model.convert_model_float32_to_float16()
@@ -224,7 +235,7 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
     return optimized_model_filename
 
 
-def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx, overwrite):
+def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -262,15 +273,16 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
 
     is_valid_onnx_model = True
     if validate_onnx:
-        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
+        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu)
 
     if optimize_onnx or fp16:
         model_type = MODELS[model_name][3]
         onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads,
-                                                  config.hidden_size, fp16, overwrite)
+                                                  config.hidden_size, use_gpu, fp16, overwrite)
 
         if validate_onnx:
-            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
+            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten,
+                                                      use_gpu)
 
     return onnx_model_filename, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
@@ -315,11 +327,11 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
 
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx, overwrite)
+                    model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite)
             if not is_valid_onnx_model:
                 continue
 
-            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu)
+            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True)
             if ort_session is None:
                 continue
 
@@ -468,18 +480,18 @@ def output_summary(results, csv_filename, args):
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
 
 
-def output_fusion_statistics(optimize_model_statistics, csv_filename):
+def output_fusion_statistics(model_fusion_statistics, csv_filename):
     from transformers import __version__ as transformers_version
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["model_filename", "transformers", "torch"] + list(
-            next(iter(optimize_model_statistics.values())).keys())
+            next(iter(model_fusion_statistics.values())).keys())
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
-        for key in optimize_model_statistics.keys():
-            optimize_model_statistics[key]["transformers"] = transformers_version
-            optimize_model_statistics[key]["torch"] = torch.__version__
-            optimize_model_statistics[key]["model_filename"] = key
-            csv_writer.writerow(optimize_model_statistics[key])
+        for key in model_fusion_statistics.keys():
+            model_fusion_statistics[key]["transformers"] = transformers_version
+            model_fusion_statistics[key]["torch"] = torch.__version__
+            model_fusion_statistics[key]["model_filename"] = key
+            csv_writer.writerow(model_fusion_statistics[key])
     logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")
 
 
@@ -612,9 +624,9 @@ def main():
             logger.error(f"Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    if optimize_model_statistics:
+    if model_fusion_statistics:
         csv_filename = args.fusion_csv or f"benchmark_fusion_{time_stamp}.csv"
-        output_fusion_statistics(optimize_model_statistics, csv_filename)
+        output_fusion_statistics(model_fusion_statistics, csv_filename)
 
     if len(results) == 0:
         logger.warning("No any result avaiable.")
