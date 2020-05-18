@@ -171,9 +171,7 @@ This is particularly important when there are massive volumes of incoming data/s
 
 The ONNX Runtime training feature enables easy integration with existing Pytorch trainer code to accelerate the exection. With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for transformer models on NVIDIA GPUs.
 
-**[End-to-End Sample Notebook](https://github.com/microsoft/onnxruntime-training-examples)**
-
-This sample is configured to pre-train the BERT-Large model to show how ONNX Runtime training can be used to accelerate training execution.
+**[ONNX Runtime pre-training sample](https://github.com/microsoft/onnxruntime-training-examples)**: This sample is configured to pre-train the BERT-Large model to show how ONNX Runtime training can be used to accelerate training execution.
 
 ### Integrate with Pytorch
 ONNX Runtime (ORT) has the capability to train existing PyTorch models through its optimized backend. For this, we have introduced an python API for PyTorch, called ORTTrainer, which can be used to switch the training backend for PyTorch models (instance of `torch.nn.Module`) to `orttrainer`. This requires some changes in the trainer code, such as replacing the PyTorch optimizer, and optionally, setting flags to enable additional features such as mixed-precision training. Here is a sample code fragment to integrate ONNX Runtime Training in your PyTorch pre-training script:
