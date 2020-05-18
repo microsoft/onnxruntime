@@ -18,6 +18,8 @@ from helper import get_name
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
 
+SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
+
 def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
 
@@ -236,14 +238,14 @@ class MNISTWrapper():
 
         kwargs = {'num_workers': 0, 'pin_memory': True}
         train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=True, download=True,
-                        transform=transforms.Compose([transforms.ToTensor(),
-                                                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=True, download=True,
+                           transform=transforms.Compose([transforms.ToTensor(),
+                                                         transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_batch_size, shuffle=True, **kwargs)
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=False, transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_test_batch_size, shuffle=True, **kwargs)
 
         return train_loader, test_loader

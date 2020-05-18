@@ -90,8 +90,7 @@ manylinux_tags = [
     'manylinux2014_ppc64le',
     'manylinux2014_s390x',
 ]
-ENV_AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
-is_manylinux1 = ENV_AUDITWHEEL_PLAT in manylinux_tags
+is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
 
 class build_ext(_build_ext):
@@ -106,7 +105,7 @@ try:
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
-            if not is_manylinux1:
+            if not is_manylinux:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
@@ -124,7 +123,7 @@ try:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def run(self):
-            if is_manylinux1:
+            if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
@@ -143,7 +142,7 @@ try:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
-            if is_manylinux1:
+            if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -188,7 +187,7 @@ else:
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
-if is_manylinux1:
+if is_manylinux:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
     ext_modules = [
         Extension(
