@@ -13,11 +13,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-""" Benchmarking the inference of pretrained transformer models
+""" Benchmarking the inference of pretrained transformer models.
     PyTorch/TorchScript benchmark is based on https://github.com/huggingface/transformers/blob/master/examples/benchmarks.py.
+    One difference is that random input_ids is generated in this benchmark.
 
-    This will automatically export a pretrained model to ONNX, and do optimization (optional)
+    For onnxruntime, this script will convert a pretrained model to ONNX, and optimize it when -o parameter is used.
 
     Example commands:
         Export all models to ONNX, optimize and validate them:
@@ -48,24 +48,26 @@ from packaging import version
 
 logger = logging.getLogger('')
 
-DEFAULT_MODELS = ["bert-base-cased", "distilbert-base-uncased", "roberta-base", "gpt2"]
-
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
-# Pretrained model name to a tuple of input names, opset_version and optimization model type
+# Pretrained model name to a tuple of input names, opset_version, use_external_data_format and optimization model type
 MODELS = {
-    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, "bert"),
-    "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, "bert"),
-    "roberta-base": (["input_ids", "attention_mask"], 11, "bert"),
+    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 11, False, "bert"),
+    "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "roberta-base": (["input_ids", "attention_mask"], 11, False, "bert"),
 
-    # No past state inputs for GPT models. You might set enable_cache=False in modeling_gpt2.py (need installing transformers from source) to disable past state output.
-    "gpt2": (["input_ids"], 11, "gpt2"),
-    "distilgpt2": (["input_ids"], 11, "gpt2"),
-    "openai-gpt": (["input_ids"], 11, "gpt2"),
+    # No past state inputs for GPT models.
+    "gpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
+    "distilgpt2": (["input_ids"], 11, False, "gpt2"),  # no past state inputs & outputs
+
+    #"openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
 
     # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
     # Currently OnnxRuntime lacks cuda op for Einsum. GPU inference will be very slow.
-    "albert-base-v2": (["input_ids"], 12, "bert"),
-    "xlnet-base-cased": (["input_ids"], 12, "bert"),
+    #"albert-base-v2": (["input_ids"], 12, False, "bert"),
+    #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
+
+    # This model is very large. Need use_external_data_format=True to export it.
+    #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
 }
 
 cpu_count = psutil.cpu_count(logical=True)
@@ -73,16 +75,31 @@ cpu_count = psutil.cpu_count(logical=True)
 if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
-from transformers import (AutoConfig, AutoTokenizer, is_torch_available)
-
-if is_torch_available():
-    import torch
-    from transformers import AutoModel
+import torch
+from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu):
+# use_cache is True by default in GPT2Model. Here we wrap a class to disable past state output.
+class GPT2ModelNoPastState(GPT2Model):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def forward(self, input_ids):
+        return super().forward(input_ids, use_cache=False)
+
+
+def load_pretrained_model(model_name, config, cache_dir):
+    if model_name in ["gpt2", "distilgpt2"]:
+        return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+    return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+
+
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    if not enable_all_optimization:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
     if (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
         # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
@@ -147,9 +164,8 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
     return dynamic_axes, output_names
 
 
-def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten):
-    use_gpu = "_fp16" in onnx_model_filename
-    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu)
+def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu):
+    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu, enable_all_optimization=False)
     if test_session is None:
         logger.error(f"{onnx_model_filename} is an invalid ONNX model")
         return False
@@ -166,36 +182,50 @@ def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_fla
 
     for i in range(len(example_outputs_flatten)):
         if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=1e-03, atol=1e-03):
-            logger.error(f"Value of output tensor {i} is not close to expected result")
+            abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu()))
+            logger.error(f"Output tensor {i} is not close to expected result. Max diff={abs_diff}")
             return False
 
     logger.info(f"inference result of onnxruntime is validated on {onnx_model_filename}")
     return True
 
 
-optimize_model_statistics = {}
+model_fusion_statistics = {}
 
 
-def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, fp16):
-    optimized_model_filename = onnx_model_filename.replace(".onnx", "_fp16.onnx" if fp16 else "_fp32.onnx")
-    if not os.path.exists(optimized_model_filename):
+def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, use_gpu, fp16, overwrite):
+    suffix =  "_fp{}_{}.onnx".format(16 if fp16 else 32, "gpu" if use_gpu else "cpu")
+    optimized_model_filename = onnx_model_filename.replace(".onnx", suffix)
+    if overwrite or not os.path.exists(optimized_model_filename):
         from optimizer import optimize_model
+        from BertOnnxModel import BertOptimizationOptions
+        optimization_options = BertOptimizationOptions(model_type)
+        if fp16:
+            optimization_options.enable_gelu_approximation = True
+
         # Use onnxruntime to optimize model, which will be saved to *_ort_cpu.onnx
         opt_model = optimize_model(onnx_model_filename,
                                    model_type,
                                    num_heads=num_attention_heads,
                                    hidden_size=hidden_size,
                                    opt_level=99,
+                                   optimization_options=optimization_options,
+                                   use_gpu=use_gpu,
                                    only_onnxruntime=True)
-        optimize_model_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
+        model_fusion_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
+        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16. 
+        # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
         opt_model = optimize_model(onnx_model_filename,
                                    model_type,
                                    num_heads=num_attention_heads,
                                    hidden_size=hidden_size,
-                                   opt_level=0)
-        optimize_model_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
+                                   opt_level=0,
+                                   optimization_options=optimization_options,
+                                   use_gpu=use_gpu,
+                                   only_onnxruntime=False)
+        model_fusion_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
 
         if fp16:
             opt_model.convert_model_float32_to_float16()
@@ -205,9 +235,9 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
     return optimized_model_filename
 
 
-def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx):
+def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-    model = AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
@@ -223,7 +253,7 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
     example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])
 
     onnx_model_filename = "{}_{}.onnx".format(model_name, str(len(input_names)))
-    if not os.path.exists(onnx_model_filename):
+    if overwrite or not os.path.exists(onnx_model_filename):
         logger.info("Exporting ONNX model to {}".format(onnx_model_filename))
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
@@ -236,21 +266,23 @@ def export_onnx_model(model_name, cache_dir, input_names, fp16, optimize_onnx, v
                           example_outputs=example_outputs,
                           dynamic_axes=dynamic_axes,
                           do_constant_folding=True,
-                          opset_version=MODELS[model_name][1])
+                          opset_version=MODELS[model_name][1],
+                          use_external_data_format=MODELS[model_name][2])
     else:
         logger.info(f"Skip export since model existed: {onnx_model_filename}")
 
     is_valid_onnx_model = True
     if validate_onnx:
-        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
+        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu)
 
     if optimize_onnx or fp16:
-        model_type = MODELS[model_name][2]
+        model_type = MODELS[model_name][3]
         onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads,
-                                                  config.hidden_size, fp16)
+                                                  config.hidden_size, use_gpu, fp16, overwrite)
 
         if validate_onnx:
-            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten)
+            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten,
+                                                      use_gpu)
 
     return onnx_model_filename, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
@@ -272,7 +304,7 @@ def get_latency_result(runtimes, batch_size):
 
 
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, verbose):
+                    optimize_onnx, validate_onnx, cache_dir, verbose, overwrite):
     import onnxruntime
 
     results = []
@@ -295,11 +327,11 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
 
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, cache_dir, input_names, fp16, optimize_onnx, validate_onnx)
+                    model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite)
             if not is_valid_onnx_model:
                 continue
 
-            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu)
+            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True)
             if ort_session is None:
                 continue
 
@@ -347,19 +379,21 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, torchscript=torchscript, cache_dir=cache_dir)
-        model = AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+        model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
         max_input_size = tokenizer.max_model_input_sizes[model_name]
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
 
+        if fp16:
+            model.half()
+
+        device = torch.device("cuda:0" if use_gpu else "cpu")
+        model.to(device)
+
         for batch_size in batch_sizes:
             if batch_size <= 0:
                 continue
-            if fp16:
-                model.half()
-            device = torch.device("cuda:0" if use_gpu else "cpu")
-            model.to(device)
 
             for sequence_length in sequence_lengths:
                 if max_input_size is not None and sequence_length > max_input_size:
@@ -372,13 +406,8 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                                           dtype=torch.long,
                                           device=device)
                 try:
-                    if torchscript:
-                        logger.debug("Tracing model with input shape {}".format(input_ids.shape))
-                        inference = torch.jit.trace(model, input_ids)
-                        inference(input_ids)
-                    else:
-                        inference = model
-                        inference(input_ids)
+                    inference = torch.jit.trace(model, input_ids) if torchscript else model
+                    inference(input_ids)
 
                     runtimes = timeit.repeat(lambda: inference(input_ids), repeat=repeat_times, number=1)
 
@@ -451,14 +480,18 @@ def output_summary(results, csv_filename, args):
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
 
 
-def output_fusion_statistics(optimize_model_statistics, csv_filename):
+def output_fusion_statistics(model_fusion_statistics, csv_filename):
+    from transformers import __version__ as transformers_version
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = ["model_filename"] + list(next(iter(optimize_model_statistics.values())).keys())
+        column_names = ["model_filename", "transformers", "torch"] + list(
+            next(iter(model_fusion_statistics.values())).keys())
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
-        for key in optimize_model_statistics.keys():
-            optimize_model_statistics[key]["model_filename"] = key
-            csv_writer.writerow(optimize_model_statistics[key])
+        for key in model_fusion_statistics.keys():
+            model_fusion_statistics[key]["transformers"] = transformers_version
+            model_fusion_statistics[key]["torch"] = torch.__version__
+            model_fusion_statistics[key]["model_filename"] = key
+            csv_writer.writerow(model_fusion_statistics[key])
     logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")
 
 
@@ -495,6 +528,8 @@ def parse_arguments():
     parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference")
 
     parser.add_argument("--verbose", required=False, action="store_true", help="Print more information")
+
+    parser.add_argument("--overwrite", required=False, action="store_true", help="Overwrite existing models")
 
     parser.add_argument("-o",
                         "--optimize_onnx",
@@ -543,7 +578,7 @@ def setup_logger(verbose):
         coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
     else:
         coloredlogs.install(fmt='%(message)s')
-        logging.getLogger("transformers").setLevel(logging.ERROR)
+        logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
 def main():
@@ -569,10 +604,6 @@ def main():
 
     results = []
     if enable_torch or enable_torchscript:
-        if not is_torch_available():
-            logger.error("Trying to run a PyTorch benchmark but PyTorch was not found in the environment.")
-            return
-
         if args.input_counts != [1]:
             logger.warning("--input_counts is not implemented for torch or torchscript engine.")
 
@@ -588,14 +619,14 @@ def main():
         try:
             results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
-                                       args.cache_dir, args.verbose)
+                                       args.cache_dir, args.verbose, args.overwrite)
         except:
             logger.error(f"Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    if optimize_model_statistics:
+    if model_fusion_statistics:
         csv_filename = args.fusion_csv or f"benchmark_fusion_{time_stamp}.csv"
-        output_fusion_statistics(optimize_model_statistics, csv_filename)
+        output_fusion_statistics(model_fusion_statistics, csv_filename)
 
     if len(results) == 0:
         logger.warning("No any result avaiable.")
