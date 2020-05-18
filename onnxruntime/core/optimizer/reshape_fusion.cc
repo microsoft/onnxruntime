@@ -70,7 +70,6 @@ After fusion:
 bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger) {
   // The root could be either a graph input or a node so use node arg to compare.
   const NodeArg& root_input = *(reshape.InputDefs()[0]);
-  const Node* p_root_node = graph_utils::GetInputNode(reshape, 0);
 
   const Node* p_concat = graph_utils::GetInputNode(reshape, 1);
   if (nullptr == p_concat) {
@@ -151,7 +150,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
         }
         // Match input of current node with root node.
         bool input_matched = false;
-        for (int j = 0; j < cur_node.InputDefs().size(); j++) {
+        for (size_t j = 0; j < cur_node.InputDefs().size(); j++) {
           if (graph_utils::GetNodeInputName(cur_node, j) == root_input.Name()) {
             input_matched = true;
             break;
