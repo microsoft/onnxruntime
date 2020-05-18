@@ -103,7 +103,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
                                   dst,
                                   static_cast<int>(tag_)};
 
-  int total_tensor_dim_in_bytes = static_cast<int>(aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t));
+  int total_tensor_dim_in_bytes = static_cast<int>(
+    aggregated_tensor_shapes.size()) * static_cast<int>(sizeof(int64_t));
   ORT_ENFORCE(total_tensor_dim_in_bytes < INT_MAX,
               "Total dimensions of tensors larger than MPI size limit");
   CommInfo_t info_shapes{aggregated_tensor_shapes.data(),
@@ -116,19 +117,26 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
                        dst,
                        static_cast<int>(tag_)};
 
-  // Enqueue communication functions to a GPU stream.
-  // Keep the local stream in the previous design
-  // TODO they can be moved to a new global stream after global streams becoming accessible
-  cudaStream_t commStream;
-  cudaStreamCreate(&commStream);
+  int mpi_code = 0;
 
-  cudaLaunchHostFunc(commStream, HostSend, &info_shape_sizes);
-  cudaLaunchHostFunc(commStream, HostSend, &info_aggregated_size);
-  cudaLaunchHostFunc(commStream, HostSend, &info_shapes);
-  cudaLaunchHostFunc(commStream, HostSend, &info_data);
-
-  cudaStreamSynchronize(commStream);
-  cudaStreamDestroy(commStream);
+  // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
+  // MPI_Send may block the entire GPU until it returns.
+  mpi_code = MPI_Send(
+    info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
+    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD);
+  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+  mpi_code = MPI_Send(
+    info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
+    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD);
+  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+  mpi_code = MPI_Send(
+    info_shapes.buffer, info_shapes.size, MPI_CHAR,
+    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD);
+  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+  mpi_code = MPI_Send(
+    info_data.buffer, info_data.size, MPI_CHAR,
+    info_data.rank, info_data.tag, MPI_COMM_WORLD);
+  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
 
   // Communication is done, so output control signal can be set to true.
   Tensor* output_signal_tensor = ctx->Output(0, {});

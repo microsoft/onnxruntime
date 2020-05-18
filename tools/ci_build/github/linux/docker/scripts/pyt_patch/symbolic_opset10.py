@@ -128,9 +128,10 @@ upsample_linear1d = _interpolate('upsample_linear1d', 3, "linear")
 upsample_bilinear2d = _interpolate('upsample_bilinear2d', 4, "linear")
 upsample_trilinear3d = _interpolate('upsample_trilinear3d', 5, "linear")
 
-def __interpolate(g, input, size, scale_factor, mode , align_corners, recompute_scale_factor):
+
+def __interpolate(g, input, size, scale_factor, mode, align_corners, recompute_scale_factor):
     scales, mode = sym_help._interpolate_get_scales_and_mode(g, input, size, scale_factor,
-                                                             mode , align_corners)
+                                                             mode, align_corners)
     return g.op("Resize", input, scales, mode_s=mode)
 
 
@@ -158,7 +159,7 @@ def _slice(g, input, axes, starts, ends, steps=None, dynamic_slice=False):
 @parse_args('v', 'v', 'v', 'v', 'i')
 def slice(g, self, dim, start, end, step):
     if (start.node().kind() != 'onnx::Constant' or
-       end.node().kind() != 'onnx::Constant' or dim.node().kind() != 'onnx::Constant'):
+            end.node().kind() != 'onnx::Constant' or dim.node().kind() != 'onnx::Constant'):
         dynamic_slice = True
     else:
         start = [sym_help._parse_arg(start, 'i')]
@@ -179,18 +180,20 @@ def flip(g, input, dims):
 def fmod(g, input, other):
     return g.op("Mod", input, other, fmod_i=1)
 
-# put nll in version 10 because ORT does not support some ops (like Equal) beyound opset 10. 
-@parse_args('v', 'v', 'v', 'v', 'i', 'none') 
-def nll_loss(g, self, target, weight=None, reduction='mean', ignore_index=-100): 
-    if not weight and not ignore_index: 
-        return g.op("nll_loss", self, target) 
-    elif ignore_index: 
-        ignore_index_ = g.op("Constant", value_t=torch.tensor(ignore_index, dtype=torch.int64)) 
-        eq_ = g.op("Equal", target, ignore_index_) 
-        not_eq_ = g.op("Not", eq_) 
-        weight_ = g.op("Cast", not_eq_, to_i=1)      # FLOAT = 1;   // float 
-        not_eq_int64_ = g.op("Cast", not_eq_, to_i=7)   #INT64 = 7;   // int64_t 
-        target_ = g.op("Mul", target, not_eq_int64_) 
-        # if weight: 
-        #     weight_ = g.op("Mul", weight_, weight) 
-        return g.op("nll_loss", self, target_, weight_) 
+# put nll in version 10 because ORT does not support some ops (like Equal) beyound opset 10.
+
+
+@parse_args('v', 'v', 'v', 'v', 'i', 'none')
+def nll_loss(g, self, target, weight=None, reduction='mean', ignore_index=-100):
+    if not weight and not ignore_index:
+        return g.op("nll_loss", self, target)
+    elif ignore_index:
+        ignore_index_ = g.op("Constant", value_t=torch.tensor(ignore_index, dtype=torch.int64))
+        eq_ = g.op("Equal", target, ignore_index_)
+        not_eq_ = g.op("Not", eq_)
+        weight_ = g.op("Cast", not_eq_, to_i=1)      # FLOAT = 1;   // float
+        not_eq_int64_ = g.op("Cast", not_eq_, to_i=7)  # INT64 = 7;   // int64_t
+        target_ = g.op("Mul", target, not_eq_int64_)
+        # if weight:
+        #     weight_ = g.op("Mul", weight_, weight)
+        return g.op("nll_loss", self, target_, weight_)

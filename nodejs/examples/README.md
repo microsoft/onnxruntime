@@ -4,11 +4,11 @@ This folder contains several examples that demonstrate how to use onnxruntime No
 
 ## Examples List
 
-### [01 Basic Usage](./01_basic-usage/README.md)
+### [01 Basic Usage](./01_basic-usage/)
 
 This example is a demonstration of basic usage of ONNX Runtime Node.js binding.
 
-### [02 Create Tensor](./02_create-tensor/README.md)
+### [02 Create Tensor](./02_create-tensor/)
 
 This example is a demonstration of basic usage of creating tensors.
 
@@ -18,7 +18,7 @@ This example is a demonstration of basic usage of creating tensors.
 This example is a demonstration of advanced usage of creating tensors.
 -->
 
-### [04 Create InferenceSession](./04_create-inference-session/README.md)
+### [04 Create InferenceSession](./04_create-inference-session/)
 
 ## Usage
 
