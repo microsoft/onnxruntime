@@ -84,7 +84,6 @@ UniqueOrtSession CreateUniqueOrtSession(const std::wstring& model_path, const Un
 }
 
 void AppendExecutionProvider_DML() {
-  GPUTEST;
   const auto session_options = CreateUniqueOrtSessionOptions();
 
   const auto device = CreateD3DDevice();
@@ -107,7 +106,6 @@ void GetExecutionProvider() {
 }
 
 void GetExecutionProvider_DML() {
-  GPUTEST;
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
@@ -130,7 +128,6 @@ void RegisterGraphTransformers() {
 }
 
 void RegisterGraphTransformers_DML() {
-  GPUTEST;
   const auto session_options = CreateUniqueOrtSessionOptions();
   auto session = CreateUniqueOrtSession(session_options);
   winml_adapter_api->SessionRegisterGraphTransformers(session.get());
@@ -147,7 +144,6 @@ void RegisterCustomRegistry() {
 }
 
 void RegisterCustomRegistry_DML() {
-  GPUTEST;
   IMLOperatorRegistry* registry;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateCustomRegistry(&registry), ort_api);
   WINML_EXPECT_NOT_EQUAL(nullptr, registry);
@@ -250,8 +246,6 @@ void CopyInputAcrossDevices() {
 }
 
 void CopyInputAcrossDevices_DML() {
-  GPUTEST;
-
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(ort_api->DisableMemPattern(session_options.get()), ort_api);
   const auto device = CreateD3DDevice();
@@ -287,8 +281,8 @@ void CopyInputAcrossDevices_DML() {
 }
 }
 
-const AdapterSessionTestAPi& getapi() {
-  static constexpr AdapterSessionTestAPi api =
+const AdapterSessionTestAPI& getapi() {
+  static AdapterSessionTestAPI api =
   {
     AdapterSessionTestSetup,
     AdapterSessionTestTeardown,
@@ -307,5 +301,13 @@ const AdapterSessionTestAPi& getapi() {
     CopyInputAcrossDevices,
     CopyInputAcrossDevices_DML
   };
+
+  if (SkipGpuTests()) {
+    api.AppendExecutionProvider_DML = SkipTest;
+    api.GetExecutionProvider_DML = SkipTest;
+    api.RegisterGraphTransformers_DML = SkipTest;
+    api.RegisterCustomRegistry_DML = SkipTest;
+    api.CopyInputAcrossDevices_DML = SkipTest;
+  }
   return api;
 }

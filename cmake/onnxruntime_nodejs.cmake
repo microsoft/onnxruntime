@@ -5,7 +5,7 @@ set(NODEJS_BINDING_ROOT ${REPO_ROOT}/nodejs)
 if (WIN32)
     set(NPM_CLI cmd /c npm)
 else()
-    set(NPM_CLI sh npm)
+    set(NPM_CLI npm)
 endif()
 
 # verify Node.js and NPM
@@ -28,8 +28,8 @@ endif()
 
 # add custom target
 add_custom_target(nodejs_binding_wrapper ALL
-    COMMAND ${NPM_CLI} ci --ort-skip
-    COMMAND ${NPM_CLI} run build --config=${CMAKE_BUILD_TYPE}
+    COMMAND ${NPM_CLI} ci --ort-skip-build
+    COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE}
     COMMAND ${NPM_CLI} test
     WORKING_DIRECTORY ${NODEJS_BINDING_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")

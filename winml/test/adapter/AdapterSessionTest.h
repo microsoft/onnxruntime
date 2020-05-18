@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test.h"
-struct AdapterSessionTestAPi
+struct AdapterSessionTestAPI
 {
   SetupClass AdapterSessionTestSetup;
   TeardownClass AdapterSessionTestTeardown;
@@ -21,7 +21,7 @@ struct AdapterSessionTestAPi
   VoidTest CopyInputAcrossDevices;
   VoidTest CopyInputAcrossDevices_DML;
 };
-const AdapterSessionTestAPi& getapi();
+const AdapterSessionTestAPI& getapi();
 
 WINML_TEST_CLASS_BEGIN(AdapterSessionTest)
 WINML_TEST_CLASS_SETUP_CLASS(AdapterSessionTestSetup)

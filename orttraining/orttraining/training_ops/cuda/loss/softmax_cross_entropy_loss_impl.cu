@@ -117,7 +117,11 @@ __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
   int row = i / C;
   int d = i % C;
   CUDA_KERNEL_ASSERT(weight[row] == 0 || (label[row] >= 0 && label[row] < C));
-  output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  if(0 == *normalize_factor){
+    output_data[i] = 0;
+  } else {
+    output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  }
 }
 
 template <typename T, typename Tin>
@@ -135,7 +139,11 @@ __global__ void _WeightedReductionNoneSoftmaxCrossEntropyLossGrad(
   int row = i / C;
   int d = i % C;
   CUDA_KERNEL_ASSERT(weight[row] == 0 || (label[row] >= 0 && label[row] < C));
-  output_data[i] = dY[row] * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  if(0 == *normalize_factor){
+    output_data[i] = 0;
+  } else {
+    output_data[i] = dY[row] * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
+  }
 }
 
 template <typename T, typename Tin>

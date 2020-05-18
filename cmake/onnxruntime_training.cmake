@@ -41,7 +41,21 @@ file(GLOB_RECURSE onnxruntime_training_runner_srcs
     "${ORTTRAINING_SOURCE_DIR}/models/runner/*.h"
     "${ORTTRAINING_SOURCE_DIR}/models/runner/*.cc"
 )
-add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs})
+
+# perf test utils
+set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
+set(onnxruntime_perf_test_src
+"${onnxruntime_perf_test_src_dir}/utils.h")
+
+if(WIN32)
+  list(APPEND onnxruntime_perf_test_src
+    "${onnxruntime_perf_test_src_dir}/windows/utils.cc")
+else ()
+  list(APPEND onnxruntime_perf_test_src
+    "${onnxruntime_perf_test_src_dir}/posix/utils.cc")
+endif()
+
+add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
 add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
 
 onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
@@ -54,7 +68,7 @@ if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
 endif()
 set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
-source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_training_runner_srcs})
+source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
 
 
 # MNIST

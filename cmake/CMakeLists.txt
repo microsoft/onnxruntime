@@ -9,6 +9,10 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
 
+# Support OS X versions 10.12+
+# This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+
 # Project
 project(onnxruntime C CXX)
 
@@ -43,7 +47,7 @@ option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak chec
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
-option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
+option(onnxruntime_USE_NNAPI_DNNLIBRARY "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
@@ -124,12 +128,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
-  if (HAS_D2FH4)
-    message("Disabling /d2FH4")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
-  endif()
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
@@ -882,7 +880,7 @@ if (onnxruntime_ENABLE_TRAINING)
       add_subdirectory(horovod EXCLUDE_FROM_ALL)
       # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
       list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
-      find_package(nccl REQUIRED)  
+      find_package(nccl REQUIRED)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     endif()
   endif()
@@ -1016,3 +1014,5 @@ if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
     target_link_options(winml_dll PRIVATE /SAFESEH)
   endif()
 endif()
+
+include(flake8.cmake)

@@ -6,7 +6,7 @@ import * as path from 'path';
 // NPM configs (parsed via 'npm install --xxx')
 
 // skip build on install. usually used in CI where build will be another step.
-const SKIP = !!process.env.npm_config_ort_skip;
+const SKIP = !!process.env.npm_config_ort_skip_build;
 if (SKIP) {
   process.exit(0);
 }
@@ -19,6 +19,7 @@ const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' = buildArgs.config || 'RelWithD
 if (CONFIG !== 'Debug' && CONFIG !== 'Release' && CONFIG !== 'RelWithDebInfo') {
   throw new Error(`unrecognized config: ${CONFIG}`);
 }
+const ONNXRUNTIME_BUILD_DIR = buildArgs['onnxruntime-build-dir'];
 const REBUILD = !!buildArgs.rebuild;
 
 // build path
@@ -42,6 +43,9 @@ const args = [
   '--CDnapi_build_version=3',
   `--CDCMAKE_BUILD_TYPE=${CONFIG}`,
 ];
+if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
+  args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
+}
 
 // launch cmake-js configure
 const procCmakejs = spawnSync(command, args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
