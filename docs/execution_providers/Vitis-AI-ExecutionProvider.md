@@ -69,4 +69,32 @@ The following table lists system requirements for running docker containers as w
 
 
 ### Samples
-TODO
+
+For python, you can base yourself on the following example:
+
+```
+# Import pyxir before onnxruntime
+import pyxir
+import pyxir.frontend.onnx
+import pyxir.contrib.dpuv1.dpuv1
+
+import onnxruntime
+
+# Add other imports 
+# ...
+
+# Load inputs and do preprocessing
+# ...
+
+# Create an inference session using the Vitis-AI execution provider
+session = onnxruntime.InferenceSession('[model_file].onnx', None,["VitisAIExecutionProvider"])
+
+# First N (default = 128) inputs are used for quantization calibration and will
+#   be executed on the CPU
+imput_name = [...]
+outputs = [session.run([], {input_name: calib_inputs[i]})[0] for i in range(128)]
+
+# Afterwards, computations will be accelerated on the FPGA
+input_data = [...]
+result = session.run([], {input_name: input_data})
+```

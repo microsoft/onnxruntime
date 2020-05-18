@@ -1733,7 +1733,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
-                args.use_vitisai,                
+                args.use_vitisai,
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,
