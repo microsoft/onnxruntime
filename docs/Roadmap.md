@@ -47,12 +47,21 @@ ONNX Runtime already supports a wide range of architectures, platforms, and lang
 Additionally, we understand that lightweight devices and local applications may have constraints for package size, so there is active awareness to opportunistically minimize binary size.
 
 #### Architectures
+<<<<<<< HEAD
 Supported
 * X64
 * X86
 * ARM64
 * ARM32 (Limited)
 
+=======
+|Supported|Future|
+|---|---|
+|X64|Additional as-needed|
+|X86| |
+|ARM64 |
+|ARM32 (Limited)| |
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 
 #### Platforms
 Supported
@@ -65,6 +74,7 @@ Supported
 * *iOS*
 
 #### Languages
+<<<<<<< HEAD
 Supported
 * Python (3.5, 3.6, 3.7)
 * C++
@@ -73,12 +83,24 @@ Supported
 * Ruby (community project)
 * Java
 * Javascript - Node.js (Preview)
+=======
+|Supported|Future|
+|---|---|
+|Python (3.5, 3.6, 3.7)| |
+|C++| |
+|C#| |
+|C| |
+|Ruby (community project)| |
+|Java | |
+|Javascript - Node.js (Preview) | |
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 
 
 ### Accelerators and Execution Providers
 #### New EPs
 To achieve the best performance on a growing set of compute targets across cloud and the intelligent edge, we invest in and partner with hardware partners and community members to add new execution providers. The flexible pluggability of ONNX Runtime is critical to support a broad range of scenarios and compute options.
 
+<<<<<<< HEAD
 Supported
 
 * MLAS (Microsoft Linear Algebra Subprograms)
@@ -96,6 +118,21 @@ Supported
 *Future*
 * *AMD GPU*
 * *Xilinx FPGA*
+=======
+|Supported|Future|
+|---|---|
+|MLAS (Microsoft Linear Algebra Subprograms)|AMD GPU|
+|Intel DNNL / MKL-ML|Xilinx FPGA|
+|Intel nGraph| |
+|NVIDIA CUDA| |
+|NVIDIA TensorRT| |
+|Intel OpenVINO| |
+|Nuphar Model Compiler| |
+|Microsoft Direct ML| |
+|Android NN API (Preview)| |
+|ARM Compute Library (Preview)| |
+|Rockchip NPU (Preview)| |
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 
 
 #### CUDA operator coverage

@@ -35,7 +35,11 @@
 # Inferencing
 ## Start: Baseline CPU
 
+<<<<<<< HEAD
 ### Prerequisites
+=======
+### Pre-Requisites
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 * Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -122,8 +126,8 @@ GCC 4.x and below are not supported.
 |**Python**|--build_wheel||
 |**C# and C packages**|--build_csharp||
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
-|**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies implies `--build_shared_lib`|
-|**Node.js**|--build_nodejs<br>--build_shared_lib|`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
+|**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
+|**Node.js**|--build_nodejs|Implies `--build_shared_lib`<br>`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
 
 ---
 
@@ -435,7 +439,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ### ARM Compute Library
 See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
 
-#### Prerequisites
+#### Pre-Requisites
 * Supported backend: i.MX8QM Armv8 CPUs
 * Supported BSP: i.MX8QM BSP
   * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
@@ -780,7 +784,6 @@ If targeting manylinux, unfortunately their tools do not work in the cross-compi
 docker run  -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v `pwd`:/tmp/a -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/cp37-cp37m/bin/python3 setup.py bdist_wheel
 ```
 This is not needed if you only want to target a specfic Linux distribution (i.e. Ubuntu).
-
 
 #### Native compiling on Linux ARM device
 *Easy, slower*

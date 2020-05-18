@@ -18,7 +18,11 @@ Many users can benefit from ONNX Runtime, including those looking to:
 
 [ONNX Runtime inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
 
+<<<<<<< HEAD
 [ONNX Runtime training](./orttraining) APIs were introduced in May 2020 and currently support PyTorch training acceleration on NVIDIA GPUs for transformer models, with more to come soon.
+=======
+[ONNX Runtime training](./orttraining) feature was introduced in May 2020 in preview. This feaures supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 
 
 ***
@@ -66,6 +70,7 @@ ONNX Runtime is up to date and backwards compatible with all operators (both DNN
 * [Supported operators/types](./docs/OperatorKernels.md)
   * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](./docs/ContribOperators.md)*
 * [Extensibility: Add a custom operator/kernel](docs/AddingCustomOp.md)
+<<<<<<< HEAD
 
 ### Binaries
 
@@ -107,6 +112,49 @@ Dev builds created from the master branch are available for testing newer change
 
 ### Build from Source
 
+=======
+
+### Binaries
+
+Official builds are available on PyPi (Python) and Nuget (C#/C/C++):
+
+* Default CPU Provider (Eigen + MLAS)
+* GPU Provider - NVIDIA CUDA
+* GPU Provider - DirectML (Windows)
+  * *On Windows, the [DirectML execution provider](./docs/execution_providers/DirectML-ExecutionProvider.md) is recommended for optimal performance and compatibility with a broad set of GPUs.*
+
+Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.
+
+|Pypi (Python)|Nuget (C#/C/C++)|Other package repositories|
+|---|---|---|
+*If using pip, run `pip install --upgrade pip` prior to downloading.*<br><br>CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime) / [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)<br><br>GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) / [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly) | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) <br><br>GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)</li></ul>|[Contributed non-official packages](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp) (including Homebrew, Linuxbrew, and nixpkgs)<br><br>*These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.*|
+
+#### System Requirements
+
+* Visual Studio
+  * Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
+* System language 
+  * Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales. 
+  * For Ubuntu, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
+    * Run the following commands:
+      `locale-gen en_US.UTF-8`
+      `update-locale LANG=en_US.UTF-8`
+    * Follow similar procedure to configure other locales on other platforms.
+  
+* Default CPU
+  * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the system.
+    * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
+      [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
+    * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
+
+* Default GPU (CUDA)
+  * The default GPU build requires CUDA runtime libraries being installed on the system:
+    * Version: **CUDA 10.1** and **cuDNN 7.6.5**
+  * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
+
+### Build from Source
+
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 * [Instructions for additional build flavors](./BUILD.md)
@@ -169,6 +217,7 @@ This is particularly important when there are massive volumes of incoming data/s
 
 ## Training: Start
 
+<<<<<<< HEAD
 With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for PyTorch transformer models on NVIDIA GPUs.
 
 **[End-to-End Sample Notebook](https://github.com/microsoft/onnxruntime-training-examples)**
@@ -197,6 +246,36 @@ High-level code fragment to include in your pre-training code:
   optimizer = 'SGDOptimizer'
   trainer = ORTTrainer(model, criterion, description, optimizer, ...)
 
+=======
+The ONNX Runtime training feature enables easy integration with existing Pytorch trainer code to accelerate the exection. With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for transformer models on NVIDIA GPUs.
+
+**[ONNX Runtime pre-training sample](https://github.com/microsoft/onnxruntime-training-examples)**: This sample is setup to pre-train the BERT-Large model to show how ONNX Runtime training can be used to accelerate training execution.
+
+### Train PyTorch model with ONNX Runtime
+ONNX Runtime (ORT) has the capability to train existing PyTorch models through its optimized backend. For this, we have introduced an python API for PyTorch, called ORTTrainer, which can be used to switch the training backend for PyTorch models (instance of `torch.nn.Module`) to `orttrainer`. This requires some changes in the trainer code, such as replacing the PyTorch optimizer, and optionally, setting flags to enable additional features such as mixed-precision training. Here is a sample code fragment to integrate ONNX Runtime Training in your PyTorch pre-training script:
+
+_NOTE: The current API is experimental and expected to see significant changes in the near future. Our goal is to improve the interface to provide a seamless integration with PyTorch training that requires minimal changes in users’ training code._ 
+
+  ```python
+  import torch
+  ...
+  import onnxruntime
+  from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
+
+  # Model definition
+  class Net(torch.nn.Module):
+    def __init__(self, D_in, H, D_out):
+      ...
+    def forward(self, x):
+      ...
+
+  model = Net(D_in, H, H_out)
+  criterion = torch.nn.Functional.cross_entropy
+  description = ModelDescription(...)
+  optimizer = 'SGDOptimizer'
+  trainer = ORTTrainer(model, criterion, description, optimizer, ...)
+
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
   # Training Loop
   for t in range(1000):
     # forward + backward + weight update
@@ -204,6 +283,14 @@ High-level code fragment to include in your pre-training code:
     ...
   ```
 
+<<<<<<< HEAD
+=======
+### Build ONNX Runtime Training from source
+To use ONNX Runtime training in a custom environment, like on-prem NVIDIA DGX-2 clusters, you can use these [build instructions](BUILD.md#training) to generate the Python package to integrate into existing trainer code.
+
+
+
+>>>>>>> 5c8e6bf25b40098a96bae396e9d5faf47ae1eae0
 # Data/Telemetry
 
 This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
