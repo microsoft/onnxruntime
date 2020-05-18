@@ -30,7 +30,7 @@ def main():
         Config(False, 1024, 1)
     ]
 
-    # run BERT training
+    # run GPT-2 training
     for c in configs:
         print("######## testing name - " + ('fp16-' if c.use_mixed_precision else 'fp32-') + str(c.max_seq_length) + " ##############")
         cmds = [
