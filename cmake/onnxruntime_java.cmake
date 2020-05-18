@@ -101,10 +101,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 # Set platform and ach for packaging
-if(CMAKE_SIZEOF_VOID_P EQUAL "8")
-    set(JNI_ARCH x64)
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(JNI_ARCH ${ANDROID_ABI})
 else()
+  if(CMAKE_SIZEOF_VOID_P EQUAL "8")
+    set(JNI_ARCH x64)
+  else()
     message(FATAL_ERROR "Java is currently not supported for x86 architecture")
+  endif()
 endif()
 
 if (WIN32)
