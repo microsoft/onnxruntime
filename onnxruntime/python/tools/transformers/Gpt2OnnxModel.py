@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class Gpt2OnnxModel(BertOnnxModel):
-
     def __init(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
 
@@ -28,7 +27,6 @@ class Gpt2OnnxModel(BertOnnxModel):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
-        nodes_to_remove = []
         attention_count = 0
 
         for normalize_node in self.get_nodes_by_op_type("LayerNormalization"):
@@ -65,10 +63,39 @@ class Gpt2OnnxModel(BertOnnxModel):
                 continue
 
             qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'Mul', 'Div', 'MatMul'], [0, 0, 0, 0, 0])
-            if qk_nodes is None:
-                logger.debug("fuse_attention: failed to match qk path")
-                continue
-            (softmax_qk, sub_qk, mul_qk, div_qk, matmul_qk) = qk_nodes
+            if qk_nodes is not None:
+                (softmax_qk, sub_qk, mul_qk, div_qk, matmul_qk) = qk_nodes
+                mask_nodes = self.match_parent_path(
+                    sub_qk,
+                    ['Mul', 'Sub', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
+                    [1,      0,     1,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
+                if mask_nodes is None:
+                    logger.debug("fuse_attention: failed to match mask path")
+                    continue
+                div_mask = mask_nodes[-1]
+
+                if div_qk != div_mask:
+                    logger.debug("fuse_attention: skip since div_qk != div_mask")
+                    continue
+            else:
+                # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
+                qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'Div', 'MatMul'], [0, 0, 1, 0])
+                if qk_nodes is None:
+                    logger.debug("fuse_attention: failed to match qk path")
+                    continue
+                (softmax_qk, where_qk, div_qk, matmul_qk) = qk_nodes
+                mask_nodes = self.match_parent_path(
+                    where_qk,
+                    ['Cast', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
+                    [ 0,     0,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
+                if mask_nodes is None:
+                    logger.debug("fuse_attention: failed to match mask path")
+                    continue
+                div_mask = mask_nodes[-1]
+
+                if div_qk != div_mask:
+                    logger.debug("fuse_attention: skip since div_qk != div_mask")
+                    continue
 
             q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Split'], [0, 0, 0])
             if q_nodes is None:
@@ -88,31 +115,12 @@ class Gpt2OnnxModel(BertOnnxModel):
                 logger.debug("fuse_attention: skip since split_v != split_k")
                 continue
 
-            mask_nodes = self.match_parent_path(
-                sub_qk,
-                ['Mul', 'Sub', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
-                [1,      0,     1,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
-            if mask_nodes is None:
-                logger.debug("fuse_attention: failed to match mask path")
-                continue
-            (mul_mask, sub_mask, slice_mask, slice_mask_0, unsqueeze_mask, sub_mask, squeeze_mask, slice_mask_1,
-             shape_mask, div_mask) = mask_nodes
-
-            if div_qk != div_mask:
-                logger.debug("fuse_attention: skip since div_qk != div_mask")
-                continue
-
             self.create_attention_node(gemm, gemm_qkv, layernorm_before_attention.output[0], reshape_qkv.output[0],
                                        attention_count == 0)
-            nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
-            nodes_to_remove.extend(qk_nodes)
-            nodes_to_remove.extend(q_nodes)
-            nodes_to_remove.extend(k_nodes)
-            nodes_to_remove.extend(v_nodes)
-            nodes_to_remove.extend(mask_nodes)
+            # we rely on prune_graph() to clean old subgraph nodes:
+            # qk_nodes + q_nodes + k_nodes + v_nodes + mask_nodes + [reshape_qkv, transpose_qkv, matmul_qkv]
             attention_count += 1
 
-        self.remove_nodes(nodes_to_remove)
         self.prune_graph()
         logger.info(f"Fused Attention count:{attention_count}")
 
@@ -187,4 +195,4 @@ class Gpt2OnnxModel(BertOnnxModel):
             reshape_count += 2
 
         self.prune_graph()
-        logger.info(f"Remove Reshape count:{reshape_count}")
+        logger.info(f"postprocess: remove Reshape count:{reshape_count}")

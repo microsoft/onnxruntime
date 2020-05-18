@@ -209,7 +209,6 @@ namespace Microsoft.ML.OnnxRuntime
                         IntPtr nativeOnnxValueSeq;
                         NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, i, allocator, out nativeOnnxValueSeq));
                         sequence.Add(CreateFromOnnxValue(string.Empty, nativeOnnxValueSeq, allocator));
-                        NativeMethods.OrtReleaseValue(nativeOnnxValueSeq);
                     }
                     return new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, TensorElementType.DataTypeMax, null);
 

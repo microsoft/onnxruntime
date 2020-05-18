@@ -96,17 +96,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
     ~PerThreadContext();
 
-    cublasHandle_t CublasHandle() const {
-      return cublas_handle_;
-    }
+    cublasHandle_t CublasHandle();
 
-    cudnnHandle_t CudnnHandle() const {
-      return cudnn_handle_;
-    }
+    cudnnHandle_t CudnnHandle();
 
-    curandGenerator_t CurandGenerator() const {
-      return curand_generator_;
-    }
+    curandGenerator_t CurandGenerator();
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;

@@ -26,6 +26,62 @@ from datetime import datetime
 import multiprocessing
 from bert_test_data import get_bert_inputs, generate_test_data
 
+from dataclasses import dataclass
+
+
+@dataclass
+class TestSetting:
+    batch_size: int
+    sequence_length: int
+    test_cases: int
+    test_times: int
+    contiguous: bool
+    use_gpu: bool
+    warmup: bool
+    omp_num_threads: int
+    omp_wait_policy: str
+    intra_op_num_threads: int
+    seed: int
+    verbose: bool
+    contiguous: bool
+    inclusive: bool
+    extra_latency: float = 0
+
+    def get_setting(self) -> str:
+        return f"batch_size={self.batch_size},sequence_length={self.sequence_length},test_cases={self.test_cases},test_times={self.test_times},contiguous={self.contiguous},use_gpu={self.use_gpu},warmup={self.warmup}"
+
+    def check(self, intra_op_threads, omp_threads, omp_policy) -> bool:
+        if intra_op_threads is None:
+            if self.intra_op_num_threads > 0:
+                return False
+        else:
+            assert intra_op_threads > 0
+            if not (self.intra_op_num_threads is None or self.intra_op_num_threads == intra_op_threads):
+                return False
+
+        if omp_threads is None:
+            if self.omp_num_threads > 0:
+                return False
+        else:
+            assert omp_threads > 0
+            if not (self.omp_num_threads is None or self.omp_num_threads == omp_threads):
+                return False
+
+        if self.omp_wait_policy is not None:
+            if omp_policy != self.omp_wait_policy:
+                return False
+
+        return True
+
+
+@dataclass
+class ModelSetting:
+    model_path: str
+    input_ids: str
+    segment_ids: str
+    input_mask: str
+    opt_level: int
+
 
 def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization_level=None):
     # Import onnxruntime shall be after OpenMP environment variable setting.
@@ -43,7 +99,7 @@ def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization
         session = onnxruntime.InferenceSession(model_path)
     else:
         execution_providers = ['CPUExecutionProvider'
-                              ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                               ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
 
         sess_options = onnxruntime.SessionOptions()
         sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
@@ -113,7 +169,7 @@ def to_string(model_path, session, test_setting):
                                                                                 'GraphOptimizationLevel.ORT_', '')
     option += ",OMP_NUM_THREADS={}".format(os.environ["OMP_NUM_THREADS"] if "OMP_NUM_THREADS" in os.environ else "")
     option += ",OMP_WAIT_POLICY={}".format(os.environ["OMP_WAIT_POLICY"] if "OMP_WAIT_POLICY" in os.environ else "")
-    option += ",{}".format(test_setting)
+    option += ",{}".format(test_setting.get_setting())
     return option
 
 
@@ -128,23 +184,20 @@ def setup_openmp_environ(omp_num_threads, omp_wait_policy):
         if "OMP_WAIT_POLICY" in os.environ:
             del os.environ["OMP_WAIT_POLICY"]
     else:
-        assert omp_wait_policy in ["ACTIVE", "PASSIVE"]
+        assert omp_wait_policy in ["ACTIVE", "PASSIVE"], f"{omp_wait_policy} is not a valid policy"
         os.environ["OMP_WAIT_POLICY"] = omp_wait_policy
 
 
-def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                 contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level,
-                 extra_latency):
+def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads, omp_num_threads,
+                 omp_wait_policy):
     # Environment variable shall be set before import onnxruntime.
     setup_openmp_environ(omp_num_threads, omp_wait_policy)
 
-    test_setting = "batch_size={},sequence_length={},test_cases={},test_times={},contiguous={},use_gpu={},warmup={}".format(
-        batch_size, sequence_length, test_cases, test_times, contiguous, use_gpu, not no_warmup)
-
-    session = create_session(model_path, use_gpu, intra_op_num_threads, opt_level)
+    session = create_session(model_setting.model_path, test_setting.use_gpu, intra_op_num_threads,
+                             model_setting.opt_level)
     output_names = [output.name for output in session.get_outputs()]
 
-    key = to_string(model_path, session, test_setting)
+    key = to_string(model_setting.model_path, session, test_setting)
     if key in perf_results:
         print("skip duplicated test:", key)
         return
@@ -152,12 +205,12 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
     print("Running test:", key)
 
     all_latency_list = []
-    for i in range(test_times):
-        results, latency_list = onnxruntime_inference(session, all_inputs, output_names, not no_warmup)
+    for i in range(test_setting.test_times):
+        results, latency_list = onnxruntime_inference(session, all_inputs, output_names, test_setting.warmup)
         all_latency_list.extend(latency_list)
 
     # latency in miliseconds
-    latency_ms = np.array(all_latency_list) * 1000 + extra_latency
+    latency_ms = np.array(all_latency_list) * 1000 + test_setting.extra_latency
 
     average_latency = statistics.mean(latency_ms)
     latency_50 = np.percentile(latency_ms, 50)
@@ -165,7 +218,7 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
     latency_90 = np.percentile(latency_ms, 90)
     latency_95 = np.percentile(latency_ms, 95)
     latency_99 = np.percentile(latency_ms, 99)
-    throughput = batch_size * (1000.0 / average_latency)
+    throughput = test_setting.batch_size * (1000.0 / average_latency)
 
     perf_results[key] = (average_latency, latency_50, latency_75, latency_90, latency_95, latency_99, throughput)
 
@@ -173,47 +226,66 @@ def run_one_test(perf_results, model_path, all_inputs, batch_size, sequence_leng
                                                                 format(throughput, '.2f')))
 
 
-def launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup, opt_level,
-                extra_latency):
+def launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads, omp_num_threads,
+                omp_wait_policy):
+    if not test_setting.check(intra_op_num_threads, omp_num_threads, omp_wait_policy):
+        return
+
     process = multiprocessing.Process(target=run_one_test,
-                                      args=(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu,
-                                            test_cases, test_times, contiguous, intra_op_num_threads, omp_num_threads,
-                                            omp_wait_policy, no_warmup, opt_level, extra_latency))
+                                      args=(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads,
+                                            omp_num_threads, omp_wait_policy))
     process.start()
     process.join()
 
 
-def run_perf_tests(perf_results, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, contiguous,
-                   all_inputs, test_all, no_warmup, opt_level, extra_latency):
+def run_perf_tests(model_setting, test_setting, perf_results, test_all, all_inputs):
     cpu_count = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
 
-    # Test a setting without any setting as baseline 1.
-    launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                contiguous, None, None, None, no_warmup, opt_level, extra_latency)
+    candidate_threads = list(set([1, logical_cores, cpu_count]))
 
-    if not use_gpu:
+    if (test_setting.intra_op_num_threads is not None) or (test_setting.omp_num_threads is not None):
+
+        if test_setting.intra_op_num_threads is not None:
+            intra_op_threads = [test_setting.intra_op_num_threads]
+        else:
+            intra_op_threads = [None] + candidate_threads
+
+        if test_setting.omp_num_threads is not None:
+            omp_threads = [test_setting.omp_num_threads]
+        else:
+            omp_threads = [None] + candidate_threads
+
+        if test_setting.omp_wait_policy is not None:
+            omp_policies = [test_setting.omp_wait_policy]
+        else:
+            omp_policies = [None, 'PASSIVE', 'ACTIVE']
+
+        for it in intra_op_threads:
+            for ot in omp_threads:
+                for op in omp_policies:
+                    launch_test(model_setting, test_setting, perf_results, all_inputs, it, ot, op)
+        return
+
+    # Test a setting without any setting as baseline 1.
+    launch_test(model_setting, test_setting, perf_results, all_inputs, None, None, None)
+
+    if not test_setting.use_gpu:
         # For CPU: intra_op_num_threads = 1, omp_num_threads=None, omp_wait_policy=None
         # Another setting without environment variable as baseline 2.
-        launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                    contiguous, 1, None, None, no_warmup, opt_level, extra_latency)
+        launch_test(model_setting, test_setting, perf_results, all_inputs, 1, None, None)
     else:
         # For GPU, we test two more settings by default:
         # (1) intra_op_num_threads = 1, omp_num_threads=cpu_count, omp_wait_policy=PASSIVE
         # (2) intra_op_num_threads = logical_cores, omp_num_threads=1, omp_wait_policy=ACTIVE
-        launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                    contiguous, 1, cpu_count, 'PASSIVE', no_warmup, opt_level, extra_latency)
+        launch_test(model_setting, test_setting, perf_results, all_inputs, 1, cpu_count, 'PASSIVE')
 
-        launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases, test_times,
-                    contiguous, logical_cores, 1, 'ACTIVE', no_warmup, opt_level, extra_latency)
+        launch_test(model_setting, test_setting, perf_results, all_inputs, logical_cores, 1, 'ACTIVE')
 
     # GPU latency is not sensitive to these settings. No need to test many combinations.
     # Skip remaining settings for GPU without --all flag.
-    if use_gpu and not test_all:
+    if test_setting.use_gpu and not test_all:
         return
-
-    candidates = list(set([1, logical_cores, cpu_count]))
 
     for intra_op_num_threads in candidates:
         for omp_num_threads in candidates:
@@ -234,66 +306,33 @@ def run_perf_tests(perf_results, model_path, batch_size, sequence_length, use_gp
                     continue
 
             for omp_wait_policy in ['ACTIVE', 'PASSIVE']:
-                launch_test(perf_results, model_path, all_inputs, batch_size, sequence_length, use_gpu, test_cases,
-                            test_times, contiguous, intra_op_num_threads, omp_num_threads, omp_wait_policy, no_warmup,
-                            opt_level, extra_latency)
+                launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads,
+                            omp_num_threads, omp_wait_policy)
 
 
-def run_performance(perf_results, model_path, batch_size, sequence_length, use_gpu, test_cases, test_times, seed,
-                    verbose, inclusive, test_all, no_warmup, opt_level, input_ids_name, segment_ids_name,
-                    input_mask_name):
-
-    input_ids, segment_ids, input_mask = get_bert_inputs(model_path, input_ids_name, segment_ids_name, input_mask_name)
+def run_performance(model_setting, test_setting, perf_results, test_all):
+    input_ids, segment_ids, input_mask = get_bert_inputs(model_setting.model_path, model_setting.input_ids,
+                                                         model_setting.segment_ids, model_setting.input_mask)
 
     # Do not generate random mask for performance test.
-    print(f"Generating {test_cases} samples for batch_size={batch_size} sequence_length={sequence_length}")
-    all_inputs = generate_test_data(batch_size,
-                                    sequence_length,
-                                    test_cases,
-                                    seed,
-                                    verbose,
+    print(
+        f"Generating {test_setting.test_cases} samples for batch_size={test_setting.batch_size} sequence_length={test_setting.sequence_length}"
+    )
+    all_inputs = generate_test_data(test_setting.batch_size,
+                                    test_setting.sequence_length,
+                                    test_setting.test_cases,
+                                    test_setting.seed,
+                                    test_setting.verbose,
                                     input_ids,
                                     segment_ids,
                                     input_mask,
                                     random_mask_length=False)
+    if test_setting.contiguous:
+        all_inputs, contiguous_latency = get_contiguous_inputs(all_inputs)
+        print("Extra latency for converting inputs to contiguous: {} ms".format(format(contiguous_latency, '.2f')))
+        test_setting.extra_latency = contiguous_latency if test_setting.inclusive else 0
 
-    contiguous = False
-    run_perf_tests(perf_results,
-                   model_path,
-                   batch_size,
-                   sequence_length,
-                   use_gpu,
-                   test_cases,
-                   test_times,
-                   contiguous,
-                   all_inputs,
-                   test_all,
-                   no_warmup,
-                   opt_level,
-                   extra_latency=0)
-
-    # only test contiguous array when the --all flag is set.
-    if not test_all:
-        return
-
-    # Convert inputs to contiguous array, which could improve inference performance
-    all_inputs, contiguous_latency = get_contiguous_inputs(all_inputs)
-    print("Extra latency for converting inputs to contiguous: {} ms".format(format(contiguous_latency, '.2f')))
-
-    contiguous = True
-    run_perf_tests(perf_results,
-                   model_path,
-                   batch_size,
-                   sequence_length,
-                   use_gpu,
-                   test_cases,
-                   test_times,
-                   contiguous,
-                   all_inputs,
-                   test_all,
-                   no_warmup,
-                   opt_level,
-                   extra_latency=contiguous_latency if inclusive else 0)
+    run_perf_tests(model_setting, test_setting, perf_results, test_all, all_inputs)
 
 
 def parse_arguments():
@@ -345,6 +384,28 @@ def parse_arguments():
     parser.add_argument('--all', required=False, action='store_true', help="test all candidate settings")
     parser.set_defaults(all=False)
 
+    parser.add_argument('--omp_num_threads',
+                        required=False,
+                        type=int,
+                        default=None,
+                        help=">0, set OMP_NUM_THREADS value. 0, do not set")
+
+    parser.add_argument('--intra_op_num_threads',
+                        required=False,
+                        type=int,
+                        default=None,
+                        help=">=0, set intra_op_num_threads")
+
+    parser.add_argument('--omp_wait_policy',
+                        required=False,
+                        type=str,
+                        default=None,
+                        choices=['ACTIVE', 'PASSIVE'],
+                        help="OMP_WAIT_POLICY")
+
+    parser.add_argument('--contiguous', required=False, type=bool, default=False, help="contiguous input")
+    parser.set_defaults(contiguous=False)
+
     parser.add_argument('--no_warmup', required=False, action='store_true', help="do not use one sample for warm-up.")
     parser.set_defaults(no_warmup=False)
 
@@ -369,10 +430,26 @@ def main():
     if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
         raise Exception("batch_size not in range [1, 128]")
 
+    model_setting = ModelSetting(args.model, args.input_ids, args.segment_ids, args.input_mask, args.opt_level)
+
     for batch_size in batch_size_set:
-        run_performance(perf_results, args.model, batch_size, args.sequence_length, args.use_gpu, args.samples,
-                        args.test_times, args.seed, args.verbose, args.inclusive, args.all, args.no_warmup,
-                        args.opt_level, args.input_ids, args.segment_ids, args.input_mask)
+        test_setting = TestSetting(
+            batch_size,
+            args.sequence_length,
+            args.samples,
+            args.test_times,
+            None,  #contiguous
+            args.use_gpu,
+            not args.no_warmup,
+            args.omp_num_threads,
+            args.omp_wait_policy,
+            args.intra_op_num_threads,
+            args.seed,
+            args.verbose,
+            args.contiguous,
+            args.inclusive)
+        print("test setting", test_setting)
+        run_performance(model_setting, test_setting, perf_results, args.all)
 
     # Sort the results so that the first one has smallest latency.
     sorted_results = sorted(perf_results.items(), reverse=False, key=lambda x: x[1])
