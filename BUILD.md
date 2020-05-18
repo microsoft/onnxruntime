@@ -583,7 +583,7 @@ Values:
 
 ## Architectures
 ### x86
-#### Build Intsructions
+#### Build Instructions
 ##### Windows
 * add `--x86` argument when launching `.\build.bat`
 
@@ -594,7 +594,7 @@ Values:
 ---
 
 ### ARM
-Support on ARM may be limited. There are a few options for building for ARM.
+There are a few options for building for ARM.
 
 * [Cross compiling for ARM with simulation (Linux/Windows)](#Cross-compiling-for-ARM-with-simulation-LinuxWindows) - **Recommended**;  Easy, slow
 * [Cross compiling on Linux](#Cross-compiling-on-Linux) - Difficult, fast
@@ -607,9 +607,9 @@ Support on ARM may be limited. There are a few options for building for ARM.
 
 This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
-Here we have [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Please note, it doesn't work for Raspberrypi 1 or Zero. And if your operating system is different than the docker file uses, it also may not work. 
+Here is [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
 
-The whole build process may take hours.
+The build process can take hours.
 
 #### Cross compiling on Linux
 *Difficult, fast*
@@ -627,7 +627,7 @@ In GCC terms:
 "target" to describe the type of system for which GCC produce code
 When not cross compiling, usually "build" = "host" = "target". When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64. In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
 
-Then you can either build GCC from source code by yourself, or get a prebuilt one from a vendor like Ubuntu, linaro. Choosing the same compiler version as your target operating system is best. If ths is not possible, choose the latest stable one and statically link to the GCC libs.
+You can either build GCC from source code by yourself, or get a prebuilt one from a vendor like Ubuntu, linaro. Choosing the same compiler version as your target operating system is best. If ths is not possible, choose the latest stable one and statically link to the GCC libs.
 
 When you get the compiler, run `aarch64-linux-gnu-gcc -v` This should produce an output like below:
 
