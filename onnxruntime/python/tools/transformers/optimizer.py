@@ -76,7 +76,7 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu=False, optimized_model_path
 
     if optimized_model_path is None:
         path_prefix = onnx_model_path[:-5]  #remove .onnx suffix
-        optimized_model_path = "{}_ort_{}.onnx".format(path_prefix, "gpu" if use_gpu else "cpu")
+        optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
 
     sess_options.optimized_model_filepath = optimized_model_path
 
@@ -174,11 +174,17 @@ def parse_arguments():
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
+    parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU inference")
+    parser.set_defaults(use_gpu=False)
+
+    parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
+    parser.set_defaults(only_onnxruntime=False)
+
     parser.add_argument('--opt_level',
                         required=False,
                         type=int,
                         choices=[0, 1, 2, 99],
-                        default=99,
+                        default=0,
                         help="onnxruntime optimization level. 0 will disable onnxruntime.")
 
     args = parser.parse_args()
@@ -211,14 +217,15 @@ def optimize_model(input,
                    model_type,
                    num_heads,
                    hidden_size,
-                   opt_level=99,
+                   opt_level=0,
                    optimization_options=None,
+                   use_gpu=False,
                    only_onnxruntime=False):
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
     if run_onnxruntime and opt_level > 0:
-        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=opt_level)
+        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
 
     model = ModelProto()
     with open(input_model_path, "rb") as f:
@@ -254,8 +261,8 @@ def main():
 
     optimization_options = get_optimization_options(args)
 
-    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size, args.opt_level,
-                                optimization_options)
+    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size, opt_level=args.opt_level,
+                                optimization_options=optimization_options, use_gpu=args.use_gpu, only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
