@@ -24,14 +24,26 @@
 #include "gsl/gsl"
 #include "core/graph/model.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include <experimental/filesystem>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
+namespace fs = std::experimental::filesystem;
 namespace {
 struct KernelRegistryAndStatus {
   std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
   Status st;
 };
+
+std::string GetEnginePath(const::std::string& root, const std::string& name) {
+  if (root.empty()) {
+    return name + ".engine";
+  } else {
+    fs::path path = root;
+    path.append(name + ".engine");
+    return path.string();
+  }
+}
 }  // namespace
 namespace onnxruntime {
 
@@ -91,6 +103,7 @@ TensorrtLogger& GetTensorrtLogger() {
   return trt_logger;
 }
 
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider}, device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -129,6 +142,21 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
+  }
+
+  const std::string engine_cache_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
+  if (!engine_cache_enable_env.empty()) {
+    engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
+  }
+
+  if (engine_cache_enable_) {
+    engine_cache_path_ = env_instance.GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
+    if (!engine_cache_path_.empty() && !fs::is_directory(engine_cache_path_)) {
+      if (!fs::create_directory(engine_cache_path_)) {
+        throw std::runtime_error("Failed to create directory " + engine_cache_path_);
+      }
+    }
+    runtime_ = nvinfer1::createInferRuntime(GetTensorrtLogger());
   }
 }
 
@@ -599,6 +627,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  LOGS_DEFAULT(WARNING) << "[TensorRT EP] GetCapability Begin";
   // Remove nodes with empty shape
   SubGraphCollection_t parser_nodes_vector = RemoveEmptyShapeNodes(graph);
 
@@ -631,12 +660,14 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
+  LOGS_DEFAULT(WARNING) << "[TensorRT EP] GetCapability End";
   return result;
 }
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Compile " + fused_node->Name() + " Begin";
     std::vector<int> input_indexes;
     std::vector<int> output_indexes;
     std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
@@ -690,6 +721,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     trt_parser->parse(string_buf.data(), string_buf.size());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
+    bool is_dynamic_shape = false;
     // Set optimization profile for dynamic shapes
     auto trt_profile = trt_builder->createOptimizationProfile();
     for (unsigned int i = 0, end = trt_network->getNbInputs(); i < end; ++i) {
@@ -709,7 +741,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], nb_dims);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], nb_dims);
       } else {  // Execution tensor
-        bool is_dynamic_shape = false;
         for (int j = 0, end = nb_dims; j < end; ++j) {
           // For dynamic shape subgraph, a dummy engine is created at compile phase.
           // Real engine will be created at compute phase based on input data
@@ -734,10 +765,33 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }
 
-    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
-    if (trt_engine == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
+    unique_pointer<nvinfer1::ICudaEngine> trt_engine;
+    //std::ifstream planFile(fused_node->Name() + ".engine", std::ios::binary | std::ios::in);
+    std::ifstream planFile(GetEnginePath(engine_cache_path_, fused_node->Name()), std::ios::binary | std::ios::in);
+    if (planFile && engine_cache_enable_) {
+      planFile.seekg(0, std::ios::end);
+      int engine_size = planFile.tellg();
+      planFile.seekg(0, std::ios::beg);
+      void* engine_buf = malloc(engine_size);
+      planFile.read((char*)engine_buf, engine_size);
+      planFile.close();
+      trt_engine = unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf, engine_size, nullptr));
+      free(engine_buf);
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] DeSerialized " + fused_node->Name() + " End";
+    } else {
+      trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+      if (trt_engine == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
+      }
+      if (!is_dynamic_shape && engine_cache_enable_) {
+        nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Serialize " + fused_node->Name() + " End";
+        //std::ofstream file(fused_node->Name() + ".engine", std::ios::binary | std::ios::out);
+        std::ofstream file(GetEnginePath(engine_cache_path_, fused_node->Name()), std::ios::binary | std::ios::out);
+        file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
+        serializedModel->destroy();
+      }
     }
 
     // Build TensorRT context
@@ -814,11 +868,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
+      *p = {engine_cache_enable_, engine_cache_path_, runtime_, context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-            &max_workspace_size_};
+            &max_workspace_size_, context->node_name};
       *state = p.release();
       return 0;
     };
@@ -919,9 +973,32 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         }
-        trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);
-        if (trt_state->engine == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+        
+        //std::ifstream planFile(std::string(trt_state->name) + ".engine", std::ios::binary | std::ios::in);
+        std::ifstream planFile(GetEnginePath(trt_state->engine_path, std::string(trt_state->name)), std::ios::binary | std::ios::in);
+        if (planFile && trt_state->engine_cache_enable) {
+          planFile.seekg(0, std::ios::end);
+          int engine_size = planFile.tellg();
+          planFile.seekg(0, std::ios::beg);
+          void* engine_buf = malloc(engine_size);
+          planFile.read((char*)engine_buf, engine_size);
+          planFile.close();
+          trt_state->engine = trt_state->runtime->deserializeCudaEngine(engine_buf, engine_size, nullptr);
+          free(engine_buf);
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] DeSerialized " + std::string(trt_state->name) + " End";
+        } else {
+          trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);
+          if (trt_state->engine == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          }
+          if (trt_state->engine_cache_enable) {
+            nvinfer1::IHostMemory* serializedModel = trt_state->engine->serialize();
+            LOGS_DEFAULT(WARNING) << "[TensorRT EP] Serialize " + std::string(trt_state->name) + " End";
+            //std::ofstream file(std::string(trt_state->name) + ".engine", std::ios::binary | std::ios::out);
+            std::ofstream file(GetEnginePath(trt_state->engine_path, std::string(trt_state->name)), std::ios::binary | std::ios::out);
+            file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
+            serializedModel->destroy();
+          }
         }
         trt_state->context = trt_state->engine->createExecutionContext();
         if (trt_state->context == nullptr) {
@@ -1025,6 +1102,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     };
 
     node_compute_funcs.push_back(compute_info);
+  LOGS_DEFAULT(WARNING) << "[TensorRT EP] Compile " + fused_node->Name() + " End";
   }
 
   return Status::OK();

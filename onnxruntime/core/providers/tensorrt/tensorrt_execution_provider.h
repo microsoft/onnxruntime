@@ -17,6 +17,8 @@ static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
+static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
+static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -45,6 +47,9 @@ struct TensorrtExecutionProviderInfo {
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
+  bool engine_cache_enable;
+  std::string engine_path;
+  nvinfer1::IRuntime* runtime = nullptr;
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
@@ -60,6 +65,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
+  const char* name;
 };
 
 // Logical device representation.
@@ -88,6 +94,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int min_subgraph_size_ = 1;
   bool fp16_enable_ = false;
   bool dump_subgraphs_ = false;
+  bool engine_cache_enable_ = true;
+  std::string engine_cache_path_;
+  nvinfer1::IRuntime* runtime_ = nullptr;
 
   struct InferDeleter {
     template <typename T>
