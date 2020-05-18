@@ -469,6 +469,7 @@ void addOpSchemaSubmodule(py::module& m) {
   auto schemadef = m.def_submodule("schemadef");
   schemadef.doc() = "Schema submodule";
 
+  // Keep this binding local to this module
   py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema", py::module_local());
   op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
       .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
@@ -495,6 +496,7 @@ void addOpSchemaSubmodule(py::module& m) {
         return v == std::numeric_limits<int>::max();
       });
 
+  // Keep this binding local to this module
   py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute", py::module_local())
       .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
@@ -508,7 +510,8 @@ void addOpSchemaSubmodule(py::module& m) {
           })
       .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam", py::module_local())
       .def_readonly(
           "type_param_str", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::type_param_str)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
@@ -521,7 +524,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
       .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter", py::module_local())
       .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
       .def_property_readonly("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
       .def_property_readonly("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
