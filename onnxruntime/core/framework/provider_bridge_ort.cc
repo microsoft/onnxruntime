@@ -509,10 +509,11 @@ struct ProviderLibrary {
     if (!handle_)
       return;
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(_OPENMP)
     {
-      // We crash when unloading DNNL on windows due to OpenMP (As there are threads running code inside the openmp runtime DLL if
-      // OMP_WAIT_POLICY is set to ACTIVE). To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
+      // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
+      // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
+      // To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
       HMODULE handle{};
 #ifdef _DEBUG
       constexpr const char* dll_name = "vcomp140d.dll";
