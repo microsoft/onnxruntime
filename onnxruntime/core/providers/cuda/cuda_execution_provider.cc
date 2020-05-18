@@ -60,9 +60,6 @@ thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExe
 
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
-  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
@@ -71,22 +68,54 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   allocator_ = CreateAllocator(default_memory_info, device_id);
 }
 
+cublasHandle_t CUDAExecutionProvider::PerThreadContext::CublasHandle() {
+  if (!cublas_handle_) {
+    CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  }
+  return cublas_handle_;
+}
+
+cudnnHandle_t CUDAExecutionProvider::PerThreadContext::CudnnHandle() {
+  if (!cudnn_handle_) {
+    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  }
+  return cudnn_handle_;
+}
+
+curandGenerator_t CUDAExecutionProvider::PerThreadContext::CurandGenerator() {
+  if (!curand_generator_) {
+    CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
+  }
+  return curand_generator_;
+}
+
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    CUBLAS_CALL(cublasDestroy(cublas_handle_));
+    if (cublas_handle_) {
+      CUBLAS_CALL(cublasDestroy(cublas_handle_));
+    }
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
 
   try {
-    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
+    if (cudnn_handle_) {
+      CUDNN_CALL(cudnnDestroy(cudnn_handle_));
+    }
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
-  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
+
+  try {
+    if (curand_generator_) {
+      CURAND_CALL(curandDestroyGenerator(curand_generator_));
+    }
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "curandDestroyGenerator threw:" << ex.what();
+  }
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)

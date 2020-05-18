@@ -67,10 +67,30 @@ elif '--use_nuphar' in sys.argv:
     sys.argv.remove('--use_nuphar')
 # --use_acl is specified in build.py, but not parsed here
 
-
-is_manylinux1 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
-    is_manylinux1 = True
+# PEP 513 defined manylinux1_x86_64 and manylinux1_i686
+# PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
+# PEP 599 defines the following platform tags:
+# manylinux2014_x86_64
+# manylinux2014_i686
+# manylinux2014_aarch64
+# manylinux2014_armv7l
+# manylinux2014_ppc64
+# manylinux2014_ppc64le
+# manylinux2014_s390x
+manylinux_tags = [
+    'manylinux1_x86_64',
+    'manylinux1_i686',
+    'manylinux2010_x86_64',
+    'manylinux2010_i686',
+    'manylinux2014_x86_64',
+    'manylinux2014_i686',
+    'manylinux2014_aarch64',
+    'manylinux2014_armv7l',
+    'manylinux2014_ppc64',
+    'manylinux2014_ppc64le',
+    'manylinux2014_s390x',
+]
+is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
 
 class build_ext(_build_ext):
@@ -85,7 +105,7 @@ try:
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
-            if not is_manylinux1:
+            if not is_manylinux:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
@@ -103,7 +123,7 @@ try:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def run(self):
-            if is_manylinux1:
+            if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
@@ -122,7 +142,7 @@ try:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
-            if is_manylinux1:
+            if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -161,7 +181,7 @@ else:
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
-if is_manylinux1:
+if is_manylinux:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
     ext_modules = [
         Extension(
