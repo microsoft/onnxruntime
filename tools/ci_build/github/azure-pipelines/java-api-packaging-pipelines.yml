@@ -28,6 +28,7 @@ jobs:
           artifactName: 'onnxruntime-java-linux-x64-$(OnnxRuntimeVersion)'
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
+          nativeLibraryName: 'libonnxruntime4j_jni.so'
 
 - job: MacOS_Java_API_Build_CPU_x64
   workspace:
@@ -51,8 +52,9 @@ jobs:
           arch: 'osx-x64'
           buildConfig: 'RelWithDebInfo'
           artifactName: 'onnxruntime-java-osx-x64-$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.dylib'
           version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.dylib'
+          nativeLibraryName: 'libonnxruntime4j_jni.dylib'
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_Java_API_Build_CPU_x64
