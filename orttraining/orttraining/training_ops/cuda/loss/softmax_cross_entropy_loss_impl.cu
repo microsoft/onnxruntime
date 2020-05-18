@@ -118,6 +118,9 @@ __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
   int d = i % C;
   CUDA_KERNEL_ASSERT(weight[row] == 0 || (label[row] >= 0 && label[row] < C));
   if(0 == *normalize_factor){
+    // normalize_factor is sum of labels' weights. Because zero 
+    // sum implies all weights are 0, the loss function should 
+    // be constant 0 and its corresponding gradient should be 0 as well.
     output_data[i] = 0;
   } else {
     output_data[i] = (*dY) * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
@@ -140,6 +143,9 @@ __global__ void _WeightedReductionNoneSoftmaxCrossEntropyLossGrad(
   int d = i % C;
   CUDA_KERNEL_ASSERT(weight[row] == 0 || (label[row] >= 0 && label[row] < C));
   if(0 == *normalize_factor){
+    // normalize_factor is sum of labels' weights. Because zero 
+    // sum implies all weights are 0, the loss function should 
+    // be constant 0 and its corresponding gradient should be 0 as well.
     output_data[i] = 0;
   } else {
     output_data[i] = dY[row] * weight[row] * (_Exp(log_prob[i]) - 1.0 * (d == label[row])) / (*normalize_factor);
