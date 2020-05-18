@@ -495,7 +495,7 @@ void addOpSchemaSubmodule(py::module& m) {
         return v == std::numeric_limits<int>::max();
       });
 
-  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute")
+  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute", py::module_local())
       .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
       .def_readonly("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
