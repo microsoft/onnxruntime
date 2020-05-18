@@ -510,10 +510,18 @@ struct ProviderLibrary {
       return;
 
 #ifdef _WIN32
-    // On Windows with OpenMP, we must pin the OpenMP DLL so that it doesn't unload when the provider DLL unloads otherwise we crash
-    HMODULE handle;
-    ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "vcomp140.dll", &handle);
-    assert(handle);  // It should exist
+    {
+      // We crash when unloading DNNL on windows due to OpenMP (As there are threads running code inside the openmp runtime DLL if
+      // OMP_WAIT_POLICY is set to ACTIVE). To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
+      HMODULE handle{};
+#ifdef _DEBUG
+      constexpr const char* dll_name = "vcomp140d.dll";
+#else
+      constexpr const char* dll_name = "vcomp140.dll";
+#endif
+      ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, dll_name, &handle);
+      assert(handle);  // It should exist
+    }
 #endif
 
     Provider* (*PGetProvider)();
