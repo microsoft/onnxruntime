@@ -169,14 +169,15 @@ This is particularly important when there are massive volumes of incoming data/s
 
 ## Training: Start
 
-With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for PyTorch transformer models on NVIDIA GPUs.
+The ONNX Runtime training feature enables easy integration with existing Pytorch trainer code to accelerate the exection. With a few lines of code, you can add ONNX Runtime into your existing training scripts and start seeing acceleration. The current preview version supports training acceleration for transformer models on NVIDIA GPUs.
 
 **[End-to-End Sample Notebook](https://github.com/microsoft/onnxruntime-training-examples)**
 
-1. Build the ONNX Runtime wheel for training. ([Build instructions](BUILD.md#training))
+This sample is configured to pre-train the BERT-Large model to show how ONNX Runtime training can be used to accelerate training execution.
 
-2. Use ONNX Runtime Training in your PyTorch pre-training script.
-High-level code fragment to include in your pre-training code:
+### Integrate with Pytorch
+ONNX Runtime (ORT) has the capability to train existing PyTorch models through its optimized backend. For this, we have introduced an python API for PyTorch, called ORTTrainer, which can be used to switch the training backend for PyTorch models (instance of `torch.nn.Module`) to `orttrainer`. This requires some changes in the trainer code, such as replacing the PyTorch optimizer, and optionally, setting flags to enable additional features such as mixed-precision training. Here is a sample code fragment to integrate ONNX Runtime Training in your PyTorch pre-training script:
+_NOTE: The current API is experimental and expected to see significant changes in the near future. Our goal is to improve the interface to provide more seamless integration with PyTorch training that requires minimal changes in users’ training code._ 
 
   ```python
   import torch
@@ -203,6 +204,11 @@ High-level code fragment to include in your pre-training code:
     loss, y_pred = trainer.train_step(x, y, learning_rate)
     ...
   ```
+
+### Build ONNX Runtime Training from source
+To use ONNX Runtime training in a custom environment, like on-prem NVIDIA DGX-2 clusters, you can use these [build instructions](BUILD.md#training) to generate the Python package to integrate into existing trainer code.
+
+
 
 # Data/Telemetry
 
