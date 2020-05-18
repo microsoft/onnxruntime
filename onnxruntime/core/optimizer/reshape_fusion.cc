@@ -90,7 +90,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   shape_value.reserve(concat_input_count);
   // Used to keep the following nodes in the order of their potential removal.
   enum class NodeType { Unsqueeze, Gather, Shape };
-  int subgraph_cnt = 0;
+  bool has_subgraph = (std::find(shape_value.begin(), shape_value.end(), -1) != shape_value.end());
   std::vector<NodeIndex> candidates_for_removal;
   std::vector<NodeIndex> subgraph_candidates;
   for (int i = 0; i < concat_input_count; ++i) {
@@ -131,7 +131,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       candidates_for_removal.push_back(shape.Index()); 
     } else {
       // Find subgraph
-      if (subgraph_cnt > 0 || std::find(shape_value.begin(), shape_value.end(), -1) != shape_value.end()) {
+      if (has_subgraph) {
         // Only one subgraph can be used to fuse, and each shape node should contain only one value of -1. 
         return false;
       }
@@ -150,7 +150,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
         }
         // Match input of current node with root node.
         bool input_matched = false;
-        for (size_t j = 0; j < cur_node.InputDefs().size(); j++) {
+        for (unsigned int j = 0; j < cur_node.InputDefs().size(); ++j) {
           if (graph_utils::GetNodeInputName(cur_node, j) == root_input.Name()) {
             input_matched = true;
             break;
@@ -162,12 +162,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
           p_cur_node = const_cast<Node*>(graph_utils::GetInputNode(cur_node, 0));
           continue;
         }
-        subgraph_cnt++;
+        has_subgraph = true;
         subgraph_candidates.push_back(cur_node.Index());
         shape_value.push_back(-1);
         break;
       }
-      if (subgraph_cnt != 1) {
+      if (!has_subgraph) {
         // No subgraph matched.
         return false;
       }
