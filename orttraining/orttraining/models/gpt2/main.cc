@@ -54,6 +54,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
+      ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
       ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100"))
       ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
@@ -270,8 +271,11 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
-// mapping of max_sequence_length position derived from training data
-std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping;
+// mapping to define what to be stored in mapped_dimensions
+// see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
+const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
+  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+};
 
 // generic properties for storing perf metrics
 MapStringToString mapped_dimensions;
@@ -331,12 +335,6 @@ void setup_training_params(GPT2Parameters& params) {
       {"position_ids", "position_ids"},
       {"attention_mask", "attention_mask"},
       {"labels", "labels"}};
-
-  // mapping to define what to be stored in mapped_dimensions
-  // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
-  input_to_dimension_mapping = {
-      {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
-  };
 
   params.model_type = "gpt2";
 
