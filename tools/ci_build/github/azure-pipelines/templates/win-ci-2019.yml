@@ -17,6 +17,7 @@ parameters:
   OrtPackageId: Microsoft.ML.OnnxRuntime
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   RunTests : 'true'
+  EnableLto: true
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 160
@@ -38,6 +39,8 @@ jobs:
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    ${{ if eq(parameters.EnableLto, true) }}:
+      build_py_lto_flag: --enable_lto
 
   steps:
     - checkout: self
@@ -87,7 +90,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(BuildCommand) --update --config $(BuildConfig) --enable_lto'
+        arguments: '$(BuildCommand) --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -156,7 +159,7 @@ jobs:
            python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
            set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
            @echo %PATH%
-           python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) --enable_lto
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
           workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
           displayName: 'Run tests'
 
