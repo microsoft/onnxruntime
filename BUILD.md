@@ -35,7 +35,7 @@
 # Inferencing
 ## Start: Baseline CPU
 
-### Pre-Requisites
+### Prerequisites
 * Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -122,7 +122,7 @@ GCC 4.x and below are not supported.
 |**Python**|--build_wheel||
 |**C# and C packages**|--build_csharp||
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
-|**Java**|--build_java<br>--build_shared_lib|Creates an onnxruntime4j.jar in the build directory|
+|**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies implies `--build_shared_lib`|
 |**Node.js**|--build_nodejs<br>--build_shared_lib|`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
 
 ---
@@ -137,7 +137,7 @@ Build instructions are [here](./docs/Server.md)
 ## Execution Providers
 
 ### CUDA
-#### Pre-Requisites
+#### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
   * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
     ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
@@ -157,7 +157,7 @@ Build instructions are [here](./docs/Server.md)
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./dockerfiles#cuda)
+A Dockerfile is available [here](./dockerfiles#cuda). 
 
 
 #### Notes
@@ -181,7 +181,7 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
    * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
@@ -267,7 +267,7 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 ### OpenVINO
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
@@ -324,7 +324,7 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 
 To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
 
@@ -348,7 +348,7 @@ The basic build commands are below. There are also some other parameters for bui
 ### NUPHAR
 See more information on the Nuphar Execution Provider [here](./docs/execution_providers/Nuphar-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 * The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source. To build the debug flavor of ONNX Runtime, you need the debug build of LLVM.
    * Windows (Visual Studio 2017):
    ```
@@ -416,7 +416,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#nuphar)
+Dockerfile instructions are available [here](./dockerfiles#nuphar).
 
 
 ---
@@ -435,7 +435,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ### ARM Compute Library
 See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 * Supported backend: i.MX8QM Armv8 CPUs
 * Supported BSP: i.MX8QM BSP
   * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
@@ -493,7 +493,7 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ### RKNPU
 See more information on the RKNPU Execution Provider [here](./docs/execution_providers/RKNPU-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 
 * Supported platform: RK1808 Linux
 * See [Build ARM](#ARM) below for information on building for ARM devices
@@ -536,7 +536,7 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 ---
 
 ### OpenBLAS
-#### Pre-Requisites
+#### Prerequisites
 * OpenBLAS
    * Windows: See build instructions [here](https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform)
    * Linux: Install the libopenblas-dev package `sudo apt-get install libopenblas-dev`
@@ -558,10 +558,25 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
 
 #### Build Instructions
-|Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1|Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2|Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0|
-|--|--|--|
-|Dump tensor input/output shapes for all nodes to stdout|Dump tensor input/output shapes and output data for all nodes to stdout|Disable this functionality after previously enabling|
-**Linux**<br> `./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1`<br><br>**Windows**<br>`.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1`|**Linux**<br>`./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2`<br><br>**Windows**<br>`.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2`| set `onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0` or delete CMakeCache.txt.|
+Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
+
+**Linux** 
+```
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+```
+
+**Windows**
+```
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
+```
+
+Values:
+* **0**: Disables this functionality if previously enabled; alternatively, delete CMakeCache.txt instead of setting this to 0
+* **1**: Dump tensor input/output shapes for all nodes to stdout
+* **2**: Dump tensor input/output shapes and output data for all nodes to stdout
+
+
+
 
 
 ---
@@ -832,7 +847,7 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ### Android
 
-#### Pre-Requisites
+#### Prerequisites
 
 Install Android NDK in Android Studio or https://developer.android.com/ndk/downloads.
 
@@ -856,7 +871,7 @@ If you want to use NNAPI Execution Provider on Android, see [docs/execution_prov
 ***
 
 # Training
-## Pre-Requisites
+## Prerequisites
 
 The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
 

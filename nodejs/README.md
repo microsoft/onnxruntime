@@ -19,3 +19,6 @@ Install the latest dev version: `npm install onnxruntime@dev`
 
 ## Build
 See [BUILD.MD](../BUILD.md#apis-and-language-bindings)
+
+## License
+License information can be found [here](../README.md#license).

@@ -47,50 +47,55 @@ ONNX Runtime already supports a wide range of architectures, platforms, and lang
 Additionally, we understand that lightweight devices and local applications may have constraints for package size, so there is active awareness to opportunistically minimize binary size.
 
 #### Architectures
-|Supported|Future|
-|---|---|
-|X64|Additional as-needed|
-|X86| |
-|ARM64 |
-|ARM32 (Limited)| |
+Supported
+* X64
+* X86
+* ARM64
+* ARM32 (Limited)
+
 
 #### Platforms
-|Supported|Future|
-|---|---|
-|Windows 7+|iOS|
-|Linux (various)| |
-|Mac OS X| |
-|Android (community contribution, Preview)| |
+Supported
+* Windows 7+
+* Linux (various)
+* Mac OS X
+* Android (community contribution, Preview)
+
+*Future*
+* *iOS*
 
 #### Languages
-|Supported|Future|
-|---|---|
-|Python (3.5, 3.6, 3.7)| |
-|C++| |
-|C#| |
-|C| |
-|Ruby (community project)| |
-|Java | |
-|Javascript - Node.js (Preview) | |
+Supported
+* Python (3.5, 3.6, 3.7)
+* C++
+* C#
+* C
+* Ruby (community project)
+* Java
+* Javascript - Node.js (Preview)
 
 
 ### Accelerators and Execution Providers
 #### New EPs
 To achieve the best performance on a growing set of compute targets across cloud and the intelligent edge, we invest in and partner with hardware partners and community members to add new execution providers. The flexible pluggability of ONNX Runtime is critical to support a broad range of scenarios and compute options.
 
-|Supported|Future|
-|---|---|
-|MLAS (Microsoft Linear Algebra Subprograms)|AMD GPU|
-|Intel DNNL / MKL-ML|Xilinx FPGA|
-|Intel nGraph| |
-|NVIDIA CUDA| |
-|NVIDIA TensorRT| |
-|Intel OpenVINO| |
-|Nuphar Model Compiler| |
-|Microsoft Direct ML| |
-|Android NN API (Preview)| |
-|ARM Compute Library (Preview)| |
-|Rockchip NPU (Preview)| |
+Supported
+
+* MLAS (Microsoft Linear Algebra Subprograms)
+* Intel DNNL / MKL-ML
+* Intel nGraph
+* NVIDIA CUDA
+* NVIDIA TensorRT
+* Intel OpenVINO
+* Microsoft Direct ML
+* Nuphar Model Compiler (Preview)
+* Android NN API (Preview)
+* ARM Compute Library (Preview)
+* Rockchip NPU (Preview)
+
+*Future*
+* *AMD GPU*
+* *Xilinx FPGA*
 
 
 #### CUDA operator coverage
