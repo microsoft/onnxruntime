@@ -24,7 +24,7 @@ jobs:
     displayName: 'Build performance tests'
 
   - script: >
-      docker run --gpus all --rm --name onnxruntime-gpu-perf 
+      sudo docker run --gpus all --rm --name onnxruntime-gpu-perf 
       --volume $(Build.SourcesDirectory):/onnxruntime_src 
       --volume $(Build.BinariesDirectory):/build 
       --volume /bert_ort/bert_models:/build/bert_models:ro 
