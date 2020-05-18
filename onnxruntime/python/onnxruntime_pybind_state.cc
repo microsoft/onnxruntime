@@ -519,7 +519,8 @@ void addOpSchemaSubmodule(py::module& m) {
           "allowed_type_strs",
           &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::allowed_type_strs);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption", py::module_local())
       .value("Single", ONNX_NAMESPACE::OpSchema::Single)
       .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
       .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
@@ -535,7 +536,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .def_property_readonly(
           "isHomogeneous", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetIsHomogeneous);
 
-  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType", py::module_local())
       .value("FLOAT", ONNX_NAMESPACE::AttributeProto::FLOAT)
       .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
       .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
@@ -547,7 +549,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("TENSORS", ONNX_NAMESPACE::AttributeProto::TENSORS)
       .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType", py::module_local())
       .value("COMMON", ONNX_NAMESPACE::OpSchema::SupportType::COMMON)
       .value("EXPERIMENTAL", ONNX_NAMESPACE::OpSchema::SupportType::EXPERIMENTAL);
 }
