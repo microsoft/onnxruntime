@@ -81,7 +81,7 @@ target_cppwinrt(winml_api
   ${sdk_folder}              # location of sdk folder
   ${sdk_version}             # sdk version
   ${target_folder}           # the folder this target will be placed under
-  ${winml_midl_defines}      # the midl compiler defines
+  "${winml_midl_defines}"    # the midl compiler defines
   ${winml_api_use_ns_prefix} # set ns_prefix
 )
 
@@ -91,7 +91,7 @@ target_midl(winml_api_native
   ${sdk_folder}             # location of sdk folder
   ${sdk_version}            # sdk version
   ${target_folder}          # the folder this target will be placed under
-  ${winml_midl_defines}     # the midl compiler defines
+  "${winml_midl_defines}"   # the midl compiler defines
 )
 
 target_midl(winml_api_native_internal
@@ -100,7 +100,7 @@ target_midl(winml_api_native_internal
   ${sdk_folder}                      # location of sdk folder
   ${sdk_version}                     # sdk version
   ${target_folder}                   # the folder this target will be placed under
-  ${winml_midl_defines}              # the midl compiler defines
+  "${winml_midl_defines}"            # the midl compiler defines
 )
 
 ###########################
