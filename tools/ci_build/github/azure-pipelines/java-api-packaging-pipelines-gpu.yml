@@ -100,3 +100,59 @@
         version: '$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
+
+- job: Jar_Packaging
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2019'
+  dependsOn:
+  - Windows_Java_API_Build_GPU_x64
+  - Linux_Java_API_Build_GPU_x64
+  condition: succeeded()
+  steps:
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Win x64'
+    inputs:
+      artifactName: 'drop-onnxruntime-java-win-x64-$(OnnxRuntimeVersion)'
+      targetPath: '$(Build.BinariesDirectory)/java-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Linux x64'
+    inputs:
+      artifactName: 'drop-onnxruntime-java-linux-x64-$(OnnxRuntimeVersion)'
+      targetPath: '$(Build.BinariesDirectory)/java-artifact'
+
+   - task: ExtractFiles@1
+    inputs:
+      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-win-x64.zip'
+      destinationFolder: '$(Build.BinariesDirectory)/java-artifact/win-x64'
+      cleanDestinationFolder: true
+
+  - task: ExtractFiles@1
+    inputs:
+      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-linux-x64.zip'
+      destinationFolder: '$(Build.BinariesDirectory)/java-artifact/linux-x64'
+      cleanDestinationFolder: true
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        pushd linux-x64
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
+        popd
+        pushd osx-x64
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dlib
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib.dSYM
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dylib.dSYM
+        popd
+      workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+      displayName: 'Create final GPU Jar'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\win-x64'
+      artifact: 'onnxruntime-java-gpu'
+      publishLocation: 'pipeline'

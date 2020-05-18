@@ -18,6 +18,12 @@ EXIT_CODE=1
 
 uname -a
 
+# CentOS docker image does not have Java and we need jar here
+if [ `uname -s` == 'Linux' ]; then
+  sudo apt-get install -y openjdk-8-jdk
+  PATH=/usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin:${PATH}
+fi
+
 echo "Version: $VERSION_NUMBER"
 NATIVE_FOLDER=ai/onnxruntime/native/$ARCH
 

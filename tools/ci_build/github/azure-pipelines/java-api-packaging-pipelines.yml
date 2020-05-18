@@ -204,8 +204,8 @@ jobs:
         pushd osx-x64
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib
         jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dlib
-        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dSYM
-        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dSYM
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib.dSYM
+        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dylib.dSYM
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
       displayName: 'Create final Jar'
