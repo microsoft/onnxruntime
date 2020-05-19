@@ -35,7 +35,7 @@
     .navbar-custom .onnx-logo {
         width: 230px;
     }   
-    .product-logo img{
+    .sponsor-logo img{
         max-height: 60px;
     }
     .carousel .media img{
@@ -83,6 +83,15 @@
     }
     .footer h2 {
         font-size: 24px;
+    }
+    .tab{
+        font-size: 18px;
+    }
+    .section-heading{
+        font-size: 24px;
+    }
+    .blue-title-columns h3 {
+        font-size: 22px;
     }
   }
 
@@ -165,8 +174,7 @@
         border-top: 1px solid #dee2e6!important;
     }
     .append-play-buttom aside{
-        top: -57px;
-        margin-left: 100px;
+        top: 60px;
     }
     .back-to-top{
         width: 45px;
@@ -187,6 +195,10 @@
     }
     p.text-copyright{
         display: block;
+    }
+    .tab{
+        font-size: 16px;
+        padding: 10px 12px;
     }
   }
   

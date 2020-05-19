@@ -18,8 +18,8 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato:100,100i,300,300i,400,400i,700,700i,900,900i&display=swap">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link rel="stylesheet" href="css/custom.css">
-    <link rel="stylesheet" href="css/responsive.css">
+    <link rel="stylesheet" href="css/custom.css?v1.4">
+    <link rel="stylesheet" href="css/responsive.css?v1.4">
 </head>
 
 <body>
@@ -58,16 +58,14 @@
                 </nav>
             </header>
 
-			<div role="main" id="skipMain">
+			<div role="main" id="skipMain" tabindex="-1">
 			
 	            <div class="container px-md-4 px-lg-5 pt-5 mx-auto text-center">
-	                <h1 class="pt-3 pb-3 pt-md-5 pb-lg-5 px-md-4 px-lg-5 mt-5 mb-0">Optimize and accelerate machine learning
-	                        inferencing across the cloud and the edge</h1>
-	                <a id="getStarted" href="JavaScript:void(0);" class="btn btn-lg btn-primary text-uppercase px-5 py-3 btn-blue btn-getStarted">Get Started</a>
-	            </div>
+					<h1 class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0">Optimize and Accelerate Machine Learning Inferencing and Training</h1>
+				</div>
 	
 	            <div class="outer-container mx-auto pt-md-5 pt-3">
-	
+
 	                <section class="py-md-5 pt-3 pb-4 blue-title-columns">
 	                    <div class="container-fluid">
 	                        <div class="row equalHeight">
@@ -79,8 +77,8 @@
 	                                        </div>
 	                                    </div>
 	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
-	                                        <h2 class="mr-xl-5">Easily optimize and accelerate inferencing</h2>
-	                                        <p class="mr-xl-5 mb-md-0">Reduce latency and inferencing costs across the cloud and the edge using built-in graph optimizations and hardware accelerators.
+	                                        <h2 class="mr-xl-5 blue-text">Speed up machine learning process</h2>
+	                                        <p class="mr-xl-5 mb-md-0">Custom optimizations that deliver up to 17X faster inferencing and up to 1.4X faster training
 	                                        </p>
 	                                    </div>
 	                                </div>
@@ -93,8 +91,8 @@
 	                                        </div>
 	                                    </div>
 	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
-	                                        <h2 class="mr-xl-5">Plug-in to your technology stack</h2>
-	                                        <p class="mr-xl-5 mb-md-0">Cross-platform support and convenient <abbr title="Application Program Interface">API</abbr>s make inferencing with ONNX Runtime easy.</p>
+	                                        <h2 class="mr-xl-5 blue-text">Plug into your existing technology stack</h2>
+	                                        <p class="mr-xl-5 mb-md-0">Support for a variety of frameworks, operating systems and hardware platforms</p>
 	                                    </div>
 	                                </div>
 	                            </div>
@@ -106,9 +104,9 @@
 	                                        </div>
 	                                    </div>
 	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
-	                                        <h2 class="mr-xl-5">Leverage open source innovation</h2>
-	                                        <p class="mr-xl-5 mb-0">With innovation and support from its open source community, ONNX Runtime continuously improves while delivering the reliability you need.</p>
-	                                    </div>
+	                                        <h2 class="mr-xl-5 blue-text">Leverage technology proven in production</h2>
+	                                        <p class="mr-xl-5 mb-0">Used in Office 365, Visual Studio and Bing, delivering over 20 billion inferences every day</p>
+	                                    </div> 
 	                                </div>
 	                            </div>
 	                        </div>
@@ -127,225 +125,332 @@
 								</div>
 								</div>
 							</noscript>
-	                        <div class="row ml-0">
+							<div class="row ml-0">
 	                            <div class="col">
 	                                <div class="text-center pb-3">
-	                                    <h2>Get Started Easily</h2>
-	                                    <p class="mb-0 mb-md-3">Select your requirements and use the resources provided to get started quickly
-	                                    </p>
+	                                    <h2 class="section-heading">Get Started Easily</h2>
 	                                </div>
-	
-	                                <div class="row r-wrap mb-1 mb-md-0 mr-0" role="group">
-	                                    <div class="col-md-3 r-heading">
-	                                        <h3 id="selectOS"><abbr title="Operating System">OS</abbr></h3>
-	                                        <p id="decriptionOS" class="sr-only"><abbr>OS</abbr> list contains three items</p>
-	                                    </div>
-	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
-	                                        <div class="row os">
-	                                            <div class="col-lg-2dot4 col-md-4 r-option version selected" role="option" tabindex="0" aria-selected="true" id="windows">
-	                                                <span>Windows</span>
-	                                            </div>
-	                                            <div class="col-lg-2dot4 col-md-4 r-option version" role="option" tabindex="-1" aria-selected="false" id="linux">
-	                                                <span>Linux</span>
-	                                            </div>
-	                                            <div class="col-lg-2dot4 col-md-4 r-option version" role="option" tabindex="-1" aria-selected="false" id="mac">
-	                                                <span>Mac</span>
-	                                            </div>
-	
-	                                        </div>
-	                                    </div>
-	                                </div>
-	
-	                                <div class="row r-wrap mb-1 mb-md-0 mr-0">
-	                                    <div class="col-md-3 r-heading">
-	                                        <h3 id="selectLanguage">Language</h3>
-	                                        <p id="decriptionLanguage" class="sr-only">Language list contains five items</p>
-	                                    </div>
-	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
-	                                        <div class="row language">
-	                                            <div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="Python(3.5-3.7)"><span>Python (3.5-3.7)</span></div>
-	                                            <div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="C++"><span>C++</span></div>
-	                                            <div class="col-lg-2dot4 col r-option" aria-selected="false" role="option" tabindex="-1" id="C#"><span><abbr>C#</abbr></span></div>
-	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C"><span>C</span></div>
-	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Java"><span>Java</span></div>
-												
-	
-	                                        </div>
-	                                    </div>
-	                                </div>
-	
-	                                <div class="row r-wrap mb-1 mb-md-0 mr-0">
-	                                    <div class="col-md-3 r-heading ">
-	                                        <h3 id="selectArchitecture" class="align-self-center">Architecture</h3>
-	                                        <p id="decriptionArchitecture" class="sr-only">Architecture list contains five items</p>
-	                                    </div>
-	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
-	                                        <div class="row architecture">
-	                                            <div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="X64">
-	                                                <span><abbr>X64</abbr></span></div>
-	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="X86">
-	                                                <span><abbr>X86</abbr></span></div>
-	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM64">
-	                                                <span><abbr>ARM64</abbr></span></div>
-	                                            <div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM32">
-	                                                <span><abbr>ARM32</abbr></span></div>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	
-	                                <div class="row r-wrap mb-1 mb-md-0 mr-0">
-	                                    <div class="col-md-3 r-heading">
-	                                        <h3 id="selectHardwareAcceleration">Hardware Acceleration</h3>
-	                                        <p id="decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains nine items</p>
-	                                    </div>
-	                                    <div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
-	                                        <div class="row hardwareAcceleration">
-	                                            <div class="col-lg-2dot5 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="DefaultCPU">
-	                                                <span>Default&nbsp; <abbr>CPU</abbr></span></div>
-	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
-	                                                <span><abbr>CUDA</abbr></span>
-	                                            </div>
-	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
-	                                                <span>Tensor<abbr>RT</abbr></span></div>
-	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
-	                                                <span>Direct<abbr>ML</abbr></span>
-	                                            </div>
-	                                            <div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-DNN">
-	                                                <span><abbr>MKL-DNN</abbr></span>
-	                                            </div>
-	                                            <!-- </div>
-	
-	                                        <div class="row hardwareAcceleration"> -->
-	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-ML">
-	                                                <span><abbr>MKL-ML</abbr></span>
-	                                            </div>
-	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="nGraph">
-	                                                <span>nGraph</span></div>
-	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
-	                                                <span><abbr>NUPHAR</abbr></span></div>
-	                                            <div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
-	                                                <span>OpenVINO</span></div>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	
-	                                <div class="row r-wrap command-block row-eq-height mr-0">
-	                                    <div class="col-md-3 r-heading">
-	                                        <h3 id="selectRunCommand">Installation Instructions</h3>
-	                                    </div>
-	                                    <div class="col-md-9 r-content pr-0 pl-md-4">
-	                                        <div class="row">
-	                                            <div class="col r-option command-container" id="command" role="status">
-	                                                <span>
-	                                                    Please select a combination of resources.
-	                                                </span>
-	                                            </div>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	
-	                            </div>
-	                        </div>
+								</div>
+							</div>
+
+							<div>
+						
+								<ul class="tbl_tablist" role="tablist">
+									<li id="OI_tab" class="tbl_tab" aria-controls="panel1" aria-selected="true" role="tab"
+										tabindex="0">
+										Optimize Inferencing
+									</li>
+									<li id="OT_tab" class="tbl_tab" aria-controls="panel2" role="tab" aria-selected="false"
+										tabindex="0">
+										Optimize Training (Preview)
+										​</li>
+								</ul>
+		
+								<div id="panel1" class="tbl_panel" aria-labelledby="tab1" role="tabpanel" aria-hidden="false">
+									<div class="row ml-0">
+										<div class="col">
+											
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="selectOS"><abbr title="Operating System">OS</abbr></h3>
+													<p id="decriptionOS" class="sr-only"><abbr>OS</abbr> list contains three items</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
+													<div class="row os">
+														<div class="col-lg-2dot4 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="windows">
+															<span>Windows</span>
+														</div>
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="linux">
+															<span>Linux</span>
+														</div>
+														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="mac">
+															<span>Mac</span>
+														</div>
+														
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="selectLanguage">API</h3>
+													<p id="decriptionLanguage" class="sr-only">API list contains five items</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
+													<div class="row language">
+														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="Python(3.5-3.7)"><span>Python (3.5-3.7)</span></div>
+														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="C++"><span>C++</span></div>
+														<div class="col-lg-2dot4 col r-option" aria-selected="false" role="option" tabindex="-1" id="C#"><span><abbr>C#</abbr></span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C"><span>C</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Java"><span>Java</span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="WinRT"><span>WinRT</span></div>
+														
+			
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading ">
+													<h3 id="selectArchitecture" class="align-self-center">Architecture</h3>
+													<p id="decriptionArchitecture" class="sr-only">Architecture list contains five items</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
+													<div class="row architecture">
+														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="X64">
+															<span><abbr>X64</abbr></span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="X86">
+															<span><abbr>X86</abbr></span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM64">
+															<span><abbr>ARM64</abbr></span></div>
+														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM32">
+															<span><abbr>ARM32</abbr></span></div>
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="selectHardwareAcceleration">Hardware Acceleration</h3>
+													<p id="decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains nine items</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
+													<div class="row hardwareAcceleration">
+														<div class="col-lg-2dot5 col r-option version selected" role="option" tabindex="0" aria-selected="true" id="DefaultCPU">
+															<span>Default&nbsp; <abbr>CPU</abbr></span></div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
+															<span><abbr>CUDA</abbr></span>
+														</div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
+															<span>Tensor<abbr>RT</abbr></span></div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
+															<span>Direct<abbr>ML</abbr></span>
+														</div>
+														<div class="col-lg-2dot5 col r-option version" role="option" tabindex="-1" aria-selected="false" id="DNNL">
+															<span><abbr>DNNL</abbr></span>
+														</div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MKL-ML">
+															<span><abbr>MKL-ML</abbr></span>
+														</div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="nGraph">
+															<span>nGraph</span></div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NUPHAR">
+															<span><abbr>NUPHAR</abbr></span></div>
+														<div class="col-lg-2dot4 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
+															<span>OpenVINO</span></div>
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap command-block row-eq-height mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="selectRunCommand">Installation Instructions</h3>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4">
+													<div class="row">
+														<div class="col r-option command-container" id="command" role="status">
+															<span>
+																Please select a combination of resources.
+															</span>
+														</div>
+													</div>
+												</div>
+											</div>
+			
+										</div>
+										
+									</div>
+								</div>
+		
+								<div id="panel2" class="tbl_panel" aria-labelledby="tab2" role="tabpanel" aria-hidden="true">
+									<div class="row ml-0">
+										<div class="col">
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="ot_selectOS"><abbr title="Operating System">OS</abbr></h3>
+													<p id="ot_decriptionOS" class="sr-only"><abbr>OS</abbr> list contains one item</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-1" aria-labelledby="ot_selectOS" aria-describedby="ot_decriptionOS">
+													<div class="row ot_os">
+														<div class="col r-option" role="option" tabindex="0" aria-selected="true" id="ot_linux">
+															<span>Linux</span>
+														</div>
+													</div>
+												</div>
+											</div>
+											
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="ot_selectLanguage">API</h3>
+													<p id="ot_decriptionLanguage" class="sr-only">API list contains two items</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-2" aria-labelledby="ot_selectLanguage" aria-describedby="ot_decriptionLanguage">
+													<div class="row ot_language">
+														<div class="col-lg-2dot4 col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_PyTorch"><span>PyTorch</span></div>
+														<div class="col-lg-2dot4 col  r-option" role="option" tabindex="-1" aria-selected="false" id="ot_TensorFlow"><span>TensorFlow</span></div>
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading ">
+													<h3 id="ot_selectArchitecture" class="align-self-center">Architecture</h3>
+													<p id="ot_decriptionArchitecture" class="sr-only">Architecture list contains one item</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-3" aria-labelledby="ot_selectArchitecture" aria-describedby="ot_decriptionArchitecture">
+													<div class="row ot_architecture">
+														<div class="col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_X64">
+															<span><abbr>X64</abbr></span></div>
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap mb-1 mb-md-0 mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="ot_selectHardwareAcceleration">Hardware Acceleration</h3>
+													<p id="ot_decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains one item</p>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration" aria-describedby="ot_decriptionHardwareAcceleration">
+													<div class="row ot_hardwareAcceleration">
+														<div class="col r-option version selected" role="option" tabindex="0" aria-selected="true" id="ot_CUDA">
+															<span><abbr>CUDA</abbr></span>
+														</div>
+													</div>
+												</div>
+											</div>
+			
+											<div class="row r-wrap command-block row-eq-height mr-0">
+												<div class="col-md-3 r-heading">
+													<h3 id="ot_selectRunCommand">Installation Instructions</h3>
+												</div>
+												<div class="col-md-9 r-content pr-0 pl-md-4">
+													<div class="row">
+														<div class="col r-option command-container" id="ot_command" role="status">
+															<span>
+																Please select a combination of resources.
+															</span>
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+
+							</div>
+
 	                    </div>
 	                </section>
 	
-	                <section class="py-md-5 pb-4 pb-4 pt-4 blue-title-columns border-top">
-	                    <div class="container-fluid">
-	                        <div class="row equalHeight-1">
-	                            <div class="col-12 col-md-6 mb-2 mb-md-0">
-	                                <div class="row">
-	                                    <div class="col-1 col-sm-1 pr-5">
-	                                        <div class="icon-container">
-	                                            <img src="images/svg/icon-4.svg" alt="" />
-	                                        </div>
-	                                    </div>
-	                                    <div class="col-9 col-sm-9 pl-2 pl-md-4">
-	                                        <h2>Build an ONNX Model</h2>
-	                                        <div class="onnx-model-content">
-	                                            <p>Build and train a machine learning model to meet your project goals using the tools that best meet your needs:</p>
-	                                            <ul class="pl-0 custom-list mb-md-0">
-	                                                <li class="pb-3"><a href="https://github.com/onnx/tutorials#converting-to-onnx-format" target="_blank" class="link"><span class="link-content">Convert an existing model</span><span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                                <li class="pb-3">
-	                                                    <p class="mb-0"><strong>Develop a new model</strong></p>
-	                                                    <ul class="custom-list pl-3">
-	                                                        <li><a href="https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/deployment/onnx#onnx-on-azure-machine-learning" target="_blank" class="link"><span class="link-content">Azure Machine Learning</span>
-	                                                                <span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                                        <li><a href="https://www.customvision.ai/" target="_blank" class="link"><span class="link-content">Custom
-	                                                                Vision, an Azure Cognitive
-	                                                                Service</span><span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                                    </ul>
-	                                                </li>
-	                                                <li><a href="https://github.com/onnx/models#onnx-model-zoo" target="_blank" class="link"><span class="link-content">Use
-	                                                        a pre-trained model</span><span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                            </ul>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	                            </div>
-	                            <div class="col-12 col-md-6">
-	                                <div class="row">
-	                                    <div class="col-1 col-sm-1 pr-5">
-	                                        <div class="icon-container">
-	                                            <img src="images/svg/icon-5.svg" alt="" />
-	                                        </div>
-	                                    </div>
-	                                    <div class="col-9 col-sm-9 pl-2 pl-md-4">
-	                                        <h2>Deploy your ONNX Model</h2>
-	                                        <div class="onnx-model-content">
-	                                            <p>Deploy your ONNX model across hardware devices:</p>
-	                                            <ul class="custom-list pl-0 mb-0">
-	                                                <li class="pb-3"><a href="https://aka.ms/onnxruntime-cloud" target="_blank" class="link"><span class="link-content">Cloud</span><span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                                <li class="pb-3"><a href="https://aka.ms/onnxruntime-iot-edge" target="_blank" class="link"><span class="link-content"><abbr title="Internet of things">IoT</abbr> / Edge</span><span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                                <li><a href="https://aka.ms/onnxruntime-local" target="_blank" class="link"><span class="link-content">Local
-	                                                        Applications</span> <span class="link-arrow fa fa-angle-right"></span></a></li>
-	                                            </ul>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	                            </div>
-	                        </div>
-	                    </div>
-	                </section>
-	
-	                <section class="py-md-5 pb-4 pt-4 blue-title-columns border-top">
-	                    <div class="container-fluid">
-	                        <div class="row equalHeight-2">
-	                            <div class="col-12 col-md-4 mb-4 mb-md-0">
-	                                <div class="product-logo pb-4 pb-md-5 mr-xl-5 text-center">
-	                                    <img src="images/word-logo.png" class="msword-logo" alt="Microsoft Word Logo" />
-	                                </div>
-	                                <h2 class="blue-text mr-xl-5 mb-3">Improved performance by 14x</h2>
-	                                <p class="mr-xl-5 first-child">Microsoft Word Online includes a grammar checker that identifies missing determiners. This feature infers missing determiners in real-time on billions of sentences each month.
-	                                </p>
-	                                <p class="bold-text mr-xl-5 mb-md-0">Using ONNX Runtime, inference speed improved by 14.2x
-	                                </p>
-	                            </div>
-	                            <div class="col-12 col-md-4 mb-4 mb-md-0">
-	                                <div class="product-logo pb-4 pb-md-5 mr-xl-5 text-center">
-	                                    <img src="images/Micorsoft-Azure-Logo.png" class="msazure-logo" alt="Microsoft Azure logo" />
-	                                </div>
-	                                <h2 class="blue-text mr-xl-5 mb-3">Improved performance by 3x</h2>
-	                                <p class="mr-xl-5 first-child">Computer Vision, an Azure Cognitive Service, uses optical character recognition to detect text in an image and extract the recognized words into a machine-readable character stream.
-	                                </p>
-	                                <p class="bold-text mr-xl-5 mb-md-0">Using ONNX Runtime, inference speed improved by 3.7x
-	                                </p>
-	                            </div>
-	                            <div class="col-12 col-md-4">
-	                                <div class="product-logo pb-4 pb-md-5 mr-xl-5 text-center">
-	                                    <img src="images/bing-logo.svg" class="bing-logo" alt="bing logo" />
-	                                </div>
-	                                <h2 class="blue-text mr-xl-5 mb-3">Improved performance by 2x</h2>
-	                                <p class="mr-xl-5 first-child">Bing Visual Search allows users to search the web using an image instead of text.
-	                                </p>
-	                                <p class="bold-text mr-xl-5 mb-md-0">Using ONNX Runtime, inference speed improved by 2x
-	                                </p>
-	                            </div>
-	                        </div>
-	                    </div>
-	                </section>
-	
-	                <section class="pb-md-4">
-	                    <div class="container-fluid border-top">
+					<section class="py-md-5 pb-4 pt-4 border-top">
+						<div class="container-fluid">
+							<div class="row equalHeight-1 blue-title-columns">
+								<div class="col-md-9">
+									<div class="row">
+
+										<div class="col-md-6 mb-4 mb-md-0">
+											<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+												<img class="peakSpeed-logo" src="./images/PeakSpeed_logo.png" alt="PeakSpeed logo">
+											</div>
+											<h3 class="mr-xl-5 mb-3">&ldquo;Using a common model and code base, the ONNX Runtime allows us to easily flip between platforms to help our customers choose the most cost-effective solution based on their infrastructure and requirements.&rdquo;</h3>
+											<p>&ndash; Oscar Kramer, Chief Geospatial Scientist, Peakspeed</p>
+										</div>
+										<div class="col-md-6 mb-4 mb-md-0">
+											<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+												<img class="office365-logo" src="./images/oracle-logo.png" alt="Oracle Logo">
+											</div>
+											<h3 class="mr-xl-5 mb-3">&ldquo;The ONNX Runtime API for Java enables Java developers and Oracle customers to seamlessly consume and execute ONNX machine-learning models, while taking advantage of the expressive power, high performance, and scalability of Java.&rdquo;</h3>
+											<p class="overview">&ndash; Stephen Green, Director of Machine Learning Research Group, Oracle</p>
+										</div>
+									</div>
+
+								</div>
+								<div class="col-md-3">
+									<div class="sponsor-logo pb-4 pb-md-5 mr-xl-5 text-center">
+										<img src="./images/visual-studio-logo.png" alt="visual-studio logo">
+									</div>
+									<h3 class="mr-xl-4 mb-3">&ldquo;We use ONNX Runtime to accelerate model training for a 300M+ parameters model that powers code autocompletion in Visual Studio IntelliCode.&rdquo;</h3>
+									<p>&ndash; Neel Sundaresan, Director SW Engineering, Data & AI, Developer Division, Microsoft</p>
+								</div>
+
+							</div>
+						</div>
+					</section>
+
+					<section class="py-md-5 pb-4 pt-4 border-top">
+						<div class="container-fluid">
+							<div class="row ml-0">
+								<div class="col">
+									<div class="text-center pb-3">
+										<h2 class="section-heading">News & Announcements​​</h2>
+									</div>
+								</div>
+							</div>
+							<div class="row equalHeight-2 blue-title-columns">
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center">
+										<img src="./images/ort-bar-chart.PNG" alt="ort-Bar-Chart">
+									</div>
+									<h3 class="blue-text mr-xl-5 mb-3">Train up to 45% faster. Announcing support for accelerated training in ONNX Runtime</h3>
+									<div><a href="http://aka.ms/ort-build2020" target="_blank" class="link"><span class="link-content">Read
+												more</span><span class="link-arrow fa fa-angle-right"></span></a></div>
+								</div>
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center">
+										<img src="./images/huggingface-logo.png" alt="Hugging-Face logo">
+									</div>
+									<h3 class="blue-text mr-xl-5 mb-3">State-of-the-art NLP acceleration with Hugging Face Transformers and ONNX Runtime</h3>
+									<div><a href="https://aka.ms/hf-ort-blog1" target="_blank" class="link"><span class="link-content">Read
+												more</span><span class="link-arrow fa fa-angle-right"></span></a></div>
+								</div>
+								<div class="col-12 col-md-4">
+									<div class="news-img pb-4 pb-md-5 mr-xl-5 text-center">
+										<img src="./images/customvision-logo.jpg" alt="CustomVision logo">
+									</div>
+									<h3 class="blue-text mr-xl-5 mb-3">CustomVision: Accelerating a model with ONNX Runtime on a CPU, GPU or Movidius Neural Compute Stick</h3>
+									<div><a href="https://techcommunity.microsoft.com/t5/azure-ai/customvision-accelerating-a-model-with-onnx-runtime-on-a-cpu-gpu/ba-p/1394275" target="_blank" class="link"><span class="link-content">Read
+												more</span><span class="link-arrow fa fa-angle-right"></span></a></div>
+								</div>
+							</div>
+						</div>
+					</section>
+
+					<section class="py-md-5 pb-4 pt-4 border-top">
+						<div class="container-fluid">
+							<div class="row ml-0">
+								<div class="col">
+									<div class="text-center pb-3">
+										<h2 class="section-heading">Resources​​</h2>
+									</div>
+								</div>
+							</div>
+							<div class="row blue-title-columns">
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<button class="resources-img text-center p-0 border-0" data-src="Z134OGi9DB4" aria-label="Solving customers' ML deployment problems with ONNX Runtime">
+										<img class="btn-trigger" src="./images/video-check-out-schedule.png"
+											alt="Open Source" />
+									</button>
+
+								</div>
+								<div class="col-12 col-md-4 mb-4 mb-md-0">
+									<button class="resources-img text-center p-0 border-0" data-src="nRlnSy4Vbnc" aria-label="Scalable ML acceleration with ONNX Runtime">
+										<img class="btn-trigger" src="./images/video-scalable-ml.jpg" alt="Tech Community" />
+									</button>
+								</div>
+
+								<div class="col-12 col-md-4">
+									<button class="resources-img text-center p-0 border-0" data-src="pmb6cjngbcA" aria-label="ONNX Runtime speeds up Image Embedding model in Bing Semantic Precise Image Search">
+										<img class="btn-trigger" src="./images/video-bing-semantic-precise.jpg" alt="Tech Community" />
+									</button>
+									
+
+								</div>
+							</div>
+						</div>
+					</section>
+
+					<section class="pb-md-5 pb-4">
+	                    <div class="container-fluid border-top pt-md-4 pb-3">
 	                        <div class="row">
 	                            <div class="col-sm-12 append-play-buttom">
 	                                <div id="ONNXCarousel" class="carousel slide" data-pause="hover" data-interval="15000" data-ride="carousel">
@@ -358,8 +463,8 @@
 	                                    <!-- Wrapper for carousel items -->
 	                                    <div class="carousel-inner">
 	                                        <div class="carousel-item item active">
-	                                            <div class="media row">
-	                                                <div class="media-left d-flex col-12 col-md-4 col-xl-3 mb-4 mb-md-0">
+	                                            <div class="media row align-items-center">
+	                                                <div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3 mb-4 mb-md-5">
 	                                                    <img src="images/nvidia.png" alt="NVIDIA logo" />
 	                                                </div>
 	                                                <div class="media-body col-12 col-md-10 col-xl-9">
@@ -371,8 +476,8 @@
 	                                            </div>
 	                                        </div>
 	                                        <div class="carousel-item item">
-	                                            <div class="media row">
-	                                                <div class="media-left d-flex col-12 col-md-4 col-xl-3 mb-4 mb-md-0">
+	                                            <div class="media row align-items-center">
+	                                                <div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3 mb-4 mb-md-5">
 	                                                    <img src="images/intel-logo.png" alt="Intel logo" />
 	                                                </div>
 	                                                <div class="media-body col-12 col-md-10 col-xl-9">
@@ -384,19 +489,19 @@
 	                                            </div>
 	                                        </div>
 	                                        <div class="carousel-item item">
-	                                            <div class="media row">
-	                                                <div class="media-left d-flex col-12 col-md-4 col-xl-3 mb-4 mb-md-0">
-	                                                    <img src="images/oracle-logo.png" alt="Oracle logo" />
+	                                            <div class="media row align-items-center">
+	                                                <div class=" media-left  d-flex align-items-center col-12 col-md-4 col-xl-3 mb-4 mb-md-5">
+	                                                    <img src="images/Rockhip-logo.png" alt="Rockhip logo" />
 	                                                </div>
 	                                                <div class="media-body col-12 col-md-10 col-xl-9">
 	                                                    <div class="testimonial">
-	                                                        <p class="mb-1">&ldquo;The ONNX Runtime API for Java enables Java developers and Oracle customers to seamlessly consume and execute ONNX machine-learning models, while taking advantage of the expressive power, high performance, and scalability of Java.&rdquo;</p>
-	                                                        <p class="overview">&ndash; Stephen Green, Director of Machine Learning Research Group, Oracle</p>
+	                                                        <p class="mb-1">&ldquo;With support for ONNX Runtime, our customers and developers can cross the boundaries of the model training framework, easily deploy ML models in Rockchip NPU powered devices.&rdquo;</p>
+	                                                        <p class="overview">&ndash; Feng Chen, Senior Vice President, Rockchip</p>
 	                                                    </div>
 	                                                </div>
 	                                            </div>
 	                                        </div>
-	
+											
 	                                    </div>
 	
 	                                </div>
@@ -404,9 +509,28 @@
 	                        </div>
 	                    </div>
 	                </section>
-	
+
 	            </div>
 			
+			</div>
+			<button type="button" class="btn btn-primary btn-modal d-none" data-toggle="modal" data-target="#myModal">
+				Open modal
+			  </button>
+			<!-- The Modal -->
+			<div class="modal" id="myModal" tabindex="-1" role="dialog" aria-labelledby="decriptionModal" aria-hidden="true">
+				<p id="decriptionModal" class="sr-only">Resource popup modal</p>
+				<div class="modal-dialog modal-lg">
+				<div class="modal-content">
+					<!-- Modal Header -->
+					<div class="modal-header p-0 border-0">
+						<button type="button" class="close" data-dismiss="modal" aria-label="close popup">&times;</button>
+					</div>
+					<!-- Modal body -->
+					<div class="modal-body pt-4 pb-2 px-2">
+
+					</div>
+				</div>
+				</div>
 			</div>
 			
             <footer class="border-top footer mt-auto py-4 text-white">
@@ -419,8 +543,8 @@
                         </div>
                         <div class="row pb-md-4 pb-0">
                             <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
-                                <h3 class="footer-heading">Use ONNX Runtime</h3>
-                                <p class="mr-xl-5 mb-2">Accelerate your machine learning inferencing today.</p>
+                                <h3 class="footer-heading">Learn</h3>
+                                <p class="mr-xl-5 mb-2">Accelerate your machine learning inferencing and training today.</p>
                                 <a class="mr-xl-5 btn-getStarted" href="JavaScript:void(0);">
                                     <span class="link-content">Get Started</span><span class="link-arrow fa fa-angle-right"></span></a>
                             </div>
@@ -429,14 +553,14 @@
                                 <p class="mr-xl-5 mb-2">ONNX Runtime is a community project. We encourage you to join the effort and contribute feedback, ideas and code.</p>
                                 <a class="mr-xl-5" target="_blank" href="https://github.com/microsoft/onnxruntime">
                                     <span class="link-content">Join us on Github</span><span class="link-arrow fa fa-angle-right"></span></a>
-                            </div>
+							</div>
                             <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
                                 <h3 class="footer-heading">Follow Us</h3>
-                                <p class="mr-xl-5 mb-2">Stay up to date with the latest ONNX news.</p>
-                                <a href="https://twitter.com/onnxruntime" target="_blank" title="Twitter" class="twitter-icon" aria-label="Social Icon Twitter">
+                                <p class="mr-xl-5 mb-2">Stay up to date with the latest ONNX Runtime news.</p>
+                                <a href="https://twitter.com/hashtag/ONNXRuntime" target="_blank" title="Twitter" class="twitter-icon" aria-label="Social Icon Twitter">
                                     <span class="fa fa-twitter" aria-hidden="true"></span></a>
-                            </div>
-                            <div class="col-6 col-sm-6 col-md-3">
+							</div>
+							<div class="col-6 col-sm-6 col-md-3">
                                 <h3 class="footer-heading">Resources</h3>
                                 <ul class="list-unstyled text-small">
                                     <li class="mb-2">
@@ -453,11 +577,12 @@
                                     </li>
                                 </ul>
                             </div>
+                           
                         </div>
                         <div class="row pt-4 pb-4 text-center-sm">
                             <div class="col-12">
                                 <a href="./index.html"><img class="mb-md-2 mb-0 onnx-footer-logo" src="images/svg/ONNX-Runtime-logo-white.svg" alt="ONNX Runtime Home"></a>
-                                <p class="text-copyright py-4 ml-md-5">Copyright &copy; 2019 Microsoft. All rights reserved.
+                                <p class="text-copyright py-4 ml-md-5">Copyright &copy; 2020 Microsoft. All rights reserved.
                                 </p>
                             </div>
                         </div>
@@ -470,8 +595,8 @@
     </div>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-    <script src="./js/custom.js"></script>
-    <script src="./js/script.js"></script>
+    <script src="./js/custom.js?v1.4"></script>
+    <script src="./js/script.js?v1.4"></script>
 
 </body>
 
