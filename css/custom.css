@@ -142,29 +142,30 @@ a.link:active .link-arrow{
 .get-started-section h2{
     font-size:34px;
 }
-.carousel {
+.carousel, .tab-wrapper{
     margin: 3rem auto;
     padding: 0 70px;
 }
-.carousel .item {
+.carousel .item,
+.tab-wrapper .item{
     color: #000;
     overflow: hidden;
     min-height: 120px;
     font-size: 26px;
 }
-.carousel .media img {
+.carousel .media img, .tab-wrapper .media img{
     max-width: 100%;
     height: auto;
     display: block;
 }
-.carousel .testimonial {
+.carousel .testimonial, .tab-wrapper .testimonial{
     position: relative;
 }
-.carousel p{
+.carousel p, .tab-wrapper p{
     font-size:26px;
     font-weight: bold;
 }
-.carousel .overview {
+.carousel .overview, .tab-wrapper .overview{
     font-size:16px;
     margin-bottom: 30px;
     font-weight: normal;
@@ -605,7 +606,8 @@ a .abbr[data-original-title], a abbr[title]{
     border-bottom: 1px solid #ddd;
   }
 
-  .tbl_tab {
+  .tbl_tab,
+  .custom-tab .nav-tabs .nav-link {
     margin: 0;
     padding: 12px 24px;
     font-weight: bold;
@@ -616,8 +618,9 @@ a .abbr[data-original-title], a abbr[title]{
     border-bottom: 0;
     font-size: 22px;
     cursor: pointer;
+    color: #1a1a1a;;
   }
-
+ 
   .tbl_panel {
     clear: both;
     display: block;
@@ -629,7 +632,8 @@ a .abbr[data-original-title], a abbr[title]{
     list-style-type: none;
   }
 
-  li[aria-selected='true'] {
+  li[aria-selected='true'],
+  .custom-tab .nav-tabs .nav-link.active {
     background-color: #0F77D2;
     color: #fff;
     border: 1px solid #0F77D2;

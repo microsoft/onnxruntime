@@ -23,6 +23,12 @@
     .r-wrap .r-content .r-option span{
         padding: 0 10px;
     }
+    .sponsor-logo img{
+        max-height: 50px;
+    }
+    .news-img img {
+        max-height: 110px;
+    }
   }
   
   @media only screen and (max-width: 991px) {
@@ -35,16 +41,15 @@
     .navbar-custom .onnx-logo {
         width: 230px;
     }   
-    .sponsor-logo img{
-        max-height: 60px;
-    }
-    .carousel .media img{
+    .carousel .media img,
+    .tab-wrapper .media img{
         max-width: 180px;
     }
     .get-started-section h2 {
         font-size: 24px;
     }
-    .carousel p {
+    .carousel p,
+    .tab-wrapper p {
         font-size: 20px;
     }
     .footer .footer-heading{
@@ -92,6 +97,9 @@
     }
     .blue-title-columns h3 {
         font-size: 22px;
+    }
+    .news-img img {
+        max-height: 90px;
     }
   }
 
@@ -200,6 +208,56 @@
     .tab{
         font-size: 16px;
         padding: 10px 12px;
+    }
+
+    .custom-tab .nav-tabs {
+        position: absolute;
+        border: 1px solid #ccc;
+        z-index: 11;
+        min-height: 50px;
+        left: 15px;
+        right: 15px;
+        transition: all ease .5s; 
+    }
+    .custom-tab .nav-tabs li {
+        width: 100%; 
+        margin: 0 !important; 
+    }
+    .custom-tab .nav-tabs li > a {
+        display: none; 
+        border: 0 !important; 
+        border-radius: 0 !important;
+    }
+    .custom-tab .nav-tabs .nav-link{
+        font-size: 18px;
+    }
+    .custom-tab .nav-tabs.open li > a, .custom-tab .nav-tabs li > a.active {
+        display: block;
+        transition: all ease .5s; 
+    }
+    .custom-tab .nav-tabs .dropdown-arrow { 
+        position: absolute;
+        top: 18px;
+        right: 15px;
+        border: solid #000000;
+        border-width: 0 2px 2px 0;
+        display: inline-block;
+        padding: 5px;
+        vertical-align: middle;
+        transform: rotate(45deg);
+        -webkit-transform: rotate(45deg);
+        transition: all ease .5s;
+        cursor: pointer; 
+    }
+    .custom-tab .nav-tabs.open .dropdown-arrow {
+        transform: rotate(-135deg);
+        transition: all ease .5s; 
+    }
+    .tab-wrapper{
+        padding-top: 60px;
+    }
+    .news-img img {
+        max-height: 110px;
     }
   }
   
