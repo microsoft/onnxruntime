@@ -94,7 +94,7 @@ public class App {
 	static private void loadMetricsIntoMySQL(java.sql.Connection conn, String commit_id, String batch_id,
 											 JSONObject json_object) throws Exception {
 
-		// field name -> (json value, update on duplicate)
+		// field name -> json value
 		Map<String, Object> field_mapping = new HashMap();
 		Set<String> update_on_duplicate_fields =
 			new HashSet<> (Arrays.asList("AvgTimePerBatch", "Throughput", "StabilizedThroughput", "TotalTime", "AvgCPU", "Memory"));
