@@ -20,6 +20,7 @@
     * [DirectML](#DirectML)
     * [ARM Compute Library](#ARM-Compute-Library)
     * [Rockchip RKNPU](#RKNPU)
+    * [Xilinx Vitis-AI](#Vitis-AI)
   * Options
     * [OpenMP](#OpenMP)
     * [OpenBLAS](#OpenBLAS)
@@ -517,7 +518,21 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
     onnxruntime_test_all
     rknpu_ddk/lib64/librknpu_ddk.so
     ```
+
 ---
+
+### Vitis-AI
+See more information on the Xilinx Vitis-AI execution provider [here](./docs/execution_providers/Vitis-AI-ExecutionProvider.md).
+
+For instructions to setup the hardware environment: [Hardware setup](./docs/execution_providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
+
+#### Linux
+
+```
+./build.sh --use_vitisai
+```
+#### Notes
+The Vitis-AI execution provider is only supported on Linux.
 
 ## Options
 ### OpenMP
