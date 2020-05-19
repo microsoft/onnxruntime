@@ -6,8 +6,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
-#include "onnx/defs/operator_sets-ml.h"
-#include "onnx/defs/operator_sets-training.h"
+#include "onnx/defs/operator_sets_ml.h"
+#include "onnx/defs/operator_sets_training.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif

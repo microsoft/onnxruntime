@@ -2,11 +2,9 @@
 // Licensed under the MIT License
 
 #pragma once
-#include "core/framework/op_kernel.h"
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -15,9 +13,9 @@ template <typename T>
 class DnnlSum : public DnnlKernel {
  public:
   explicit DnnlSum(const DnnlNode& node,
-                     DNNLExecutionProvider* provider,
-                     const NodeAttributes& attributes,
-                     const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
+                   DNNLExecutionProvider* provider,
+                   const Provider_NodeAttributes& attributes,
+                   const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
 

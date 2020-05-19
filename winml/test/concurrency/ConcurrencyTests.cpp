@@ -25,10 +25,10 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
     for (const auto& instance : {"1", "2", "3", "4"}) {
         threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::Cpu);
     }
-    if (GPUTEST_ENABLED) {
-        for (const auto& instance : {"GPU_1", "GPU_2", "GPU_3", "GPU_4"}) {
-            threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::DirectX);
-        }
+    if (SkipGpuTests()) {} else {
+      for (const auto& instance : {"GPU_1", "GPU_2", "GPU_3", "GPU_4"}) {
+        threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::DirectX);
+      }
     }
 
     for (auto& thread : threads) {
@@ -39,10 +39,6 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
 void ConcurrencyTestsClassSetup() {
     init_apartment();
     std::srand(static_cast<unsigned>(std::time(nullptr)));
-}
-
-void ConcurrencyTestsGpuMethodSetup() {
-    GPUTEST;
 }
 
 struct EvaluationUnit {
@@ -330,9 +326,8 @@ void MultiThreadSingleSessionGpu() {
 }
 
 const ConcurrencyTestsApi& getapi() {
-  static constexpr ConcurrencyTestsApi api = {
+  static ConcurrencyTestsApi api = {
     ConcurrencyTestsClassSetup,
-    ConcurrencyTestsGpuMethodSetup,
     LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
     MultiThreadLoadModel,
     MultiThreadMultiSession,
@@ -343,5 +338,10 @@ const ConcurrencyTestsApi& getapi() {
     EvalAsyncDifferentSessions,
     EvalAsyncDifferentBindings
   };
+
+  if (SkipGpuTests()) {
+    api.MultiThreadMultiSessionGpu = SkipTest;
+    api.MultiThreadSingleSessionGpu = SkipTest;
+  }
   return api;
 }

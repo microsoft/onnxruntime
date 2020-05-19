@@ -399,6 +399,7 @@ will be calculated.)DOC";
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
@@ -471,6 +472,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Skip and Layer Normalization Fusion")
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
@@ -2076,13 +2078,44 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
       });
 
+  const char* QLinearLeakyReluDoc_ver1 =  R"DOC(
+QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
+and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
+`f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearLeakyRelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QLinearLeakyReluDoc_ver1)
+      .Attr("alpha", "Coefficient of leakage.", AttributeProto::FLOAT, 0.01f)
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "X_scale",
+             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(2, "X_zero_point",
+             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Input(3, "Y_scale",
+             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(4, "Y_zero_point",
+             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.)DOC")
       .Input(0, "X", "An input tensor to hash.", "T1")
       .Output(0, "Y", "32-bit hash value.", "T2")
-      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
+      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(uint64)", "tensor(int64)", "tensor(float)", "tensor(double)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
       .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned and signed 32-bit integer tensor.")
       .Attr(
           "seed",

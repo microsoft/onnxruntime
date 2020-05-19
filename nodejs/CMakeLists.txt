@@ -7,6 +7,15 @@ set(CMAKE_CXX_STANDARD 14)
 add_compile_definitions(NAPI_VERSION=${napi_build_version})
 add_compile_definitions(NAPI_EXPERIMENTAL)
 
+# dist variables
+execute_process(COMMAND node -e "console.log(process.arch)"
+                OUTPUT_VARIABLE node_arch OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND node -e "console.log(process.platform)"
+                OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
+file(READ ${CMAKE_SOURCE_DIR}/../VERSION_NUMBER ort_version)
+string(STRIP "${ort_version}" ort_version)
+set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${node_arch}/")
+
 include_directories(${CMAKE_JS_INC})
 include_directories(${CMAKE_SOURCE_DIR}/../include/onnxruntime)
 include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
@@ -25,19 +34,20 @@ if (WIN32)
     ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE
-    ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib)
+    ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
   target_link_libraries(onnxruntime_binding PRIVATE
-    ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0)
+    ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.${ort_version})
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
 # post build
+
 add_custom_command(
   TARGET onnxruntime_binding POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:onnxruntime_binding> ${CMAKE_SOURCE_DIR}/bin/
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${dist_folder}
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:onnxruntime_binding> ${dist_folder}
 )
 
 if (WIN32)
@@ -45,30 +55,30 @@ if (WIN32)
     TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
       ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.dll
-      ${CMAKE_SOURCE_DIR}/bin/
+      ${dist_folder}
   )
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(
       TARGET onnxruntime_binding POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
         ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE}/${CMAKE_BUILD_TYPE}/onnxruntime.pdb
-        ${CMAKE_SOURCE_DIR}/bin/
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:onnxruntime_binding>/onnxruntime_binding.pdb ${CMAKE_SOURCE_DIR}/bin/
+        ${dist_folder}
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:onnxruntime_binding>/onnxruntime_binding.pdb ${dist_folder}
     )
   endif()
 elseif (APPLE)
   add_custom_command(
     TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.1.2.0.dylib
-      ${CMAKE_SOURCE_DIR}/bin/
+      ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.${ort_version}.dylib
+      ${dist_folder}
   )
 elseif (UNIX)
   add_custom_command(
     TARGET onnxruntime_binding POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.1.2.0
-      ${CMAKE_SOURCE_DIR}/bin/
+      ${CMAKE_SOURCE_DIR}/../build/Linux/${CMAKE_BUILD_TYPE}/libonnxruntime.so.${ort_version}
+      ${dist_folder}
   )
 else()
   message(FATAL_ERROR "Platform not supported.")

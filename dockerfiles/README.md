@@ -173,14 +173,17 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+ running Raspbian Stretch. The same approach should work for other ARM devices, but may require some changes to the Dockerfile such as choosing a different base image (Line 0: `FROM ...`).
 
-1. Install DockerCE on your development machine by following the instructions [here](https://docs.docker.com/install/)
+1. Install dependencies:
+
+- DockerCE on your development machine by following the instructions [here](https://docs.docker.com/install/)
+- ARM emulator: `sudo apt-get install -y qemu-user-static`
+
 2. Create an empty local directory
     ```bash
     mkdir onnx-build
     cd onnx-build
     ```
-3. Save the Dockerfile to your new directory
-    - [Dockerfile.arm32v7](./Dockerfile.arm32v7)
+3. Save the Dockerfile from this repo to your new directory: [Dockerfile.arm32v7](./Dockerfile.arm32v7)
 4. Run docker build
 
     This will build all the dependencies first, then build ONNX Runtime and its Python bindings. This will take several hours.

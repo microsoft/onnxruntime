@@ -206,6 +206,12 @@ class Env {
 
   virtual common::Status UnloadDynamicLibrary(void* handle) const = 0;
 
+  // \brief Gets the file path of the onnx runtime code
+  //
+  // Used to help load other shared libraries that live in the same folder as the core code, for example
+  // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
+  virtual std::string GetRuntimePath() const { return ""; }
+
   // \brief Get a pointer to a symbol from a dynamic library.
   //
   // "handle" should be a pointer returned from a previous call to LoadDynamicLibrary.

@@ -7,7 +7,6 @@
 struct ConcurrencyTestsApi
 {
   SetupClass ConcurrencyTestsClassSetup;
-  SetupTest ConcurrencyTestsGpuMethodSetup;
   VoidTest LoadBindEvalSqueezenetRealDataWithValidationConcurrently;
   VoidTest MultiThreadLoadModel;
   VoidTest MultiThreadMultiSession;
@@ -30,14 +29,8 @@ WINML_TEST(ConcurrencyTests, MultiThreadSingleSession)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentModels)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentSessions)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentBindings)
-WINML_TEST_CLASS_END()
-
-WINML_TEST_CLASS_BEGIN(ConcurrencyTestsGpu)
-WINML_TEST_CLASS_SETUP_CLASS(ConcurrencyTestsClassSetup)
-WINML_TEST_CLASS_SETUP_METHOD(ConcurrencyTestsGpuMethodSetup)
-WINML_TEST_CLASS_BEGIN_TESTS
-WINML_TEST(ConcurrencyTestsGpu, MultiThreadMultiSessionGpu)
-WINML_TEST(ConcurrencyTestsGpu, MultiThreadSingleSessionGpu)
+WINML_TEST(ConcurrencyTests, MultiThreadMultiSessionGpu)
+WINML_TEST(ConcurrencyTests, MultiThreadSingleSessionGpu)
 WINML_TEST_CLASS_END()
 
 // indices for imagenet label
