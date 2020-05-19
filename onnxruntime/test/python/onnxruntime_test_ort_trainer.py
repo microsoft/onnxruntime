@@ -18,6 +18,8 @@ from helper import get_name
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
 
+SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
+
 def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
 
@@ -236,14 +238,14 @@ class MNISTWrapper():
 
         kwargs = {'num_workers': 0, 'pin_memory': True}
         train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=True, download=True,
-                        transform=transforms.Compose([transforms.ToTensor(),
-                                                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=True, download=True,
+                           transform=transforms.Compose([transforms.ToTensor(),
+                                                         transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_batch_size, shuffle=True, **kwargs)
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=False, transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_test_batch_size, shuffle=True, **kwargs)
 
         return train_loader, test_loader
@@ -258,19 +260,20 @@ class MNISTWrapper():
         model_desc = MNISTWrapper.mnist_model_description()
         return model, model_desc
 
-    def get_trainer(self, model, model_desc, device):
+    def get_trainer(self, model, model_desc, device, onnx_opset_ver=12):
         return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
-                                torch.float32), device, _opset_version=12)
+                                torch.float32), device, _opset_version=onnx_opset_ver)
 
 class TestOrtTrainer(unittest.TestCase):
-    def testMNISTTrainingAndTesting(self):
+
+    def run_mnist_training_and_testing(onnx_opset_ver):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
         mnist = MNISTWrapper()
         train_loader, test_loader = mnist.get_loaders()
         model, model_desc = mnist.get_model()
-        trainer = mnist.get_trainer(model, model_desc, device)
+        trainer = mnist.get_trainer(model, model_desc, device, onnx_opset_ver=onnx_opset_ver)
 
         learningRate = 0.01
         args_epochs = 2
@@ -308,6 +311,12 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
         assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
+
+    def testMNISTTrainingAndTestingOpset10(self):
+        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 10)
+
+    def testMNISTTrainingAndTestingOpset12(self):
+        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 12)
 
     def testMNISTResumeTrainingAndTesting(self):
         torch.manual_seed(1)

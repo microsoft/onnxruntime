@@ -1,8 +1,9 @@
 #!/bin/bash
-set -e
+set -e -x
 
+SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 
-while getopts p:d: parameter_Option
+while getopts p:d:x: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
@@ -111,6 +112,10 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
       ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+
+      # patch pytorch onnx export opset version 10 to export nll_loss
+      PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
+      cp "${SCRIPT_DIR}/pyt_patch/symbolic_opset10.py" "${PATH_TO_SYMBOLIC10}"
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       ${PYTHON_EXE} -m pip install transformers
