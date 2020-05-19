@@ -358,6 +358,9 @@ function commandMessage(key) {
         "linux,Python(3.5-3.7),X64,DefaultCPU":
             "pip install onnxruntime",
 
+        "linux,Python(3.5-3.7),ARM64,DefaultCPU":
+            "pip install onnxruntime",
+
         "windows,C,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
