@@ -450,7 +450,7 @@ if (onnxruntime_USE_OPENVINO)
   else()
     add_dependencies(onnxruntime_providers_openvino ${onnxruntime_EXTERNAL_DEPENDENCIES})
     target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_NGRAPH_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_providers_openvino -lngraph -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
+    target_link_libraries(onnxruntime_providers_openvino -lngraph -lonnx_importer -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
   endif()
 
 endif()
