@@ -1,22 +1,24 @@
-# This script is self-contained and you need not copy other files in this directory when you set run_cli=true.
 # Please install PyTorch 1.5.0 (see https://pytorch.org/) before running this benchmark.
+
+# When run_cli=true, this script is self-contained and you need not copy other files to run benchmarks - it will use onnxruntime-tools package.
+# If run_cli=false, it depends on other python script (*.py) files in this directory.
+run_cli=true
+
 
 run_install=true
 
-# Change it false if you want to run the script from master branch instead of published package.
-run_cli=true
 
-# Engines
+# Engines to test.
 run_ort=true
 run_torch=false
 run_torchscript=true
 
-# Devices (You can run either CPU or GPU, but not both at the same time: gpu need onnxruntime-gpu, and CPU need onnxruntime.
+# Devices to test (You can run either CPU or GPU, but not both: gpu need onnxruntime-gpu, and CPU need onnxruntime).
 run_gpu_fp32=true
 run_gpu_fp16=true
 run_cpu=false
 
-# If you have mutliple GPUs, you can choose one GPU for test. Here is an example of using the second GPU:
+# If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
 
 if [ "$run_install" = true ] ; then
@@ -39,8 +41,9 @@ fi
 export ONNX_EXPORT_OPTIONS="-o -v -b 0 --overwrite -f fusion.csv"
 
 # Please choose or update one combination of batch sizes and sequence lengths below
-#export BENCHMARK_OPTIONS="-b 1 4 -s 8 16 32 64 128 256 512 1024 -t 1000 -f fusion.csv -r result.csv -d detail.csv"
-export BENCHMARK_OPTIONS="-b 1 2 4 8 16 32 64 128 -s 8 64 128 -t 100 -f fusion.csv -r result.csv -d detail.csv"
+export BENCHMARK_OPTIONS="-b 1 4 -s 8 16 32 64 128 256 512 1024 -t 1000 -f fusion.csv -r result.csv -d detail.csv"
+#export BENCHMARK_OPTIONS="-b 1 2 4 8 16 32 64 128 -s 8 128 -t 100 -f fusion.csv -r result.csv -d detail.csv"
+
 
 if [ "$run_gpu_fp32" = true ] ; then
   for m in bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
