@@ -15,6 +15,13 @@ var opts = {
     language: 'Python(3.5-3.7)',
     hardwareAcceleration: 'DefaultCPU',
 };
+var ot_opts = {
+    // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
+    ot_os: 'ot_linux',
+    ot_architecture: 'ot_X64',
+    ot_language: 'ot_PyTorch',
+    ot_hardwareAcceleration: 'ot_CUDA',
+};
 
 var os = $(".os > .r-option");
 
@@ -22,6 +29,11 @@ var architecture = $(".architecture > .r-option");
 var language = $(".language > .r-option");
 var hardwareAcceleration = $(".hardwareAcceleration > .r-option");
 
+var ot_os = $(".ot_os > .r-option");
+
+var ot_architecture = $(".ot_architecture > .r-option");
+var ot_language = $(".ot_language > .r-option");
+var ot_hardwareAcceleration = $(".ot_hardwareAcceleration > .r-option");
 
 function checkKeyPress(event) {
     var keycode = (event.keyCode ? event.keyCode : event.which);
@@ -32,6 +44,7 @@ function checkKeyPress(event) {
     }
 }
 
+
 os.on("click", function () {
     selectedOption(os, this, "os");
     
@@ -39,6 +52,15 @@ os.on("click", function () {
 os.on("keypress keyup", function (event) {
     if (checkKeyPress(event)) {
         selectedOption(os, this, "os");
+    }
+});
+ot_os.on("click", function () {
+    ot_selectedOption(ot_os, this, "ot_os");
+    
+});
+ot_os.on("keypress keyup", function (event) {
+    if (checkKeyPress(event)) {
+        ot_selectedOption(ot_os, this, "ot_os");
     }
 });
 architecture.on("click", function () {
@@ -49,12 +71,28 @@ architecture.on("keypress keyup", function (event) {
         selectedOption(architecture, this, "architecture");
     }
 });
+ot_architecture.on("click", function () {
+    ot_selectedOption(ot_architecture, this, "ot_architecture");
+});
+ot_architecture.on("keypress keyup", function (event) {
+    if (checkKeyPress(event)) {
+        ot_selectedOption(ot_architecture, this, "ot_architecture");
+    }
+});
 language.on("click", function () {
     selectedOption(language, this, "language");
 });
 language.on("keypress keyup", function (event) {
     if (checkKeyPress(event)) {
         selectedOption(language, this, "language");
+    }
+});
+ot_language.on("click", function () {
+    ot_selectedOption(ot_language, this, "ot_language");
+});
+ot_language.on("keypress keyup", function (event) {
+    if (checkKeyPress(event)) {
+        ot_selectedOption(ot_language, this, "ot_language");
     }
 });
 hardwareAcceleration.on("click", function () {
@@ -65,12 +103,24 @@ hardwareAcceleration.on("keypress keyup", function (event) {
         selectedOption(hardwareAcceleration, this, "hardwareAcceleration");
     }
 });
+ot_hardwareAcceleration.on("click", function () {
+    ot_selectedOption(ot_hardwareAcceleration, this, "ot_hardwareAcceleration");
+});
+ot_hardwareAcceleration.on("keypress keyup", function (event) {
+    if (checkKeyPress(event)) {
+        ot_selectedOption(ot_hardwareAcceleration, this, "ot_hardwareAcceleration");
+    }
+});
 // Pre-select user's operating system
 $(document).ready(function () {
     var userOsOption = document.getElementById(opts.os);
+    var ot_userOsOption = document.getElementById(ot_opts.ot_os);
 
     if (userOsOption) {
         selectedOption(os, userOsOption, "os");
+    }
+    if (ot_userOsOption) {
+        ot_selectedOption(ot_os, ot_userOsOption, "ot_os");
     }
 });
 
@@ -112,6 +162,13 @@ function selectedOption(option, selection, category) {
     commandMessage(buildMatcher());
 }
 
+function ot_selectedOption(option, selection, category) {
+    $(option).removeClass("selected");
+    $(selection).addClass("selected");
+    ot_opts[category] = selection.id;
+    ot_commandMessage(ot_buildMatcher());
+}
+
 function display(selection, id, category) {
     var container = document.getElementById(id);
     // Check if there's a container to display the selection
@@ -138,6 +195,36 @@ function buildMatcher() {
         "," +
         opts.hardwareAcceleration 
     );
+}
+
+function ot_buildMatcher() {
+    return (
+        ot_opts.ot_os +
+        "," +
+        ot_opts.ot_language +
+        "," +
+        ot_opts.ot_architecture +
+        "," +
+        ot_opts.ot_hardwareAcceleration 
+    );
+}
+
+function ot_commandMessage(key) {
+    //console.log('key- '+key);
+     var ot_object = {
+        "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
+            "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
+
+        "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA":
+            "Coming Soon",
+     };
+     if (!ot_object.hasOwnProperty(key)) {
+        $("#ot_command span").html(
+            "Coming Soon"
+        );
+    } else {
+        $("#ot_command span").html(ot_object[key]);
+    }
 }
 
 function commandMessage(key) {
@@ -271,28 +358,28 @@ function commandMessage(key) {
         "linux,Python(3.5-3.7),X64,DefaultCPU":
             "pip install onnxruntime",
 
-        "windows,C,X64,MKL-DNN":
+        "windows,C,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "windows,C++,X64,MKL-DNN": 
+        "windows,C++,X64,DNNL": 
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "windows,C#,X64,MKL-DNN":
+        "windows,C#,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "windows,Python(3.5-3.7),X64,MKL-DNN":
+        "windows,Python(3.5-3.7),X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "linux,C,X64,MKL-DNN": 
+        "linux,C,X64,DNNL": 
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "linux,C++,X64,MKL-DNN":
+        "linux,C++,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "linux,C#,X64,MKL-DNN":
+        "linux,C#,X64,DNNL":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-        "linux,Python(3.5-3.7),X64,MKL-DNN": 
+        "linux,Python(3.5-3.7),X64,DNNL": 
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
         "windows,C,X64,MKL-ML":
@@ -595,10 +682,10 @@ function commandMessage(key) {
             "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
 
         "windows,C,X64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
         "windows,C++,X64,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
         "mac,Python(3.5-3.7),ARM64,CUDA":
             "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
@@ -705,16 +792,16 @@ function commandMessage(key) {
         "mac,Python(3.5-3.7),X86,MKL-ML":
         	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
         
-        "mac,C,X86,MKL-DNN":
+        "mac,C,X86,DNNL":
             "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
             
-        "mac,C++,X86,MKL-DNN":
+        "mac,C++,X86,DNNL":
         	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
         
-        "mac,C#,X86,MKL-DNN":
+        "mac,C#,X86,DNNL":
         	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
         
-        "mac,Python(3.5-3.7),X86,MKL-DNN":
+        "mac,Python(3.5-3.7),X86,DNNL":
             "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
         
         "linux,C,X64,DirectML":
@@ -730,10 +817,10 @@ function commandMessage(key) {
         	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
 
         "windows,C,X86,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
         
         "windows,C++,X86,DirectML":
-            "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
         "windows,C#,X86,DirectML":
             "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
@@ -772,8 +859,68 @@ function commandMessage(key) {
 			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 			
 		"mac,Java,X64,DefaultCPU":
-			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>"	
+			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
+
+        "windows,WinRT,X86,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+        "windows,WinRT,X64,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+        "windows,WinRT,ARM64,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+        "windows,WinRT,ARM32,DefaultCPU":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+        "windows,WinRT,X86,DirectML":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+        "windows,WinRT,X64,DirectML":
+            "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
+        "windows,Java,X64,DefaultCPU":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,CUDA":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,TensorRT":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,DNNL":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,MKL-ML":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,nGraph":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,NUPHAR":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "windows,Java,X64,OpenVINO":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "linux,Java,X64,TensorRT":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "linux,Java,X64,DNNL":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "linux,Java,X64,MKL-ML":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "linux,Java,X64,nGraph":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "linux,Java,X64,NUPHAR":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+
+        "linux,Java,X64,OpenVINO":
+            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     };
 
@@ -1087,7 +1234,7 @@ function blurRadioButton(event) {
           // create button for screen reader users to pause carousel for virtual mode review
           $complementaryLandmark = document.createElement('aside')
           $complementaryLandmark.setAttribute('aria-label', 'Slider control')
-          $(document.body).find('.append-play-buttom').append($complementaryLandmark)
+          $(document.body).find('.append-play-buttom').prepend($complementaryLandmark)
           
           $pauseCarousel = document.createElement('button')
           $pauseCarousel.className = "carousel-pause-button"
@@ -1260,12 +1407,12 @@ function blurRadioButton(event) {
         
         index = $tabs.index($tabs.filter('.active'))
         if (k == 37 || k == 38) {                           //  Up
-          index--
+        //   index--
           selectTab(index);
         }
         
         if (k == 39 || k == 40) {                          // Down
-          index++
+        //   index++
           selectTab(index);
         }
   
@@ -1276,3 +1423,74 @@ function blurRadioButton(event) {
   
   
    })(jQuery);
+
+
+   $(document).ready(function () {
+    $(".tbl_tablist li[role='tab']").click(function () {
+      $(".tbl_tablist  li[role='tab']:not(this)").attr("aria-selected", "false");
+      $(this).attr("aria-selected", "true");
+      var tabpanid = $(this).attr("aria-controls");
+      var tabpan = $("#" + tabpanid);
+      $("div[role='tabpanel']:not(tabpan)").attr("aria-hidden", "true");
+      $("div[role='tabpanel']:not(tabpan)").addClass("hidden");
+  
+      tabpan.removeClass("hidden");
+      tabpan.attr("aria-hidden", "false");
+    });
+  
+    $(".tbl_tablist li[role='tab']").keydown(function (ev) {
+      if (ev.which == 13) {
+        $(this).click();
+      }
+    });
+  
+    //This adds keyboard function that pressing an arrow left or arrow right from the tabs toggel the tabs.
+    $(".tbl_tablist li[role='tab']").keydown(function (ev) {
+      if (ev.which == 39 || ev.which == 37) {
+        var selected = $(this).attr("aria-selected");
+        if (selected == "true") {
+          $("li[aria-selected='false']").attr("aria-selected", "true").focus();
+          $(this).attr("aria-selected", "false");
+  
+          var tabpanid = $("li[aria-selected='true']").attr("aria-controls");
+          var tabpan = $("#" + tabpanid);
+          $("div[role='tabpanel']:not(tabpan)").attr("aria-hidden", "true");
+          $("div[role='tabpanel']:not(tabpan)").addClass("hidden");
+  
+          tabpan.attr("aria-hidden", "false");
+          tabpan.removeClass("hidden");
+        }
+      }
+    });
+  });
+
+  // Modal Extension
+  // ===============================
+
+  $('.modal-dialog').attr( {'role' : 'document'})
+    var modalhide =   $.fn.modal.Constructor.prototype.hide
+    $.fn.modal.Constructor.prototype.hide = function(){
+       modalhide.apply(this, arguments)
+       $(document).off('keydown.bs.modal')
+    }
+
+    var modalfocus =   $.fn.modal.Constructor.prototype.enforceFocus
+    $.fn.modal.Constructor.prototype.enforceFocus = function(){
+      var $content = this.$element.find(".modal-content")
+      var focEls = $content.find(":tabbable")
+      , $lastEl = $(focEls[focEls.length-1])
+      , $firstEl = $(focEls[0])
+      $lastEl.on('keydown.bs.modal', $.proxy(function (ev) {
+        if(ev.keyCode === 9 && !(ev.shiftKey | ev.ctrlKey | ev.metaKey | ev.altKey)) { // TAB pressed
+          ev.preventDefault();
+          $firstEl.focus();
+        }
+      }, this))
+      $firstEl.on('keydown.bs.modal', $.proxy(function (ev) {
+          if(ev.keyCode === 9 && ev.shiftKey) { // SHIFT-TAB pressed
+            ev.preventDefault();
+            $lastEl.focus();
+          }
+      }, this))
+      modalfocus.apply(this, arguments)
+    }
