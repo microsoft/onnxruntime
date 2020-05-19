@@ -1,7 +1,5 @@
 package com.msft.send_perf_metrics;
 
-import javafx.util.Pair;
-import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -14,7 +12,6 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
 import java.sql.Connection;
-import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
