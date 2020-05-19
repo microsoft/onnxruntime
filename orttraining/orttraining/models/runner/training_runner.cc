@@ -281,7 +281,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        if (step_ >= end_to_end_perf_start_step) {
+        if (step_ == end_to_end_perf_start_step) {
           end_to_end_start = std::chrono::high_resolution_clock::now();
         }
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
