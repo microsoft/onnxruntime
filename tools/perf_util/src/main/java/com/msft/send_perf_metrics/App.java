@@ -12,6 +12,8 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -133,18 +135,7 @@ public class App {
 		try (java.sql.PreparedStatement st = conn.prepareStatement(sb.substring(0, sb.length() - 1))) {
 			int i = 0; // param index
 			for (Map.Entry<String, Object> entry : field_mapping.entrySet()) {
-				Object value = entry.getValue();
-				if (value instanceof String) {
-					st.setString(++i, (String) value);
-				} else if (value instanceof Long) {
-					st.setInt(++i, (int) (long) value);
-				} else if (value instanceof Double) {
-					st.setFloat(++i, (float) (double) value);
-				} else if (value instanceof Boolean) {
-					st.setBoolean(++i, (Boolean) value);
-				} else {
-					throw new Exception("Unsupported data type:" + value.getClass().getName());
-				}
+				setSqlParam(++i, st, entry.getValue());
 			}
 
 			// update section
@@ -153,17 +144,7 @@ public class App {
 				Object key = it.next();
 				Object value = field_mapping.get(key);
 				if(value != null) {
-					if (value instanceof String) {
-						st.setString(++i, (String) value);
-					} else if (value instanceof Long) {
-						st.setInt(++i, (int) (long) value);
-					} else if (value instanceof Double) {
-						st.setFloat(++i, (float) (double) value);
-					} else if (value instanceof Boolean) {
-						st.setBoolean(++i, (Boolean) value);
-					} else {
-						throw new Exception("Unsupported data type:" + value.getClass().getName());
-					}
+					setSqlParam(++i, st, value);
 				}
 			}
 
@@ -173,6 +154,20 @@ public class App {
 			throw e;
 		}
 
+	}
+
+	static void setSqlParam(int param_index, PreparedStatement st, Object value) throws Exception {
+		if (value instanceof String) {
+			st.setString(param_index, (String) value);
+		} else if (value instanceof Long) {
+			st.setInt(param_index, (int) (long) value);
+		} else if (value instanceof Double) {
+			st.setFloat(param_index, (float) (double) value);
+		} else if (value instanceof Boolean) {
+			st.setBoolean(param_index, (Boolean) value);
+		} else {
+			throw new Exception("Unsupported data type:" + value.getClass().getName());
+		}
 	}
 
 }
