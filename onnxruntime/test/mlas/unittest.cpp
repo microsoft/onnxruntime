@@ -19,7 +19,12 @@ Abstract:
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <random>
 #include <mlas.h>
+#include <vector>
+#include <iostream>
+#include <chrono>
+#include <iomanip>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -44,7 +49,20 @@ Abstract:
 #define MLAS_HAS_QGEMM_U8X8
 #endif
 
+using namespace std;
+
 MLAS_THREADPOOL* threadpool = nullptr;
+
+const int ITER = 10;
+
+void llc_flush( std::vector<char>& llc )
+{
+   volatile char* data = llc.data();
+   for( size_t i = 0; i < llc.size(); i++ )
+   {
+      data[ i ]++;
+   }
+}
 
 template <typename T>
 class MatrixGuardBuffer
@@ -372,6 +390,74 @@ private:
     MatrixGuardBuffer<T> BufferCReference;
 
 public:
+   void TestPerf()
+   {
+      // clang-format off
+      static const vector<vector<int>> shapes = {
+         // NOTE: clang-format wants to use a different formatting but the current
+         // formatting should be easier to read.
+         // m, n, k
+         {64, 800, 320},
+         {64, 768, 512},
+         {16, 256, 512},
+         {128, 128, 128},
+         {256, 512, 256},
+         {128, 768, 768},
+         {128, 768, 3072},
+         {128, 3072, 768},
+         {128, 2304, 768},
+         {1024, 1024, 1024},
+      };
+      // clang-format on
+      bool flush = true;
+      std::vector<char> llc;
+
+      if( flush )
+      {
+         llc.resize( 128 * 1024 * 1024, 1.0 );
+      }
+
+      chrono::time_point<chrono::high_resolution_clock> start, end;
+      for( auto shape : shapes )
+      {
+         int m = shape[ 0 ];
+         int n = shape[ 1 ];
+         int k = shape[ 2 ];
+
+         const T* A = BufferA.GetBuffer( k * m );
+         const T* B = BufferB.GetBuffer( n * k );
+         T* C = BufferC.GetBuffer( n * m );
+
+         double nops = 2.0 * m * n * k;
+         double ttot = 0.0;
+         string runType;
+
+         cout << setw( 6 ) << m << ", " << setw( 6 ) << n << ", " << setw( 6 ) << k << ", ";
+
+         //MlasGemm( m, n, k, A, k, 0, B, n, 0, C, n, threadpool );
+
+         MlasGemm(CblasNoTrans, CblasNoTrans, m,n,k, T(1.0f), A, k, B, n, T(0.0f), C, n, threadpool);
+
+         for( auto i = 0; i < ITER; ++i )
+         {
+            llc_flush( llc );
+            start = chrono::high_resolution_clock::now();
+            MlasGemm(CblasNoTrans, CblasNoTrans, m,n,k, T(1.0f), A, k, B, n, T(0.0f), C, n, threadpool);
+            end = chrono::high_resolution_clock::now();
+
+            auto dur = chrono::duration_cast< chrono::nanoseconds >( end - start );
+            ttot += dur.count();
+         }
+         ( ( volatile char* ) ( llc.data() ) );
+         cout << ", " << setw( 5 ) << fixed << setw( 5 ) << setprecision( 1 )
+            << ITER * nops / ttot;
+         cout << ", " << setw( 5 ) << fixed << setw( 5 ) << setprecision( 5 ) << ttot / 10e6 / ITER
+            << endl;
+      }
+   }
+
+
+public:
     void
     ExecuteShort(
         void
@@ -641,6 +727,267 @@ public:
             printf("M %zd\n", M);
         }
     }
+};
+
+template <typename xint8_t>
+class MlasQgemmU8X8PerfTest : public MlasTestBase
+{
+private:
+   void
+      Test(
+         size_t M,
+         size_t N,
+         size_t K,
+         uint8_t offa,
+         uint8_t offb
+      )
+   {
+      const uint8_t* A = BufferA.GetBuffer( K * M );
+      const xint8_t* B = BufferB.GetBuffer( N * K );
+      int32_t* C = BufferC.GetBuffer( N * M );
+      int32_t* CReference = BufferCReference.GetBuffer( N * M );
+
+      Test( M, N, K, A, K, offa, B, N, xint8_t( offb ), C, CReference, N );
+   }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const xint8_t* B,
+        size_t ldb,
+        xint8_t offb,
+        int32_t* C,
+        int32_t* CReference,
+        size_t ldc
+        )
+    {
+        std::fill_n(C, M * N, -1);
+        std::fill_n(CReference, M * N, -1);
+
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
+        ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
+
+        for (size_t f = 0; f < M * N; f++) {
+            if (C[f] != CReference[f]) {
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, (int)offa, (int)offb);
+            }
+        }
+    }
+
+   void
+      ReferenceQgemm(
+         size_t M,
+         size_t N,
+         size_t K,
+         const uint8_t* A,
+         size_t lda,
+         uint8_t offa,
+         const xint8_t* B,
+         size_t ldb,
+         xint8_t offb,
+         int32_t* C,
+         size_t ldc
+      )
+   {
+      for( size_t m = 0; m < M; m++ )
+      {
+
+         for( size_t n = 0; n < N; n++ )
+         {
+
+            const uint8_t* a = A + ( m * lda );
+            const xint8_t* b = B + n;
+            int32_t* c = C + ( m * ldc ) + n;
+            int32_t sum = 0;
+
+            for( size_t k = 0; k < K; k++ )
+            {
+               sum += ( ( int32_t( *b ) - offb ) * ( int32_t( *a ) - offa ) );
+               b += ldb;
+               a += 1;
+            }
+
+            *c = sum;
+         }
+      }
+   }
+
+   MatrixGuardBuffer<uint8_t> BufferA;
+   MatrixGuardBuffer<xint8_t> BufferB;
+   MatrixGuardBuffer<int32_t> BufferC;
+   MatrixGuardBuffer<int32_t> BufferCReference;
+
+public:
+   void TestPerf()
+   {
+      // clang-format off
+      static const vector<vector<int>> shapes = {
+         // NOTE: clang-format wants to use a different formatting but the current
+         // formatting should be easier to read.
+         // m, n, k
+         {64, 800, 320},
+         {64, 768, 512},
+         {16, 256, 512},
+         {128, 128, 128},
+         {256, 512, 256},
+         {128, 768, 768},
+         {128, 768, 3072},
+         {128, 3072, 768},
+         {128, 2304, 768},
+         {1024, 1024, 1024},
+      };
+      // clang-format on
+      bool flush = true;
+      std::vector<char> llc;
+
+      if( flush )
+      {
+         llc.resize( 128 * 1024 * 1024, 1.0 );
+      }
+
+      chrono::time_point<chrono::high_resolution_clock> start, end;
+      for( auto shape : shapes )
+      {
+         int m = shape[ 0 ];
+         int n = shape[ 1 ];
+         int k = shape[ 2 ];
+
+         const uint8_t* A = BufferA.GetBuffer( k * m );
+         const xint8_t* B = BufferB.GetBuffer( n * k );
+         int32_t* C = BufferC.GetBuffer( n * m );
+
+         double nops = 2.0 * m * n * k;
+         double ttot = 0.0;
+         string runType;
+
+         cout << setw( 6 ) << m << ", " << setw( 6 ) << n << ", " << setw( 6 ) << k << ", ";
+
+         MlasGemm( m, n, k, A, k, 0, B, n, 0, C, n, threadpool );
+
+         for( auto i = 0; i < ITER; ++i )
+         {
+            llc_flush( llc );
+            start = chrono::high_resolution_clock::now();
+            MlasGemm( m, n, k, A, k, 0, B, n, 0, C, n, threadpool );
+            end = chrono::high_resolution_clock::now();
+
+            auto dur = chrono::duration_cast< chrono::nanoseconds >( end - start );
+            ttot += dur.count();
+         }
+         ( ( volatile char* ) ( llc.data() ) );
+         cout << ", " << setw( 5 ) << fixed << setw( 5 ) << setprecision( 1 )
+            << ITER * nops / ttot;
+         cout << ", " << setw( 5 ) << fixed << setw( 5 ) << setprecision( 5 ) << ttot / 10e6 / ITER
+            << endl;
+      }
+   }
+
+public:
+   void
+      ExecuteShort(
+         void
+      ) override
+   {
+      for( size_t b = 1; b < 16; b++ )
+      {
+         Test( b, b, b, 14, 211 );
+      }
+      for( size_t b = 16; b <= 256; b <<= 1 )
+      {
+         Test( b, b, b, 34, 1 );
+      }
+      for( size_t b = 256; b < 320; b += 32 )
+      {
+         Test( b, b, b, 85, 173 );
+      }
+      for( size_t b = 1; b < 96; b++ )
+      {
+         Test( 1, b, 32, 0, 0 );
+         Test( 1, 32, b, 0, 0 );
+         Test( 1, b, b, 0, 0 );
+      }
+   }
+
+   void
+      ExecuteLong(
+         void
+      ) override
+   {
+      static const uint8_t zero_points[] = { 0, 18, 75, 128, 157, 231, 255 };
+
+      for( size_t a = 0; a < _countof( zero_points ); a++ )
+      {
+         uint8_t offa = zero_points[ a ];
+
+         for( size_t b = 0; b < _countof( zero_points ); b++ )
+         {
+            uint8_t offb = zero_points[ b ];
+
+            for( size_t M = 16; M < 160; M += 32 )
+            {
+               for( size_t N = 16; N < 160; N += 32 )
+               {
+
+                  static const size_t ks[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 20, 32, 48, 64, 118, 119, 120, 121, 122, 160, 240, 320 };
+                  for( size_t k = 0; k < _countof( ks ); k++ )
+                  {
+                     size_t K = ks[ k ];
+
+                     Test( M, N, K, offa, offb );
+                     Test( M + 1, N, K, offa, offb );
+                     Test( M, N + 1, K, offa, offb );
+                     Test( M + 1, N + 1, K, offa, offb );
+                     Test( M + 3, N + 2, K, offa, offb );
+                     Test( M + 4, N, K, offa, offb );
+                     Test( M, N + 4, K, offa, offb );
+                     Test( M + 4, N + 4, K, offa, offb );
+                     Test( M + 3, N + 7, K, offa, offb );
+                     Test( M + 8, N, K, offa, offb );
+                     Test( M, N + 8, K, offa, offb );
+                     Test( M + 12, N + 12, K, offa, offb );
+                     Test( M + 13, N, K, offa, offb );
+                     Test( M, N + 15, K, offa, offb );
+                     Test( M + 15, N + 15, K, offa, offb );
+                  }
+               }
+               printf( "a %zd/%zd b %zd/%zd M %zd\n", a, _countof( zero_points ), b, _countof( zero_points ), M );
+            }
+         }
+      }
+
+      for( size_t M = 1; M < 160; M++ )
+      {
+         for( size_t N = 1; N < 160; N++ )
+         {
+            for( size_t K = 1; K < 160; K++ )
+            {
+               Test( M, N, K, 18, 24 );
+            }
+         }
+         printf( "M %zd\n", M );
+      }
+
+      for( size_t M = 160; M < 320; M += 24 )
+      {
+         for( size_t N = 112; N < 320; N += 24 )
+         {
+            for( size_t K = 1; K < 16; K++ )
+            {
+               Test( M, N, K, 1, 3 );
+            }
+            for( size_t K = 16; K < 160; K += 32 )
+            {
+               Test( M, N, K, 5, 7 );
+            }
+         }
+         printf( "M %zd\n", M );
+      }
+   }
 };
 
 #endif
@@ -2069,6 +2416,221 @@ public:
     }
 };
 
+/*class MlasSoftmaxTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
+
+    void
+    Test(
+        size_t N,
+        size_t D,
+        float MinimumValue,
+        float MaximumValue
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N * D);
+        float* Output = BufferOutput.GetBuffer(N * D);
+        float* OutputReference = BufferOutputReference.GetBuffer(N * D);
+
+        std::default_random_engine generator(static_cast<unsigned>(N * D));
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+
+        for (size_t nd = 0; nd < N * D; nd++) {
+            Input[nd] = distribution(generator);
+        }
+
+        Test(Input, Output, OutputReference, N, D, false);
+        Test(Input, Output, OutputReference, N, D, true);
+    }
+
+    void
+    Test(
+        const float* Input,
+        float* Output,
+        float* OutputReference,
+        size_t N,
+        size_t D,
+        bool LogSoftmax
+        )
+    {
+        MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, threadpool);
+        ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax);
+
+        constexpr float AbsoluteTolerance = 1e-6f;
+        constexpr float RelativeTolerance = 1e-6f;
+
+        for (size_t nd = 0; nd < N * D; nd++) {
+            float diff = std::fabs(Output[nd] - OutputReference[nd]);
+            if (diff > AbsoluteTolerance && diff > std::fabs(OutputReference[nd]) * RelativeTolerance) {
+                printf("softmax(%d) difference: %u/%u %.8f %.8f\n", int32_t(LogSoftmax), unsigned(N), unsigned(D), Output[nd], OutputReference[nd]);
+            }
+        }
+    }
+
+    void
+    ReferenceSoftmax(
+        const float* Input,
+        float* Output,
+        size_t N,
+        size_t D,
+        bool LogSoftmax
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+
+            float MaximumValue = std::numeric_limits<float>::lowest();
+
+            for (size_t d = 0; d < D; d++) {
+                MaximumValue = (std::max)(MaximumValue, Input[d]);
+            }
+
+            double Sum = 0.0;
+
+            for (size_t d = 0; d < D; d++) {
+                double e = std::exp(double(Input[d]) - double(MaximumValue));
+                Sum += e;
+                Output[d] = float(e);
+            }
+
+            if (LogSoftmax) {
+
+                float Scale = float(std::log(Sum));
+
+                for (size_t d = 0; d < D; d++) {
+                    Output[d] = Input[d] - MaximumValue - Scale;
+                }
+
+            } else {
+
+                float Scale = float(Sum);
+
+                for (size_t d = 0; d < D; d++) {
+                    Output[d] /= Scale;
+                }
+            }
+
+            Input += D;
+            Output += D;
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t d = 1; d < 128; d++) {
+            Test(1, d, -10.f, 10.f);
+        }
+
+        Test(3, 128, 20.f, 30.f);
+        Test(63, 95, -150.f, 190.f);
+        Test(16, 211, 20.f, 30.f);
+    }
+};*/
+
+/*class MlasComputeExpTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
+
+    void
+    Test(
+        size_t N,
+        float MinimumValue,
+        float MaximumValue
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+        float* Output = BufferOutput.GetBuffer(N);
+        float* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        for (size_t n = 0; n < N; n++) {
+            OutputReference[n] = std::exp(Input[n]);
+        }
+
+        MlasComputeExp(Input, Output, N);
+
+        constexpr float AbsoluteTolerance = 1e-6f;
+        constexpr float RelativeTolerance = 1e-6f;
+
+        for (size_t n = 0; n < N; n++) {
+            float diff = std::fabs(Output[n] - OutputReference[n]);
+            if (diff > AbsoluteTolerance && diff > std::fabs(OutputReference[n]) * RelativeTolerance) {
+                printf("exp difference: %u %.8f %.8f\n", unsigned(N), Output[n], OutputReference[n]);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n < 128; n++) {
+            Test(n, -10.f, 10.f);
+        }
+    }
+};
+*/
+
+void
+RunThreadedTests(
+    void
+    )
+{
+    /*printf("SGEMM tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
+#ifdef MLAS_HAS_DGEMM
+    printf("DGEMM tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+#endif
+
+#ifdef MLAS_HAS_QGEMM_U8X8
+    printf("QGEMM tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
+#endif
+
+    printf("Conv2D tests.\n");
+    onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
+    if (MlasNchwcGetBlockSize() > 1) {
+      onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+    }
+
+    printf("Pool2D tests.\n");
+    onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
+    if (MlasNchwcGetBlockSize() > 1) {
+      onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+    }
+
+    printf("Pool3D tests.\n");
+    onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
+
+    printf("Softmax tests.\n");
+    onnxruntime::make_unique<MlasSoftmaxTest>()->ExecuteShort();*/
+
+    printf("float tests.\n");
+   onnxruntime::make_unique<MlasFgemmTest<float>>()->TestPerf();
+
+    printf("u8s8 tests.\n");
+   onnxruntime::make_unique<MlasQgemmU8X8PerfTest<int8_t>>()->TestPerf();
+}
+
 int
 #if defined(_WIN32)
 __cdecl
@@ -2077,56 +2639,45 @@ main(
     void
     )
 {
-    for (int i = 0; i != 2; ++i) {
+    //
+    // Run threaded tests without the thread pool.
+    //
+    std::cout<<std::endl<<std::endl<<"single-thread:";
+    RunThreadedTests();
 
-        printf("SGEMM tests.\n");
-        onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
-#ifdef MLAS_HAS_DGEMM
-        printf("DGEMM tests.\n");
-        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
-#endif
-
-#ifdef MLAS_HAS_QGEMM_U8X8
-        printf("QGEMM tests.\n");
-        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
-        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
-#endif
-
-        printf("Conv2D tests.\n");
-        onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
-        if (MlasNchwcGetBlockSize() > 1) {
-          onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
-        }
-
-        printf("Pool2D tests.\n");
-        onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
-        if (MlasNchwcGetBlockSize() > 1) {
-          onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
-        }
-
-        printf("Pool3D tests.\n");
-        onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
-
-        printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
-        if (threadpool != nullptr)
-          threadpool = new onnxruntime::concurrency::ThreadPool(
-              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
-#else
-        break;
-#endif
-	}
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+
+    //
+    // Run threaded tests using the thread pool.
+    //
+
+    std::cout<<std::endl<<std::endl<<"multi-thread:";
+
+    threadpool = new onnxruntime::concurrency::ThreadPool(
+        &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 12, true);
+
+    RunThreadedTests();
+
     delete threadpool;
+
 #endif
+
+    //
+    // Run remaining tests that do not use the thread pool.
+    //
 
     printf("Activation tests.\n");
     onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
+
+    /*printf("Transcendental tests.\n");
+    onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();*/
 
     printf("ReorderOutput tests.\n");
     if (MlasNchwcGetBlockSize() > 1) {
         onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
     }
+
+    printf("Done.\n");
 
     return 0;
 }
