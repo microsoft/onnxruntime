@@ -95,9 +95,9 @@ public class App {
 											 JSONObject json_object) throws Exception {
 
 		// field name -> json value
-		Map<String, Object> field_mapping = new HashMap();
+		Map<String, Object> field_mapping = new LinkedHashMap();
 		Set<String> update_on_duplicate_fields =
-			new HashSet<> (Arrays.asList("AvgTimePerBatch", "Throughput", "StabilizedThroughput", "TotalTime", "AvgCPU", "Memory"));
+			new LinkedHashSet<> (Arrays.asList("AvgTimePerBatch", "Throughput", "StabilizedThroughput", "TotalTime", "AvgCPU", "Memory"));
 
 		field_mapping.put("BatchId", batch_id);
 		field_mapping.put("CommitId", commit_id.substring(0, 8));
@@ -130,13 +130,9 @@ public class App {
 			}
 		});
 
-		//
-		// Map/Set entry order should remain the same as we go thru it
-		//
 		try (java.sql.PreparedStatement st = conn.prepareStatement(sb.substring(0, sb.length() - 1))) {
 			int i = 0; // param index
 			for (Map.Entry<String, Object> entry : field_mapping.entrySet()) {
-				Object key = entry.getKey(); // for debug only
 				Object value = entry.getValue();
 				if (value instanceof String) {
 					st.setString(++i, (String) value);
