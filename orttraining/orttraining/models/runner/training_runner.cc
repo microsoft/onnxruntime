@@ -154,6 +154,7 @@ Status TrainingRunner::Initialize() {
     // the session already loads a pipeline stage.
     pipe.do_partition = params_.pipeline_stage_paths.empty() ? true : false;
     pipe.fetch_names = params_.fetch_names;
+    pipe.cut_list = params_.pipeline_partition_cut_list;
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
   }
@@ -317,7 +318,7 @@ Status TrainingRunner::Initialize() {
   return Status::OK();
 }
 
-Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader, 
+Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
   const MapStringToString& mapped_dimensions) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
@@ -524,7 +525,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
   const auto& allowed_fetch_names = pipeline_context_.fetch_names;
 
   if (mode == ModelUpdateStep) {
-    // Set up tensor to be fetched when doing model update. 
+    // Set up tensor to be fetched when doing model update.
 
     if (params_.pipeline_parallel_size > 1) {
       // If pipeline is used, we need to filter out fetches which are not in this pipeline stage.
@@ -553,7 +554,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
       }
     }
   } else if (mode == GradientAccumulateStep) {
-    // Set up tensor to be fetched when doing gradient accumulation. 
+    // Set up tensor to be fetched when doing gradient accumulation.
 
     if (params_.gradient_accumulation_steps > 1) {
       auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
@@ -579,7 +580,7 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     }
   } else if (mode == EvaluateStep) {
     // Set up tensor to be fetched when doing model evaluation.
-    // Ideally, this path should not fetch optimizer and gradient accumulation. 
+    // Ideally, this path should not fetch optimizer and gradient accumulation.
     // This path may fetch predicted scores, loss value, and so on.
 
     if (params_.pipeline_parallel_size > 1) {
@@ -647,7 +648,7 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
     }
   }
 
-  // Wait all workers to finish this around of pipeline parallism. 
+  // Wait all workers to finish this around of pipeline parallism.
   // The last batch in a pipeline collects gradient and update the model.
   pipeline_worker_pool_.JoinAll();
 
@@ -782,7 +783,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                       fetch_names,
                                       fetches);
           RunWithoutUpdate(feed_names, fetch_names, feeds,
-                           gradient_accumulation_step_count); 
+                           gradient_accumulation_step_count);
+
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -860,7 +862,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     const size_t peak_workingset_size = perftest::utils::GetPeakWorkingSetSize();
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
-    ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps, 
+    ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps,
                                         total_time, avg_time_per_batch, throughput, stabilized_throughput, mapped_dimensions,
                                         average_cpu_usage, peak_workingset_size));
   }
@@ -881,17 +883,17 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                                        const size_t weight_update_steps, const double total_time,
                                        const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
-                                       const MapStringToString& mapped_dimensions, 
+                                       const MapStringToString& mapped_dimensions,
                                        const short average_cpu_usage, const size_t peak_workingset_size) {
   // populate metrics for reporting
   json perf_metrics;
-  perf_metrics["Model"] = params_.model_type;  
+  perf_metrics["Model"] = params_.model_type;
 
   // loop thru the mapped_dimensions and put it in json sub-structure
   std::string seq_len;
   for (auto const& it : mapped_dimensions) {
     if (it.first == "SeqLen") {
-      seq_len = it.second;     
+      seq_len = it.second;
     }
     perf_metrics["DerivedProperties"][it.first] = it.second;
   }
@@ -909,7 +911,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
 
   std::string optimizer = params_.training_optimizer_name;
   std::size_t pos = optimizer.find("Optimizer");
-  if (pos != std::string::npos) 
+  if (pos != std::string::npos)
     optimizer = optimizer.substr(0, pos);
   perf_metrics["Optimizer"] = optimizer;
 
@@ -928,7 +930,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
 
   //
   // we will get date/time and commitId in post-run pipeline
-  //          
+  //
 
   // populate other basic params for bookkeeping - add more as needed
   json bookkeeping_params;
@@ -942,7 +944,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
 
   perf_metrics["RunConfig"] = bookkeeping_params.dump();  // serialize the params as json string
 
-  std::string json_string = perf_metrics.dump(); 
+  std::string json_string = perf_metrics.dump();
 
   // write to a file - the next task in CI will pick up all files with the same prefix
   const PathString perf_metrics_path =
@@ -1052,7 +1054,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
                                     fetch_names,
                                     &fetches));
 
-    // Assume that user-specified fetches are avaliable only on the last pipeline stage. 
+    // Assume that user-specified fetches are avaliable only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
     // params_.pipeline_parallel_size is 1. Thus, the following condition is always true if there
     // is no pipeline.
