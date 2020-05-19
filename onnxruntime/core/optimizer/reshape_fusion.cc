@@ -40,11 +40,45 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
 }
 
 /**
+ * Find the subgraph that matches [root] -> Shape -> Gather -> Unsqueeze
+ */
+bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, const Node& concat, 
+  int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+  std::vector<graph_utils::EdgeEndToMatch> parent_path{
+        {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
+        {0, 0, "Gather", {1, 11}, kOnnxDomain},
+        {0, 0, "Shape", {1}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
+    const Node& unsqueeze = edges[0]->GetNode();
+    const Node& gather = edges[1]->GetNode();
+    const Node& shape = edges[2]->GetNode();
+
+    const NodeArg& shape_input = *(shape.InputDefs()[0]);
+    if (shape_input.Name() != root_input.Name()) {
+      return false;
+    }
+
+    std::vector<int64_t> axes;
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+      return false;
+    }
+
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), int64_t(shape_value.size()), false)) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+/**
 Apply Reshape Fusion. The following are subgraphs before and after fusion:
 (a[] and b[] are int64[] constant initializers; Concat may have any number of arguments,
 each of which is a constant initializer or a Shape->Gather->Unsqueeze chain with the
-index corresponding to the index of the argument, or a subgraph linked to the subgraph root
-and in which nodes have only one input/output.)
+index corresponding to the index of the argument, or a custom subgraph in which nodes 
+have only one output edge. Note the resulting shape value should contain no more than one
+value of -1.
 
 Before fusion:
    [Sub-graph    Root]
@@ -90,92 +124,35 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   shape_value.reserve(concat_input_count);
   // Used to keep the following nodes in the order of their potential removal.
   enum class NodeType { Unsqueeze, Gather, Shape };
-  bool has_subgraph = (std::find(shape_value.begin(), shape_value.end(), -1) != shape_value.end());
-  std::vector<NodeIndex> candidates_for_removal;
-  std::vector<NodeIndex> subgraph_candidates;
+  const Node* p_subgraph_start_node = nullptr;
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
     if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
       continue;
-    }
-
+    }    
     // Try to find path [Root] --> Shape --> Gather(indices=i) --> Unsqueeze (axes=0) --> Concat [input i]
-    std::vector<graph_utils::EdgeEndToMatch> parent_path{
-        {0, i, "Unsqueeze", {1, 11}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain},
-        {0, 0, "Shape", {1}, kOnnxDomain}};
-    std::vector<const Node::EdgeEnd*> edges;
-    if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
-      const Node& unsqueeze = edges[0]->GetNode();
-      const Node& gather = edges[1]->GetNode();
-      const Node& shape = edges[2]->GetNode();
-
-      const NodeArg& shape_input = *(shape.InputDefs()[0]);
-      if (shape_input.Name() != root_input.Name()) {
-        return false;
-      }
-
-      std::vector<int64_t> axes;
-      if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
-        return false;
-      }
-
-      if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather.InputDefs()[1]), int64_t(shape_value.size()), false)) {
-        return false;
-      }
-
+    bool matched = ReshapeFusion::Fuse_Subgraph2(graph, root_input, concat, i, shape_value, logger);
+    const Node* p_cur_node = graph_utils::GetInputNode(concat, i);
+    if (matched) {
+      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, p_cur_node);
       shape_value.push_back(0);
-
-      candidates_for_removal.push_back(unsqueeze.Index());
-      candidates_for_removal.push_back(gather.Index());
-      candidates_for_removal.push_back(shape.Index()); 
+    } else if (p_subgraph_start_node == nullptr && p_cur_node != nullptr) {
+      // save current node as a candidate for finding a custom subgraph.
+      p_subgraph_start_node = p_cur_node;
     } else {
-      // Find subgraph
-      if (has_subgraph) {
-        // Only one subgraph can be used to fuse, and each shape node should contain only one value of -1. 
-        return false;
-      }
-      Node* p_cur_node = const_cast<Node*>(graph_utils::GetInputNode(concat, i));
-      if (p_cur_node == nullptr) {
-        return false;
-      }
-      subgraph_candidates.clear();
-      // From the current node, find the subgraph bottom-up util it reaches the root input node. 
-      while (p_cur_node != nullptr) {
-        Node& cur_node = *p_cur_node;
-        // Each eligible node in the subgraph must have exactly one output node and less than one 
-        // input edge(the node input could be graph input). 
-        if (cur_node.GetOutputEdgesCount() != 1 || cur_node.GetInputEdgesCount() > 1) {
-          break;
-        }
-        // Match input of current node with root node.
-        bool input_matched = false;
-        for (unsigned int j = 0; j < cur_node.InputDefs().size(); ++j) {
-          if (graph_utils::GetNodeInputName(cur_node, j) == root_input.Name()) {
-            input_matched = true;
-            break;
-          }
-        }
-        if (!input_matched) {
-          // No input in current node matches root input. Go to the next node.
-          subgraph_candidates.push_back(cur_node.Index());
-          p_cur_node = const_cast<Node*>(graph_utils::GetInputNode(cur_node, 0));
-          continue;
-        }
-        has_subgraph = true;
-        subgraph_candidates.push_back(cur_node.Index());
-        shape_value.push_back(-1);
-        break;
-      }
-      if (!has_subgraph) {
-        // No subgraph matched.
-        return false;
-      }
-
-      for (const auto& nodeIndex : subgraph_candidates){
-        candidates_for_removal.push_back(nodeIndex);
-      }
+      // Only one custom subgraph can be used to fuse, and each shape node should contain only one value of -1. 
+      return false;
     }
+  }
+  // if custom subgraph is needed for current fusion but -1 is already present in the current shape value,
+  // return false to exit current fusion.  
+  bool has_subgraph = (std::find(shape_value.begin(), shape_value.end(), -1) != shape_value.end());
+  if (p_subgraph_start_node != nullptr && has_subgraph) {
+    return false;
+  } 
+  // Find and remove nodes in custom subgraph matching subgraph -> concat if -1 does not exist in shape_value
+  if (!has_subgraph && graph_utils::RemoveNodesWithOneOutputBottomUp(graph, p_subgraph_start_node)){
+    shape_value.push_back(-1);
   }
   // Create an initializer with the same name as the concat node output, and replace the concat node
   const auto& new_initializer_name = concat.OutputDefs()[0]->Name();
@@ -192,14 +169,6 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
   if (!graph_utils::ReplaceNodeWithInitializer(graph, *graph.GetNode(concat.Index()), new_node_arg)) {
     return false;
-  }
-
-  // Remove nodes that are not used anymore.
-  for (const auto& node_index : candidates_for_removal) {
-    Node* node = graph.GetNode(node_index);
-    if (node->GetOutputEdgesCount() == 0 && graph.GetNodeOutputsInGraphOutputs(*node).empty()) {
-      graph.RemoveNode(node->Index());
-    }
   }
   return true;
 }
