@@ -259,6 +259,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   const size_t stabilized_perf_start_step = params_.num_train_steps - stabilized_perf_total_step_count;
   double stabilized_total_time{0};
 
+  const size_t end_to_end_perf_start_step = 128;
+  auto end_to_end_start = std::chrono::high_resolution_clock::now();
+
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
       auto training_data = training_data_loader.CurrentDataSet();
@@ -279,6 +282,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+        if (step_ == end_to_end_perf_start_step) {
+          end_to_end_start = std::chrono::high_resolution_clock::now();
+        }
         std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, input_allocator_);
         if (loss_scaler_) {
           float loss_scale = loss_scaler_->GetLossScale();
@@ -334,7 +340,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                            &fetches));
           gradient_accumulation_step_count++;
         }
-        step_++;
 
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> duration_seconds = end - start;
@@ -342,6 +347,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         if (step_ >= stabilized_perf_start_step) {
           stabilized_total_time += duration_seconds.count();
         }
+
+        step_++;
 
         // Print some info when reaching the end of the batch.
         printf("Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
@@ -397,6 +404,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     epoch++;
   }
 
+  double e2e_throughput{0};
+  if (end_to_end_perf_start_step < params_.num_train_steps) {
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_seconds = end - end_to_end_start;
+    double total_e2e_time = duration_seconds.count();
+    e2e_throughput = params_.batch_size * (params_.num_train_steps - std::max(step_start, end_to_end_perf_start_step)) / total_e2e_time;
+  }
+
   std::cout << "Round: " << round_ << "\n"
             << "Batch size: " << params_.batch_size << "\n"
             << "Number of Batches: " << (step_ - step_start) << "\n"
@@ -406,7 +421,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
             << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n"
             << "Stabilized Throughput: " << params_.batch_size / (stabilized_total_time / stabilized_perf_total_step_count)
-            << " Examples / Second\n";
+            << " Examples / Second\n"
+            << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n";
   return Status::OK();
 }
 
