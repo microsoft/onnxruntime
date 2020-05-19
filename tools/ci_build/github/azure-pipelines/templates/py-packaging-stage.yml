@@ -85,7 +85,7 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              docker build \
+              sudo docker build \
                 --pull \
                 -t ${{ variables.docker_image_prefix }}-manylinux-$(python.version) \
                 --build-arg BUILD_USER=onnxruntimedev \
@@ -97,7 +97,7 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              docker run \
+              sudo docker run \
                 --rm \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
@@ -151,7 +151,7 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              docker build \
+              sudo docker build \
                 --pull \
                 -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
                 --build-arg BUILD_USER=onnxruntimedev \
@@ -164,7 +164,7 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              docker run \
+              sudo docker run \
                 --gpus all \
                 --rm \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
