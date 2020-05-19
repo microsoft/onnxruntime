@@ -143,7 +143,7 @@ a.link:active .link-arrow{
     font-size:34px;
 }
 .carousel {
-    margin: 0 auto;
+    margin: 3rem auto;
     padding: 0 70px;
 }
 .carousel .item {
@@ -166,13 +166,12 @@ a.link:active .link-arrow{
 }
 .carousel .overview {
     font-size:16px;
-    margin-bottom: 0;
+    margin-bottom: 30px;
     font-weight: normal;
 }
 
 .carousel .carousel-indicators {
-    position: relative;
-    margin-bottom: 30px;
+    bottom: -40px;
 }
 .carousel-indicators li, .carousel-indicators li.active {
     width: 18px;
@@ -182,12 +181,12 @@ a.link:active .link-arrow{
 }
 .carousel-indicators li {
     border: 2px solid #4D4D4D;
-    width: 25px;
-    height: 25px;
+    width: 11px;
+    height: 11px;
 }
 .carousel-indicators li.active {
-    width: 25px;
-    height: 25px;
+    width: 11px;
+    height: 11px;
     color: #fff;
     background: #1fa2ff;
     border: 2px solid transparent;;
@@ -348,12 +347,12 @@ p.text-copyright{
 .append-play-buttom aside{
     text-align: center;
     position: relative;
-    top: 30px;
-    margin-left: 150px;
+    top: -48px;
+    margin-left: 10%;
     width: auto;
 }
  .carousel-pause-button{
-    font-size: 20px;
+    font-size: 16px;
     background: none;
     border: none;
     position: relative;

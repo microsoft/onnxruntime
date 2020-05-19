@@ -1234,7 +1234,7 @@ function blurRadioButton(event) {
           // create button for screen reader users to pause carousel for virtual mode review
           $complementaryLandmark = document.createElement('aside')
           $complementaryLandmark.setAttribute('aria-label', 'Slider control')
-          $(document.body).find('.append-play-buttom').prepend($complementaryLandmark)
+          $(document.body).find('.append-play-buttom').append($complementaryLandmark)
           
           $pauseCarousel = document.createElement('button')
           $pauseCarousel.className = "carousel-pause-button"

@@ -174,7 +174,8 @@
         border-top: 1px solid #dee2e6!important;
     }
     .append-play-buttom aside{
-        top: 60px;
+        top: -57px;
+        margin-left: 100px;
     }
     .back-to-top{
         width: 45px;
