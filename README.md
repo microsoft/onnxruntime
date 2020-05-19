@@ -84,7 +84,9 @@ Dev builds created from the master branch are available for testing newer change
 
 #### System Requirements
 
-* Visual Studio
+The following are required for usage of the official published packages.
+
+* Visual C++ Runtime (for Windows packages)
   * Requires [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
 * System language 
   * Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales. 
