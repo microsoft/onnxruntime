@@ -124,7 +124,7 @@ jobs:
       artifactName: 'drop-onnxruntime-java-linux-x64-$(OnnxRuntimeVersion)'
       targetPath: '$(Build.BinariesDirectory)/java-artifact'
 
-   - task: ExtractFiles@1
+  - task: ExtractFiles@1
     inputs:
       archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-win-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/win-x64'
