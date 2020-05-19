@@ -971,7 +971,7 @@ namespace OperatorHelper
     std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto outputShape = shapeInfo.GetInputTensorShape(0);
-        ML_CHECK_VALID_ARGUMENT(outputShape.size() <= NchwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(outputShape.size() <= NcdhwDimensionCount);
 
         uint32_t inputCount = shapeInfo.GetInputCount();
 
