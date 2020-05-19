@@ -108,8 +108,6 @@ public class App {
 				properties.forEach((sub_key, sub_value) -> {
 					field_mapping.put((String)sub_key, sub_value);
 				});
-			} else if (key.equals("Memory")) {
-				field_mapping.put("Memory", (long) value >> 20);
 			} else {
 				field_mapping.put((String)key, value);
 			}
