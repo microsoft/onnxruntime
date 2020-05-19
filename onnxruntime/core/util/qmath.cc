@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
 #include "core/util/qmath.h"
 #include "core/common/common.h"
 #include "core/util/math_cpuonly.h"
@@ -13,8 +12,8 @@
 #endif
 
 namespace onnxruntime {
-
-void QGemmu8s8_s32(
+template <>
+void QGemm<uint8_t, int8_t, int32_t>(
     int M,
     int N,
     int K,
@@ -30,16 +29,25 @@ void QGemmu8s8_s32(
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
   MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, thread_pool);
 #else
+  ORT_UNUSED_PARAMETER(M);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(lhs_data);
+  ORT_UNUSED_PARAMETER(lda);
+  ORT_UNUSED_PARAMETER(lhs_offset);
+  ORT_UNUSED_PARAMETER(rhs_data);
+  ORT_UNUSED_PARAMETER(ldb);
+  ORT_UNUSED_PARAMETER(rhs_offset);
+  ORT_UNUSED_PARAMETER(result_data);
+  ORT_UNUSED_PARAMETER(ldc);
   ORT_UNUSED_PARAMETER(thread_pool);
 
-  ORT_ENFORCE(lhs_offset == 0 && rhs_offset == 0, "For Eigen, zero point must be zero");
-  ORT_ENFORCE(lda == K && ldb == N && ldc == N, "For Eigen only RowMajor*RowMajor=RowMajor format is supported");
-
-  EigenCastGEMM<uint8_t, int8_t, int32_t>(lhs_data, rhs_data, result_data, M, N, K);
+  ORT_NOT_IMPLEMENTED("MatMulInteger: activation uint8 and weight int8 not supported on ARM");
 #endif
 }
 
-void QGemmu8u8_s32(
+template <>
+void QGemm<uint8_t, uint8_t, int32_t>(
     int M,
     int N,
     int K,
@@ -60,4 +68,5 @@ void QGemmu8u8_s32(
   GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data, lhs_offset, rhs_offset, M, N, K, thread_pool);
 #endif
 }
+
 }  // namespace onnxruntime
