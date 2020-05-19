@@ -7,6 +7,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C#](#C)
 * [C/C++](#CC)
 * [Java](#Java)
+* [Node.js](#Nodejs)
 ***
  
 ## Python
@@ -51,8 +52,24 @@ For a list of available dockerfiles and published images to help with getting st
 ## C/C++
 * [C - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 * [C++ - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [C++ - Inferencing (MNIST)](../samples/c_cxx/MNIST)
+* [C++ - Inferencing (MNIST)](./c_cxx/MNIST)
 
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)
-* [MNIST inference](../java/sample/ScoreMNIST.java)
+* [MNIST inference](../java/src/test/java/sample/ScoreMNIST.java)
+
+## Node.js
+* [Basic Usage](./nodejs/01_basic-usage)
+* [Create Tensor](./nodejs/01_basic-usage)
+* [Create InferenceSession](./nodejs/01_basic-usage)
+<!--
+### [03 Create Tensor (Advanced)](./03_create-tensor-advanced/README.md)
+
+This example is a demonstration of advanced usage of creating tensors.
+-->
+
+In each example's implementation subdirectory, run
+```
+npm install
+node ./
+```

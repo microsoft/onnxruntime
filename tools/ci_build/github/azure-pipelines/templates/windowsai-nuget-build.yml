@@ -113,6 +113,8 @@ steps:
        xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory\ /i
        copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.png $(Build.ArtifactStagingDirectory)\test_artifact\
        copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.jpg $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_length.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_construct.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
       displayName: 'Copy WinML test collateral to artifact directory'
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 4.9

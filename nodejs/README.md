@@ -1,35 +1,24 @@
 # ONNX Runtime Node.js API
 
-This directory contains the Node.js binding for the ONNX runtime.
+## Requirements
+Node.js version 12.x is required.
 
-## Installation
 
-Install the latest stable version:
-
-```
-npm install onnxruntime
-```
-
-Install the latest dev version:
-
-```
-npm install onnxruntime@dev
-```
-
-## Get Started
-
-Refer to [examples](./examples/README.md) for usage and instructions.
-
-## Supported Platforms
+### Supported Platforms
 
 - Windows x64 CPU NAPI_v3
 - Linux x64 CPU NAPI_v3
 - MacOS x64 CPU NAPI_v3
 
-## Building
+## Usage
+Samples can be found [here](../samples/nodejs).
 
-Refer to [BUILD](./BUILD.md) for instructions to build ONNX Runtime Node.js binding.
+Install the latest stable version: `npm install onnxruntime`
+
+Install the latest dev version: `npm install onnxruntime@dev`
+
+## Build
+See [BUILD.MD](../BUILD.md#apis-and-language-bindings)
 
 ## License
-
-[MIT License](https://github.com/Microsoft/onnxruntime/blob/master/LICENSE)
+License information can be found [here](../README.md#license).

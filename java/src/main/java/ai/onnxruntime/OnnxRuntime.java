@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -32,12 +33,39 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime JNI shared library */
   static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
+  private static final String OS_ARCH_STR = initOsArch();
+
   private static boolean loaded = false;
 
   /** The API handle. */
   static long ortApiHandle;
 
   private OnnxRuntime() {}
+
+  /* Computes and initializes OS_ARCH_STR (such as linux-x64) */
+  private static String initOsArch() {
+    String detectedOS = null;
+    String os = System.getProperty("os.name", "generic").toLowerCase(Locale.ENGLISH);
+    if (os.contains("mac") || os.contains("darwin")) {
+      detectedOS = "osx";
+    } else if (os.contains("win")) {
+      detectedOS = "win";
+    } else if (os.contains("nux")) {
+      detectedOS = "linux";
+    } else {
+      detectedOS = "android";
+    }
+    String detectedArch = null;
+    String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
+    if (arch.indexOf("amd64") == 0) {
+      detectedArch = "x64";
+    } else if (arch.indexOf("x86") == 0) {
+      detectedArch = "x86";
+    } else {
+      throw new IllegalStateException("Unsupported arch:" + arch);
+    }
+    return detectedOS + '-' + detectedArch;
+  }
 
   /**
    * Loads the native C library.
@@ -136,7 +164,7 @@ final class OnnxRuntime {
     // generate a platform specific library name
     // replace Mac's jnilib extension to dylib
     String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
-    String resourcePath = "/ai/onnxruntime/native/" + libraryFileName;
+    String resourcePath = "/ai/onnxruntime/native/" + OS_ARCH_STR + '/' + libraryFileName;
     File tempFile = tempDirectory.resolve(libraryFileName).toFile();
     try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
       if (is == null) {
