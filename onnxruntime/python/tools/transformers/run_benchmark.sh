@@ -18,6 +18,11 @@ run_gpu_fp32=true
 run_gpu_fp16=true
 run_cpu=false
 
+# Pretrained transformers models to test
+export PRETRAINED_MODELS="bert-base-cased roberta-base gpt2"
+#export PRETRAINED_MODELS="bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased"
+
+
 # If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
 
@@ -46,7 +51,7 @@ export BENCHMARK_OPTIONS="-b 1 4 -s 8 16 32 64 128 256 512 1024 -t 1000 -f fusio
 
 
 if [ "$run_gpu_fp32" = true ] ; then
-  for m in bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
+  for m in $PRETRAINED_MODELS
   do
     echo "Run GPU FP32 Benchmark on model ${m}"
      
@@ -74,7 +79,7 @@ if [ "$run_gpu_fp32" = true ] ; then
 fi
 
 if [ "$run_gpu_fp16" = true ] ; then
-  for m in bert-base-cased
+  for m in $PRETRAINED_MODELS
   do
     echo "Run GPU FP16 Benchmark on model ${m}"
      
@@ -96,7 +101,7 @@ if [ "$run_gpu_fp16" = true ] ; then
 fi
 
 if [ "$run_cpu" = true ] ; then
-  for m in bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
+  for m in $PRETRAINED_MODELS
   do
     echo "Run CPU Benchmark on model ${m}"
      
