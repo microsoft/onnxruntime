@@ -136,9 +136,7 @@ public class App {
 			}
 
 			// update section
-			Iterator<String> it = update_on_duplicate_fields.iterator();
-			while(it.hasNext()){
-				Object key = it.next();
+			for(String key : update_on_duplicate_fields) {
 				Object value = field_mapping.get(key);
 				if(value != null) {
 					setSqlParam(++i, st, value);
