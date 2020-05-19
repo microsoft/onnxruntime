@@ -1,11 +1,41 @@
 # Building ONNX Runtime
-*Dockerfiles are available [here](./dockerfiles) to help you get started.*
+*[Dockerfiles](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) / [Pre-built packages](https://github.com/microsoft/onnxruntime#official-builds)*
 
-*Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
+## Content
 
-## Getting Started: Build the baseline CPU version of ONNX Runtime from source
+**[Inferencing](#inferencing)**
+* [Start: Baseline CPU](#start-baseline-cpu)
+* [Supported architectures and build environments](#supported-architectures-and-build-environments)
+* [Common Build Instructions](#common-build-instructions)
+* Additional Build Instructions - complete list: `./build.sh (or .\build.bat) --help`
+  * [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
+  * Execution Providers
+    * [NVIDIA CUDA](#CUDA)
+    * [NVIDIA TensorRT](#TensorRT)
+    * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
+    * [Intel nGraph](#nGraph)
+    * [Intel OpenVINO](#openvino)
+    * [Android NNAPI](#Android-NNAPI)
+    * [Nuphar Model Compiler](#Nuphar)
+    * [DirectML](#DirectML)
+    * [ARM Compute Library](#ARM-Compute-Library)
+    * [Rockchip RKNPU](#RKNPU)
+  * Options
+    * [OpenMP](#OpenMP)
+    * [OpenBLAS](#OpenBLAS)
+    * [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
+  * Architectures
+    * [x86](#x86)
+    * [ARM](#ARM)
+    * [Android](#Android)
 
-### Pre-Requisites
+**[Training](#Training)**
+
+***
+# Inferencing
+## Start: Baseline CPU
+
+### Prerequisites
 * Checkout the source tree:
    ```
    git clone --recursive https://github.com/Microsoft/onnxruntime
@@ -46,9 +76,9 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
     ```
 ---
 
-# Supported architectures and build environments
+## Supported architectures and build environments
 
-## Architectures
+### Architectures
 
 |           | x86_32       | x86_64       | ARM32v7      | ARM64        |
 |-----------|:------------:|:------------:|:------------:|:------------:|
@@ -56,7 +86,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Linux      | YES          | YES          |  YES         | YES          |
 |Mac OS X   | NO           | YES          |  NO          | NO           |
 
-## Environments
+### Environments
 
 | OS          | Supports CPU | Supports GPU| Notes                              |
 |-------------|:------------:|:------------:|------------------------------------|
@@ -65,7 +95,7 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 |Mac OS X  | YES          | NO         |    |
 
-* GCC 4.x and below are not supported.
+GCC 4.x and below are not supported.
 
 ### OS/Compiler Matrix:
 
@@ -75,59 +105,39 @@ The shared library in the release Nuget(s) and the Python wheel may be installed
 |Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
 |Mac OS X     | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
-## System Requirements
-For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
 
 ---
-# Common Build Instructions
-|Description|Command|Additional description|
+## Common Build Instructions
+|Description|Command|Additional details|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
 |**Release build**|--config Release|Release build. Other valid config values are RelWithDebInfo and Debug.|
 |**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
-|**Build Python wheel**|--build_wheel||
-|**Build C# and C packages**|--build_csharp||
-|**Build WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library.|
-|**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
 
-
-# Additional Build Instructions
-The complete list of build options can be found by running `./build.sh (or .\build.bat) --help`
-
-* [ONNX Runtime Server (Linux)](#Build-ONNX-Runtime-Server-on-Linux)
-
-**Execution Providers**
-* [NVIDIA CUDA](#CUDA)
-* [NVIDIA TensorRT](#TensorRT)
-* [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
-* [Intel nGraph](#nGraph)
-* [Intel OpenVINO](#openvino)
-* [Android NNAPI](#Android-NNAPI)
-* [Nuphar Model Compiler](#Nuphar)
-* [DirectML](#DirectML)
-* [ARM Compute Library](#ARM-Compute-Library)
-* [Rockchip RKNPU](#RKNPU)
-
-**Options**
-* [OpenMP](#OpenMP)
-* [OpenBLAS](#OpenBLAS)
-* [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
-
-**Architectures**
-* [x86](#x86)
-* [ARM](#ARM)
-* [Android](#Android)
+### APIs and Language Bindings
+|API|Command|Additional details|
+|-----------|-----------|-----------|
+|**Python**|--build_wheel||
+|**C# and C packages**|--build_csharp||
+|**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
+|**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
+|**Node.js**|--build_nodejs|Implies `--build_shared_lib`<br>`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
 
 ---
 
+## Build ONNX Runtime Server on Linux
+Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
+Build instructions are [here](./docs/Server.md)
+
+---
 
 ## Execution Providers
 
 ### CUDA
-#### Pre-Requisites
+#### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
   * ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6 using the Visual Studio 2019 14.12 toolset (i.e. Visual Studio 2019 v16.5).
     ONNX Runtime can also be built with CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4.
@@ -147,7 +157,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./dockerfiles#cuda).
+A Dockerfile is available [here](./dockerfiles#cuda). 
 
 
 #### Notes
@@ -171,7 +181,7 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 See more information on the TensorRT Execution Provider [here](./docs/execution_providers/TensorRT-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
    * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
@@ -183,7 +193,6 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 #### Build Instructions
 ##### Windows
-
 ```
 .\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home>
 ```
@@ -196,8 +205,8 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
-#### Jetson TX1/TX2/Nano(ARM64 Builds)
 
+#### Jetson TX1/TX2/Nano (ARM64 Builds)
 
 1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated. 
 ```
@@ -233,9 +242,9 @@ See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-E
 
 #### Build Instructions
 ##### Linux
-```
-./build.sh --use_dnnl
-```
+
+DNNL: `./build.sh --use_dnnl`
+
 ---
 
 
@@ -258,7 +267,7 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 ### OpenVINO
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
@@ -315,7 +324,7 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 
 To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
 
@@ -334,13 +343,12 @@ The basic build commands are below. There are also some other parameters for bui
 ```bash
 ./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
 ```
-
 ---
 
 ### NUPHAR
 See more information on the Nuphar Execution Provider [here](./docs/execution_providers/Nuphar-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 * The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source. To build the debug flavor of ONNX Runtime, you need the debug build of LLVM.
    * Windows (Visual Studio 2017):
    ```
@@ -408,7 +416,8 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](./dockerfiles#nuphar-public-preview)
+Dockerfile instructions are available [here](./dockerfiles#nuphar).
+
 
 ---
 
@@ -458,7 +467,7 @@ onnxruntime_perf_test
 onnxruntime_test_all
 ```
 
-#### Build Instructions(Jetson Nano)
+#### Build Instructions (Jetson Nano)
 
 1. Build ACL Library (skip if already built)
 ```
@@ -484,7 +493,7 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 ### RKNPU
 See more information on the RKNPU Execution Provider [here](./docs/execution_providers/RKNPU-ExecutionProvider.md).
 
-#### Pre-Requisites
+#### Prerequisites
 
 * Supported platform: RK1808 Linux
 * See [Build ARM](#ARM) below for information on building for ARM devices
@@ -527,7 +536,7 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 ---
 
 ### OpenBLAS
-#### Pre-Requisites
+#### Prerequisites
 * OpenBLAS
    * Windows: See build instructions [here](https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform)
    * Linux: Install the libopenblas-dev package `sudo apt-get install libopenblas-dev`
@@ -547,31 +556,34 @@ See more information on the RKNPU Execution Provider [here](./docs/execution_pro
 
 ### DebugNodeInputsOutputs
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
+
 #### Build Instructions
-##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
-Dump tensor input/output shapes for all nodes to stdout.
+Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
+
+**Linux** 
 ```
-# Linux
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
-# Windows
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
 ```
-##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
-Dump tensor input/output shapes and output data for all nodes to stdout.
+
+**Windows**
 ```
-# Linux
-./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
-# Windows
-.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
 ```
-##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
-To disable this functionality after previously enabling, set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0 or delete CMakeCache.txt.
+
+Values:
+* **0**: Disables this functionality if previously enabled; alternatively, delete CMakeCache.txt instead of setting this to 0
+* **1**: Dump tensor input/output shapes for all nodes to stdout
+* **2**: Dump tensor input/output shapes and output data for all nodes to stdout
+
+
+
+
 
 ---
 
 ## Architectures
 ### x86
-#### Build Intsructions
+#### Build Instructions
 ##### Windows
 * add `--x86` argument when launching `.\build.bat`
 
@@ -582,66 +594,71 @@ To disable this functionality after previously enabling, set onnxruntime_DEBUG_N
 ---
 
 ### ARM
-We have experimental support for Linux ARM builds. Windows on ARM is well tested.
+There are a few options for building for ARM.
 
-#### Cross compiling for ARM with simulation (Linux/Windows - EASY, SLOW, RECOMMENDED WAY)
+* [Cross compiling for ARM with simulation (Linux/Windows)](#Cross-compiling-for-ARM-with-simulation-LinuxWindows) - **Recommended**;  Easy, slow
+* [Cross compiling on Linux](#Cross-compiling-on-Linux) - Difficult, fast
+* [Native compiling on Linux ARM device](#Native-compiling-on-Linux-ARM-device) - Easy, slower
+* [Cross compiling on Windows](#Cross-compiling-on-Windows)
+
+
+#### Cross compiling for ARM with simulation (Linux/Windows)
+*EASY, SLOW, RECOMMENDED*
+
 This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
-Here we have [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Please note, it doesn't work for Raspberrypi 1 or Zero. And if your operating system is different than the docker file uses, it also may not work. 
+Here is [an example for Raspberrypi3 and Raspbian](./dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
 
-The whole build process may take hours.
+The build process can take hours.
 
-#### Cross compiling on Linux (Hard, Super Fast)
-You can get the package in minutes, but it's very hard to setup. Cross compiling was never easy. But if you have a large code base(e.g. you are adding a fancy execution provider to onnxruntime), this is the only way you can do.
+#### Cross compiling on Linux
+*Difficult, fast*
+
+This option is very fast and allows the package to be built in minutes, but is challenging to setup. If you have a large code base (e.g. you are adding a new execution provider to onnxruntime), this may be the only feasible method.
 
 ##### 1. Get the corresponding toolchain. 
-tldr: Go to https://www.linaro.org/downloads/, get one for "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
+TLDR; Go to https://www.linaro.org/downloads/, get "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
 
-You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both works, but here we only talk gcc. 
+You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
 
-In GCC's world, we use:
-1. "build" to describe the type of system on which GCC is being configured and compiled
-2. "host" to describe the type of system on which GCC runs.
-3. "target" to describe the type of system for which GCC produce code
+In GCC terms:
+* "build" describes the type of system on which GCC is being configured and compiled
+* "host" describes the type of system on which GCC runs.
+"target" to describe the type of system for which GCC produce code
+When not cross compiling, usually "build" = "host" = "target". When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64. In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
 
-When not doing cross compile, usually "build" = "host" = "target".
-When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64.  In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
+You can either build GCC from source code by yourself, or get a prebuilt one from a vendor like Ubuntu, linaro. Choosing the same compiler version as your target operating system is best. If ths is not possible, choose the latest stable one and statically link to the GCC libs.
 
-Then you can either build GCC from source code by your self, or get a prebuilt one from a vendor like Ubuntu, [linaro](https://releases.linaro.org/components/toolchain/binaries). Please choose the same compiler version as your target operating system has, that would be the best. If you can't, choose the latest stable one and you'll have to static link to gcc libs. 
-
-When you get the compiler, please run
+When you get the compiler, run `aarch64-linux-gnu-gcc -v` This should produce an output like below:
 
 ```
-aarch64-linux-gnu-gcc -v
+Using built-in specs.
+COLLECT_GCC=/usr/bin/aarch64-linux-gnu-gcc
+COLLECT_LTO_WRAPPER=/usr/libexec/gcc/aarch64-linux-gnu/9/lto-wrapper
+Target: aarch64-linux-gnu
+Configured with: ../gcc-9.2.1-20190827/configure --bindir=/usr/bin --build=x86_64-redhat-linux-gnu --datadir=/usr/share --disable-decimal-float --disable-dependency-tracking --disable-gold --disable-libgcj --disable-libgomp --disable-libmpx --disable-libquadmath --disable-libssp --disable-libunwind-exceptions --disable-shared --disable-silent-rules --disable-sjlj-exceptions --disable-threads --with-ld=/usr/bin/aarch64-linux-gnu-ld --enable-__cxa_atexit --enable-checking=release --enable-gnu-unique-object --enable-initfini-array --enable-languages=c,c++ --enable-linker-build-id --enable-lto --enable-nls --enable-obsolete --enable-plugin --enable-targets=all --exec-prefix=/usr --host=x86_64-redhat-linux-gnu --includedir=/usr/include --infodir=/usr/share/info --libexecdir=/usr/libexec --localstatedir=/var --mandir=/usr/share/man --prefix=/usr --program-prefix=aarch64-linux-gnu- --sbindir=/usr/sbin --sharedstatedir=/var/lib --sysconfdir=/etc --target=aarch64-linux-gnu --with-bugurl=http://bugzilla.redhat.com/bugzilla/ --with-gcc-major-version-only --with-isl --with-newlib --with-plugin-ld=/usr/bin/aarch64-linux-gnu-ld --with-sysroot=/usr/aarch64-linux-gnu/sys-root --with-system-libunwind --with-system-zlib --without-headers --enable-gnu-indirect-function --with-linker-hash-style=gnu
+Thread model: single
+gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 ```
 
-You'll see outputs like:
+Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`. 
 
-Using built-in specs.    
-COLLECT_GCC=/usr/bin/aarch64-linux-gnu-gcc    
-COLLECT_LTO_WRAPPER=/usr/libexec/gcc/aarch64-linux-gnu/9/lto-wrapper    
-Target: aarch64-linux-gnu    
-Configured with: ../gcc-9.2.1-20190827/configure --bindir=/usr/bin **--build=x86_64-redhat-linux-gnu** --datadir=/usr/share --disable-decimal-float --disable-dependency-tracking --disable-gold --disable-libgcj --disable-libgomp --disable-libmpx --disable-libquadmath --disable-libssp --disable-libunwind-exceptions --disable-shared --disable-silent-rules --disable-sjlj-exceptions --disable-threads --with-ld=/usr/bin/aarch64-linux-gnu-ld --enable-\_\_cxa_atexit --enable-checking=release --enable-gnu-unique-object --enable-initfini-array --enable-languages=c,c++ --enable-linker-build-id --enable-lto --enable-nls --enable-obsolete --enable-plugin --enable-targets=all --exec-prefix=/usr **--host=x86_64-redhat-linux-gnu** --includedir=/usr/include --infodir=/usr/share/info --libexecdir=/usr/libexec --localstatedir=/var --mandir=/usr/share/man --prefix=/usr --program-prefix=aarch64-linux-gnu- --sbindir=/usr/sbin --sharedstatedir=/var/lib --sysconfdir=/etc **--target=aarch64-linux-gnu** --with-bugurl=http://bugzilla.redhat.com/bugzilla/ --with-gcc-major-version-only --with-isl --with-newlib --with-plugin-ld=/usr/bin/aarch64-linux-gnu-ld --with-sysroot=/usr/aarch64-linux-gnu/sys-root --with-system-libunwind --with-system-zlib --without-headers --enable-gnu-indirect-function --with-linker-hash-style=gnu    
-Thread model: single    
-gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)     
+You must also know what kind of flags your target hardware need, which can differ greatly. For example, if you just get the normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
-Please check the value of "--build", "--host", "--target", and if it has special args like "--with-arch=armv8-a", "--with-arch=armv6 --with-tune=arm1176jz-s --with-fpu=vfp --with-float=hard". And you must know what kind of flags your target hardware need. It may largely differ. For example, if you just get normal ARMv7 compiler and use it for raspberry pi V1 straightly, it won't work, because raspberry pi only has ARMv6. Usually every hardware vendor will provide a toolchain for you, please check how that one was built. 
+A target env is identifed by:
 
-A target env is identifed by four things:
-1. Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
-2. OS: bare-metal or linux.
-3. Libc: gnu libc/ulibc/musl/...
-4. ABI: ARM has mutilple ABIs like eabi, eabihf...
+* Arch: x86_32, x86_64, armv6,armv7,arvm7l,aarch64,...
+* OS: bare-metal or linux.
+* Libc: gnu libc/ulibc/musl/...
+* ABI: ARM has mutilple ABIs like eabi, eabihf...
 
-You can get all these information from the previous output, please be sure they are all correct. 
-
+You can get all these information from the previous output, please be sure they are all correct.
     
 ##### 2. Get a pre-compiled protoc:    
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
+   Get this from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip and unzip after downloading.
    The version must match the one onnxruntime is using. Currently we are using 3.11.2.
    
-##### 3. (optional) Setup sysroot to enable python extension. 
-   (Skip this part if you don't use python)
+##### 3. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
    
    Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first.
    
@@ -663,7 +680,8 @@ Disk identifier: 0xea7d04d6
 | 2020-02-13-raspbian-buster.img1 |      | 8192   | 532479  | 524288  | 256M | c  | W95 FAT32 (LBA) |
 | 2020-02-13-raspbian-buster.img2 |      | 532480 | 7397375 | 6864896 | 3.3G | 83 | Linux           |
     
-You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.     
+You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.
+
 Then run:
 ```bash
 $ mkdir /mnt/pi
@@ -708,7 +726,7 @@ cd /opt/python
 ./cp38-cp38/bin/python -m pip install numpy==1.16.6
 ```
 
-These commands will take a few hours because numpy doesn't have such a prebuilt package yet. When it is finished, open a second window and run
+These commands will take a few hours because numpy doesn't have a prebuilt package yet. When completed, open a second window and run
 ```bash
 docker ps
 ```
@@ -717,7 +735,7 @@ From the output:
 CONTAINER ID        IMAGE                                COMMAND             CREATED             STATUS              PORTS               NAMES
 5a796e98db05        quay.io/pypa/manylinux2014_aarch64   "/bin/bash"         3 minutes ago       Up 3 minutes                            affectionate_cannon
 ```
-You'll see the docker instance id is: 5a796e98db05. Then please use the following command to export the root filesystem as the sysroot for future use.
+You'll see the docker instance id is: 5a796e98db05. Use the following command to export the root filesystem as the sysroot for future use.
 
 ```bash
 docker export 5a796e98db05 -o manylinux2014_aarch64.tar
@@ -740,7 +758,7 @@ docker export 5a796e98db05 -o manylinux2014_aarch64.tar
 If you don't have a sysroot, you can delete the last line.
 
 ##### 5.  Run CMake and make
-6. Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build python package as well, you can use cmake args like:
+ Append `-DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake` to your cmake args, run cmake and make to build it. If you want to build Python package as well, you can use cmake args like:
 ```
 -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=path/to/tool.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=/mnt/pi/usr/bin/python3 -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_DEV_MODE=OFF -DONNX_CUSTOM_PROTOC_EXECUTABLE=/path/to/protoc "-DPYTHON_INCLUDE_DIR=/mnt/pi/usr/include;/mnt/pi/usr/include/python3.7m" -DNUMPY_INCLUDE_DIR=/mnt/pi/folder/to/numpy/headers
 ```
@@ -750,21 +768,23 @@ After running cmake, run
 $ make
 ```
 
-##### 6.  (optional) Build python package
+##### 6.  (Optional) Build Python package
 Copy the setup.py file from the source folder to the build folder and run
 ```bash
 python3 setup.py bdist_wheel -p linux_aarch64
 ```
 
-However, if your targets manylinux, unfortunately their tools doesn't work in cross-compiling scenario. You must run it in a docker like:
+If targeting manylinux, unfortunately their tools do not work in the cross-compiling scenario. Run it in a docker like:
 
 ```bash
 docker run  -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v `pwd`:/tmp/a -w /tmp/a --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/cp37-cp37m/bin/python3 setup.py bdist_wheel
 ```
-If you only want to target a specfic Linux distro(like Ubuntu), you don't need to do that.
+This is not needed if you only want to target a specfic Linux distribution (i.e. Ubuntu).
 
 
-#### Native compiling on Linux ARM device (EASY, SLOWER)
+#### Native compiling on Linux ARM device
+*Easy, slower*
+
 Docker build runs on a Raspberry Pi 3B with Raspbian Stretch Lite OS (Desktop version will run out memory when linking the .so file) will take 8-9 hours in total.
 ```bash
 sudo apt-get update
@@ -827,7 +847,7 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 ### Android
 
-#### Pre-Requisites
+#### Prerequisites
 
 The SDK and NDK packages can be installed via Android Studio or the sdkmanager command line tool. 
 Android Studio is more convenient but a larger installation. 
@@ -915,7 +935,48 @@ e.g. using the paths from our example
 ```
 ./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
-
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
 If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+***
+
+# Training
+## Prerequisites
+
+The default NVIDIA GPU build requires CUDA runtime libraries installed on the system:
+
+* CUDA 10.1
+* cuDNN 7.6.2
+* NCCL v2.4.8 (download v2.4.8 from the Legacy downloads page)
+* OpenMPI 4.0.0.0
+```
+wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.0.tar.gz
+tar zxf openmpi-4.0.0.tar.gz
+cd openmpi-4.0.0
+./configure --enable-orterun-prefix-by-default
+make -j $(nproc) all
+sudo make install
+sudo ldconfig
+```
+## Build instructions
+
+1. Checkout this code repo with `git clone https://github.com/microsoft/onnxruntime`
+
+2. Set the environment variables: *adjust the path for location your build machine*
+    ```
+    export CUDA_HOME=<location for CUDA libs> # e.g. /usr/local/cuda
+    export CUDNN_HOME=<location for cuDNN libs> # e.g. /usr/local/cuda
+    export CUDACXX=<location for NVCC> #e.g. /usr/local/cuda/bin/nvcc
+    export PATH=<location for openmpi/bin/>:$PATH
+    export LD_LIBRARY_PATH=<location for openmpi/lib/>:$LD_LIBRARY_PATH
+    export MPI_CXX_INCLUDE_PATH=<location for openmpi/include/>
+    source <location of the mpivars script> # e.g. /data/intel/impi/2018.3.222/intel64/bin/mpivars.sh
+    ```
+
+3. Create the ONNX Runtime wheel
+
+   * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
+   * Run `./build.sh --enable_training --use_cuda --config=RelWithDebInfo --build_wheel`
+
+    This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
