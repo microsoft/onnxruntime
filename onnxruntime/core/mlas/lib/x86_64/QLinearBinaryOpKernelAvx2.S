@@ -22,10 +22,10 @@ Abstract:
         .intel_syntax noprefix
 
 // Used share data as below
-// MLasPackBytesMM256VpshufbControl:
+// MlasPackBytesMM256VpshufbControl:
 //         .byte 0,4,8,12,        255,255,255,255, 255,255,255,255, 255,255,255,255
 //         .byte 255,255,255,255, 0,4,8,12,        255,255,255,255, 255,255,255,255
-// MLasPackBytesMM256VpermpsControl:
+// MlasPackBytesMM256VpermpsControl:
 //         .int  0, 5, 2, 3, 4, 1, 6, 7
 
 //
@@ -50,19 +50,21 @@ Arguments:
 
    TargetXmm - intermediate xmm register.
 
+   TargetReg32 - intermediate 32bits register.
+
    Source - Supplies address of 8bits integer.
 
    DataType - S8 or U8
 
 --*/
 
-        .macro BroadcastByteDWords TargetYmm, TargetXmm, TargetR64, Source, DataType
+        .macro BroadcastByteDWords TargetYmm, TargetXmm, TargetReg32, Source, DataType
 .ifeqs "\DataType\()","S8"
-        movsx   \TargetR64\(),BYTE PTR \Source\()
+        movsx   \TargetReg32\(),BYTE PTR \Source\()
 .else
-        movzx   \TargetR64\(),BYTE PTR \Source\()
+        movzx   \TargetReg32\(),BYTE PTR \Source\()
 .endif
-        movq    \TargetXmm\(),\TargetR64\()
+        vmovd    \TargetXmm\(),\TargetReg32\()
         vpbroadcastd \TargetYmm\(),\TargetXmm\()
         .endm
 
@@ -96,12 +98,12 @@ Arguments:
 
 Macro Description:
 
-   This macro generates code to set Target 64bits register with the
+   This macro generates code to set Target 32bits register with the
    max value of signed/unsigned int8 specified by DataType.
 
 Arguments:
 
-   Target - target 64bits register.
+   Target - target 32bits register.
 
    DataType - S8 or U8.
 
@@ -109,9 +111,9 @@ Arguments:
 
         .macro SetMax8BitsValue Target, DataType
 .ifeqs "\DataType\()","S8"
-        mov     \Target\(),QWORD PTR 127
+        mov     \Target\(),DWORD PTR 127
 .else
-        mov     \Target\(),QWORD PTR 255
+        mov     \Target\(),DWORD PTR 255
 .endif
         .endm
 
@@ -120,12 +122,12 @@ Arguments:
 
 Macro Description:
 
-   This macro generates code to set Target 64bits register with the
+   This macro generates code to set Target 32bits register with the
    min value of signed/unsigned int8 specified by DataType.
 
 Arguments:
 
-   Target - target 64bits register.
+   Target - target 32bits register.
 
    DataType - S8 or U8.
 
@@ -133,9 +135,9 @@ Arguments:
 
         .macro SetMin8BitsValue Target, DataType
 .ifeqs "\DataType\()","S8"
-        mov     \Target\(),QWORD PTR -128
+        mov     \Target\(),DWORD PTR -128
 .else
-        mov     \Target\(),QWORD PTR 0
+        mov     \Target\(),DWORD PTR 0
 .endif
         .endm
 
@@ -207,18 +209,18 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         vbroadcastss ymm4,xmm4                  # Vector of ZeroPointB
         vbroadcastss ymm5,xmm5                  # Vector of ZeroPointC
 
-        lea     r8,C_UNDERSCORE(MLasPackBytesMM256VpshufbControl)[rip]
+        lea     r8,C_UNDERSCORE(MlasPackBytesMM256VpshufbControl)[rip]
         vmovaps ymm10,[r8]
-        lea     rsi,C_UNDERSCORE(MLasPackBytesMM256VpermpsControl)[rip]
+        lea     rsi,C_UNDERSCORE(MlasPackBytesMM256VpermpsControl)[rip]
         vmovaps ymm11,[rsi]
 
-        SetMax8BitsValue r8,\DataType\()
-        movq    xmm6,r8
+        SetMax8BitsValue r8d,\DataType\()
+        vmovd   xmm6,r8d
         vbroadcastss ymm6,xmm6
         vpsubd  ymm6,ymm6,ymm5
 
-        SetMin8BitsValue rsi,\DataType\()
-        movq    xmm7,rsi
+        SetMin8BitsValue esi,\DataType\()
+        vmovd   xmm7,esi
         vbroadcastss ymm7,xmm7
         vpsubd  ymm7,ymm7,ymm5
         mov     rax,QWORD PTR 8
@@ -239,7 +241,7 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthB[rsp]
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
-        BroadcastByteDWords ymm8,xmm8,rdi,[rdi],\DataType\() # S8/U8 ValueA to int32 vector
+        BroadcastByteDWords ymm8,xmm8,edi,[rdi],\DataType\() # S8/U8 ValueA to int32 vector
         vpsubd  ymm8,ymm8,ymm3                  # - Zero PointA
         vcvtdq2ps ymm8,ymm8                     # FloatVectorA
         vmulps  ymm8,ymm8,ymm0                  # * ScaleA
@@ -264,7 +266,7 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
 
         jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8ScalarOnVector  # flag by out-of-order instruction(s) -- sub rcx,rax
 
-        movsd   QWORD PTR [r9],xmm9
+        vmovq   QWORD PTR [r9],xmm9
         add     r9,rax
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
@@ -272,7 +274,7 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8ScalarOnVector:
         add     rcx,rax
-        pextrq  rax,xmm9,0
+        vpextrq rax,xmm9,0
         jmp     .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral
 
 
@@ -281,7 +283,7 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthA[rsp]
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
-        BroadcastByteDWords ymm9,xmm9,rdx,[rdx],\DataType\() # S8/U8 ValueB to int32 vector
+        BroadcastByteDWords ymm9,xmm9,edx,[rdx],\DataType\() # S8/U8 ValueB to int32 vector
         vpsubd  ymm9,ymm9,ymm4                  # - Zero PointB
         vcvtdq2ps ymm9,ymm9                     # FloatVectorB
         vmulps  ymm9,ymm9,ymm1                  # * ScaleB
@@ -306,7 +308,7 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
 
         jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnScalar # flag by out-of-order instruction(s) -- sub rcx,rax
 
-        movsd   QWORD PTR [r9],xmm8
+        vmovq   QWORD PTR [r9],xmm8
         add     r9,rax
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
@@ -314,7 +316,7 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnScalar:
         add     rcx,rax
-        pextrq  rax,xmm8,0
+        vpextrq rax,xmm8,0
         jmp     .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral
 
 
@@ -347,13 +349,13 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
 
         jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnVector # flag by out-of-order instruction(s) -- sub rcx,rax
 
-        movsd   QWORD PTR [r9],xmm8
+        vmovq   QWORD PTR [r9],xmm8
         add     r9,rax
         jmp     .LQLinear\OpName\()\DataType\()Avx2Process8LoopVectorOnVector
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnVector:
         add     rcx,rax
-        pextrq  rax,xmm8,0
+        vpextrq rax,xmm8,0
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral:
         mov     BYTE PTR [r9],al
