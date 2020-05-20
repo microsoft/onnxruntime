@@ -751,10 +751,10 @@ void AddNewNodeArgAndInitializer(Graph& graph,
 
   switch (type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      proto_data.add_int32_data(data);
+      proto_data.add_int32_data(static_cast<int32_t>(data));
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      proto_data.add_int64_data(data);
+      proto_data.add_int64_data(static_cast<int64_t>(data));
       break;
     default:
       ORT_THROW("pipeline partition unsupported 'type' value: ", type);
@@ -860,7 +860,7 @@ common::Status SplitGraph(Graph& graph,
           producer_node->OutputDefs(),
           [&](const NodeArg& def, size_t index) {
             if (def.Name() == id.node_arg_name) {
-              upstream_nodes_output_index = index;
+              upstream_nodes_output_index = static_cast<int>(index);
             }
             return Status::OK();
           });
@@ -914,8 +914,8 @@ common::Status SplitGraph(Graph& graph,
 
       // deal with updating the consumer's input node_args
       std::vector<Node*> consumer_nodes;
-      if (id.consumer_node.has_value()) {
-        for(auto& consumer_node_id : id.consumer_node.value()){
+      if (id.consumer_nodes.has_value()) {
+        for(auto& consumer_node_id : id.consumer_nodes.value()){
           consumer_nodes.push_back(graph.GetMutableProducerNode(consumer_node_id));
         }
       } else {
