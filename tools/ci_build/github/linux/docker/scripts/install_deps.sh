@@ -44,7 +44,7 @@ function GetFile {
   if command -v aria2c > /dev/null; then
     aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
   else
-    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail    
+    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
   fi
 
   return $?
@@ -76,15 +76,15 @@ fi
 if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   echo "Installing azcopy"
   mkdir -p /tmp/azcopy
-  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz 
+  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz  
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz 
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz
   tar -xf /tmp/src/cmake-3.13.5.tar.gz -C /tmp/src
   pushd .
   cd /tmp/src/cmake-3.13.5
@@ -112,10 +112,6 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
       ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-
-      # patch pytorch onnx export opset version 10 to export nll_loss
-      PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
-      cp "${SCRIPT_DIR}/pyt_patch/symbolic_opset10.py" "${PATH_TO_SYMBOLIC10}"
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       ${PYTHON_EXE} -m pip install transformers
