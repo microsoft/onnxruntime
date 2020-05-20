@@ -193,19 +193,19 @@ jobs:
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-win-x64.zip'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-win-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/win-x64'
       cleanDestinationFolder: true
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-linux-x64.zip'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-linux-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/linux-x64'
       cleanDestinationFolder: true
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-osx-x64.zip'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-osx-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/osx-x64'
       cleanDestinationFolder: true
 

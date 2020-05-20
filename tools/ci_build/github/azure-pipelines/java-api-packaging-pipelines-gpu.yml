@@ -119,27 +119,29 @@ jobs:
   steps:
   - template: templates/set-version-number-variables-step.yml
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Win x64'
     inputs:
+      buildType: 'current'
       artifactName: 'drop-onnxruntime-java-win-x64-gpu'
       targetPath: '$(Build.BinariesDirectory)/java-artifact'
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Linux x64'
     inputs:
+      buildType: 'current'
       artifactName: 'drop-onnxruntime-java-linux-x64-gpu'
       targetPath: '$(Build.BinariesDirectory)/java-artifact'
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-win-x64.zip'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-win-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/win-x64-gpu'
       cleanDestinationFolder: true
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/nuget-artifact/onnxruntime-java-linux-x64.zip'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-linux-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact/linux-x64-gpu'
       cleanDestinationFolder: true
 
