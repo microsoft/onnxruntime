@@ -219,9 +219,9 @@ MlasDequantizeLinearVector(
     )
 {
 #if defined(MLAS_NEON64_INTRINSICS)
-    return MlasMultiplyFloat32x4(vcvtq_f32_s32(vsubq_s32(IntVector, ZeroPointVector)), ScaleVector);
+    return MlasMultiplyFloat32x4(vcvtq_f32_s32(MlasSubtractInt32x4(IntVector, ZeroPointVector)), ScaleVector);
 #else
-    return MlasMultiplyFloat32x4(_mm_cvtepi32_ps(_mm_sub_epi32(IntVector, ZeroPointVector)), ScaleVector);
+    return MlasMultiplyFloat32x4(_mm_cvtepi32_ps(MlasSubtractInt32x4(IntVector, ZeroPointVector)), ScaleVector);
 #endif
 }
 
