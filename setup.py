@@ -65,6 +65,9 @@ elif '--use_dnnl' in sys.argv:
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
+elif '--use_vitisai' in sys.argv:
+    package_name = 'onnxruntime-vitisai'
+    sys.argv.remove('--use_vitisai')
 # --use_acl is specified in build.py, but not parsed here
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
