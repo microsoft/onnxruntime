@@ -12,9 +12,9 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
-void QLinearBroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general,
-                          float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
+template <typename T, typename Input0Scalar, typename Input1Scalar, typename General>
+void QLinearBroadcastLoop(TBroadcaster<T, T>& bc, TBroadcastOutput<T>& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general,
+                          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
   if (bc.IsInput0Scalar()) {
     while (output)
       input0scalar(output.NextSpanOutput(), bc.NextScalar0(), bc.NextSpan1(), A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
@@ -31,7 +31,7 @@ template <typename T, typename Input0Scalar, typename Input1Scalar, typename Gen
 void QLinearBroadcastOneSpan(ThreadPool* tp, double unit_cost,
                              gsl::span<T> output_span, gsl::span<const T> input0_span,  gsl::span<const T> input1_span,
                              Input0Scalar input0scalar, Input1Scalar input1scalar, General general,
-                             float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
+                             float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
   if (input0_span.size() == 1) {
     ThreadPool::TryParallelFor(tp, output_span.size(), unit_cost,
         [=](std::ptrdiff_t first, std::ptrdiff_t last) {
@@ -97,8 +97,7 @@ Status QLinearBroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, 
   if (output_len == static_cast<int64_t>(span_size)) { // Only one big span for all data, parallel inside it
     QLinearBroadcastOneSpan(tp, unit_cost, output.NextSpanOutput(), bc.NextSpan0(), bc.NextSpan1(),
                             input0scalar, input1scalar, general,
-                            A_scale, B_scale, C_scale,
-                            static_cast<int>(A_zero_point), static_cast<int>(B_zero_point), static_cast<int>(C_zero_point));
+                            A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
   }
   else {
     ThreadPool::TryParallelFor(
@@ -108,8 +107,7 @@ Status QLinearBroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, 
             TBroadcastOutput<T> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
             span_bc.AdvanceBy(first_span * span_size);
             QLinearBroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general,
-                                 A_scale, B_scale, C_scale,
-                                 static_cast<int>(A_zero_point), static_cast<int>(B_zero_point), static_cast<int>(C_zero_point));
+                                 A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
         });
   }
   return Status::OK();
@@ -120,27 +118,26 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
   return QLinearBroadcastTwo<T>(
       *context,
       [](gsl::span<T> output, T input0, gsl::span<const T> input1,
-         float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
-        MlasQLinearAdd(&input0, A_scale, (T)A_zero_point,
-                       input1.data(), B_scale, (T)B_zero_point,
-                       C_scale, (T)C_zero_point, output.data(), 1, output.size());
+         float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
+        MlasQLinearAdd(&input0, A_scale, A_zero_point,
+                       input1.data(), B_scale, B_zero_point,
+                       C_scale, C_zero_point, output.data(), 1, output.size());
       },
       [](gsl::span<T> output, gsl::span<const T> input0, T input1,
-         float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
-        MlasQLinearAdd(input0.data(), A_scale, (T)A_zero_point,
-                       &input1, B_scale, (T)B_zero_point,
-                       C_scale, (T)C_zero_point, output.data(), output.size(), 1);
+         float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
+        MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
+                       &input1, B_scale, B_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), 1);
 
       },
       [](gsl::span<T> output, gsl::span<const T> input0, gsl::span<const T> input1,
-         float A_scale, float B_scale, float C_scale, int A_zero_point, int B_zero_point, int C_zero_point) {
-        MlasQLinearAdd(input0.data(), A_scale, (T)A_zero_point,
-                       input1.data(), B_scale, (T)B_zero_point,
-                       C_scale, (T)C_zero_point, output.data(), output.size(), output.size());
+         float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
+        MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
+                       input1.data(), B_scale, B_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), output.size());
       },
       1.0);
 }
-
 
 #define REG_QLINEAR_ELEMENTWISE_TYPED_KERNEL(op_name, version, data_type, KERNEL_CLASS) \
   ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                                    \
