@@ -13,8 +13,7 @@ namespace contrib {
 template <typename T>
 class QLinearAdd final : public OpKernel {
  public:
-  QLinearAdd(const OpKernelInfo& info) : OpKernel(info) {
-  }
+  QLinearAdd(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };
