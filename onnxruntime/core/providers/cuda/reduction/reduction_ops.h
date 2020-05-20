@@ -10,6 +10,17 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Holds some metadata that will be used during actual reduction op compute time
+struct PrepareReduceMetadata {
+  int64_t input_count;
+  int64_t output_count;
+  std::vector<int64_t> output_dims;
+  std::vector<int64_t> input_dims_cudnn;
+  std::vector<int64_t> output_dims_cudnn;
+  int64_t rank;
+  int64_t stride;
+};
+
 template <bool allow_multi_axes>
 class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
@@ -44,8 +55,14 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   bool calculate_sqt_;
   bool log_sum_exp_;
   // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
-  // Those effecient kernels are defined/implemented in reduction_functions.h/.cu.
+  // Those efficient kernels are defined/implemented in reduction_functions.h/.cu.
   bool fast_reduction_;
+
+ private:
+  // Private implementation that holds the core logic of reduction op processing
+  template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
+  Status ComputeCore(const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+                     /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op) const;
 };
 
 template <typename T>
