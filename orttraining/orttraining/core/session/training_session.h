@@ -140,7 +140,7 @@ class TrainingSession : public InferenceSession {
     // make the corresponding partition.
     struct CutEdge {
       std::string node_arg_name;
-      optional<std::string> consumer_node;
+      optional<std::vector<std::string>> consumer_nodes;
 
       // If the edge is unique, i.e. only have one consumer node, or all the edges
       // with the same node_arg_name needs to be cut, specify the node_arg_name
@@ -148,8 +148,8 @@ class TrainingSession : public InferenceSession {
       CutEdge(std::string edge) : node_arg_name(edge){};
       // If the edges with same node_arg_name belongs to different cut, i.e. some of its
       // consumer node belongs to one partition, and some belongs to another, specify
-      // the consumer node name which you want to perform the cut on.
-      CutEdge(std::string edge, std::string node) : node_arg_name(edge), consumer_node(node){};
+      // the consumer node names which you want to perform the cut on.
+      CutEdge(std::string edge, std::vector<std::string> nodes) : node_arg_name(edge), consumer_nodes(nodes){};
     };
     typedef std::vector<CutEdge> CutInfo;
 

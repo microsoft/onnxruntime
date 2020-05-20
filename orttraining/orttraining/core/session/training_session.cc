@@ -322,7 +322,13 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
 
-  if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
+  // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
+  // store different model partition), and if model_with_training_graph_path is specified, save the model.
+  // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
+  // conflict. It is user's responsibility to make sure different rank is passed in with different
+  // model_with_training_graph_path value.
+  if ((IsRootNode(config) || config.pipeline_config.has_value())
+    && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }

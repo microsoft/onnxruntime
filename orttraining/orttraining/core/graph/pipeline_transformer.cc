@@ -914,10 +914,12 @@ common::Status SplitGraph(Graph& graph,
 
       // deal with updating the consumer's input node_args
       std::vector<Node*> consumer_nodes;
-      if (!id.consumer_node.has_value()) {
-        consumer_nodes = graph.GetMutableConsumerNodes(output_edge_name);
+      if (id.consumer_node.has_value()) {
+        for(auto& consumer_node_id : id.consumer_node.value()){
+          consumer_nodes.push_back(graph.GetMutableProducerNode(consumer_node_id));
+        }
       } else {
-        consumer_nodes.push_back(graph.GetMutableProducerNode(id.consumer_node.value()));
+        consumer_nodes = graph.GetMutableConsumerNodes(output_edge_name);
       }
 
       for (auto consumer_node : consumer_nodes) {
