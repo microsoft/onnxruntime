@@ -275,7 +275,6 @@ const static SupportedTensorDataTypes supportedTypeListLogicalComparison9[2] = /
 const static SupportedTensorDataTypes supportedTypeListSigned[1] = { SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int16 | SupportedTensorDataTypes::Int8 };
 const static SupportedTensorDataTypes supportedTypeListRange[1] = {SupportedTensorDataTypes::Int16|SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Float32};
 const static SupportedTensorDataTypes supportedTypeListInteger[3] = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Int32 };
-const static SupportedTensorDataTypes supportedTypeListPadWithoutFloat16[1] = { SupportedTensorDataTypes::Int8to32 | SupportedTensorDataTypes::Float32 };
 const static SupportedTensorDataTypes supportedTypeListQLinearMatMul[3] = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, 
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, 
@@ -358,7 +357,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, std::nullopt, QuerySlice)}, // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, std::nullopt, QuerySlice)},
     {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListPadWithoutFloat16, DmGraphSupport::Supported,      {1, 2} /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
+    {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported,      {1, 2} /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
     {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
