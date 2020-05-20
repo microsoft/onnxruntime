@@ -21,14 +21,15 @@
 INCLUDE mlasi.inc
         .list
 
-        EXTERN  MLasPackBytesMM256VpshufbControl:NEAR
-        EXTERN  MLasPackBytesMM256VpermpsControl:NEAR
+        EXTERN  MlasPackBytesMM256VpshufbControl:NEAR
+        EXTERN  MlasPackBytesMM256VpermpsControl:NEAR
 
 ;
 ; Stack frame layout for the QLinearBinaryOp kernels.
 ;
 
 QLinearBinaryOpFrame STRUCT
+
         SavedXmm6 OWORD ?
         SavedXmm7 OWORD ?
         SavedXmm8 OWORD ?
@@ -49,32 +50,44 @@ QLinearBinaryOpFrame STRUCT
         ZeroPointC QWORD ?
         OutputC QWORD ?
         LengthA QWORD ?
-        LengthB QWord ?
+        LengthB QWORD ?
+
 QLinearBinaryOpFrame ENDS
 
 ;
 ; Macro Description:
 ;
-;   This macro generates code to extend signed/unsigned int8 to
-;   signed/unsigned int64/32/16 respectively, according to DataType
-;   and target.
+;   This macro generates code to extend unsigned int8 to wider
+;   int64/32/16.
 ;
 ; Arguments:
 ;
 ;   Target - target register, could be 16/32/64 bits one.
 ;
-;   Source - Supplies address of 8 x 8bits integers.
-;
-;   DataType - S8 or U8
+;   Source - Supplies address of 8bits integer.
 ;
 
-Extend8BitsInt MACRO Target, Source, DataType
-IFIDN <DataType>, <S8>
-        movsx   Target,BYTE PTR Source
-ELSE
+Extend8BitsIntU8 MACRO Target, Source
         movzx   Target,BYTE PTR Source
-ENDIF
         ENDM
+
+;
+; Macro Description:
+;
+;   This macro generates code to extend signed int8 to wider
+;   int64/32/16.
+;
+; Arguments:
+;
+;   Target - target register, could be 16/32/64 bits one.
+;
+;   Source - Supplies address of 8bits integer.
+;
+
+Extend8BitsIntS8 MACRO Target, Source
+        movsx   Target,BYTE PTR Source
+        ENDM
+
 
 ;
 ; Macro Description:
@@ -85,25 +98,20 @@ ENDIF
 ; Arguments:
 ;   TargetYmm - target ymm register.
 ;
-;   TargetXmm -- intermedia xmm register used
+;   TargetXmm -- intermediate xmm register used
 ; 
-;   TargetReg64 -- intermedia common 64bit register used
+;   TargetReg32 -- intermediate common 32bit register used
 ;
-;   Source - Supplies address of 8 x 8bits integers.
+;   Source - Supplies address of 8bits integer.
 ;
 ;   DataType - S8 or U8
 ;
 
-BroadcastByteDWords MACRO TargetYmm, TargetXmm, TargetReg64, Source, DataType
-IFIDN <DataType>, <S8> 
-        movsx   TargetReg64,BYTE PTR Source
-ELSE
-        movzx   TargetReg64,BYTE PTR Source
-ENDIF
-        movq    TargetXmm,TargetReg64
+BroadcastByteDWords MACRO TargetYmm, TargetXmm, TargetReg32, Source, DataType
+        Extend8BitsInt&DataType TargetReg32,Source
+        vmovd   TargetXmm,TargetReg32
         vpbroadcastd TargetYmm,TargetXmm
         ENDM
-
 
 ;
 ; Macro Description:
@@ -131,42 +139,42 @@ ENDIF
 ;
 ; Macro Description:
 ;
-;   This macro generates code to set Target 64bits register with the
+;   This macro generates code to set Target 32bits register with the
 ;   max value of signed/unsigned int8 specified by DataType.
 ;
 ; Arguments:
 ;
-;   Target - target 64bits register.
+;   Target - target 32bits register.
 ;
 ;   DataType - S8 or U8.
 ;
 
 SetMax8BitsValue MACRO Target, DataType
 IFIDN <DataType>, <S8>
-        mov     Target,QWORD PTR 127
+        mov     Target,DWORD PTR 127
 ELSE
-        mov     Target,QWORD PTR 255
+        mov     Target,DWORD PTR 255
 ENDIF
         ENDM
 
 ;
 ; Macro Description:
 ;
-;   This macro generates code to set Target 64bits register with the
+;   This macro generates code to set Target 32bits register with the
 ;   min value of signed/unsigned int8 specified by DataType.
 ;
 ; Arguments:
 ;
-;   Target - target 64bits register.
+;   Target - target 32bits register.
 ;
 ;   DataType - S8 or U8.
 ;
 
 SetMin8BitsValue MACRO Target, DataType
 IFIDN <DataType>, <S8>
-        mov     Target,QWORD PTR -128
+        mov     Target,DWORD PTR -128
 ELSE
-        mov     Target,QWORD PTR 0
+        mov     Target,DWORD PTR 0
 ENDIF
         ENDM
 
@@ -228,40 +236,40 @@ QLinearBinaryOpAvx2 MACRO DataType, OpName, OpInstruction
 
         alloc_stack (QLinearBinaryOpFrame.ReturnAddress)
 
-        save_xmm128_avx xmm6,QLinearBinaryOpFrame.SavedXmm6
-        save_xmm128_avx xmm7,QLinearBinaryOpFrame.SavedXmm7
-        save_xmm128_avx xmm8,QLinearBinaryOpFrame.SavedXmm8
-        save_xmm128_avx xmm9,QLinearBinaryOpFrame.SavedXmm9
-        save_xmm128_avx xmm10,QLinearBinaryOpFrame.SavedXmm10
-        save_xmm128_avx xmm11,QLinearBinaryOpFrame.SavedXmm11
+        save_xmm128 xmm6,QLinearBinaryOpFrame.SavedXmm6
+        save_xmm128 xmm7,QLinearBinaryOpFrame.SavedXmm7
+        save_xmm128 xmm8,QLinearBinaryOpFrame.SavedXmm8
+        save_xmm128 xmm9,QLinearBinaryOpFrame.SavedXmm9
+        save_xmm128 xmm10,QLinearBinaryOpFrame.SavedXmm10
+        save_xmm128 xmm11,QLinearBinaryOpFrame.SavedXmm11
 
         END_PROLOGUE
 
         vbroadcastss ymm0,xmm1                  ; Vector of ScaleA
         vbroadcastss ymm1,DWORD PTR QLinearBinaryOpFrame.ScaleB[rsp]
         vbroadcastss ymm2,DWORD PTR QLinearBinaryOpFrame.ScaleC[rsp]
-        Extend8BitsInt r8,r8b,DataType          ; Zero Point A,B,C
-        Extend8BitsInt rdx,BYTE PTR QLinearBinaryOpFrame.ZeroPointB[rsp],DataType
-        Extend8BitsInt rax,BYTE PTR QLinearBinaryOpFrame.ZeroPointC[rsp],DataType
-        movq    xmm3,r8
-        movq    xmm4,rdx
-        movq    xmm5,rax
+        Extend8BitsInt&DataType r8d,r8b          ; Zero Point A,B,C
+        Extend8BitsInt&DataType edx,QLinearBinaryOpFrame.ZeroPointB[rsp]
+        Extend8BitsInt&DataType eax,QLinearBinaryOpFrame.ZeroPointC[rsp]
+        vmovd   xmm3,r8d
+        vmovd   xmm4,edx
+        vmovd   xmm5,eax
         vbroadcastss ymm3,xmm3                  ; Vector of ZeroPointA
         vbroadcastss ymm4,xmm4                  ; Vector of ZeroPointB
         vbroadcastss ymm5,xmm5                  ; Vector of ZeroPointC
 
-        lea     rdx,MLasPackBytesMM256VpshufbControl
-        lea     r8,MLasPackBytesMM256VpermpsControl
+        lea     rdx,MlasPackBytesMM256VpshufbControl
+        lea     r8,MlasPackBytesMM256VpermpsControl
         vmovaps ymm10,[rdx]
         vmovaps ymm11,[r8]
 
-        SetMax8BitsValue rdx,DataType
-        movq    xmm6,rdx
+        SetMax8BitsValue edx,DataType
+        vmovd   xmm6,edx
         vbroadcastss ymm6,xmm6
         vpsubd  ymm6,ymm6,ymm5
 
-        SetMin8BitsValue r8,DataType
-        movq    xmm7,r8
+        SetMin8BitsValue r8d,DataType
+        vmovd   xmm7,r8d
         vbroadcastss ymm7,xmm7
         vpsubd  ymm7,ymm7,ymm5
 
@@ -280,7 +288,7 @@ QLinear&OpName&&DataType&Avx2Process8EntranceScalarOnVector:
         mov     rdx,QLinearBinaryOpFrame.LengthB[rsp]
         test    rdx,rdx
         jz      QLinear&OpName&&DataType&Avx2Exit
-        BroadcastByteDWords ymm8,xmm8,rcx,[rcx],DataType
+        BroadcastByteDWords ymm8,xmm8,ecx,[rcx],DataType
         vpsubd  ymm8,ymm8,ymm3                  ; - ZeroPointA
         vcvtdq2ps ymm8,ymm8                     ; FloatVectorA
         vmulps  ymm8,ymm8,ymm0                  ; * ScaleA
@@ -305,7 +313,7 @@ QLinear&OpName&&DataType&Avx2Process8LoopScalarOnVector:
 
         jb      QLinear&OpName&&DataType&Avx2StoreLessThan8ScalarOnVector
 
-        movsd   QWORD PTR [r8],xmm9
+        vmovq   QWORD PTR [r8],xmm9
         add     r8,rax
         test    rdx,rdx
         jz      QLinear&OpName&&DataType&Avx2Exit
@@ -313,15 +321,14 @@ QLinear&OpName&&DataType&Avx2Process8LoopScalarOnVector:
 
 QLinear&OpName&&DataType&Avx2StoreLessThan8ScalarOnVector:
         add     rdx,rax
-        pextrq  rax,xmm9,0
+        vpextrq rax,xmm9,0
         jmp     QLinear&OpName&&DataType&Avx2StoreLoopGeneral
-
 
 QLinear&OpName&&DataType&Avx2Process8EntranceVectorOnScalar:
         mov     rdx,QLinearBinaryOpFrame.LengthA[rsp]
         test    rdx,rdx
         jz      QLinear&OpName&&DataType&Avx2Exit
-        BroadcastByteDWords ymm9,xmm9,r9,[r9],DataType ; IntegerVectorB
+        BroadcastByteDWords ymm9,xmm9,r9d,[r9],DataType ; IntegerVectorB
         vpsubd  ymm9,ymm9,ymm4                  ; - ZeroPointB
         vcvtdq2ps ymm9,ymm9                     ; FloatVectorB
         vmulps  ymm9,ymm9,ymm1                  ; * ScaleB
@@ -346,7 +353,7 @@ QLinear&OpName&&DataType&Avx2Process8LoopVectorOnScalar:
 
         jb      QLinear&OpName&&DataType&Avx2StoreLessThan8VectorOnScalar
 
-        movsd   QWORD PTR [r8],xmm8
+        vmovq   QWORD PTR [r8],xmm8
         add     r8,rax
         test    rdx,rdx
         jz      QLinear&OpName&&DataType&Avx2Exit
@@ -354,9 +361,8 @@ QLinear&OpName&&DataType&Avx2Process8LoopVectorOnScalar:
 
 QLinear&OpName&&DataType&Avx2StoreLessThan8VectorOnScalar:
         add     rdx,rax
-        pextrq  rax,xmm8,0
+        vpextrq rax,xmm8,0
         jmp     QLinear&OpName&&DataType&Avx2StoreLoopGeneral
-
 
 QLinear&OpName&&DataType&Avx2Process8LoopVectorOnVector:
         test    rdx,rdx
@@ -386,13 +392,13 @@ QLinear&OpName&&DataType&Avx2Process8LoopVectorOnVector:
 
         jb      QLinear&OpName&&DataType&Avx2StoreLessThan8VectorOnVector
 
-        movsd   QWORD PTR [r8],xmm8
+        vmovq   QWORD PTR [r8],xmm8
         add     r8,rax
         jmp     QLinear&OpName&&DataType&Avx2Process8LoopVectorOnVector
 
 QLinear&OpName&&DataType&Avx2StoreLessThan8VectorOnVector:
         add     rdx,rax
-        pextrq  rax,xmm8,0
+        vpextrq rax,xmm8,0
 
 QLinear&OpName&&DataType&Avx2StoreLoopGeneral:
         mov     BYTE PTR [r8],al
@@ -403,12 +409,12 @@ QLinear&OpName&&DataType&Avx2StoreLoopGeneral:
 
 QLinear&OpName&&DataType&Avx2Exit:
         vzeroupper
-        vmovaps xmm6,QLinearBinaryOpFrame.SavedXmm6[rsp]
-        vmovaps xmm7,QLinearBinaryOpFrame.SavedXmm7[rsp]
-        vmovaps xmm8,QLinearBinaryOpFrame.SavedXmm8[rsp]
-        vmovaps xmm9,QLinearBinaryOpFrame.SavedXmm9[rsp]
-        vmovaps xmm10,QLinearBinaryOpFrame.SavedXmm10[rsp]
-        vmovaps xmm11,QLinearBinaryOpFrame.SavedXmm11[rsp]
+        movaps  xmm6,QLinearBinaryOpFrame.SavedXmm6[rsp]
+        movaps  xmm7,QLinearBinaryOpFrame.SavedXmm7[rsp]
+        movaps  xmm8,QLinearBinaryOpFrame.SavedXmm8[rsp]
+        movaps  xmm9,QLinearBinaryOpFrame.SavedXmm9[rsp]
+        movaps  xmm10,QLinearBinaryOpFrame.SavedXmm10[rsp]
+        movaps  xmm11,QLinearBinaryOpFrame.SavedXmm11[rsp]
         add     rsp,(QLinearBinaryOpFrame.ReturnAddress)
 
         BEGIN_EPILOGUE
@@ -425,12 +431,10 @@ QLinear&OpName&&DataType&Avx2Exit:
 
 QLinearBinaryOpAvx2 S8,Add,vaddps
 
-
 ;
 ; Generate the QLinearAdd Avx2 U8 kernel.
 ;
 
 QLinearBinaryOpAvx2 U8,Add,vaddps
-
 
         END
