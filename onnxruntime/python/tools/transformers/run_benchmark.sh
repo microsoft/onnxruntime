@@ -59,21 +59,16 @@ if [ "$run_gpu_fp32" = true ] ; then
   
     if [ "$run_ort" = true ] ; then
       python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS
-      python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS  
-      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS 
-    
-      python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS --fp16 
-      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16       
+      #python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
+      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
     fi
     
     if [ "$run_torch" = true ] ; then
       python $OPTIMIZER_SCRIPT -g -e torch -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-      python $OPTIMIZER_SCRIPT -g -e torch -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16
     fi
   
     if [ "$run_torchscript" = true ] ; then
       python $OPTIMIZER_SCRIPT -g -e torchscript -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-      python $OPTIMIZER_SCRIPT -g -e torchscript -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16
     fi  
   done
 fi
@@ -87,7 +82,7 @@ if [ "$run_gpu_fp16" = true ] ; then
   
     if [ "$run_ort" = true ] ; then
       python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS --fp16
-      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16       
+      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16
     fi
     
     if [ "$run_torch" = true ] ; then
@@ -109,7 +104,7 @@ if [ "$run_cpu" = true ] ; then
   
     if [ "$run_ort" = true ] ; then
       python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS
-      python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
+      #python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
       python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS    
     fi
     
