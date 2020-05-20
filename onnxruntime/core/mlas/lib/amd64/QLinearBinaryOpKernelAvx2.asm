@@ -10,8 +10,8 @@
 ;
 ; Abstract:
 ;
-;    This module implements the kernels for the quantized linear add
-;    for element type int8_t and uint8_t.
+;    This module implements the kernels for the quantized linear add for element
+;    type int8_t and uint8_t.
 ;
 ;    This implementation uses AVX2 instructions.
 ;
@@ -57,8 +57,7 @@ QLinearBinaryOpFrame ENDS
 ;
 ; Macro Description:
 ;
-;   This macro generates code to extend unsigned int8 to wider
-;   int64/32/16.
+;   This macro generates code to extend unsigned int8 to wider int64/32/16.
 ;
 ; Arguments:
 ;
@@ -74,8 +73,7 @@ Extend8BitsIntU8 MACRO Target, Source
 ;
 ; Macro Description:
 ;
-;   This macro generates code to extend signed int8 to wider
-;   int64/32/16.
+;   This macro generates code to extend signed int8 to wider int64/32/16.
 ;
 ; Arguments:
 ;
@@ -92,10 +90,11 @@ Extend8BitsIntS8 MACRO Target, Source
 ;
 ; Macro Description:
 ;
-;   This macro generates code to broadcast one (s/u)int8 to 8 x int32,
-;   according to signed/unsigned.
+;   This macro generates code to broadcast one (s/u)int8 to 8 x int32, according
+;   to signed/unsigned.
 ;
 ; Arguments:
+;
 ;   TargetYmm - target ymm register.
 ;
 ;   TargetXmm -- intermediate xmm register used
@@ -116,8 +115,8 @@ BroadcastByteDWords MACRO TargetYmm, TargetXmm, TargetReg32, Source, DataType
 ;
 ; Macro Description:
 ;
-;   This macro generates code to unpack 8 x (s/u)int8 to 8 x int32,
-;   according to signed/unsigned.
+;   This macro generates code to unpack 8 x (s/u)int8 to 8 x int32, according
+;   to signed/unsigned.
 ;
 ; Arguments:
 ;
@@ -139,8 +138,8 @@ ENDIF
 ;
 ; Macro Description:
 ;
-;   This macro generates code to set Target 32bits register with the
-;   max value of signed/unsigned int8 specified by DataType.
+;   This macro generates code to set Target 32bits register with the max value
+;   of signed/unsigned int8 specified by DataType.
 ;
 ; Arguments:
 ;
@@ -160,8 +159,8 @@ ENDIF
 ;
 ; Macro Description:
 ;
-;   This macro generates code to set Target 32bits register with the
-;   min value of signed/unsigned int8 specified by DataType.
+;   This macro generates code to set Target 32bits register with the min value
+;   of signed/unsigned int8 specified by DataType.
 ;
 ; Arguments:
 ;
@@ -181,8 +180,8 @@ ENDIF
 ;
 ; Macro Description:
 ;
-;   This macro generates code for function QLinearOpName()
-;   on the specified signed/unsigned int8 DataType.
+;   This macro generates code for function QLinearOpName() on the specified
+;   signed/unsigned int8 DataType.
 ;
 ; Arguments:
 ;
@@ -199,8 +198,8 @@ QLinearBinaryOpAvx2 MACRO DataType, OpName, OpInstruction
 ;
 ; Routine Description:
 ;
-;    This routine implements the kernels for the Quantize Linear OpName
-;    for element type DataType, vector on vector.
+;    This routine implements the kernels for the Quantize Linear OpName for
+;    element type DataType, vector on vector.
 ;
 ; Arguments:
 ;
