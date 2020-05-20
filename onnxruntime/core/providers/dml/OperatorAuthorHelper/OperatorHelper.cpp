@@ -113,6 +113,36 @@ namespace OperatorHelper
         }
     }
 
+    float CastFloat16ToFloat32(uint16_t input)
+    {
+        // Promote float16m10e5s1 to float32m23e8s1.
+        // Note this works on machines of both ascending and descending byte
+        // endianness, so long as float32 and uint32 endianness match.
+        // It does not work for a few abberant architectures which store
+        // float32 and uint32 with opposite endianness.
+
+        const uint32_t float16unsignedValueMask = 0x7FFF;
+        const uint32_t float16signMask          = 0x8000;
+        const uint32_t float16exponentMask      = 0x7C00;
+        const uint32_t float32exponentMask      = 0x7F800000;
+
+        uint32_t float16unsignedValue = input & float16unsignedValueMask;
+        uint32_t float16sign          = input & float16signMask;
+        uint32_t float16exponent      = input & float16exponentMask;
+
+        // Shift mantissa bits left (23 - 10 = 13).
+        // Adjust exponent bias (127 - 15 = 112, 112 << 23 == 0x38000000).
+        // Move sign bit to float32 MSB (32 - 16 = 16).
+        uint32_t float32unsignedValue = (float16unsignedValue << 13) + 0x38000000;
+        uint32_t float32sign          = float16sign << 16;
+        uint32_t result               = (float16exponent == 0) ? (float32unsignedValue & ~float32exponentMask) : // Denormal
+                                        (float16exponent == float16exponentMask) ? (float32unsignedValue | float32exponentMask) : // Infinity
+                                        float32unsignedValue; // Any other normal value
+        result |= float32sign;
+
+        return reinterpret_cast<float&>(result);
+    }
+
     int64_t CastToInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
         switch (tensorDataType)
@@ -150,7 +180,7 @@ namespace OperatorHelper
         case MLOperatorTensorDataType::Int64:      return static_cast<double>(*reinterpret_cast<const int64_t*>(p));
         case MLOperatorTensorDataType::String:     ML_INVALID_ARGUMENT("MLOperatorTensorDataType::String type is unsupported for reading as an integer.");
         case MLOperatorTensorDataType::Bool:       return static_cast<double>(*reinterpret_cast<const uint8_t*>(p));
-        case MLOperatorTensorDataType::Float16:    ML_INVALID_ARGUMENT("MLOperatorTensorDataType::Float16 type is unsupported for reading as an integer.");
+        case MLOperatorTensorDataType::Float16:    return static_cast<double>(CastFloat16ToFloat32(*reinterpret_cast<const uint16_t*>(p)));
         case MLOperatorTensorDataType::Double:     return static_cast<double>(*reinterpret_cast<const double*>(p));
         case MLOperatorTensorDataType::UInt32:     return static_cast<double>(*reinterpret_cast<const uint32_t*>(p));
         case MLOperatorTensorDataType::UInt64:     return static_cast<double>(*reinterpret_cast<const uint64_t*>(p));
