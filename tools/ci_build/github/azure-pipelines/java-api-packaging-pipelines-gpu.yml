@@ -24,6 +24,10 @@ jobs:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_Java_API_Build_GPU_x64
