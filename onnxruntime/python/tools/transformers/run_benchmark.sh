@@ -1,12 +1,14 @@
-# Please install PyTorch 1.5.0 (see https://pytorch.org/) before running this benchmark.
+# Run benchmark in Linux for measurement: average over 1000 inferences per test.
+# Please install PyTorch 1.5.0 (see https://pytorch.org/) before running this benchmark:
+# GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
+# CPU:   conda install pytorch torchvision cpuonly -c pytorch
 
 # When run_cli=true, this script is self-contained and you need not copy other files to run benchmarks - it will use onnxruntime-tools package.
 # If run_cli=false, it depends on other python script (*.py) files in this directory.
 run_cli=true
 
-
+# only need once
 run_install=true
-
 
 # Engines to test.
 run_ort=true
@@ -18,14 +20,20 @@ run_gpu_fp32=true
 run_gpu_fp16=true
 run_cpu=false
 
-# Pretrained transformers models to test
-export PRETRAINED_MODELS="bert-base-cased roberta-base gpt2"
-#export PRETRAINED_MODELS="bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased"
+# enable optimizer (use script instead of OnnxRuntime for graph optimization)
+use_optimizer=true
 
+# Batch Sizes and Sequence Lengths
+batch_sizes="1 4"
+sequence_lengths="8 16 32 64 128 256 512 1024"
+
+# Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
+test_models="bert-base-cased roberta-base gpt2"
 
 # If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
 
+# -------------------------------------------
 if [ "$run_install" = true ] ; then
   if [ "$run_cpu" = true ] ; then
     pip install --upgrade onnxruntime
@@ -43,33 +51,36 @@ else
   export OPTIMIZER_SCRIPT="benchmark.py"
 fi
 
-export ONNX_EXPORT_OPTIONS="-o -v -b 0 --overwrite -f fusion.csv"
+export ONNX_EXPORT_OPTIONS="-v -b 0 --overwrite -f fusion.csv"
+export BENCHMARK_OPTIONS="-b $BATCH_SIZES -s $SEQUENCE_LENGTHS -t 1000 -f fusion.csv -r result.csv -d detail.csv"
 
-# Please choose or update one combination of batch sizes and sequence lengths below
-export BENCHMARK_OPTIONS="-b 1 4 -s 8 16 32 64 128 256 512 1024 -t 1000 -f fusion.csv -r result.csv -d detail.csv"
-#export BENCHMARK_OPTIONS="-b 1 2 4 8 16 32 64 128 -s 8 128 -t 100 -f fusion.csv -r result.csv -d detail.csv"
+if [ "$use_optimizer" = true ] ; then
+  export ONNX_EXPORT_OPTIONS="$ONNX_EXPORT_OPTIONS -o"
+  export BENCHMARK_OPTIONS="$BENCHMARK_OPTIONS -o"
+fi
 
+# -------------------------------------------
+run_on_test() {
+    if [ "$run_ort" = true ] ; then
+      python $OPTIMIZER_SCRIPT -m $1 $ONNX_EXPORT_OPTIONS $2 $3
+      python $OPTIMIZER_SCRIPT -m $1 $BENCHMARK_OPTIONS $2 $3
+    fi
+    
+    if [ "$run_torch" = true ] ; then
+      python $OPTIMIZER_SCRIPT -e torch -m $1 $BENCHMARK_OPTIONS $2 $3
+    fi
+  
+    if [ "$run_torchscript" = true ] ; then
+      python $OPTIMIZER_SCRIPT -e torchscript -m $1 $BENCHMARK_OPTIONS $2 $3
+    fi  
+}
 
+# -------------------------------------------
 if [ "$run_gpu_fp32" = true ] ; then
   for m in $PRETRAINED_MODELS
   do
     echo "Run GPU FP32 Benchmark on model ${m}"
-     
-    export BENCHMARK_MODEL="${m}"
-  
-    if [ "$run_ort" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS
-      #python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-    fi
-    
-    if [ "$run_torch" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -e torch -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-    fi
-  
-    if [ "$run_torchscript" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -e torchscript -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-    fi  
+    run_on_test "${m}" -g
   done
 fi
 
@@ -77,21 +88,7 @@ if [ "$run_gpu_fp16" = true ] ; then
   for m in $PRETRAINED_MODELS
   do
     echo "Run GPU FP16 Benchmark on model ${m}"
-     
-    export BENCHMARK_MODEL="${m}"
-  
-    if [ "$run_ort" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS --fp16
-      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16
-    fi
-    
-    if [ "$run_torch" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -e torch -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16
-    fi
-  
-    if [ "$run_torchscript" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -e torchscript -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS --fp16
-    fi  
+    run_on_test "${m}" -g --fp16
   done
 fi
 
@@ -99,22 +96,7 @@ if [ "$run_cpu" = true ] ; then
   for m in $PRETRAINED_MODELS
   do
     echo "Run CPU Benchmark on model ${m}"
-     
-    export BENCHMARK_MODEL="${m}"
-  
-    if [ "$run_ort" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $ONNX_EXPORT_OPTIONS
-      #python $OPTIMIZER_SCRIPT -g -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-      python $OPTIMIZER_SCRIPT -g -o -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS    
-    fi
-    
-    if [ "$run_torch" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -e torch -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-    fi
-  
-    if [ "$run_torchscript" = true ] ; then
-      python $OPTIMIZER_SCRIPT -g -e torchscript -m $BENCHMARK_MODEL $BENCHMARK_OPTIONS
-    fi  
+    run_on_test "${m}" 
   done
 fi 
 
