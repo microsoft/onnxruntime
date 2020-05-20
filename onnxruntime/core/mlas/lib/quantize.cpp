@@ -796,7 +796,7 @@ MlasQLinearAdd<int8_t>(
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.QLinearAddS8Kernel(
 #else
-        MlasQLinearAddKernel<T>(
+        MlasQLinearAddKernel<int8_t>(
 #endif
             InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA, LengthB);
 }
@@ -821,7 +821,7 @@ MlasQLinearAdd<uint8_t>(
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.QLinearAddU8Kernel(
 #else
-        MlasQLinearAddKernel<T>(
+        MlasQLinearAddKernel<uint8_t>(
 #endif
             InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA, LengthB);
 }
