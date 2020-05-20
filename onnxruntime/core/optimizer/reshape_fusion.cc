@@ -120,40 +120,39 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     return false;
   }
 
+  // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion. 
   std::vector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
-  // Used to keep the following nodes in the order of their potential removal.
-  enum class NodeType { Unsqueeze, Gather, Shape };
-  const Node* p_subgraph_start_node = nullptr;
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
     if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
       continue;
-    }    
+    }
     // Try to find path [Root] --> Shape --> Gather(indices=i) --> Unsqueeze (axes=0) --> Concat [input i]
     bool matched = ReshapeFusion::Fuse_Subgraph2(graph, root_input, concat, i, shape_value, logger);
     const Node* p_cur_node = graph_utils::GetInputNode(concat, i);
     if (matched) {
-      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, p_cur_node);
       shape_value.push_back(0);
-    } else if (p_subgraph_start_node == nullptr && p_cur_node != nullptr) {
-      // save current node as a candidate for finding a custom subgraph.
-      p_subgraph_start_node = p_cur_node;
+    } else if (p_cur_node != nullptr) {
+      // This node could lead to a potential subgraph pattern fusion. Mark the shape value to -1.
+      shape_value.push_back(-1);
     } else {
-      // Only one custom subgraph can be used to fuse, and each shape node should contain only one value of -1. 
       return false;
     }
+  }  
+
+  // Check how many -1 are there in shape_value.
+  int subgraph_cnt = 0;
+  for (auto it = shape_value.begin(); it < shape_value.end(); ++it) {
+    if ((*it) == -1) {
+      subgraph_cnt++;
+    }
   }
-  // if custom subgraph is needed for current fusion but -1 is already present in the current shape value,
-  // return false to exit current fusion.  
-  bool has_subgraph = (std::find(shape_value.begin(), shape_value.end(), -1) != shape_value.end());
-  if (p_subgraph_start_node != nullptr && has_subgraph) {
+  // If more than one "-1" value is present in shape_value, return false to exit current fusion.  
+  if (subgraph_cnt > 1) {
     return false;
-  } 
-  // Find and remove nodes in custom subgraph matching subgraph -> concat if -1 does not exist in shape_value
-  if (!has_subgraph && graph_utils::RemoveNodesWithOneOutputBottomUp(graph, p_subgraph_start_node)){
-    shape_value.push_back(-1);
   }
+
   // Create an initializer with the same name as the concat node output, and replace the concat node
   const auto& new_initializer_name = concat.OutputDefs()[0]->Name();
   if (!graph_utils::CanReplaceNodeWithInitializer(graph, concat, new_initializer_name, logger)) {
@@ -167,6 +166,15 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
   shape_initializer_proto.set_raw_data(shape_value.data(), shape_value.size() * sizeof(int64_t));
   auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
+
+  // Safely remove concat parent nodes which have only one output
+  for (int i = 0; i < concat_input_count; ++i) {
+    const Node* p_cur_node = graph_utils::GetInputNode(concat, i);
+    if (p_cur_node != nullptr) {
+      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, p_cur_node);
+    }
+  }
+
   if (!graph_utils::ReplaceNodeWithInitializer(graph, *graph.GetNode(concat.Index()), new_node_arg)) {
     return false;
   }
