@@ -7,6 +7,7 @@ namespace onnxruntime {
 
 /* A permutation [a,b,c,...] indicates that 
    - The 0-th dimension of the output corresponds to the a-th dimension of input
+   - The 0-th dimension of the output corresponds to the a-th dimension of input
    - The 1-st dimension of the output corresponds to the b-th dimension of input
    - The 2-nd dimension of the output corresponds to the c-th dimension of input
    etc.

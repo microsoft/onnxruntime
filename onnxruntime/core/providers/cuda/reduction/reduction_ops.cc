@@ -384,12 +384,12 @@ Status ReduceKernel<allow_multi_axes>::ComputeCore(const Tensor& input, PrepareR
   Tensor* Y = &output;
 
   int64_t input_count = prepare_reduce_metadata.input_count;
-  int64_t& output_count = prepare_reduce_metadata.output_count;
+  int64_t output_count = prepare_reduce_metadata.output_count;
   std::vector<int64_t>& output_dims = prepare_reduce_metadata.output_dims;
   std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
   std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
-  int64_t& rank = prepare_reduce_metadata.rank;
-  int64_t& stride = prepare_reduce_metadata.stride;
+  int64_t rank = prepare_reduce_metadata.rank;
+  int64_t stride = prepare_reduce_metadata.stride;
 
   // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
   // Therefore zeroing out the memory is required

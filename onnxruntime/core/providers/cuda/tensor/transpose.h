@@ -18,8 +18,10 @@ class Transpose final : public CudaKernel, public TransposeBase {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
+  // `input_shape_override` overrides the shape of `input` for compute purposes.
   static Status DoTranspose(const Transpose& transpose_kernel,
-                            const std::vector<size_t>& permutations, const Tensor& input, Tensor& output);
+                            const std::vector<size_t>& permutations,
+                            const Tensor& input, Tensor& output, const TensorShape* input_shape_override = nullptr);
 };
 
 }  // namespace cuda

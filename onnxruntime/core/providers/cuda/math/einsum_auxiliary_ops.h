@@ -7,19 +7,20 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/util/math.h"
-#include "core/providers/cpu/tensor/transpose.h"
+#include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 
 #include <vector>
 
 namespace onnxruntime {
 
+namespace cuda {
+
 namespace EinsumOp {
 
 // Thin wrapper over the Transpose op
 std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<size_t>& permutation, AllocatorPtr allocator);
+                                  const std::vector<size_t>& permutation, AllocatorPtr allocator, const OpKernelInfo& info);
 
 // Thin wrapper over the MatMul op
 // Not using the MatMulHelper to compute output dims as it adds a lot of checking overhead involving transposes of the inputs
@@ -45,5 +46,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
 
 }  // namespace EinsumOp
+
+}  // namespace cuda
 
 }  // namespace onnxruntime

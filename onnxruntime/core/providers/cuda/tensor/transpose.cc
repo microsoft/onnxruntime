@@ -64,8 +64,10 @@ Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Te
   return Status::OK();
 }
 
+//  `input_shape_override` overrides the shape of `input` for compute purposes.
 Status Transpose::DoTranspose(const Transpose& kernel,
-                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                              const TensorShape* input_shape_override) {
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
     return Status::OK();
@@ -88,7 +90,7 @@ Status Transpose::DoTranspose(const Transpose& kernel,
     }
   }
 
-  const std::vector<int64_t>& input_dims = input.Shape().GetDims();
+  const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
 
   auto rank = static_cast<int32_t>(input_dims.size());
