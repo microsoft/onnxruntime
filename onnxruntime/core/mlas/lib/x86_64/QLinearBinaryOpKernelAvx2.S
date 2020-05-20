@@ -41,8 +41,8 @@ Abstract:
 
 Macro Description:
 
-   This macro generates code to broadcast one (s/u)int8 to 8 x int32,
-   according to signed/unsigned.
+   This macro generates code to broadcast one (s/u)int8 to 8 x int32, according
+   to signed/unsigned.
 
 Arguments:
 
@@ -72,8 +72,8 @@ Arguments:
 
 Macro Description:
 
-   This macro generates code to unpack 8 x (s/u)int8 to 8 x int32,
-   according to signed/unsigned.
+   This macro generates code to unpack 8 x (s/u)int8 to 8 x int32, according to
+   signed/unsigned.
 
 Arguments:
 
@@ -93,13 +93,12 @@ Arguments:
 .endif
         .endm
 
-
 /*++
 
 Macro Description:
 
-   This macro generates code to set Target 32bits register with the
-   max value of signed/unsigned int8 specified by DataType.
+   This macro generates code to set Target 32bits register with the max value
+   of signed/unsigned int8 specified by DataType.
 
 Arguments:
 
@@ -117,13 +116,12 @@ Arguments:
 .endif
         .endm
 
-
 /*++
 
 Macro Description:
 
-   This macro generates code to set Target 32bits register with the
-   min value of signed/unsigned int8 specified by DataType.
+   This macro generates code to set Target 32bits register with the min value
+   of signed/unsigned int8 specified by DataType.
 
 Arguments:
 
@@ -141,13 +139,12 @@ Arguments:
 .endif
         .endm
 
-
 /*++
 
 Macro Description:
 
-   This macro generates code for function QLinearOpName()
-   on the specified signed/unsigned int8 DataType.
+   This macro generates code for function QLinearOpName() on the specified
+   signed/unsigned int8 DataType.
 
 Arguments:
 
@@ -165,8 +162,8 @@ Arguments:
 /*++
 Routine Description:
 
-    This routine implements the kernels for the Quantize Linear \OpName\()
-    for element type \DataType\(), vector on vector.
+    This routine implements the kernels for the Quantize Linear \OpName\() for
+    element type \DataType\(), vector on vector.
 
 Arguments:
 
@@ -235,8 +232,6 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         inc     rcx
         jmp     .LQLinear\OpName\()\DataType\()Avx2Process8LoopVectorOnVector
 
-
-# Entrance for Scalar On Vector
 .LQLinear\OpName\()\DataType\()Avx2Process8EntranceScalarOnVector:
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthB[rsp]
         test    rcx,rcx
@@ -277,8 +272,6 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         vpextrq rax,xmm9,0
         jmp     .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral
 
-
-# Entrance for Vector On Scalar
 .LQLinear\OpName\()\DataType\()Avx2Process8EntranceVectorOnScalar:
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthA[rsp]
         test    rcx,rcx
@@ -319,8 +312,6 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         vpextrq rax,xmm8,0
         jmp     .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral
 
-
-# Entrance and Loop for Vector On Vector
 .LQLinear\OpName\()\DataType\()Avx2Process8LoopVectorOnVector:
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
@@ -369,7 +360,6 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         ret
 
         .endm
-
 
 //
 // Generate the QLinearAdd Avx2 S8 kernel.
