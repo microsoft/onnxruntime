@@ -232,11 +232,11 @@ jobs:
       artifact: 'onnxruntime-java'
       publishLocation: 'pipeline'
 
-  - template templates/java-test-final-jar-step.yml
+  - template: templates/java-test-final-jar-step.yml
     parameters:
-      WindowsPool : 'Win-CPU-2019'
-      LinuxPool   : 'Linux-CPU'
-      version     : '$(OnnxRuntimeVersion)'
-      RunMacOs    : 'true'
+      WindowsPool: 'Win-CPU-2019'
+      LinuxPool: 'Linux-CPU'
+      version: '$(OnnxRuntimeVersion)'
+      RunMacOs: 'true'
       artifactName: 'onnxruntime-java'
 

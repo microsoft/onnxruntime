@@ -161,10 +161,10 @@ jobs:
       artifact: 'onnxruntime-java-gpu'
       publishLocation: 'pipeline'
 
-  - template templates/java-test-final-jar-step.yml
+  - template: templates/java-test-final-jar-step.yml
     parameters:
-      WindowsPool : 'Win-GPU-2019'
-      LinuxPool   : 'Linux-GPU-CUDA10'
-      version     : '$(OnnxRuntimeVersion)'
-      RunMacOs    : 'false'
+      WindowsPool: 'Win-GPU-2019'
+      LinuxPool: 'Linux-GPU-CUDA10'
+      version: '$(OnnxRuntimeVersion)'
+      RunMacOs: 'false'
       artifactName: 'onnxruntime-java-gpu'
