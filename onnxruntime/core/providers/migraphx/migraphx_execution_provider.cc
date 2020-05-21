@@ -577,14 +577,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (initializers.find(arg_depth->Name()) == initializers.end());    
   } else if (optype == "Pad") {
     const auto& args = node->InputDefs();
-    if (args.size() == 3)
-    {
-      const auto& val_arg = node->InputDefs()[2];
-      if (initializers.find(val_arg->Name()) == initializers.end()) {
-        return true;
-      }
-    }
-
+    // if pad size is not constant, migraphx cannot support
     if (args.size() >= 2)
     {
       const auto& shape_arg = node->InputDefs()[1];
@@ -596,11 +589,34 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const auto& attributes = node->GetAttributes();
     // Pad only support constant mode
     const auto mode_attr = attributes.find("mode");
+    std::string mode = "constant";
     if(mode_attr != attributes.end())
     {
-      const auto mode = mode_attr->second.s();
-      static const std::set<std::string> allowed_modes = {"constant"};
-      return allowed_modes.count(mode) == 0;
+      mode = mode_attr->second.s();
+    }
+    static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+    if (allowed_modes.count(mode) == 0)
+    {
+      return true;
+    }
+
+    // input value only applied to constant mode
+    if (mode == "constant")
+    {
+      if (args.size() == 3)
+      {
+        const auto& val_arg = node->InputDefs()[2];
+        if (initializers.find(val_arg->Name()) == initializers.end()) {
+          return true;
+        }
+      }
+    }
+  } else if (optype == "Range") {
+    const auto& args = node->InputDefs();
+    if (!std::all_of(args.begin(), args.end(), [&](auto arg) {
+      return (initializers.find(arg->Name()) != initializers.end());
+    })) {
+      return true;
     }
   } else if (optype == "Reshape") {
     const auto& args = node->InputDefs();
@@ -732,7 +748,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", 
       "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", 
       "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "OneHot", "Pad", "Pow", "PRelu", 
-      "RNN", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
+      "RNN","Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
       "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
       "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze"};
