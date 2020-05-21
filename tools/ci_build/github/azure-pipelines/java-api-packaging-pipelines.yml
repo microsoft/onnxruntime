@@ -305,7 +305,7 @@ jobs:
     displayName: 'Download Final Jar'
     inputs:
       buildType: 'current'
-      artifactName: '${{parameters.artifactName}}'
+      artifactName: 'onnxruntime-java'
       targetPath: '$(Build.BinariesDirectory)/final-jar'
 
   - task: CmdLine@2
