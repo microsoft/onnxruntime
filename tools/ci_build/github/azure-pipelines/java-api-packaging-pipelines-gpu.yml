@@ -161,10 +161,62 @@ jobs:
       artifact: 'onnxruntime-java-gpu'
       publishLocation: 'pipeline'
 
-  - template: templates/java-test-final-jar-step.yml
-    parameters:
-      WindowsPool: 'Win-GPU-2019'
-      LinuxPool: 'Linux-GPU-CUDA10'
-      version: '$(OnnxRuntimeVersion)'
-      RunMacOs: 'false'
+- job: Final_Jar_Testing_Windows
+  workspace:
+    clean: all
+  pool: 'Win-GPU-2019'
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+        buildType: 'current'
+        artifactName: 'onnxruntime-java-gpu'
+        targetPath: '$(Build.BinariesDirectory)\final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir test 
+        pushd test
+        jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
+        popd
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
+        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)\final-jar'
+
+- job: Final_Jar_Testing_Linux
+  workspace:
+    clean: all
+  pool: 'Linux-GPU-CUDA10'
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+      buildType: 'current'
       artifactName: 'onnxruntime-java-gpu'
+      targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        sudo apt-get install -y openjdk-8-jdk
+        sudo apt autoremove
+        PATH=/usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin:${PATH}
+        mkdir test
+        pushd test
+        jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+        popd
+        wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+        wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .;./test;./protobuf-java-3.9.2.jar;./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)/final-jar'
