@@ -1,4 +1,7 @@
 trigger: none
 
-stages:
-- template: test-pipeline-template.yml
+steps:
+- script: |
+    df
+    docker info
+    docker image ls
