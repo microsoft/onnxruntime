@@ -5,7 +5,6 @@ parameters:
   RunMacOs    : 'false'
   artifactName: ''
 
-jobs:
 - job: Test_Final_Jar_Linux
   timeoutInMinutes:  60
   pool: ${{parameters.LinuxPool}}
