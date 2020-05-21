@@ -1,0 +1,7 @@
+stages:
+- stage: test_stage
+  jobs:
+  - job: test_stage_job
+    steps:
+      - checkout: none
+      - script: env
