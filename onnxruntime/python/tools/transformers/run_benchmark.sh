@@ -82,7 +82,7 @@ if [ "$use_optimizer" = true ] ; then
 fi
 
 # -------------------------------------------
-run_on_test() {
+run_one_test() {
     if [ "$run_ort" = true ] ; then
       echo python $optimizer_script -m $1 $onnx_export_options $2 $3 >> benchmark.log
       echo python $optimizer_script -m $1 $benchmark_options $2 $3 -i $input_counts >> benchmark.log
@@ -112,7 +112,7 @@ if [ "$run_gpu_fp32" = true ] ; then
   for m in $models_to_test
   do
     echo Run GPU FP32 Benchmark on model ${m}
-    run_on_test "${m}" -g
+    run_one_test "${m}" -g
   done
 fi
 
@@ -120,7 +120,7 @@ if [ "$run_gpu_fp16" = true ] ; then
   for m in $models_to_test
   do
     echo Run GPU FP16 Benchmark on model ${m}
-    run_on_test "${m}" -g --fp16
+    run_one_test "${m}" -g --fp16
   done
 fi
 
@@ -128,7 +128,7 @@ if [ "$run_cpu" = true ] ; then
   for m in $models_to_test
   do
     echo Run CPU Benchmark on model ${m}
-    run_on_test "${m}" 
+    run_one_test "${m}" 
   done
 fi 
 
