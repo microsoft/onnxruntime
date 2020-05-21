@@ -43,6 +43,10 @@ if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
+if(onnxruntime_USE_VITISAI)
+  set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES vitisai)
+endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
@@ -411,6 +415,22 @@ if (onnxruntime_USE_NUPHAR)
   target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
   add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+endif()
+
+if (onnxruntime_USE_VITISAI)
+  file(GLOB_RECURSE onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
+  add_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_vitisai ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${VITISAI_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/vitisai  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_vitisai PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_USE_OPENVINO)

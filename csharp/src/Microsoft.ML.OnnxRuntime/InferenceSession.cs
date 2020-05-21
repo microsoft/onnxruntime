@@ -687,6 +687,33 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Ends profiling for the session. Returns the profile file name.
+        /// 
+        public string EndProfiling()
+        {
+            IntPtr nameHandle = IntPtr.Zero;
+            string str = null;
+
+            IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle, 
+                                                                  NativeMemoryAllocator.DefaultInstance.Handle,
+                                                                  out nameHandle);
+
+            try
+            {
+                NativeApiStatus.VerifySuccess(status);
+                str = Marshal.PtrToStringAnsi(nameHandle);
+            }
+            finally
+            {
+                if (nameHandle != IntPtr.Zero)
+                {
+                  NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                }
+            }
+
+            return str;
+        }
 
         //TODO: kept internal until implemented
         internal ModelMetadata ModelMetadata
