@@ -272,12 +272,12 @@ void
 MlasQLinearAddKernelHelper(
     const DataType* InputA,
     float ScaleA,
-    DataType ZeroPointA,
+    int32_t ZeroPointA,
     const DataType* InputB,
     float ScaleB,
-    DataType ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    DataType ZeroPointC,
+    int32_t ZeroPointC,
     DataType* OutputC,
     size_t N
     )
@@ -288,9 +288,9 @@ MlasQLinearAddKernelHelper(
     const auto ScaleVectorA = MlasBroadcastFloat32x4(ScaleA);
     const auto ScaleVectorB = MlasBroadcastFloat32x4(ScaleB);
     const auto ScaleVectorC = MlasBroadcastFloat32x4(ScaleC);
-    const auto ZeroPointVectorA = MlasBroadcastInt32x4((int32_t)ZeroPointA);
-    const auto ZeroPointVectorB = MlasBroadcastInt32x4((int32_t)ZeroPointB);
-    const auto ZeroPointVectorC = MlasBroadcastInt32x4((int32_t)ZeroPointC);
+    const auto ZeroPointVectorA = MlasBroadcastInt32x4(ZeroPointA);
+    const auto ZeroPointVectorB = MlasBroadcastInt32x4(ZeroPointB);
+    const auto ZeroPointVectorC = MlasBroadcastInt32x4(ZeroPointC);
     const auto MinimumValueVectorC = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPointC));
     const auto MaximumValueVectorC = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPointC));
 
@@ -370,12 +370,12 @@ MLASCALL
 MlasQLinearAddKernel(
     const DataType* InputA,
     float ScaleA,
-    DataType ZeroPointA,
+    int32_t ZeroPointA,
     const DataType* InputB,
     float ScaleB,
-    DataType ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    DataType ZeroPointC,
+    int32_t ZeroPointC,
     DataType* OutputC,
     size_t LengthA,
     size_t LengthB
@@ -456,12 +456,12 @@ void
 MlasQLinearAddKernelHelper(
     const DataType* InputA,
     float ScaleA,
-    DataType ZeroPointA,
+    int32_t ZeroPointA,
     const DataType* InputB,
     float ScaleB,
-    DataType ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    DataType ZeroPointC,
+    int32_t ZeroPointC,
     DataType* OutputC,
     size_t N,
     )
@@ -473,20 +473,20 @@ MlasQLinearAddKernelHelper(
     float ValueB;
 
     if (IsScalarA) {
-        ValueA = ScaleA * (int(InputA[0]) - int(ZeroPointA));
+        ValueA = ScaleA * (int32_t(InputA[0]) - ZeroPointA);
     }
     if (IsScalarB) {
-        ValueB = ScaleB * (int(InputB[n]) - int(ZeroPointB));
+        ValueB = ScaleB * (int32_t(InputB[n]) - ZeroPointB);
     }
 
     for (size_t n = 0; n < N; n++) {
         if (!IsScalarA) {
-            ValueA = ScaleA * (int(InputA[n]) - int(ZeroPointA));
+            ValueA = ScaleA * (int32_t(InputA[n]) - ZeroPointA);
         }
         if (!IsScalarB) {
-            ValueB = ScaleB * (int(InputB[n]) - int(ZeroPointB));
+            ValueB = ScaleB * (int32_t(InputB[n]) - ZeroPointB);
         }
-        int32_t IntValueC = (int32_t)std::nearbyintf((ValueA + ValueB) / ScaleC) + int32_t(ZeroPointC);
+        int32_t IntValueC = (int32_t)std::nearbyintf((ValueA + ValueB) / ScaleC) + ZeroPointC;
         IntValueC = std::max(IntValueC, MinimumValue);
         IntValueC = std::min(IntValueC, MaximumValue);
         OutputC[n] = (DataType)IntValueC;
@@ -499,12 +499,12 @@ MLASCALL
 MlasQLinearAddKernel(
     const DataType* InputA,
     float ScaleA,
-    DataType ZeroPointA,
+    int32_t ZeroPointA,
     const DataType* InputB,
     float ScaleB,
-    DataType ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    DataType ZeroPointC,
+    int32_t ZeroPointC,
     DataType* OutputC,
     size_t LengthA,
     size_t LengthB
@@ -696,12 +696,12 @@ MLASCALL
 MlasQLinearAddS8Kernel(
     const int8_t* InputA,
     float ScaleA,
-    int8_t ZeroPointA,
+    int32_t ZeroPointA,
     const int8_t* InputB,
     float ScaleB,
-    int8_t ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    int8_t ZeroPointC,
+    int32_t ZeroPointC,
     int8_t* OutputC,
     size_t LengthA,
     size_t LengthB
@@ -720,12 +720,12 @@ MLASCALL
 MlasQLinearAddU8Kernel(
     const uint8_t* InputA,
     float ScaleA,
-    uint8_t ZeroPointA,
+    int32_t ZeroPointA,
     const uint8_t* InputB,
     float ScaleB,
-    uint8_t ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    uint8_t ZeroPointC,
+    int32_t ZeroPointC,
     uint8_t* OutputC,
     size_t LengthA,
     size_t LengthB
@@ -745,16 +745,16 @@ MLASCALL
 MlasQLinearAdd<int8_t>(
     const int8_t* InputA,
     float ScaleA,
-    int8_t ZeroPointA,
+    int32_t ZeroPointA,
     const int8_t* InputB,
     float ScaleB,
-    int8_t ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    int8_t ZeroPointC,
+    int32_t ZeroPointC,
     int8_t* OutputC,
     size_t LengthA,
     size_t LengthB
-    ) 
+    )
 {
 #if defined(MLAS_TARGET_AMD64)
         MlasPlatform.QLinearAddS8Kernel(
@@ -770,12 +770,12 @@ MLASCALL
 MlasQLinearAdd<uint8_t>(
     const uint8_t* InputA,
     float ScaleA,
-    uint8_t ZeroPointA,
+    int32_t ZeroPointA,
     const uint8_t* InputB,
     float ScaleB,
-    uint8_t ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    uint8_t ZeroPointC,
+    int32_t ZeroPointC,
     uint8_t* OutputC,
     size_t LengthA,
     size_t LengthB

@@ -512,12 +512,12 @@ void
 (MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
     const int8_t* InputA,
     float ScaleA,
-    int8_t ZeroPointA,
+    int32_t ZeroPointA,
     const int8_t* InputB,
     float ScaleB,
-    int8_t ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    int8_t ZeroPointC,
+    int32_t ZeroPointC,
     int8_t* OutputC,
     size_t LengthA,
     size_t LengthB
@@ -530,12 +530,12 @@ void
 (MLASCALL MLAS_QLINEAR_BINARY_OP_U8_KERNEL)(
     const uint8_t* InputA,
     float ScaleA,
-    uint8_t ZeroPointA,
+    int32_t ZeroPointA,
     const uint8_t* InputB,
     float ScaleB,
-    uint8_t ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    uint8_t ZeroPointC,
+    int32_t ZeroPointC,
     uint8_t* OutputC,
     size_t LengthA,
     size_t LengthB

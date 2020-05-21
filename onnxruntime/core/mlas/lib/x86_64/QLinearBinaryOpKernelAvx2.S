@@ -35,109 +35,27 @@ Abstract:
         .equ    .LQLinearBinaryElementwiseFrame_LengthA, 8
         .equ    .LQLinearBinaryElementwiseFrame_LengthB, 16
 
+//
+// Define the some constants for U8/S8.
+//
+        .equ    .MaxValue_S8, 127
+        .equ    .MinValue_S8, -128
+        .equ    .MaxValue_U8, 255
+        .equ    .MinValue_U8, 0
+
+//
+// Define the some instruction alias for U8/S8.
+//
+
+#define TYPED_INSTRUCTION_ALIAS(TypedAlias, InstruncionName) \
+        .macro TypedAlias Operand:vararg; InstruncionName \Operand\(); .endm;
+
+TYPED_INSTRUCTION_ALIAS(ExtendBits_S8, movsx)
+TYPED_INSTRUCTION_ALIAS(ExtendBits_U8, movzx)
+TYPED_INSTRUCTION_ALIAS(UnpackBytesDWords_S8, vpmovsxbd)
+TYPED_INSTRUCTION_ALIAS(UnpackBytesDWords_U8, vpmovzxbd)
+
         .text
-
-/*++
-
-Macro Description:
-
-   This macro generates code to broadcast one (s/u)int8 to 8 x int32, according
-   to signed/unsigned.
-
-Arguments:
-
-   TargetYmm - target ymm register.
-
-   TargetXmm - intermediate xmm register.
-
-   TargetReg32 - intermediate 32bits register.
-
-   Source - Supplies address of 8bits integer.
-
-   DataType - S8 or U8
-
---*/
-
-        .macro BroadcastByteDWords TargetYmm, TargetXmm, TargetReg32, Source, DataType
-.ifeqs "\DataType\()","S8"
-        movsx   \TargetReg32\(),BYTE PTR \Source\()
-.else
-        movzx   \TargetReg32\(),BYTE PTR \Source\()
-.endif
-        vmovd    \TargetXmm\(),\TargetReg32\()
-        vpbroadcastd \TargetYmm\(),\TargetXmm\()
-        .endm
-
-/*++
-
-Macro Description:
-
-   This macro generates code to unpack 8 x (s/u)int8 to 8 x int32, according to
-   signed/unsigned.
-
-Arguments:
-
-   Source - Supplies address of 8 x 8bits integers.
-
-   Target - target ymm register.
-
-   DataType - S8 or U8
-
---*/
-
-        .macro UnpackBytesDWords Target, Source, DataType
-.ifeqs "\DataType\()","S8"
-        vpmovsxbd \Target\(),\Source\()
-.else
-        vpmovzxbd \Target\(),\Source\()
-.endif
-        .endm
-
-/*++
-
-Macro Description:
-
-   This macro generates code to set Target 32bits register with the max value
-   of signed/unsigned int8 specified by DataType.
-
-Arguments:
-
-   Target - target 32bits register.
-
-   DataType - S8 or U8.
-
---*/
-
-        .macro SetMax8BitsValue Target, DataType
-.ifeqs "\DataType\()","S8"
-        mov     \Target\(),DWORD PTR 127
-.else
-        mov     \Target\(),DWORD PTR 255
-.endif
-        .endm
-
-/*++
-
-Macro Description:
-
-   This macro generates code to set Target 32bits register with the min value
-   of signed/unsigned int8 specified by DataType.
-
-Arguments:
-
-   Target - target 32bits register.
-
-   DataType - S8 or U8.
-
---*/
-
-        .macro SetMin8BitsValue Target, DataType
-.ifeqs "\DataType\()","S8"
-        mov     \Target\(),DWORD PTR -128
-.else
-        mov     \Target\(),DWORD PTR 0
-.endif
-        .endm
 
 /*++
 
@@ -187,7 +105,7 @@ Arguments:
 
     LengthA - Supplies the number of elements of InputA.
 
-    LengthB - Supplies the number of elements of InputB. 
+    LengthB - Supplies the number of elements of InputB.
               LengthB == LengthA or LengthA == 1 or LengthB == 1
 
 Return Value:
@@ -199,28 +117,32 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         vbroadcastss ymm0,xmm0                  # Vector of ScaleA
         vbroadcastss ymm1,xmm1                  # Vector of ScaleB
         vbroadcastss ymm2,xmm2                  # Vector of ScaleC
-        movq    xmm3,rsi                        # ZeroPointA, lower 32bits are zero/sign extended already.
-        movq    xmm4,rcx                        # ZeroPointB, lower 32bits are zero/sign extended already.
-        movq    xmm5,r8                         # ZeroPointC, lower 32bits are zero/sign extended already.
-        vbroadcastss ymm3,xmm3                  # Vector of ZeroPointA
-        vbroadcastss ymm4,xmm4                  # Vector of ZeroPointB
-        vbroadcastss ymm5,xmm5                  # Vector of ZeroPointC
+        vmovd   xmm3,esi                        # ZeroPointA.
+        vmovd   xmm4,ecx                        # ZeroPointB.
+        vmovd   xmm5,r8d                        # ZeroPointC.
+        vpbroadcastd ymm3,xmm3                  # Vector of ZeroPointA
+        vpbroadcastd ymm4,xmm4                  # Vector of ZeroPointB
+        vpbroadcastd ymm5,xmm5                  # Vector of ZeroPointC
 
-        lea     r8,C_UNDERSCORE(MlasPackBytesMM256VpshufbControl)[rip]
-        vmovaps ymm10,[r8]
-        lea     rsi,C_UNDERSCORE(MlasPackBytesMM256VpermpsControl)[rip]
-        vmovaps ymm11,[rsi]
+        vmovaps ymm10,YMMWORD PTR C_UNDERSCORE(MlasPackBytesMM256VpshufbControl)[rip]
+        vmovaps ymm11,YMMWORD PTR C_UNDERSCORE(MlasPackBytesMM256VpermpsControl)[rip]
 
-        SetMax8BitsValue r8d,\DataType\()
+        mov     r8d,.MaxValue_\DataType
         vmovd   xmm6,r8d
-        vbroadcastss ymm6,xmm6
-        vpsubd  ymm6,ymm6,ymm5
+        vpbroadcastd ymm6,xmm6                  # Max U8/S8 Int Value Vector
 
-        SetMin8BitsValue esi,\DataType\()
+.ifeq .MinValue_\DataType
+        vxorps  ymm7,ymm7,ymm7                  # Min U8 Int Value Vector
+.else
+        mov     esi,.MinValue_\DataType
         vmovd   xmm7,esi
-        vbroadcastss ymm7,xmm7
+        vpbroadcastd ymm7,xmm7                  # Min S8 Int Value Vector
+.endif
+
+        vpsubd  ymm6,ymm6,ymm5
         vpsubd  ymm7,ymm7,ymm5
-        mov     rax,QWORD PTR 8
+        vcvtdq2ps ymm6,ymm6                     # Float Max Value Vector
+        vcvtdq2ps ymm7,ymm7                     # Float Min Value Vector
 
         # goto different loop according to broading cast semantic
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthA[rsp]
@@ -236,39 +158,41 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthB[rsp]
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
-        BroadcastByteDWords ymm8,xmm8,edi,[rdi],\DataType\() # S8/U8 ValueA to int32 vector
-        vpsubd  ymm8,ymm8,ymm3                  # - Zero PointA
+        ExtendBits_\DataType eax,BYTE PTR [rdi] # ScalarValueA
+        vmovd   xmm8,eax
+        vpbroadcastd ymm8,xmm8                  # IntVectorA
+        vpsubd  ymm8,ymm8,ymm3                  # - ZeroPointA
         vcvtdq2ps ymm8,ymm8                     # FloatVectorA
         vmulps  ymm8,ymm8,ymm0                  # * ScaleA
 
 .LQLinear\OpName\()\DataType\()Avx2Process8LoopScalarOnVector:
-        UnpackBytesDWords ymm9,[rdx],\DataType\()
-        vpsubd  ymm9,ymm9,ymm4                  # - Zero PointB
+        UnpackBytesDWords_\DataType ymm9,[rdx]  # IntVectorB
+        vpsubd  ymm9,ymm9,ymm4                  # - ZeroPointB
         vcvtdq2ps ymm9,ymm9                     # FloatVectorB
         vmulps  ymm9,ymm9,ymm1                  # * ScaleB
 
         \OpInstruction  ymm9,ymm8,ymm9          # \OpName\() two float values
 
         vdivps  ymm9,ymm9,ymm2                  # Quantize 8 values, / ScaleC
-        add     rdx,rax                         # out-of-order instruction(s)
-        sub     rcx,rax                         # out-of-order instruction(s)
+        add     rdx,8                           # out-of-order instruction(s)
+        sub     rcx,8                           # out-of-order instruction(s), set flag for below jb
+        vminps  ymm9,ymm9,ymm6
+        vmaxps  ymm9,ymm9,ymm7
         vcvtps2dq ymm9,ymm9                     # nearbyintf()
-        vpmaxsd ymm9,ymm9,ymm7
-        vpminsd ymm9,ymm9,ymm6
         vpaddd  ymm9,ymm9,ymm5                  # + ZeroPointC
         vpshufb ymm9,ymm9,ymm10                 # pack 32bits integers into 8bit integers
         vpermps ymm9,ymm11,ymm9
 
-        jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8ScalarOnVector  # flag by out-of-order instruction(s) -- sub rcx,rax
+        jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8ScalarOnVector
 
         vmovq   QWORD PTR [r9],xmm9
-        add     r9,rax
+        add     r9,8
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
         jmp     .LQLinear\OpName\()\DataType\()Avx2Process8LoopScalarOnVector
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8ScalarOnVector:
-        add     rcx,rax
+        add     rcx,8
         vpextrq rax,xmm9,0
         jmp     .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral
 
@@ -276,39 +200,41 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         mov     rcx,.LQLinearBinaryElementwiseFrame_LengthA[rsp]
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
-        BroadcastByteDWords ymm9,xmm9,edx,[rdx],\DataType\() # S8/U8 ValueB to int32 vector
-        vpsubd  ymm9,ymm9,ymm4                  # - Zero PointB
+        ExtendBits_\DataType eax,BYTE PTR [rdx] # ScalarValueB
+        vmovd   xmm9,eax
+        vpbroadcastd ymm9,xmm9                  # IntVectorB
+        vpsubd  ymm9,ymm9,ymm4                  # - ZeroPointB
         vcvtdq2ps ymm9,ymm9                     # FloatVectorB
         vmulps  ymm9,ymm9,ymm1                  # * ScaleB
 
 .LQLinear\OpName\()\DataType\()Avx2Process8LoopVectorOnScalar:
-        UnpackBytesDWords ymm8,[rdi],\DataType\() # int32 VectorA
-        vpsubd  ymm8,ymm8,ymm3                  # - Zero PointA
+        UnpackBytesDWords_\DataType ymm8,[rdi]  # IntVectorA
+        vpsubd  ymm8,ymm8,ymm3                  # - ZeroPointA
         vcvtdq2ps ymm8,ymm8                     # FloatVectorA
         vmulps  ymm8,ymm8,ymm0                  # * ScaleA
 
         \OpInstruction  ymm8,ymm8,ymm9          # \OpName\() two float values
 
         vdivps  ymm8,ymm8,ymm2                  # Quantize 8 values, / ScaleC
-        add     rdi,rax                         # out-of-order instruction(s)
-        sub     rcx,rax                         # out-of-order instruction(s)
+        add     rdi,8                           # out-of-order instruction(s)
+        sub     rcx,8                           # out-of-order instruction(s), set flag for below jb
+        vminps  ymm8,ymm8,ymm6
+        vmaxps  ymm8,ymm8,ymm7
         vcvtps2dq ymm8,ymm8                     # nearbyintf()
-        vpmaxsd ymm8,ymm8,ymm7
-        vpminsd ymm8,ymm8,ymm6
         vpaddd  ymm8,ymm8,ymm5                  # + ZeroPointC
         vpshufb ymm8,ymm8,ymm10                 # pack 32bits integers into 8bit integers
         vpermps ymm8,ymm11,ymm8
 
-        jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnScalar # flag by out-of-order instruction(s) -- sub rcx,rax
+        jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnScalar
 
         vmovq   QWORD PTR [r9],xmm8
-        add     r9,rax
+        add     r9,8
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
         jmp     .LQLinear\OpName\()\DataType\()Avx2Process8LoopVectorOnScalar
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnScalar:
-        add     rcx,rax
+        add     rcx,8
         vpextrq rax,xmm8,0
         jmp     .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral
 
@@ -316,10 +242,10 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         test    rcx,rcx
         jz      .LQLinear\OpName\()\DataType\()Avx2Exit
 
-        UnpackBytesDWords ymm8,[rdi],\DataType\() # int32 VectorA
-        UnpackBytesDWords ymm9,[rdx],\DataType\() # int32 VectorB
-        vpsubd  ymm8,ymm8,ymm3                  # - Zero PointA
-        vpsubd  ymm9,ymm9,ymm4                  # - Zero PointB
+        UnpackBytesDWords_\DataType ymm8,[rdi]  # IntVectorA
+        UnpackBytesDWords_\DataType ymm9,[rdx]  # IntVectorB
+        vpsubd  ymm8,ymm8,ymm3                  # - ZeroPointA
+        vpsubd  ymm9,ymm9,ymm4                  # - ZeroPointB
         vcvtdq2ps ymm8,ymm8                     # FloatVectorA
         vcvtdq2ps ymm9,ymm9                     # FloatVectorB
         vmulps  ymm8,ymm8,ymm0                  # * ScaleA
@@ -328,24 +254,24 @@ C_UNDERSCORE(MlasQLinear\OpName\()\DataType\()KernelAvx2):
         \OpInstruction  ymm8,ymm8,ymm9          # \OpName\() two float values
 
         vdivps  ymm8,ymm8,ymm2                  # Quantize 8 values, / ScaleC
-        add     rdi,rax                         # out-of-order instruction(s)
-        add     rdx,rax                         # out-of-order instruction(s)
-        sub     rcx,rax                         # out-of-order instruction(s)
+        add     rdi,8                           # out-of-order instruction(s)
+        add     rdx,8                           # out-of-order instruction(s)
+        sub     rcx,8                           # out-of-order instruction(s), set flag for below jb
+        vminps  ymm8,ymm8,ymm6                  # When NaN in first vector, return value in second vector
+        vmaxps  ymm8,ymm8,ymm7
         vcvtps2dq ymm8,ymm8                     # nearbyintf()
-        vpmaxsd ymm8,ymm8,ymm7
-        vpminsd ymm8,ymm8,ymm6
         vpaddd  ymm8,ymm8,ymm5                  # + ZeroPointC
         vpshufb ymm8,ymm8,ymm10                 # pack 32bits integers into 8bit integers
         vpermps ymm8,ymm11,ymm8
 
-        jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnVector # flag by out-of-order instruction(s) -- sub rcx,rax
+        jb      .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnVector
 
         vmovq   QWORD PTR [r9],xmm8
-        add     r9,rax
+        add     r9,8
         jmp     .LQLinear\OpName\()\DataType\()Avx2Process8LoopVectorOnVector
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLessThan8VectorOnVector:
-        add     rcx,rax
+        add     rcx,8
         vpextrq rax,xmm8,0
 
 .LQLinear\OpName\()\DataType\()Avx2StoreLoopGeneral:

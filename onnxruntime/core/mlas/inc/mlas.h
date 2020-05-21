@@ -471,12 +471,12 @@ MLASCALL
 MlasQLinearAdd(
     const DataType* InputA,
     float ScaleA,
-    DataType ZeroPointA,
+    int32_t ZeroPointA,
     const DataType* InputB,
     float ScaleB,
-    DataType ZeroPointB,
+    int32_t ZeroPointB,
     float ScaleC,
-    DataType ZeroPointC,
+    int32_t ZeroPointC,
     DataType* OutputC,
     size_t LengthA,
     size_t LengthB
