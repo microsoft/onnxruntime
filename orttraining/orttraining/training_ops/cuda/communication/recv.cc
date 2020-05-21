@@ -37,7 +37,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const int src = static_cast<int>(*remote_rank);
 
 #ifndef NDEBUG
-  profile::NvtxRangeCreator preRange(
+  profile::NvtxNestedRangeCreator preRange(
     "PreRecv-" + std::to_string(src), profile::Green);
   preRange.Begin();
 #endif
@@ -80,7 +80,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
 #ifndef NDEBUG
-  profile::NvtxRangeCreator recvRange(
+  profile::NvtxNestedRangeCreator recvRange(
     "Recv-" + std::to_string(src), profile::Green);
   recvRange.Begin();
 #endif
@@ -119,7 +119,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
 #ifndef NDEBUG
-  profile::NvtxRangeCreator postRange(
+  profile::NvtxNestedRangeCreator postRange(
     "PostRecv-" + std::to_string(src), profile::Green);
   postRange.Begin();
 #endif
