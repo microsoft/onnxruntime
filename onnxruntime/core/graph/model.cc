@@ -233,27 +233,6 @@ ModelProto Model::ToProto() {
   return model_proto_;
 }
 
-Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
-  if (!model_istream.good()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid istream object.");
-  }
-  if (!p_model_proto) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
-  }
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-  if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
-  }
-  return Status::OK();
-}
-
-Status Model::Load(const ModelProto& model_proto,
-                   std::shared_ptr<Model>& model,
-                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger) {
-  return Model::Load(model_proto, PathString{}, model, local_registries, logger);
-}
 
 Status Model::Load(const ModelProto& model_proto,
                    const PathString& model_path,
@@ -281,13 +260,6 @@ Status Model::Load(const ModelProto& model_proto,
 }
 
 Status Model::Load(ModelProto&& model_proto,
-                   std::shared_ptr<Model>& model,
-                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger) {
-  return Model::Load(std::move(model_proto), PathString{}, model, local_registries, logger);
-}
-
-Status Model::Load(ModelProto&& model_proto,
                    const PathString& model_path,
                    std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -312,45 +284,19 @@ Status Model::Load(ModelProto&& model_proto,
   return Status::OK();
 }
 
-template <typename T, typename Loader>
-static Status LoadModelHelper(const T& file_path, Loader loader) {
-  int fd;
-  Status status = Env::Default().FileOpenRd(file_path, fd);
-  if (!status.IsOK()) {
-    if (status.Category() == common::SYSTEM) {
-      switch (status.Code()) {
-        case ENOENT:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
-                                 " failed. File doesn't exist");
-        case EINVAL:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
-      }
-    }
-  }
-  try {
-    status = loader(fd);
-  } catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
-  }
-  if (!status.IsOK()) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return status;
-  }
-  return Env::Default().FileClose(fd);
-}
-
 template <typename T>
 static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
-  const auto loader = [&model_proto](int fd) {
-    return Model::Load(fd, model_proto);
-  };
+  std::ifstream model_istream(file_path, std::ios::in | std::ios::binary);
+  if (!model_istream) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+                           " failed. File doesn't exist");
+  }
+  const bool result = model_proto.ParseFromIstream(&model_istream) && model_istream.eof();
+  if (!result) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
+  }
 
-  return LoadModelHelper(file_path, loader);
+  return Status::OK();
 }
 
 template <typename T>

@@ -152,7 +152,7 @@ TEST_F(GraphTest, SimpleAddWithoutDomain) {
   ImportOpset(m, "", 10);
   ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddDefaultDomain) {
@@ -161,7 +161,7 @@ TEST_F(GraphTest, SimpleAddDefaultDomain) {
   ImportOpset(m, "", 10);
   ConstructASimpleAddGraph(*m.mutable_graph(), "");
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddFutureOpSet) {
@@ -171,7 +171,7 @@ TEST_F(GraphTest, SimpleAddFutureOpSet) {
   ConstructASimpleAddGraph(*m.mutable_graph(), "ai.onnx");
   std::shared_ptr<Model> model;
   Status st;
-  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+  ASSERT_FALSE((st = Model::Load(std::move(m),{},  model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, SimpleAddONNXDomain) {
@@ -180,7 +180,7 @@ TEST_F(GraphTest, SimpleAddONNXDomain) {
   ImportOpset(m, "", 10);
   ConstructASimpleAddGraph(*m.mutable_graph(), "ai.onnx");
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddONNXDomain2) {
@@ -189,7 +189,7 @@ TEST_F(GraphTest, SimpleAddONNXDomain2) {
   ImportOpset(m, "ai.onnx", 10);
   ConstructASimpleAddGraph(*m.mutable_graph(), "ai.onnx");
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
 }
 
 TEST_F(GraphTest, SimpleAddWrongDomain) {
@@ -199,7 +199,7 @@ TEST_F(GraphTest, SimpleAddWrongDomain) {
   ConstructASimpleAddGraph(*m.mutable_graph(), "AAAA");
   std::shared_ptr<Model> model;
   Status st;
-  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+  ASSERT_FALSE((st = Model::Load(std::move(m),{},  model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, SimpleAddWrongDomain2) {
@@ -209,7 +209,7 @@ TEST_F(GraphTest, SimpleAddWrongDomain2) {
   ConstructASimpleAddGraph(*m.mutable_graph(), "AAAA");
   std::shared_ptr<Model> model;
   Status st;
-  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+  ASSERT_FALSE((st = Model::Load(std::move(m),{},  model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, SimpleUnique) {
@@ -229,7 +229,7 @@ TEST_F(GraphTest, SimpleUnique) {
   output->set_name("sum");
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
 }
   
 TEST_F(GraphTest, UnusedValueInfoSerializes) {
@@ -252,7 +252,7 @@ TEST_F(GraphTest, UnusedValueInfoSerializes) {
   unused->set_name("unused");
   SetTypeAndShape(unused->mutable_type()->mutable_tensor_type(), 1, {123});
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
   model->MainGraph().SetGraphProtoSyncNeeded();
   EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
 }
@@ -276,7 +276,7 @@ TEST_F(GraphTest, WrongOpset) {
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
   std::shared_ptr<Model> model;
   Status st;
-  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+  ASSERT_FALSE((st = Model::Load(std::move(m),{},  model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, ExtraInput) {
@@ -299,7 +299,7 @@ TEST_F(GraphTest, ExtraInput) {
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
   std::shared_ptr<Model> model;
   Status st;
-  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+  ASSERT_FALSE((st = Model::Load(std::move(m),{},  model, nullptr, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, LocalCustomRegistry) {
@@ -325,7 +325,7 @@ TEST_F(GraphTest, LocalCustomRegistry) {
   std::shared_ptr<Model> model;
   Status st;
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
-  ASSERT_STATUS_OK(Model::Load(std::move(m), model, &regs, *logger_));
+  ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, &regs, *logger_));
 }
 
 TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
@@ -352,7 +352,7 @@ TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
   std::shared_ptr<Model> model;
   Status st;
   std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
-  ASSERT_FALSE((st = Model::Load(std::move(m), model, &regs, *logger_)).IsOK());
+  ASSERT_FALSE((st = Model::Load(std::move(m),{},  model, &regs, *logger_)).IsOK());
 }
 
 TEST_F(GraphTest, ReverseDFS) {
@@ -770,7 +770,7 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, *logger_);
+  auto x = onnxruntime::Model::Load(model_proto, {}, p_tmp_model, nullptr, *logger_);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -823,7 +823,7 @@ TEST_F(GraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, *logger_);
+  auto x = onnxruntime::Model::Load(model_proto, {}, p_tmp_model, nullptr, *logger_);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -1122,7 +1122,7 @@ TEST_F(GraphTest, NonConstInitializer) {
   ASSERT_TRUE(model.ToProto().SerializeToString(&s1));
   ASSERT_TRUE(model_proto.ParseFromString(s1));
 
-  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr, *logger_);
+  auto status = onnxruntime::Model::Load(model_proto, {}, p_model, nullptr, *logger_);
   ASSERT_TRUE(status.IsOK()) << status;
 
   auto& graph2 = p_model->MainGraph();
@@ -1301,7 +1301,7 @@ TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
     m.set_ir_version(4);
     ImportOpset(m, "", 10);
     ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
-    ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+    ASSERT_STATUS_OK(Model::Load(std::move(m),{},  model, nullptr, *logger_));
   }
 
   // starting from:

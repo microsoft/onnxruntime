@@ -133,23 +133,13 @@ TEST_P(ONNXModelsTest1, LoadFromFile) {
 }
 
 TEST_P(ONNXModelsTest1, LoadFromProtobuf) {
-  using ::google::protobuf::io::CodedInputStream;
-  using ::google::protobuf::io::FileInputStream;
-  using ::google::protobuf::io::ZeroCopyInputStream;
-  int fd;
-  ASSERT_STATUS_OK(Env::Default().FileOpenRd(GetModelFileName(), fd));
-  ASSERT_TRUE(fd > 0);
-  std::unique_ptr<ZeroCopyInputStream> raw_input(new FileInputStream(fd));
-  std::unique_ptr<CodedInputStream> coded_input(new CodedInputStream(raw_input.get()));
-  coded_input->SetTotalBytesLimit(INT_MAX);
+  std::ifstream model_istream(GetModelFileName(), std::ios::in | std::ios::binary);  
   ModelProto model_proto;
-  bool result = model_proto.ParseFromCodedStream(coded_input.get());
-  coded_input.reset();
-  raw_input.reset();
-  ASSERT_TRUE(result);
-  ASSERT_STATUS_OK(Env::Default().FileClose(fd));
+  bool result = model_proto.ParseFromIstream(&model_istream);  
+  ASSERT_TRUE(result);  
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr,
+  ASSERT_STATUS_OK(Model::Load(
+      std::move(model_proto), {}, model, nullptr,
                                *logger_));
   TestResolve(model->MainGraph());
 }

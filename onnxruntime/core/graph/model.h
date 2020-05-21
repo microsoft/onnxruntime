@@ -123,8 +123,6 @@ class Model {
 
   static common::Status Save(Model& model, int fd);
 
-  static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
-
   static common::Status Load(const PathString& file_path,
                              /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
@@ -136,6 +134,7 @@ class Model {
 
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
+  //Deprecated. Please use the next one.
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
@@ -151,6 +150,7 @@ class Model {
                                       /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
+  //Deprecated. Please use the next one.
   static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                       const logging::Logger& logger);
@@ -161,18 +161,9 @@ class Model {
                                       /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                       const logging::Logger& logger);
-
-  static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
-
+  //Deprecated. Please use the next one.
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto,
                              const PathString& model_path,
-                             /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
-
-  static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
