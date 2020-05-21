@@ -26,13 +26,13 @@ enum EventColor : uint32_t {
 
 class RangeCreatorBase {
  public:
-  RangeCreatorBase(const std::string message, uint32_t color)
+  RangeCreatorBase(const std::string message, const uint32_t color)
       : message_(message), color_(color),
         is_begin_called_(false), is_end_called_(false) {};
 
   // Check if Begin and End are both called.
   // It's pointless if not all of them are called.
-  virtual ~RangeCreatorBase() {
+  ~RangeCreatorBase() {
     if (!is_begin_called_) {
       throw std::runtime_error("Begin must be called once.");
     }
