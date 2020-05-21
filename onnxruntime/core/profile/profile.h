@@ -82,6 +82,13 @@ class RangeCreatorBase {
   virtual void EndImpl() = 0;
 
  protected:
+  void Show() {
+    std::cout << "Range message: " << message_
+              << ", color: " << color_
+              << ", is_begin_called: " << is_begin_called_
+              << ", is_end_called: " << is_end_called_ << std::endl;
+  }
+
   // Text on this event.
   const std::string message_;
 
