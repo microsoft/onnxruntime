@@ -3,9 +3,11 @@
 
 #pragma once
 
-#include <string>
 #include <cinttypes>
+#include <cstdlib>
+#include <iostream>
 #include <stdexcept>
+#include <string>
 
 namespace onnxruntime {
 namespace profile {
@@ -34,10 +36,12 @@ class RangeCreatorBase {
   // It's pointless if not all of them are called.
   ~RangeCreatorBase() {
     if (!is_begin_called_) {
-      throw std::runtime_error("Begin must be called once.");
+      std::cerr << "Begin must be called once." << std::endl;
+      std::exit(-1);
     }
     if (!is_end_called_) {
-      throw std::runtime_error("End must be called once.");
+      std::cerr << "End must be called once." << std::endl;
+      std::exit(-1);
     }
   }
 
