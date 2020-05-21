@@ -1,4 +1,4 @@
-# Run benchmark for measurement
+# This measures the performance of OnnxRuntime, PyTorch and TorchScript on transformer models.
 # Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
 # GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
 # CPU:   conda install pytorch torchvision cpuonly -c pytorch
@@ -9,7 +9,7 @@
 run_cli=true
 
 # only need once
-run_install=false
+run_install=true
 
 # Engines to test.
 run_ort=true
@@ -34,6 +34,11 @@ use_optimizer=true
 batch_sizes="1 4"
 sequence_lengths="8 16 32 64 128 256 512 1024"
 
+# Number of inputs (input_ids, token_type_ids, attention_mask) for ONNX model.
+# Not that different input count might lead to different performance
+# Here we only test one input (input_ids) for fair comparison with PyTorch.
+input_counts=1
+
 # Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 models_to_test="bert-base-cased roberta-base gpt2"
 
@@ -41,17 +46,21 @@ models_to_test="bert-base-cased roberta-base gpt2"
 # export CUDA_VISIBLE_DEVICES=1
 
 #This script will generate a logs file with a list of commands used in tests.
-set log_file=benchmark.log
-echo echo ort=$run_ort torch=$run_torch torchscript=$run_torchscript gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test >> $log_file
+echo echo "ort=$run_ort torch=$run_torch torchscript=$run_torchscript gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
 
 #Set it to false to skip testing. You can use it to dry run this script with the log file.
 run_tests=true
+
 # -------------------------------------------
+
 if [ "$run_install" = true ] ; then
+  pip uninstall --yes ort_nightly
+  pip uninstall --yes onnxruntime
+  pip uninstall --yes onnxruntime-gpu
   if [ "$run_cpu" = true ] ; then
-    pip install --upgrade onnxruntime
+    pip install onnxruntime
   else
-    pip install --upgrade onnxruntime-gpu
+    pip install onnxruntime-gpu
   fi
   pip install --upgrade onnxruntime-tools
   pip install --upgrade git+https://github.com/huggingface/transformers
@@ -64,8 +73,8 @@ else
   optimizer_script="benchmark.py"
 fi
 
-onnx_export_options="-v -b 0 --overwrite -f fusion.csv"
-benchmark_options="-b $batch_sizes -s sequence_lengths -t $average_over -f fusion.csv -r result.csv -d detail.csv"
+onnx_export_options="-i $input_counts -v -b 0 --overwrite -f fusion.csv"
+benchmark_options="-b $batch_sizes -s $sequence_lengths -t $average_over -f fusion.csv -r result.csv -d detail.csv"
 
 if [ "$use_optimizer" = true ] ; then
   onnx_export_options="$onnx_export_options -o"
@@ -75,24 +84,24 @@ fi
 # -------------------------------------------
 run_on_test() {
     if [ "$run_ort" = true ] ; then
-      echo python $optimizer_script -m $1 $onnx_export_options $2 $3 >> $log_file
-      echo python $optimizer_script -m $1 $benchmark_options $2 $3 >> $log_file
-      if [ "run_tests" = true ] ; then
+      echo python $optimizer_script -m $1 $onnx_export_options $2 $3 >> benchmark.log
+      echo python $optimizer_script -m $1 $benchmark_options $2 $3 -i $input_counts >> benchmark.log
+      if [ "$run_tests" = true ] ; then
         python $optimizer_script -m $1 $onnx_export_options $2 $3
-        python $optimizer_script -m $1 $benchmark_options $2 $3
+        python $optimizer_script -m $1 $benchmark_options $2 $3 -i $input_counts
       fi
     fi
 
     if [ "$run_torch" = true ] ; then
-      echo python $optimizer_script -e torch -m $1 $benchmark_options $2 $3 >> $log_file
-      if [ "run_tests" = true ] ; then
+      echo python $optimizer_script -e torch -m $1 $benchmark_options $2 $3 >> benchmark.log
+      if [ "$run_tests" = true ] ; then
         python $optimizer_script -e torch -m $1 $benchmark_options $2 $3
       fi
     fi
 
     if [ "$run_torchscript" = true ] ; then
-      echo python $optimizer_script -e torchscript -m $1 $benchmark_options $2 $3 >> $log_file
-      if [ "run_tests" = true ] ; then
+      echo python $optimizer_script -e torchscript -m $1 $benchmark_options $2 $3 >> benchmark.log
+      if [ "$run_tests" = true ] ; then
         python $optimizer_script -e torchscript -m $1 $benchmark_options $2 $3
       fi
     fi
@@ -123,7 +132,9 @@ if [ "$run_cpu" = true ] ; then
   done
 fi 
 
-echo log file: $log_file
+if [ "run_tests" = false ] ; then
+    more $log_file
+fi
 
 # Remove duplicated lines
 awk '!x[$0]++' ./result.csv > summary_result.csv
