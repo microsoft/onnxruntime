@@ -149,8 +149,7 @@ jobs:
     inputs:
       script: |
         pushd onnxruntime-java-linux-x64-gpu
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar .
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
       displayName: 'Create final GPU Jar'

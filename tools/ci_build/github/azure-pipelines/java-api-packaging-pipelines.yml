@@ -213,14 +213,10 @@ jobs:
     inputs:
       script: |
         pushd onnxruntime-java-linux-x64
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar .
         popd
         pushd onnxruntime-java-osx-x64
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dlib
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.dylib.dSYM
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dylib.dSYM
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar .
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
