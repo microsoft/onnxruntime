@@ -1,8 +1,8 @@
 parameters:
-  WindowsPool : 'Win-CPU-2019'
-  LinuxPool   : 'Linux-CPU'
-  version     : ''
-  RunMacOs    : 'false'
+  WindowsPool: 'Win-CPU-2019'
+  LinuxPool: 'Linux-CPU'
+  version: ''
+  RunMacOs: 'false'
   artifactName: ''
 
 - job: Test_Final_Jar_Linux
