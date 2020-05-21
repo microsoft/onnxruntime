@@ -1,4 +1,4 @@
 trigger: none
 
 stages:
-- template: test-pipeline-stage.yml
+- template: test-pipeline-template.yml
