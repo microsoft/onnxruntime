@@ -43,7 +43,7 @@ For a list of available dockerfiles and published images to help with getting st
   * [ONNX Runtime with Azure ML](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md)
 
 **Other**
-* [Running ONNX model tests](./docs/Model_Test.md)
+* [Running ONNX model tests](../docs/Model_Test.md)
 * [Common Errors with explanations](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_common_errors.html#sphx-glr-auto-examples-plot-common-errors-py)
 
 ## C#
