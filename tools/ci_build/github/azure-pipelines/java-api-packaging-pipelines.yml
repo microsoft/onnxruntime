@@ -208,7 +208,6 @@ jobs:
       archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-osx-x64.zip'
       destinationFolder: '$(Build.BinariesDirectory)/java-artifact'
       cleanDestinationFolder: true
-
  
   - task: CmdLine@2
     inputs:
@@ -224,7 +223,6 @@ jobs:
         jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.dylib.dSYM
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
-      displayName: 'Create final Jar'
 
   - task: PublishPipelineArtifact@1
     inputs:
@@ -232,7 +230,7 @@ jobs:
       artifact: 'onnxruntime-java'
       publishLocation: 'pipeline'
 
-- job: Final_Jar_Testing
+- job: Final_Jar_Testing_Windows
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
@@ -261,4 +259,64 @@ jobs:
         java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
+- job: Final_Jar_Testing_Linux
+  workspace:
+    clean: all
+  pool: 'Linux-CPU'
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-java'
+      targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        sudo apt-get install -y openjdk-8-jdk
+        sudo apt autoremove
+        PATH=/usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin:${PATH}
+        mkdir test
+        pushd test
+        jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+        popd
+        wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+        wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .;./test;./protobuf-java-3.9.2.jar;./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+- job: Final_Jar_Testing_MacOs
+  workspace:
+    clean: all
+  pool: 
+    vmImage: 'macOS-10.14'
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+      buildType: 'current'
+      artifactName: '${{parameters.artifactName}}'
+      targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+  - task: CmdLine@2
+    inputs:
+        script: |
+          mkdir test
+          pushd test
+          jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+          popd
+          wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+          wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .;./test;./protobuf-java-3.9.2.jar;./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
