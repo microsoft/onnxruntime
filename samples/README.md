@@ -7,7 +7,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C#](#C)
 * [C/C++](#CC)
 * [Java](#Java)
-* [Node.js](#Nodejs)
+* [Node.js](./nodejs)
 ***
  
 ## Python
@@ -57,19 +57,3 @@ For a list of available dockerfiles and published images to help with getting st
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)
 * [MNIST inference](../java/src/test/java/sample/ScoreMNIST.java)
-
-## Node.js
-* [Basic Usage](./nodejs/01_basic-usage)
-* [Create Tensor](./nodejs/01_basic-usage)
-* [Create InferenceSession](./nodejs/01_basic-usage)
-<!--
-### [03 Create Tensor (Advanced)](./03_create-tensor-advanced/README.md)
-
-This example is a demonstration of advanced usage of creating tensors.
--->
-
-In each example's implementation subdirectory, run
-```
-npm install
-node ./
-```
