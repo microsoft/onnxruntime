@@ -65,16 +65,24 @@ class RangeCreatorBase {
     is_end_called_ = true;
   }
 
+  bool IsBeginCalled() const {
+    return is_begin_called_;
+  } 
+
+  bool IsEndCalled() const {
+    return is_end_called_;
+  }
+
   virtual void BeginImpl() = 0;
 
   virtual void EndImpl() = 0;
 
  protected:
   // Text on this event.
-  std::string message_;
+  const std::string message_;
 
   // Color of event in ARGB space.
-  uint32_t color_;
+  const uint32_t color_;
 
   bool is_begin_called_;
   bool is_end_called_;
@@ -111,10 +119,10 @@ class NvtxMarkerCreator final {
 
  private:
   // Text on this marker.
-  std::string message_;
+  const std::string message_;
 
   // See nvtxRangeCreator.color_.
-  uint32_t color_;
+  const uint32_t color_;
 };
 
 }  // namespace profile

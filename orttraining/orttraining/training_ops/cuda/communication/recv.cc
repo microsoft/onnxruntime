@@ -37,7 +37,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const int src = static_cast<int>(*remote_rank);
 
 #ifndef NDEBUG
-  profile::NvtxNestedRangeCreator preRange(
+  profile::NvtxRangeCreator preRange(
     "PreRecv-" + std::to_string(src), profile::Green);
   preRange.Begin();
 #endif
@@ -76,12 +76,15 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
 
 #ifndef NDEBUG
+  // This range object includes the first MPI_Recv which receives a scalar.  
+  // It means we count the MPI's initialization in pre-recv stage.
   preRange.End();
 #endif
 
 #ifndef NDEBUG
-  profile::NvtxNestedRangeCreator recvRange(
+  profile::NvtxRangeCreator recvRange(
     "Recv-" + std::to_string(src), profile::Green);
+  // Begin of actual communication.
   recvRange.Begin();
 #endif
 
@@ -115,11 +118,12 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
 
 #ifndef NDEBUG
+  // End of actual communication.
   recvRange.End();
 #endif
 
 #ifndef NDEBUG
-  profile::NvtxNestedRangeCreator postRange(
+  profile::NvtxRangeCreator postRange(
     "PostRecv-" + std::to_string(src), profile::Green);
   postRange.Begin();
 #endif

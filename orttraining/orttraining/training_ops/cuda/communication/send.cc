@@ -44,7 +44,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   const int dst = static_cast<int>(*remote_rank);
 
 #ifndef NDEBUG
-  profile::NvtxNestedRangeCreator preRange(
+  profile::NvtxRangeCreator preRange(
     "PreSend-" + std::to_string(dst), 0x00ff0000);
   
   preRange.Begin();
@@ -132,7 +132,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
 #ifndef NDEBUG
-  profile::NvtxNestedRangeCreator sendRange(
+  profile::NvtxRangeCreator sendRange(
     "Send-" + std::to_string(dst), 0x00ff0000);
 #endif
 
@@ -165,7 +165,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
 #ifndef NDEBUG
-  profile::NvtxNestedRangeCreator postRange(
+  profile::NvtxRangeCreator postRange(
     "PostSend-" + std::to_string(dst), 0x00ff0000);
 
   postRange.Begin();
