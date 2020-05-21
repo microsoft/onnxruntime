@@ -109,6 +109,8 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Jar_Packaging
+  workspace:
+    clean: all
   pool: 'Win-CPU-2019'
   dependsOn:
   - Windows_Java_API_Build_GPU_x64
@@ -135,13 +137,13 @@ jobs:
     inputs:
       archiveFilePatterns: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu.zip'
       destinationFolder: '$(Build.BinariesDirectory)\java-artifact'
-      cleanDestinationFolder: true
+      cleanDestinationFolder: false
 
   - task: ExtractFiles@1
     inputs:
       archiveFilePatterns: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64-gpu.zip'
       destinationFolder: '$(Build.BinariesDirectory)\java-artifact'
-      cleanDestinationFolder: true
+      cleanDestinationFolder: false
 
   - task: CmdLine@2
     inputs:
