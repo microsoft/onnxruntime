@@ -63,6 +63,8 @@ class IExecutionFrame {
 
   Status ReleaseMLValue(int ort_value_idx);
 
+  Status SetOrtValue(OrtValue &value, int ort_value_idx);
+
  protected:
   // get the ort_value_idx from NodeIndexInfo
   int GetNodeIdxToMLValueIdx(int index) const;

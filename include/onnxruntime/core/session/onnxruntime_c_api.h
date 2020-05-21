@@ -142,6 +142,8 @@ ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(MemoryInfo);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
+ORT_RUNTIME_CLASS(KernelSession);
+ORT_RUNTIME_CLASS(ExecutableKernelContext);
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
@@ -204,16 +206,17 @@ typedef enum ExecutionMode {
   ORT_PARALLEL = 1,
 } ExecutionMode;
 
+// This is just easier for now, if this get's upstreamed we could just add the methods to the providers like it is with
+// the other sessions atm.
+typedef enum ProviderType {
+    ORT_PROVIDER_CPU,
+    ORT_PROVIDER_CUDA
+} OrtProviderType;
+
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
-
-struct OrtExecutableKernel;
-typedef struct OrtExecutableKernel OrtExecutableKernel;
-
-struct OrtExecutableKernelContext;
-typedef struct OrtExecutableKernelContext OrtExecutableKernelContext;
 
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
@@ -825,29 +828,32 @@ struct OrtApi {
                   _Inout_ OrtSessionOptions* options, _In_ const char* dim_name,
                   _In_ int64_t dim_value);
 
-  ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
+  // Create a session that can be used to execute single kernels
+  ORT_API2_STATUS(CreateKernelSession, OrtKernelSession** session);
 
-  ORT_API2_STATUS(ExecutableKernelContext_AddInput,
+  // Add an node_protobuf to the session for a session, get out an executable kernel context
+  ORT_API2_STATUS(CreateExecutableKernelContext,
+                  _In_ OrtKernelSession* session,
+                  OrtProviderType providerType,
+                  _In_ const void* node_proto, // pointer to a c++ NodeProto
+                  _In_ const void* arg_to_type_map, // pointer to a ArgToTypeMap (aka std::unordered_map<std::string, onnx::TypeProto>)
+                  _Outptr_ OrtExecutableKernelContext** kernel);
+
+  // set inputs and outputs for a kernel context
+  ORT_API2_STATUS(ExecutableKernelContext_SetInput,
                   _Inout_ OrtExecutableKernelContext* context,
                   int index,
                   _In_ OrtValue* value);
-
-  ORT_API2_STATUS(ExecutableKernelContext_AddImplicitInput,
-                  _Inout_ OrtExecutableKernelContext* context,
-                  int index,
-                  _In_ OrtValue* value);
-
-  ORT_API2_STATUS(ExecutableKernelContext_AddOutput,
+  ORT_API2_STATUS(ExecutableKernelContext_SetOutput,
                   _Inout_ OrtExecutableKernelContext* context,
                   int index,
                   _Inout_ OrtValue* value);
 
-  ORT_API2_STATUS(CreateExecutableKernelContext,
-                  _In_ const OrtExecutableKernel *kernel,
-                  _Outptr_ OrtExecutableKernelContext** context);
+  // Execute the kernel with its context
+  // TODO check what happens if some inputs aren't set
+  ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
 
-  ORT_API2_STATUS(CreateExecutableKernel, _In_ const void* node_proto, _In_ const void* arg_to_type_map, _Outptr_ OrtExecutableKernel** kernel);
-
+  // TODO Add release API methods
 };
 
 /*

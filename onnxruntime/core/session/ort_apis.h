@@ -198,29 +198,30 @@ ORT_API_STATUS_IMPL(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMe
 
 ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options, _In_ const char* dim_name, _In_ int64_t dim_value);
 
-// ExecutableKernelContext creation and execution
-ORT_API_STATUS_IMPL(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
-
-ORT_API_STATUS_IMPL(ExecutableKernelContext_AddInput,
-                    _Inout_ OrtExecutableKernelContext* context,
-                    int index,
-                    _Inout_ OrtValue* value);
 
 
-ORT_API_STATUS_IMPL(ExecutableKernelContext_AddImplicitInput,
-                    _Inout_ OrtExecutableKernelContext* context,
-                    int index,
-                    _Inout_ OrtValue* value);
-
-ORT_API_STATUS_IMPL(ExecutableKernelContext_AddOutput,
-                        _Inout_ OrtExecutableKernelContext* context,
-                        int index,
-                        _Inout_ OrtValue* value);
+ORT_API_STATUS_IMPL(CreateKernelSession, OrtKernelSession** session);
 
 ORT_API_STATUS_IMPL(CreateExecutableKernelContext,
-                    _In_ const OrtExecutableKernel *kernel,
-                    _Outptr_ OrtExecutableKernelContext** context);
+                    _In_ OrtKernelSession* session,
+                    OrtProviderType providerType,
+                    _In_ const void * node_proto,
+                    _In_ const void* arg_to_type_map,
+                    _Outptr_ OrtExecutableKernelContext** kernel);
 
-ORT_API_STATUS_IMPL(CreateExecutableKernel, _In_ const void* node_proto, _In_ const void* arg_to_type_map, _Outptr_ OrtExecutableKernel** kernel);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_SetInput,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    int index,
+                    _Inout_ OrtValue* value);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_SetImplicitInput,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    int index,
+                    _Inout_ OrtValue* value);
+ORT_API_STATUS_IMPL(ExecutableKernelContext_SetOutput,
+                    _Inout_ OrtExecutableKernelContext* context,
+                    int index,
+                    _Inout_ OrtValue* value);
+
+ORT_API_STATUS_IMPL(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
 
 }  // namespace OrtApis
