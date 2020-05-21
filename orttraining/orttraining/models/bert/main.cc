@@ -385,9 +385,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     // TODO: find a better way (maybe a parser?) to better handle custom cut information.
     if (params.pipeline_parallel_size > 1 && params.pipeline_stage_paths.empty()) {
       TrainingSession::TrainingConfiguration::CutInfo cut0 = {TrainingSession::TrainingConfiguration::CutEdge("186"),
-                                                              TrainingSession::TrainingConfiguration::CutEdge("71", "273")};
+                                                              TrainingSession::TrainingConfiguration::CutEdge("71", {"273"})};
       TrainingSession::TrainingConfiguration::CutInfo cut1 = {TrainingSession::TrainingConfiguration::CutEdge("308"),
-                                                              TrainingSession::TrainingConfiguration::CutEdge("71", "395")};
+                                                              TrainingSession::TrainingConfiguration::CutEdge("71", {"395"})};
       params.pipeline_partition_cut_list.emplace_back(cut0);
       params.pipeline_partition_cut_list.emplace_back(cut1);
     }
