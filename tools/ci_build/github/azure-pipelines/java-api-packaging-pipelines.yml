@@ -232,11 +232,33 @@ jobs:
       artifact: 'onnxruntime-java'
       publishLocation: 'pipeline'
 
-  - template: templates/java-test-final-jar-step.yml
-    parameters:
-      WindowsPool: 'Win-CPU-2019'
-      LinuxPool: 'Linux-CPU'
-      version: '$(OnnxRuntimeVersion)'
-      RunMacOs: 'true'
-      artifactName: 'onnxruntime-java'
+- job: Final_Jar_Testing
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2019'
+  timeoutInMinutes: 60
+  dependsOn:
+    Jar_Packaging
+  steps:
+  - template: templates/set-version-number-variables-step.yml
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Final Jar'
+    inputs:
+        buildType: 'current'
+        artifactName: 'onnxruntime-java'
+        targetPath: '$(Build.BinariesDirectory)\final-jar'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        mkdir test 
+        pushd test
+        jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
+        popd
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
+        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+      workingDirectory: '$(Build.BinariesDirectory)\final-jar'
+
 
