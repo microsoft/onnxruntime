@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
+
 #include <memory>
+#include <fstream>
+
+#include "core/framework/tensorprotoutils.h"
 #include "core/common/logging/logging.h"
 
 #ifdef _MSC_VER
@@ -354,11 +357,27 @@ template <typename T>
 static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                         const logging::Logger& logger) {
-  const auto loader = [&file_path, &p_model, local_registries, &logger](int fd) {
-    return Model::Load(fd, ToPathString(file_path), p_model, local_registries, logger);
-  };
+  try {
+    std::ifstream model_istream(file_path, std::ios::in | std::ios::binary);
+    if (!model_istream) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+                             " failed. File doesn't exist");
+    }
+    ModelProto model_proto;
+    const bool result = model_proto.ParseFromIstream(&model_istream) && model_istream.eof();
+    if (!result) {
+      return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
+    }
 
-  return LoadModelHelper(file_path, loader);
+    p_model = std::make_shared<Model>(std::move(model_proto), ToPathString(file_path), local_registries, logger);
+
+    Graph::ResolveOptions options;
+    options.no_proto_sync_required = true;
+    return p_model->MainGraph().Resolve(options);
+  } catch (const std::exception& ex) {
+    GSL_SUPPRESS(es .84)
+    return Status(ONNXRUNTIME, FAIL, ex.what());
+  }
 }
 
 template <typename T>
