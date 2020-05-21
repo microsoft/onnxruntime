@@ -275,6 +275,8 @@ def parse_arguments():
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument(
+        "--use_vitisai", action='store_true', help="Build with Vitis-AI")
+    parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
@@ -573,6 +575,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
+        "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -629,7 +632,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
-            args.use_openvino or args.gen_doc):
+            args.use_openvino or args.use_vitisai or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
@@ -831,7 +834,7 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
         build_tool_args = []
         if parallel:
             num_cores = str(multiprocessing.cpu_count())
-            if is_windows():
+            if is_windows() and args.cmake_generator != 'Ninja':
                 build_tool_args += [
                     "/maxcpucount:" + num_cores,
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
@@ -1351,9 +1354,8 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
-        nightly_build=False,
-        featurizers_build=False):
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
+        use_acl, nightly_build=False, featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1393,6 +1395,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_vitisai:
+            args.append('--use_vitisai')
         elif use_acl:
             args.append('--use_acl')
 
@@ -1417,8 +1421,11 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
         '-Dprotobuf_BUILD_SHARED_LIBS=OFF'
     ]
+
+    is_ninja = args.cmake_generator == 'Ninja'
+
     if is_windows():
-        if args.cmake_generator != 'Ninja':
+        if not is_ninja:
             cmd_args += ['-T', 'host=x64']
         cmd_args += ['-G', args.cmake_generator]
     elif is_macOS() and args.use_xcode:
@@ -1433,14 +1440,19 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     run_subprocess(cmd_args)
 
     # Absolute protoc path is needed for cmake
-    expected_protoc_path = (
-        os.path.join(
-            protoc_build_dir, 'Release', 'protoc.exe') if is_windows()
-        else (os.path.join(protoc_build_dir, 'Release', 'protoc')
-                if is_macOS() and args.use_xcode
-                else os.path.join(protoc_build_dir, 'protoc')))
+    config_dir = ''
+    suffix = ''
+
+    if (is_windows() and not is_ninja) or (is_macOS() and args.use_xcode):
+        config_dir = 'Release'
+
+    if is_windows():
+        suffix = '.exe'
+
+    expected_protoc_path = os.path.join(protoc_build_dir, config_dir, 'protoc' + suffix)
+
     if not os.path.exists(expected_protoc_path):
-        raise BuildError("Couldn't build protoc for host. Failing build.")
+        raise BuildError("Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
 
     return expected_protoc_path
 
@@ -1729,6 +1741,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_vitisai,
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,

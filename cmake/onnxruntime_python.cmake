@@ -88,6 +88,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}

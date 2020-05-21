@@ -923,7 +923,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
                              (seq_len.empty() ? "" : "_" + seq_len) + "_" + optimizer;
   perf_metrics["DisplayName"] = display_name;
 
-  perf_metrics["Memory"] = peak_workingset_size;
+  perf_metrics["Memory"] = peak_workingset_size >> 20;  // mb
   perf_metrics["AvgCPU"] = average_cpu_usage;
 
   //
