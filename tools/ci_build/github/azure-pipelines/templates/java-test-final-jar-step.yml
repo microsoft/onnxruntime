@@ -6,7 +6,8 @@ parameters:
   artifactName: ''
 
 - job: Test_Final_Jar_Linux
-  timeoutInMinutes:  60
+  parameters:
+    timeoutInMinutes:  60
   pool: ${{parameters.LinuxPool}}
 
   - task: DownloadPipelineArtifact@2
@@ -58,7 +59,8 @@ parameters:
        workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
 - job: Test_Final_Jar_Windows
-  timeoutInMinutes:  60
+  parameters:
+    timeoutInMinutes:  60
   pool: ${{parameters.WindowsPool}}
 
   - task: DownloadPipelineArtifact@2
