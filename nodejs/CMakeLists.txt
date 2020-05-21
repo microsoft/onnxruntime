@@ -17,11 +17,11 @@ string(STRIP "${ort_version}" ort_version)
 set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${node_arch}/")
 
 # onnxruntime.dll dir
-if(ONNXRUNTIME_BUILD_DIR STREQUAL "")
+if(NOT ONNXRUNTIME_BUILD_DIR)
   if (WIN32)
-    set(ONNXRUNTIME_BUILD_DIR, ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE})
+    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../build/Windows/${CMAKE_BUILD_TYPE})
   else()
-    set(ONNXRUNTIME_BUILD_DIR, ${CMAKE_SOURCE_DIR}/../build/Linux)
+    set(ONNXRUNTIME_BUILD_DIR ${CMAKE_SOURCE_DIR}/../build/Linux)
   endif()
 endif()
 
