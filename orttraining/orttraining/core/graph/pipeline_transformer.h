@@ -26,9 +26,10 @@ Status TransformGraphForPipeline(
     std::string& backward_waited_event_after_recv_name,
     std::string& backward_recorded_event_before_send_name);
 
-Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-                                         std::vector<TrainingSession::TrainingConfiguration::CutInfo> cut_info,
-                                         size_t pipeline_stage_id,
-                                         size_t num_pipeline_stage);
+Status ApplyPipelinePartitionToMainGraph(
+    Graph& graph,
+    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
+    size_t pipeline_stage_id,
+    size_t num_pipeline_stage);
 }  // namespace training
 }  // namespace onnxruntime

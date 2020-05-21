@@ -2338,7 +2338,7 @@ const std::vector<const NodeArg*>& Graph::GetValueInfo() const noexcept {
 }
 
 void Graph::AddValueInfo(const NodeArg* new_value_info){
-  for(auto info : value_info_){
+  for(const auto info : value_info_){
     ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
   }
   value_info_.push_back(new_value_info);

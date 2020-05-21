@@ -874,7 +874,7 @@ common::Status SplitGraph(Graph& graph,
 
       // original node_arg pointer from the origin graph. This serves as the key in the
       // updated_node_arg map and any reference for original node_arg name
-      auto original_node_arg = producer_node->MutableOutputDefs()[idx];
+      auto* original_node_arg = producer_node->MutableOutputDefs()[idx];
 
       // updated node_arg pointer from previous partition. This is the new arg_node the
       // current inserted send node will take as input node_arg.
@@ -898,7 +898,7 @@ common::Status SplitGraph(Graph& graph,
       }
 
       auto& new_receive_output = CreateNodeArg(graph, updated_node_arg);
-      auto old_shape = *(updated_node_arg->Shape());
+      const auto old_shape = *(updated_node_arg->Shape());
       new_receive_output.SetShape(old_shape);
       recv_output_args.push_back(&new_receive_output);
 
@@ -1047,10 +1047,11 @@ common::Status GenerateSubgraph(Graph& graph, const Node* start_node) {
   return graph.Resolve();
 }
 
-Status ApplyPipelinePartitionToMainGraph(Graph& graph,
-                                         std::vector<TrainingSession::TrainingConfiguration::CutInfo> cut_info,
-                                         size_t pipeline_stage_id,
-                                         size_t num_pipeline_stage) {
+Status ApplyPipelinePartitionToMainGraph(
+    Graph& graph,
+    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
+    size_t pipeline_stage_id,
+    size_t num_pipeline_stage) {
   size_t split_count = cut_info.size();
 
   if (num_pipeline_stage != split_count + 1) {
