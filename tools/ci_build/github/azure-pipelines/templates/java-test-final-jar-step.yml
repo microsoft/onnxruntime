@@ -13,7 +13,7 @@ parameters:
         displayName: 'Download Final Jar'
         inputs:
           buildType: 'current'
-          artifactName: ${{parameters.artifactName}}
+          artifactName: '${{parameters.artifactName}}'
           targetPath: '$(Build.BinariesDirectory)/final-jar'
 
       - task: CmdLine@2
@@ -41,7 +41,7 @@ parameters:
         displayName: 'Download Final Jar'
         inputs:
           buildType: 'current'
-          artifactName: ${{parameters.artifactName}}
+          artifactName: '${{parameters.artifactName}}'
           targetPath: '$(Build.BinariesDirectory)/final-jar'
 
       - task: CmdLine@2
@@ -64,7 +64,7 @@ parameters:
         displayName: 'Download Final Jar'
         inputs:
           buildType: 'current'
-          artifactName: ${{parameters.artifactName}}
+          artifactName: '${{parameters.artifactName}}'
           targetPath: '$(Build.BinariesDirectory)\final-jar'
 
       - task: CmdLine@2
