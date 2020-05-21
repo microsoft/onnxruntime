@@ -159,8 +159,6 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Jar_Packaging
-  workspace:
-    clean: all
   pool: 'Win-CPU-2019'
   dependsOn:
   - Windows_Java_API_Build_CPU_x64
@@ -231,8 +229,6 @@ jobs:
       publishLocation: 'pipeline'
 
 - job: Final_Jar_Testing_Windows
-  workspace:
-    clean: all
   pool: 'Win-CPU-2019'
   timeoutInMinutes: 60
   dependsOn:
@@ -260,8 +256,6 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
 - job: Final_Jar_Testing_Linux
-  workspace:
-    clean: all
   pool: 'Linux-CPU'
   timeoutInMinutes: 60
   dependsOn:
@@ -291,8 +285,6 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
 - job: Final_Jar_Testing_MacOs
-  workspace:
-    clean: all
   pool: 
     vmImage: 'macOS-10.14'
   timeoutInMinutes: 60
