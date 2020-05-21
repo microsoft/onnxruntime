@@ -135,28 +135,36 @@ jobs:
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-win-x64.zip'
-      destinationFolder: '$(Build.BinariesDirectory)/java-artifact/win-x64-gpu'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-win-x64-gpu.zip'
+      destinationFolder: '$(Build.BinariesDirectory)/java-artifact/'
       cleanDestinationFolder: true
 
   - task: ExtractFiles@1
     inputs:
-      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-linux-x64.zip'
-      destinationFolder: '$(Build.BinariesDirectory)/java-artifact/linux-x64-gpu'
+      archiveFilePatterns: '$(Build.BinariesDirectory)/java-artifact/onnxruntime-java-linux-x64-gpu.zip'
+      destinationFolder: '$(Build.BinariesDirectory)/java-artifact/'
       cleanDestinationFolder: true
 
   - task: CmdLine@2
     inputs:
       script: |
-        pushd linux-x64-gpu
-        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
-        jar uf  $(Build.BinariesDirectory)\java-artifact\win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
+        pushd onnxruntime-java-linux-x64-gpu
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime.so
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar ai\onnxruntime\native\libonnxruntime4j_jni.so
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
       displayName: 'Create final GPU Jar'
 
   - task: PublishPipelineArtifact@1
     inputs:
-      targetPath: '$(Build.BinariesDirectory)\java-artifact\win-x64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu'
       artifact: 'onnxruntime-java-gpu'
       publishLocation: 'pipeline'
+
+  - template templates/java-test-final-jar-step.yml
+    parameters:
+      WindowsPool : 'Win-GPU-2019'
+      LinuxPool   : 'Linux-GPU-CUDA10'
+      version     : '$(OnnxRuntimeVersion)'
+      RunMacOs    : 'false'
+      artifactName: 'onnxruntime-java-gpu'
