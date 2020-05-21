@@ -24,6 +24,7 @@ jobs:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so'
           nativeLibraryName: 'libonnxruntime4j_jni.so'
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -106,6 +107,10 @@ jobs:
         version: '$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
 
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Jar_Packaging
@@ -160,6 +165,11 @@ jobs:
       artifact: 'onnxruntime-java-gpu'
       publishLocation: 'pipeline'
 
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+
 - job: Final_Jar_Testing_Windows
   pool: 'Win-GPU-2019'
   timeoutInMinutes: 60
@@ -213,5 +223,5 @@ jobs:
         popd
         wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
         wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
-        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .;./test;./protobuf-java-3.9.2.jar;./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
