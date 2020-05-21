@@ -1,32 +1,4 @@
 trigger: none
 
-variables:
-  a_value: 1
-  b_value: 2
-  id: a
-
-strategy:
-  matrix:
-    a:
-      val: a
-    b:
-      val: b
-
-steps:
-- checkout: none
-  submodules: false
-
-# - task: DownloadPipelineArtifact@2
-#   inputs:
-#     buildType: 'specific'
-#     project: '2a773b67-e88b-4c7f-9fc0-87d31fea8ef2'
-#     definition: '99'
-#     buildVersionToDownload: 'latest'
-#     allowPartiallySucceededBuilds: true
-#     allowFailedBuilds: true
-#     artifactName: 'onnxruntime_gpu'
-#     targetPath: '$(Pipeline.Workspace)/artifacts'
-
-- script: |
-    echo template expansion ${{ variables.val }}
-    echo variable expansion $(val)
+stages:
+- template: test-pipeline-stage.yml
