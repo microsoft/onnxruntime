@@ -52,6 +52,17 @@ echo echo "ort=$run_ort torch=$run_torch torchscript=$run_torchscript gpu_fp32=$
 run_tests=true
 
 # -------------------------------------------
+if [ "$run_cpu" = true ] ; then
+  if [ "$run_gpu_fp32" = true ] ; then
+    echo "cannot test cpu and gpu at same time"
+    exit 1
+  fi
+  if [ "$run_gpu_fp16" = true ] ; then
+    echo "cannot test cpu and gpu at same time"
+    exit 1
+  fi
+fi
+
 
 if [ "$run_install" = true ] ; then
   pip uninstall --yes ort_nightly

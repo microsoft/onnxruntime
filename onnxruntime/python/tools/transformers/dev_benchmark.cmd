@@ -36,7 +36,7 @@ set sequence_length=8 128
 
 REM Number of inputs (input_ids, token_type_ids, attention_mask) for ONNX model.
 REM Note that different input count might lead to different performance
-set input_counts=1 2 3
+set input_counts=1
 
 REM Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 set models_to_test=bert-base-cased gpt2
@@ -45,12 +45,14 @@ REM If you have mutliple GPUs, you can choose one GPU for test. Here is an examp
 REM set CUDA_VISIBLE_DEVICES=1
 
 REM This script will generate a logs file with a list of commands used in tests.
-echo echo ort=%run_ort% torch=%run_torch% torchscript=%run_torchscript% gpu_fp32=%run_gpu_fp32% gpu_fp16=%run_gpu_fp16% cpu=%run_cpu% optimizer=%use_optimizer% batch="%batch_sizes%" sequence="%sequence_length%" models="%models_to_test%" input_counts="%input_counts%" > benchmark.log
+>benchmark.log echo echo ort=%run_ort% torch=%run_torch% torchscript=%run_torchscript% gpu_fp32=%run_gpu_fp32% gpu_fp16=%run_gpu_fp16% cpu=%run_cpu% optimizer=%use_optimizer% batch="%batch_sizes%" sequence="%sequence_length%" models="%models_to_test%" input_counts="%input_counts%"
 
 REM Set it to false to skip testing. You can use it to dry run this script with the benchmark.log file.
 set run_tests=true
 
 REM -------------------------------------------
+if %run_cpu% == true if %run_gpu_fp32% == true echo cannot test cpu and gpu at same time & goto :EOF
+if %run_cpu% == true if %run_gpu_fp16% == true echo cannot test cpu and gpu at same time & goto :EOF
 
 if %run_install% == true (
   pip uninstall --yes ort_nightly
@@ -73,7 +75,8 @@ if %run_cli% == true (
   set optimizer_script=benchmark.py
 )
 
-set onnx_export_options=-i %input_counts% -v -b 0 --overwrite -f fusion.csv
+REM remove --overwrite can save some time if you did not update any of these: transformers, PyTorch or fusion logic in optimizer.
+set onnx_export_options=-i %input_counts% -v -b 0 -f fusion.csv --overwrite
 set benchmark_options=-b %batch_sizes% -s %sequence_length% -t %average_over% -f fusion.csv -r result.csv -d detail.csv
 
 if %use_optimizer% == true (
@@ -102,19 +105,22 @@ if %run_cpu% == true (
   )
 )
 
-if %run_tests%==true more %log_file%
+if %run_tests%==false more benchmark.log
 
 call :RemoveDuplicateLines result.csv
 call :RemoveDuplicateLines fusion.csv
 call :RemoveDuplicateLines detail.csv
+
+echo Done!
+
 goto :EOF
 
 REM -----------------------------
 :RunOneTest
 
 if %run_ort% == true (
-  echo python %optimizer_script% -m %1 %onnx_export_options% %2 %3 >> benchmark.log
-  echo python %optimizer_script% -m %1 %benchmark_options% %2 %3 -i %input_counts% >> benchmark.log
+  >>benchmark.log echo python %optimizer_script% -m %1 %onnx_export_options% %2 %3
+  >>benchmark.log echo python %optimizer_script% -m %1 %benchmark_options% %2 %3 -i %input_counts%
   if %run_tests%==true (
     python %optimizer_script% -m %1 %onnx_export_options% %2 %3
     python %optimizer_script% -m %1 %benchmark_options% %2 %3 -i %input_counts%
@@ -122,12 +128,12 @@ if %run_ort% == true (
 )
 
 if %run_torch% == true (
-  echo python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3 >> benchmark.log
+  >>benchmark.log echo python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3
   if %run_tests%==true python %optimizer_script% -e torch -m %1 %benchmark_options% %2 %3
 )
   
 if %run_torchscript% == true (
-  echo python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3 >> benchmark.log
+  >>benchmark.log echo python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3
   if %run_tests%==true python %optimizer_script% -e torchscript -m %1 %benchmark_options% %2 %3
 )
 
@@ -135,19 +141,6 @@ goto :EOF
 
 
 REM -----------------------------
-REM this might have one duplicated header line, that is not a big deal.
 :RemoveDuplicateLines
-@echo off
-setlocal enableDelayedExpansion
-set "file=%1"
-set /p "ln=" < "%file%"
->"%file%.new" (
-  echo(!ln!
-  more +1 "%file%" | sort /UNIQUE
-)
-
-REM remove lines without data
-findstr /v /r /c:"^[, ]*$" "%file%.new" > "%file%.new"
-
-move /y "%file%.new" "%file%" >nul
+python -c "import sys; lines=sys.stdin.readlines(); h=lines[0]; print(h); print(''.join(sorted(set(lines)-set([h]))))"   < %1   > summary_%1
 goto :EOF
