@@ -1,5 +1,7 @@
 trigger: none
 
+pool: Linux-GPU-CUDA10
+
 steps:
 - script: |
     df
