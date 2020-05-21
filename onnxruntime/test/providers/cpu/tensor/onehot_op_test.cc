@@ -456,6 +456,36 @@ TEST(OneHotOpTest, Axis_Negative_NegIndex_NonDefault_NonZeroOffValue) {
   test.Run();
 }
 
+TEST(OneHotOpTest, DefaultAxis_IndicesOutOfRange) {
+  OpTester test("OneHot", 11);
+  test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 13, 4, -12});
+  test.AddInput<int64_t>("depth", {1}, {10});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {2, 3, 10},
+                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  test.Run();
+}
+
+TEST(OneHotOpTest, DefaultAxis_IndicesOutOfRange_NonZeroOffValue) {
+  OpTester test("OneHot", 11);
+  test.AddInput<int64_t>("indices", {2, 3}, {1, -1, 8, 13, 4, -12});
+  test.AddInput<int64_t>("depth", {1}, {10});
+  test.AddInput<int64_t>("values", {2}, {2, 3});
+  test.AddOutput<int64_t>("output", {2, 3, 10},
+                          {2, 3, 2, 2, 2, 2, 2, 2, 2, 2,
+                           2, 2, 2, 2, 2, 2, 2, 2, 2, 3,
+                           2, 2, 2, 2, 2, 2, 2, 2, 3, 2,
+                           2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+                           2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
+                           2, 2, 2, 2, 2, 2, 2, 2, 2, 2});
+  test.Run();
+}
+
 TEST(OneHotOpTest, DimWithZero) {
   OpTester test("OneHot", 11);
   int64_t axis = 0;
