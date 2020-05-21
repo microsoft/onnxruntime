@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <thread>
+#include <set>
 #include <vector>
 
 #include "core/graph/constants.h"
@@ -160,13 +160,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
   // thread local PerThreadContext cache
-  static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_cache_;
+  static thread_local std::shared_ptr<PerThreadContextMap> per_thread_context_cache_;
 
   struct PerThreadContextState {
     // contexts that are currently active
-    std::unordered_set<std::shared_ptr<PerThreadContext>> active_contexts;
+    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
     // contexts available for reuse
     std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
+    // weak references to thread local caches from which this CUDAExecutionProvider instance's entry should be removed
+    // upon destruction
+    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+        caches_to_update_on_destruction;
     // synchronizes access to PerThreadContextState members
     OrtMutex mutex;
   };
