@@ -12,8 +12,29 @@
 namespace onnxruntime {
 namespace contrib {
 
+#ifndef EIGEN_X
+#define EIGEN_X ConstEigenVectorArrayMap<T>(X->template Data<T>(), X->Shape().Size())
+#endif
+
+#ifndef EIGEN_X_VAR
+#define EIGEN_X_VAR(var) ConstEigenVectorArrayMap<T> var(X->template Data<T>(), X->Shape().Size())
+#endif
+
+#ifndef EIGEN_Y
+#define EIGEN_Y EigenVectorArrayMap<T>(Y->template MutableData<T>(), Y->Shape().Size())
+#endif
+
+#ifndef EIGEN_Y_VAR
+#define EIGEN_Y_VAR(var) EigenVectorArrayMap<T> var(Y->template MutableData<T>(), Y->Shape().Size())
+#endif
+
+#ifndef EIGEN_DY_VAR
 #define EIGEN_DY_VAR(var) ConstEigenVectorArrayMap<T> var(dY->template Data<T>(), dY->Shape().Size())
+#endif
+
+#ifndef EIGEN_DX
 #define EIGEN_DX EigenVectorArrayMap<T>(dX->template MutableData<T>(), dX->Shape().Size())
+#endif
 
 template <typename T>
 class GeluGrad final : public OpKernel {

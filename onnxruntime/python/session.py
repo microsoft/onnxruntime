@@ -1,12 +1,10 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
-
-import sys
-import os
+# --------------------------------------------------------------------------
 
 from onnxruntime.capi import _pybind_state as C
+
 
 def get_ort_device_type(device):
     if device == 'cuda':
@@ -14,7 +12,8 @@ def get_ort_device_type(device):
     elif device == 'cpu':
         return C.OrtDevice.cpu()
     else:
-        raise Exception('Unsupported device type: ' + torch_device.type)
+        raise Exception('Unsupported device type: ' + device)
+
 
 class Session:
     """
@@ -64,8 +63,8 @@ class Session:
 
         :param providers: list of execution providers
 
-        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider'] means
-        execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
+        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
         if not set(providers).issubset(C.get_available_providers()):
             raise ValueError("{} does not contain a subset of available providers {}".format(
@@ -81,8 +80,8 @@ class Session:
 
     def enable_fallback(self):
         """
-        Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure, reset the Execution Providers
-        enabled for this session.
+        Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure,
+        reset the Execution Providers enabled for this session.
         If GPU is enabled, fall back to CUDAExecutionProvider.
         otherwise fall back to CPUExecutionProvider.
         """
@@ -142,6 +141,7 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+
 class InferenceSession(Session):
     """
     This is the main class used to run a model.
@@ -196,12 +196,14 @@ class IOBinding:
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         self._iobinding.bind_input(name,
-                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                               device_id),
                                    element_type, shape, buffer_ptr)
 
     def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         self._iobinding.bind_output(name,
-                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id),
+                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                                device_id),
                                     element_type, shape, buffer_ptr)
 
     def clear_binding_inputs(self):

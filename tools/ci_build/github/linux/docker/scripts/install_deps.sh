@@ -1,8 +1,9 @@
 #!/bin/bash
-set -e
+set -e -x
 
+SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 
-while getopts p:d: parameter_Option
+while getopts p:d:x: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
@@ -43,7 +44,7 @@ function GetFile {
   if command -v aria2c > /dev/null; then
     aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
   else
-    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail    
+    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
   fi
 
   return $?
@@ -75,15 +76,15 @@ fi
 if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   echo "Installing azcopy"
   mkdir -p /tmp/azcopy
-  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz 
+  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz  
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz 
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz
   tar -xf /tmp/src/cmake-3.13.5.tar.gz -C /tmp/src
   pushd .
   cd /tmp/src/cmake-3.13.5

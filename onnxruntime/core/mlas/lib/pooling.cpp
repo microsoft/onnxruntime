@@ -21,7 +21,8 @@ Abstract:
 // threads.
 //
 
-struct MLAS_WORK_BLOCK {
+struct MLAS_POOL_WORK_BLOCK
+{
     MLAS_POOLING_KIND PoolingKind;
     size_t InputShape[3];
     size_t InputSize;
@@ -38,7 +39,7 @@ struct MLAS_WORK_BLOCK {
 typedef
 void
 (MLAS_POOL_KERNEL_ROUTINE)(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -87,21 +88,10 @@ struct MLAS_MAXIMUM_POOLING
         return MlasMaximumFloat32x4(Reduction, Value);
     }
 
-#if defined(MLAS_NEON64_INTRINSICS)
-
-    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction)
+    static float Reduce(MLAS_FLOAT32X4 Reduction)
     {
-        return vmaxvq_f32(Reduction);
+        return MlasReduceMaximumFloat32x4(Reduction);
     }
-
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-    static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
-    {
-        return vpmax_f32(Vector0, Vector1);
-    }
-
-#endif
 
     static float AveragePool(float Reduction, float Size)
     {
@@ -169,24 +159,10 @@ struct MLAS_AVERAGE_POOLING
         return MlasAddFloat32x4(Reduction, Value);
     }
 
-#if defined(MLAS_NEON64_INTRINSICS)
-
-    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction)
+    static float Reduce(MLAS_FLOAT32X4 Reduction)
     {
-        Reduction = vpaddq_f32(Reduction, Reduction);
-        Reduction = vpaddq_f32(Reduction, Reduction);
-
-        return vgetq_lane_f32(Reduction, 0);
+        return MlasReduceAddFloat32x4(Reduction);
     }
-
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-    static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
-    {
-        return vpadd_f32(Vector0, Vector1);
-    }
-
-#endif
 
     static float AveragePool(float Reduction, float Size)
     {
@@ -272,7 +248,7 @@ struct MLAS_AVERAGE_POOLING
 template<typename PoolingType>
 void
 MlasPool1DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -342,7 +318,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool2DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -430,7 +406,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool2DVectorKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -654,7 +630,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool3DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -759,7 +735,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool3DVectorKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -1027,7 +1003,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPoolGlobalKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -1081,37 +1057,7 @@ Return Value:
         // Reduce the vector to a single float value.
         //
 
-#if defined(MLAS_NEON64_INTRINSICS)
-
-        float ReductionValue = PoolingType::ReduceFloat32x4(Reduction);
-
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-        float32x2_t ReductionLow = vget_low_f32(Reduction);
-        float32x2_t ReductionHigh = vget_high_f32(Reduction);
-
-        ReductionLow = PoolingType::ReducePairwise(ReductionLow, ReductionHigh);
-        ReductionLow = PoolingType::ReducePairwise(ReductionLow, ReductionHigh);
-
-        float ReductionValue = vget_lane_f32(ReductionLow, 0);
-
-#elif defined(MLAS_SSE2_INTRINSICS)
-
-        Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(3, 2, 3, 2)));
-        Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(1, 1, 1, 1)));
-
-        float ReductionValue = _mm_cvtss_f32(Reduction);
-
-#elif defined(MLAS_VSX_INTRINSICS)
-
-        Reduction = PoolingType::Reduce(Reduction, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Reduction, 1)));
-        Reduction = PoolingType::Reduce(Reduction, vec_splat(Reduction, 1));
-
-        float ReductionValue = Reduction[0];
-
-#else
-#error Unsupported architecture.
-#endif
+        float ReductionValue = PoolingType::Reduce(Reduction);
 
         //
         // Iterate over the remaining input buffer an element at a time.
@@ -1228,7 +1174,7 @@ Return Value:
 
 --*/
 {
-    MLAS_WORK_BLOCK WorkBlock;
+    MLAS_POOL_WORK_BLOCK WorkBlock;
 
     WorkBlock.PoolingKind = PoolingKind;
 
@@ -1237,9 +1183,7 @@ Return Value:
     // and output shapes over the batch and channel counts.
     //
 
-    //TODO: use a safeint here and make sure the result value can fit into int32_t
     size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
-
 
     InputShape += 2;
     OutputShape += 2;

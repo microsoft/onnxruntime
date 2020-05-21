@@ -9,6 +9,10 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
 
+# Support OS X versions 10.12+
+# This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
+
 # Project
 project(onnxruntime C CXX)
 
@@ -20,18 +24,6 @@ include(CheckLanguage)
 # On the other hand it does not allow some others.
 # So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
-
-# General C# prperties
-if (onnxruntime_BUILD_CSHARP)
-  check_language(CSharp)
-  if (CMAKE_CSharp_COMPILER)
-    enable_language(CSharp)
-    set(CMAKE_CSharp_FLAGS ${CMAKE_CSharp_FLAGS} "/langversion:6")
-    message(STATUS "CMAKE_Csharp_Compiler = ${CMAKE_CSharp_COMPILER}")
-  else()
-    message(WARNING "Language Csharp is not found in the system")
-  endif()
-endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
@@ -55,7 +47,8 @@ option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak chec
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
-option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
+option(onnxruntime_USE_NNAPI_DNNLIBRARY "Build with DNNLibrary for Android NNAPI support" OFF)
+option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
@@ -64,7 +57,9 @@ option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
 option(onnxruntime_USE_JEMALLOC "Use jemalloc" OFF)
 option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
+option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_TVM "Build tvm for code-gen" OFF)
@@ -77,6 +72,7 @@ option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
+option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
@@ -101,8 +97,6 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
-
-
 # training options
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
@@ -116,6 +110,18 @@ if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
 endif()
 
+# General C# properties
+if (onnxruntime_BUILD_CSHARP)
+  check_language(CSharp)
+  if (CMAKE_CSharp_COMPILER)
+    enable_language(CSharp)
+    set(CMAKE_CSharp_FLAGS ${CMAKE_CSharp_FLAGS} "/langversion:6")
+    message(STATUS "CMAKE_Csharp_Compiler = ${CMAKE_CSharp_COMPILER}")
+  else()
+    message(WARNING "Language Csharp is not found in the system")
+  endif()
+endif()
+
 if(NOT WIN32)
   #TODO: On Linux we may try https://github.com/microsoft/TraceLogging
   if(onnxruntime_ENABLE_INSTRUMENT)
@@ -123,12 +129,6 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
-  if (HAS_D2FH4)
-    message("Disabling /d2FH4")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
-  endif()
   if(WINDOWS_STORE)
     # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
     # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
@@ -271,6 +271,9 @@ else()
     string(APPEND CMAKE_CXX_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
     string(APPEND CMAKE_C_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
   endif()
+  if(onnxruntime_GCC_STATIC_CPP_RUNTIME)
+    string(APPEND CMAKE_CXX_FLAGS " -static-libstdc++")
+  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -340,6 +343,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
+    add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
 
@@ -587,7 +591,7 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP /W4")
-    #in order to fix this warning, we need C++17 so that we can use 'if constexpr'
+    #Compiler bug, we should get such warnings. It will be fixed in a new VC release
     string(APPEND CMAKE_CXX_FLAGS " /wd4127")
     # class needs to have dll-interface to be used by clients
     string(APPEND CMAKE_CXX_FLAGS " /wd4251")
@@ -759,6 +763,17 @@ if(onnxruntime_USE_OPENVINO)
 
 endif()
 
+if (onnxruntime_USE_VITISAI)
+  if(WIN32)
+    message(FATAL_ERROR "Vitis-AI execution provider is not supported on Windows.")
+  else()
+    add_definitions(-DUSE_VITISAI=1)
+    include(pyxir)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES pyxir)
+    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES pyxir)
+  endif()
+endif()
+
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)
   if (WIN32)
@@ -877,7 +892,7 @@ if (onnxruntime_ENABLE_TRAINING)
       add_subdirectory(horovod EXCLUDE_FROM_ALL)
       # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
       list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
-      find_package(nccl REQUIRED)  
+      find_package(nccl REQUIRED)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     endif()
   endif()
@@ -1006,3 +1021,5 @@ if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
     target_link_options(winml_dll PRIVATE /SAFESEH)
   endif()
 endif()
+
+include(flake8.cmake)

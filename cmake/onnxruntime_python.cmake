@@ -88,7 +88,9 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -246,7 +248,8 @@ add_custom_command(
 if (onnxruntime_USE_DNNL)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

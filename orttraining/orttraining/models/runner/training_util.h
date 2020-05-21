@@ -41,6 +41,8 @@ class DataSet {
 
   size_t NumInputs() const { return tensor_names_.size(); }
 
+  std::string GetInputName(size_t input_index) const { return tensor_names_[input_index]; }
+
   common::Status AddData(SampleType&& single_sample);
 
   common::Status AddData(const std::vector<ONNX_NAMESPACE::TensorProto>& features);
@@ -53,6 +55,26 @@ class DataSet {
   virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator = nullptr) const;
 
   void RandomShuffle();
+
+  /**
+   * The method is for getting model training params that are part of training data
+   * first load .onnx model in Netron to get the mapping between input data and the graph
+   * for example, a bert model (see input_name_map in bert/main.cc) requires 7 inputs
+   * each input may have different tensor shape, like so
+   *    intput1 : int64[batch,sequence]
+   *    masked_lm_ids:  int64[batch,dynamic_prediction_count]
+   * When loading training data, the actual shape vector of tensor would not include "batch", thus caller needs to adjust 
+   * the index position (i.e., subtract by 1) to get the correspondent value. For example,
+   * to get sequence length, we can look for input name "input1" and get its value in shape vector's position 0 (NOT 1) element 
+   * based on input_to_dimension_mapping (see input_to_dimension_mapping example in bert/main.cc) to map the name with the vector position, 
+   * like so
+   *    {"input1", {"SeqLen", 0}}  => sequence->SeqLen , where SeqLen will be populated as key in mapped_dimensions 
+   * @param input_to_dimension_mapping tensor shape dimension mapping from training data, example above {"input1", {"SeqLen", 0}} to map 
+   *                                   input1's "sequence" at position 0 into "SeqLen" as mapped_dimensions key
+   * @param mapped_dimensions perf properties to be populated from training data; e.g., SeqLen->128
+   */
+  common::Status GetTensorDimensionsFromInputs(const std::map<std::string, std::pair<std::string, size_t>>& input_to_dimension_mapping,
+                                               MapStringToString& mapped_dimensions) const;
 
  private:
   // The names of the tensors.
@@ -107,6 +129,25 @@ class TrainingUtil {
       memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
     }
 
+    p_mlvalue->Init(p_tensor.release(),
+                    DataTypeImpl::GetType<Tensor>(),
+                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  }
+
+  template <typename T>
+  static void CreateCpuMLScalar(const T value,
+                                MLValue* p_mlvalue,
+                                AllocatorPtr alloc = nullptr) {
+    // Scalar has empty shape.
+    TensorShape shape;
+    auto element_type = DataTypeImpl::GetType<T>();
+    auto allocator = alloc ? alloc : GetCpuAllocator();
+    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, allocator);
+
+    // Copy one element, the scalar, to a tensor object.
+    memcpy(p_tensor->MutableDataRaw(), &value, p_tensor->SizeInBytes());
+
+    // Convert tensor to MLValue.
     p_mlvalue->Init(p_tensor.release(),
                     DataTypeImpl::GetType<Tensor>(),
                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());

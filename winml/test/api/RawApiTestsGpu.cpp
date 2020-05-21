@@ -104,10 +104,6 @@ static void RawApiTestsGpuApiTestsClassSetup() {
   RoInitialize(RO_INIT_TYPE::RO_INIT_SINGLETHREADED);
 }
 
-static void GpuMethodSetup() {
-  GPUTEST;
-}
-
 static void CreateDirectXDevice() {
   WINML_EXPECT_NO_THROW(CreateDevice(DeviceType::DirectX));
 }
@@ -155,9 +151,8 @@ static void EvaluateNoInputCopy() {
 }
 
 const RawApiTestsGpuApi& getapi() {
-  static constexpr RawApiTestsGpuApi api = {
+  static RawApiTestsGpuApi api = {
       RawApiTestsGpuApiTestsClassSetup,
-      GpuMethodSetup,
       CreateDirectXDevice,
       CreateD3D11DeviceDevice,
       CreateD3D12CommandQueueDevice,
@@ -166,5 +161,15 @@ const RawApiTestsGpuApi& getapi() {
       Evaluate,
       EvaluateNoInputCopy
   };
+
+  if (SkipGpuTests()) {
+    api.CreateDirectXDevice = SkipTest;
+    api.CreateD3D11DeviceDevice = SkipTest;
+    api.CreateD3D12CommandQueueDevice = SkipTest;
+    api.CreateDirectXHighPerformanceDevice = SkipTest;
+    api.CreateDirectXMinPowerDevice = SkipTest;
+    api.Evaluate = SkipTest;
+    api.EvaluateNoInputCopy = SkipTest;
+  }
   return api;
 }
