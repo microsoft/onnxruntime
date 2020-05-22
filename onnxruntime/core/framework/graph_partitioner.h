@@ -10,6 +10,7 @@
 
 namespace onnxruntime {
 
+class IExecutionProvider;
 class ExecutionProviders;
 class KernelRegistryManager;
 
@@ -20,7 +21,8 @@ class GraphPartitioner {
       : kernel_registry_mgr_(kernel_registry_mgr),
         providers_(providers) {}
 
-  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr) const;
+  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr,
+                   IExecutionProvider* subgraph_ep = nullptr) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);

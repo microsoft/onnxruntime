@@ -105,7 +105,8 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
   return nullptr;
 }
 
-Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr) const {
+Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr,
+                                   IExecutionProvider* subgraph_ep) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -123,20 +124,24 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   if (graph.NumberOfNodes() == 0)
     return Status::OK();
 
-  // recurse into nested graphs first so we partition bottom up.
-  for (auto& node : graph.Nodes()) {
-    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      Graph* subgraph = entry.second;
-      // we pass through the export_dll value and FuncManager from the top level graph
-      ORT_RETURN_IF_ERROR(Partition(*subgraph, export_dll, func_mgr));
-    }
-  }
-
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
   // It is only visible for current session.
   std::shared_ptr<KernelRegistry> fused_kernel_registry = std::make_shared<KernelRegistry>();
   // Partitioning <graph> based on provider preference and their capabilities.
   GraphViewer graph_viewer(graph);
+
+  // setup providers to iterate. if we're processing a subgraph we're limited to subgraph_ep
+  std::vector<IExecutionProvider*> providers;
+  if (subgraph_ep)
+    providers.push_back(subgraph_ep);
+  else {
+    providers.reserve(providers_.NumProviders());
+    std::transform(providers_.begin(), providers_.end(),
+                   std::back_inserter(providers),
+                   [](const std::unique_ptr<IExecutionProvider>& iter) {
+                     return &*iter;
+                   });
+  }
 
   // If an execution provider return the capability that he could run a sub-graph,
   // onnxruntime will fuse the sub-graph into a function node. if the execution provider
@@ -148,7 +153,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   // TODO: when the graph contain a function node, and user pass in the dll which could
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
-  for (auto& provider : providers_) {
+  for (auto& provider : providers) {
     int count = 0;
     std::vector<Node*> nodes_need_compile;
     std::vector<std::unique_ptr<ComputeCapability>> capabilities =
@@ -182,6 +187,15 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
         BuildFusedKernelDef(builder, *node);
         ORT_RETURN_IF_ERROR(fused_kernel_registry->Register(
             builder, static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new FunctionKernel(info); })));
+      }
+    }
+
+    // recurse into nested graphs with just this provider.
+    for (auto& node : graph.Nodes()) {
+      for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+        Graph* subgraph = entry.second;
+        // we pass through the export_dll value and FuncManager from the top level graph
+        ORT_RETURN_IF_ERROR(Partition(*subgraph, export_dll, func_mgr, &*provider));
       }
     }
   }
