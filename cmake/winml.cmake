@@ -627,7 +627,6 @@ target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 
 target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
-target_link_libraries(winml_dll PRIVATE windowsapp.lib)
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions
