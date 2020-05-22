@@ -3,7 +3,7 @@
 
 #include "core/profile/profile.h"
 #include "core/common/common.h"
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
 #endif
