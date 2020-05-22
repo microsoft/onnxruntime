@@ -48,7 +48,7 @@ REM This script will generate a logs file with a list of commands used in tests.
 >benchmark.log echo echo ort=%run_ort% torch=%run_torch% torchscript=%run_torchscript% gpu_fp32=%run_gpu_fp32% gpu_fp16=%run_gpu_fp16% cpu=%run_cpu% optimizer=%use_optimizer% batch="%batch_sizes%" sequence="%sequence_length%" models="%models_to_test%" input_counts="%input_counts%"
 
 REM Set it to false to skip testing. You can use it to dry run this script with the benchmark.log file.
-set run_tests=true
+set run_tests=false
 
 REM -------------------------------------------
 if %run_cpu% == true if %run_gpu_fp32% == true echo cannot test cpu and gpu at same time & goto :EOF
@@ -142,5 +142,9 @@ goto :EOF
 
 REM -----------------------------
 :RemoveDuplicateLines
-python -c "import sys; lines=sys.stdin.readlines(); h=lines[0]; print(h); print(''.join(sorted(set(lines)-set([h]))))"   < %1   > summary_%1
+SET FileSize=%~z1
+IF %FileSize% LSS 10 goto :EOF
+python -c "import sys; lines=sys.stdin.readlines(); h=lines[0]; print(''.join([h]+list(sorted(set(lines)-set([h])))))"   < %1  > sort_%1
+FindStr "[^,]" sort_%1 > summary_%1
+DEL sort_%1
 goto :EOF
