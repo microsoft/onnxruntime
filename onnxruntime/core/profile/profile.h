@@ -108,9 +108,11 @@ class NvtxRangeCreator final : public RangeCreatorBase {
   void EndImpl() override;
 
  private:
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   // It records the event ID created by BeginImpl.
   // EndImpl needs this value to end the right event.
   uint64_t range_id_;
+#endif
 };
 
 class NvtxNestedRangeCreator final : public RangeCreatorBase {
