@@ -13,7 +13,7 @@ namespace profile {
 
 void NvtxRangeCreator::BeginImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxEventAttributes_t eventAttrib;
   eventAttrib.version = NVTX_VERSION;
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
@@ -28,14 +28,14 @@ void NvtxRangeCreator::BeginImpl() {
 
 void NvtxRangeCreator::EndImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxRangeEnd(range_id_);
 #endif
 }
 
 void NvtxNestedRangeCreator::BeginImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxEventAttributes_t eventAttrib;
   eventAttrib.version = NVTX_VERSION;
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
@@ -50,14 +50,14 @@ void NvtxNestedRangeCreator::BeginImpl() {
 
 void NvtxNestedRangeCreator::EndImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxRangePop();
 #endif
 }
 
 void NvtxMarkerCreator::Mark() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxEventAttributes_t eventAttrib; 
   eventAttrib.version = NVTX_VERSION; 
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE; 

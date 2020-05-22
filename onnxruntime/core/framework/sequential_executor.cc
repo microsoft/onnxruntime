@@ -18,7 +18,7 @@
 #include "core/framework/utils.h"
 #endif
 
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
 // This header is for profile using Nvidia's visual profilier.
 #include "core/profile/profile.h"
 #include "core/profile/context.h"
@@ -171,7 +171,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   diagnostic::marker_series series(series_name);
 #endif
 
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTag(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
@@ -201,7 +201,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     series.write_flag(node.Name().c_str());
 #endif
 
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
@@ -401,7 +401,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
 
-#if !defined(NDEBUG) && defined(USE_CUDA)
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   if (!forward_range.IsBeginCalled()) {
     forward_range.Begin();
   }

@@ -129,6 +129,11 @@ class NvtxMarkerCreator final {
   void Mark();
 
  private:
+  void Show() {
+    std::cout << "Range message: " << message_
+              << ", color: " << color_ << std::endl;
+  }
+
   // Text on this marker.
   const std::string message_;
 

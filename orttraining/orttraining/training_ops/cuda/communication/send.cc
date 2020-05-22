@@ -43,7 +43,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int dst = static_cast<int>(*remote_rank);
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator preRange(
     "PreSend-" + std::to_string(dst), 0x00ff0000);
   
@@ -127,11 +127,11 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   int mpi_code = 0;
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   preRange.End();
 #endif
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator sendRange(
     "Send-" + std::to_string(dst), 0x00ff0000);
 #endif
@@ -143,7 +143,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   sendRange.Begin();
 #endif
 
@@ -160,11 +160,11 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     info_data.rank, info_data.tag, MPI_COMM_WORLD);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   sendRange.End();
 #endif
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator postRange(
     "PostSend-" + std::to_string(dst), 0x00ff0000);
 
@@ -176,7 +176,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   bool* output_signal = output_signal_tensor->MutableData<bool>();
   *output_signal = true;
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(_WIN32)
   postRange.End();
 #endif
 
