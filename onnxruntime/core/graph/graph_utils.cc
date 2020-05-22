@@ -756,17 +756,16 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node* start_node) {
   while (q.size() != 0) {
     const Node& cur_node = *(q.front());
     q.pop();
-    // Each eligible node in the subgraph must have exactly one output edge and no output should be 
+    // Each eligible node in the subgraph must have less than one output edge and no output should be 
     // the graph output
     if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
       continue;
     }
-    RemoveNodeOutputEdges(graph, const_cast<Node&>(cur_node));      
     nodes_to_remove.push_back(cur_node.Index());
     // push the parents of current node to the queue. 
     for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
-      std::string input_name = GetNodeInputName(cur_node, i);
-      if (IsConstantInitializer(graph, input_name) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
+      const std::string& input_name = GetNodeInputName(cur_node, i);
+      if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
         // skip initializers and graph inputs
         continue;
       }
@@ -780,6 +779,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node* start_node) {
   // Remove nodes that are not used anymore.
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
+    RemoveNodeOutputEdges(graph, *node);  
     graph.RemoveNode(node->Index());
   }
   return true;
