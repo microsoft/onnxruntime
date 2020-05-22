@@ -1,0 +1,96 @@
+# sudo docker build --file ./Dockerfile --tag rocm/tensorflow:rocm3.3-tf2.1-dev-wezhan .
+
+#FROM tensorflow:rocm3.3-tf2.1-dev
+FROM test
+
+RUN apt-get -y update && \
+    apt-get -y install \
+      build-essential \
+      autotools-dev \
+      rsync \
+      curl \
+      wget \
+    #  jq \
+      openssh-server \
+      openssh-client \
+      sudo \
+    # Needed by UCX/OpenMPI
+      automake \
+      autoconf \
+      libtool \
+      flex \
+      doxygen \
+    # Needed by OpenMPI
+    #  cmake \
+    #  g++ \
+    #  gcc \
+    #  ifconfig \ 
+    #  net-tools \
+    # this is for MOFED - https://github.com/horovod/horovod/issues/1117#issuecomment-502917200
+      librdmacm1 \
+      libnl-route-3-200 \
+      libibverbs1 \
+      libibverbs-dev \
+      ibverbs-utils \
+      ibverbs-providers && \
+    apt-get autoremove
+
+# ROCm library
+RUN apt-get -y install rocm-libs miopen-hip rccl
+
+ENV WORK_DIR=/work
+RUN mkdir -p $WORK_DIR
+
+ENV GITHUB_DIR=$WORK_DIR/github
+RUN mkdir -p $GITHUB_DIR
+
+ENV UCX_DIR=$WORK_DIR/ucx
+ENV OMPI_DIR=$WORK_DIR/ompi
+
+WORKDIR $GITHUB_DIR
+
+# UCX
+RUN git clone https://github.com/openucx/ucx.git \
+  && cd ucx \
+  && git checkout v1.8.0 \
+  && ./autogen.sh \
+  && mkdir build \
+  && cd build \
+  && ../contrib/configure-opt --prefix=$UCX_DIR --with-rocm=/opt/rocm --without-knem --without-cuda \
+  && make \
+  && make install
+
+# OpenMPI
+RUN git clone --recursive -b v4.0.3 https://github.com/open-mpi/ompi.git \
+  && cd ompi \
+  && ./autogen.pl \
+  && mkdir build \
+  && cd build \
+  && ../configure --prefix=$OMPI_DIR --with-ucx=$UCX_DIR --without-verbs \
+  && make \
+  && make install
+
+ENV PATH=$OMPI_DIR/bin:${PATH}
+ENV LD_LIBRARY_PATH=$OMPI_DIR/lib:$UCX_DIR/lib:${LD_LIBRARY_PATH}
+
+# Create a wrapper for OpenMPI to allow running as root by default
+# RUN mv /usr/local/mpi4/bin/mpirun /usr/local/mpi4/bin/mpirun.real && \
+#    echo '#!/bin/bash' > /usr/local/mpi4/bin/mpirun && \
+#    echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi4 "$@"' >> /usr/local/mpi4/bin/mpirun && \
+#    chmod a+x /usr/local/mpi4/bin/mpirun
+
+ENV CMAKE_VERSION=3.16.4
+RUN cd /usr/local && \
+    wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
+ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
+
+
+ENV BERT_DIR=$WORK_DIR/bert
+RUN mkdir -p $BERT_DIR
+
+WORKDIR $BERT_DIR
+#ADD model $BERT_DIR/model
+ADD script $BERT_DIR/script
+RUN chmod a+x $BERT_DIR/script/run_perf.sh
+
+WORKDIR $WORK_DIR
