@@ -1,0 +1,11 @@
+<defaults
+basenames=on
+timestamp=on
+ctx-limit=0
+heartbeat=0
+obj-tracking=on
+></defaults>
+<metric
+  name=VALUUtilization,VALUBusy,SALUBusy,MemUnitBusy,MemUnitStalled,WriteUnitStalled
+  kernel="_TransposeKernel,_BinaryElementWise"
+></metric>
