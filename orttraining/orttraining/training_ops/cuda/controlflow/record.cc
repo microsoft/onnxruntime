@@ -31,7 +31,7 @@ Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t event_id = *(event_id_tensor->template Data<int64_t>());
 
   profile::NvtxRangeCreator range(
-    "Record-" + std::to_string(event_id), profile::Magenta);
+    "Record-" + std::to_string(event_id), profile::Color::Magenta);
   range.Begin();
 #endif
 

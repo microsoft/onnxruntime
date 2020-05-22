@@ -699,7 +699,8 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     profile_context.SetThreadTag(
       std::this_thread::get_id(), std::to_string(step));
 #endif
-    ORT_ENFORCE(step > 0);
+    // Dummy use of step to avoid warning when the code above is disabled. 
+    ORT_ENFORCE(step + 1 > 0);
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
     ORT_ENFORCE(session_.Run(

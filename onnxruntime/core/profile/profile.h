@@ -12,7 +12,13 @@
 namespace onnxruntime {
 namespace profile {
 
-enum EventColor : uint32_t {
+// Color in ARGB space.
+// A: first 8 bit.
+// R: later 8 bit.
+// G: later 8 bit.
+// B: last 8 bits
+// All colo channels has range [0, 255].
+enum class Color : uint32_t {
   Black = 0x00000000,
   Red = 0x00ff0000,
   DarkGreen = 0x00009900,
@@ -28,7 +34,7 @@ enum EventColor : uint32_t {
 
 class RangeCreatorBase {
  public:
-  RangeCreatorBase(const std::string message, const uint32_t color)
+  RangeCreatorBase(const std::string message, const Color color)
       : message_(message), color_(color),
         is_begin_called_(false), is_end_called_(false) {};
 
@@ -84,7 +90,7 @@ class RangeCreatorBase {
  protected:
   void Show() {
     std::cout << "Range message: " << message_
-              << ", color: " << color_
+              << ", color: " << static_cast<uint32_t>(color_)
               << ", is_begin_called: " << is_begin_called_
               << ", is_end_called: " << is_end_called_ << std::endl;
   }
@@ -93,7 +99,7 @@ class RangeCreatorBase {
   const std::string message_;
 
   // Color of event in ARGB space.
-  const uint32_t color_;
+  const Color color_;
 
   bool is_begin_called_;
   bool is_end_called_;
@@ -101,7 +107,7 @@ class RangeCreatorBase {
 
 class NvtxRangeCreator final : public RangeCreatorBase {
  public:
-  NvtxRangeCreator(const std::string message, const uint32_t color)
+  NvtxRangeCreator(const std::string message, const Color color)
       : RangeCreatorBase(message, color) {};
 
   void BeginImpl() override;
@@ -117,7 +123,7 @@ class NvtxRangeCreator final : public RangeCreatorBase {
 
 class NvtxNestedRangeCreator final : public RangeCreatorBase {
  public:
-  NvtxNestedRangeCreator(const std::string message, const uint32_t color)
+  NvtxNestedRangeCreator(const std::string message, const Color color)
       : RangeCreatorBase(message, color) {};
 
   void BeginImpl() override;
@@ -126,21 +132,21 @@ class NvtxNestedRangeCreator final : public RangeCreatorBase {
 
 class NvtxMarkerCreator final {
  public:
-  NvtxMarkerCreator(const std::string message, const uint32_t color)
+  NvtxMarkerCreator(const std::string message, const Color color)
       : message_(message), color_(color) {};
   void Mark();
 
  private:
   void Show() {
     std::cout << "Range message: " << message_
-              << ", color: " << color_ << std::endl;
+              << ", color: " << static_cast<uint32_t>(color_) << std::endl;
   }
 
   // Text on this marker.
   const std::string message_;
 
   // See nvtxRangeCreator.color_.
-  const uint32_t color_;
+  const Color color_;
 };
 
 }  // namespace profile

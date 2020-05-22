@@ -38,7 +38,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 #if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator preRange(
-    "PreRecv-" + std::to_string(src), profile::Green);
+    "PreRecv-" + std::to_string(src), profile::Color::Green);
   preRange.Begin();
 #endif
 
@@ -83,7 +83,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 #if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator recvRange(
-    "Recv-" + std::to_string(src), profile::Green);
+    "Recv-" + std::to_string(src), profile::Color::Green);
   // Begin of actual communication.
   recvRange.Begin();
 #endif
@@ -124,7 +124,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
 #if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator postRange(
-    "PostRecv-" + std::to_string(src), profile::Green);
+    "PostRecv-" + std::to_string(src), profile::Color::Green);
   postRange.Begin();
 #endif
 

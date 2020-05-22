@@ -31,7 +31,7 @@ Status WaitEvent::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t event_id = *(event_id_tensor->template Data<int64_t>());
 
   profile::NvtxRangeCreator range(
-    "Wait-" + std::to_string(event_id), profile::Blue);
+    "Wait-" + std::to_string(event_id), profile::Color::Blue);
   range.Begin();
 #endif
 

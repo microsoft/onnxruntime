@@ -176,10 +176,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto tag = profile_context.GetThreadTag(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
     "forward-" + tag,
-    profile::White);
+    profile::Color::White);
   profile::NvtxRangeCreator backward_range(
     "backward-" + tag,
-    profile::Black);
+    profile::Color::Black);
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {

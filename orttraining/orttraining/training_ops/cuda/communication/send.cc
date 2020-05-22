@@ -45,7 +45,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 #if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator preRange(
-    "PreSend-" + std::to_string(dst), 0x00ff0000);
+    "PreSend-" + std::to_string(dst), profile::Color::Red);
   
   preRange.Begin();
 #endif
@@ -133,7 +133,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 #if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator sendRange(
-    "Send-" + std::to_string(dst), 0x00ff0000);
+    "Send-" + std::to_string(dst), profile::Color::Red);
 #endif
 
   // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
@@ -166,7 +166,7 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
 #if !defined(NDEBUG) && !defined(_WIN32)
   profile::NvtxRangeCreator postRange(
-    "PostSend-" + std::to_string(dst), 0x00ff0000);
+    "PostSend-" + std::to_string(dst), profile::Color::Red);
 
   postRange.Begin();
 #endif

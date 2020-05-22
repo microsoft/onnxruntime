@@ -18,7 +18,7 @@ void NvtxRangeCreator::BeginImpl() {
   eventAttrib.version = NVTX_VERSION;
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   eventAttrib.colorType = NVTX_COLOR_ARGB;
-  eventAttrib.color = color_;
+  eventAttrib.color = static_cast<uint32_t>(color_);
   eventAttrib.messageType = NVTX_MESSAGE_TYPE_ASCII;
   eventAttrib.message.ascii = message_.c_str();
 
@@ -40,7 +40,7 @@ void NvtxNestedRangeCreator::BeginImpl() {
   eventAttrib.version = NVTX_VERSION;
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   eventAttrib.colorType = NVTX_COLOR_ARGB;
-  eventAttrib.color = color_;
+  eventAttrib.color = static_cast<uint32_t>(color_);
   eventAttrib.messageType = NVTX_MESSAGE_TYPE_ASCII;
   eventAttrib.message.ascii = message_.c_str();
   
@@ -62,7 +62,7 @@ void NvtxMarkerCreator::Mark() {
   eventAttrib.version = NVTX_VERSION; 
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE; 
   eventAttrib.colorType = NVTX_COLOR_ARGB;
-  eventAttrib.color = color_;
+  eventAttrib.color = static_cast<uint32_t>(color_);
   eventAttrib.messageType = NVTX_MESSAGE_TYPE_ASCII;
   eventAttrib.message.ascii = message_.c_str();
 
