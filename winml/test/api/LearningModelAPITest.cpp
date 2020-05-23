@@ -17,10 +17,6 @@ static void LearningModelAPITestsClassSetup() {
   init_apartment();
 }
 
-static void LearningModelAPITestsGpuMethodSetup() {
-  GPUTEST;
-}
-
 static void CreateModelFromFilePath() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
@@ -286,10 +282,9 @@ static void CheckMetadataCaseInsensitive() {
 }
 
 const LearningModelApiTestsApi& getapi() {
-  static constexpr LearningModelApiTestsApi api =
+  static LearningModelApiTestsApi api =
   {
     LearningModelAPITestsClassSetup,
-    LearningModelAPITestsGpuMethodSetup,
     CreateModelFromFilePath,
     CreateModelFromUnicodeFilePath,
     CreateModelFileNotFound,
@@ -309,5 +304,9 @@ const LearningModelApiTestsApi& getapi() {
     CheckMetadataCaseInsensitive,
     CreateCorruptModel
   };
+
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
+    api.CloseModelCheckEval = SkipTest;
+  }
   return api;
 }

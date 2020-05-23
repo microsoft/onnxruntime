@@ -2078,6 +2078,37 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
       });
 
+  const char* QLinearLeakyReluDoc_ver1 =  R"DOC(
+QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
+and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
+`f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearLeakyRelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QLinearLeakyReluDoc_ver1)
+      .Attr("alpha", "Coefficient of leakage.", AttributeProto::FLOAT, 0.01f)
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "X_scale",
+             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(2, "X_zero_point",
+             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Input(3, "Y_scale",
+             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(4, "Y_zero_point",
+             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

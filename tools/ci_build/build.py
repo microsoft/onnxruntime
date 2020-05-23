@@ -28,12 +28,14 @@ class BaseError(Exception):
 
 class BuildError(BaseError):
     """Error from running build steps."""
+
     def __init__(self, *messages):
         super().__init__("\n".join(messages))
 
 
 class UsageError(BaseError):
     """Usage related error."""
+
     def __init__(self, message):
         super().__init__(message)
 
@@ -272,6 +274,8 @@ def parse_arguments():
         "--enable_msinternal", action="store_true",
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
+    parser.add_argument(
+        "--use_vitisai", action='store_true', help="Build with Vitis-AI")
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
@@ -560,7 +564,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
-        "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_NNAPI_DNNLIBRARY=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
@@ -571,6 +575,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
+        "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -619,7 +624,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     if not is_windows():
         if args.use_cuda:
             if "-Donnxruntime_USE_HOROVOD=OFF" in cmake_args:
-               cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
+                cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
             cmake_args += [
                 "-Donnxruntime_USE_HOROVOD=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
@@ -627,7 +632,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
-            args.use_openvino or args.gen_doc):
+            args.use_openvino or args.use_vitisai or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
@@ -677,8 +682,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
                 raise BuildError(
                     "iOS build on MacOS canceled due to missing arguments: " +
                     ', '.join(
-                         val for val, cond in zip(arg_names, needed_args)
-                         if not cond))
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
             cmake_args += [
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
@@ -707,8 +712,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
                 raise BuildError(
                     "iOS build canceled due to missing arguments: " +
                     ', '.join(
-                            val for val, cond in zip(arg_names, needed_args)
-                            if not cond))
+                        val for val, cond in zip(arg_names, needed_args)
+                        if not cond))
             compilers = sorted(
                 glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
             os.environ["PATH"] = os.path.join(
@@ -829,12 +834,12 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
         build_tool_args = []
         if parallel:
             num_cores = str(multiprocessing.cpu_count())
-            if is_windows():
+            if is_windows() and args.cmake_generator != 'Ninja':
                 build_tool_args += [
                     "/maxcpucount:" + num_cores,
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
-                    ]
+                ]
             elif (is_macOS() and args.use_xcode):
                 # CMake will generate correct build tool args for Xcode
                 cmd_args += ["--parallel", num_cores]
@@ -1008,6 +1013,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
+
 def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
@@ -1016,6 +1022,7 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
+
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                           enable_tvm=False, enable_tensorrt=False):
@@ -1235,50 +1242,52 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
                 run_subprocess(
                     [exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
 
+
 def openvino_run_onnx_tests(build_dir, configs, onnx_test_data_dir,
                             provider, num_parallel_models,
                             num_parallel_tests=0):
     """openvino function to run onnx tests and model tests
     """
     for config in configs:
-      cwd = get_config_build_dir(build_dir, config)
-      if is_windows():
-        exe = os.path.join(cwd, config, 'onnx_test_runner')
-        model_dir = os.path.join(cwd, "models")
-      else:
-        exe = os.path.join(cwd, 'onnx_test_runner')
-        model_dir = os.path.join(build_dir, "models")
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+            exe = os.path.join(cwd, config, 'onnx_test_runner')
+            model_dir = os.path.join(cwd, "models")
+        else:
+            exe = os.path.join(cwd, 'onnx_test_runner')
+            model_dir = os.path.join(build_dir, "models")
 
-      cmd = ['-o', '0']
-      if provider:
-        cmd += ["-e", provider]
+        cmd = ['-o', '0']
+        if provider:
+            cmd += ["-e", provider]
 
-      if num_parallel_tests != 0:
-        cmd += ['-c', str(num_parallel_tests)]
+        if num_parallel_tests != 0:
+            cmd += ['-c', str(num_parallel_tests)]
 
-      if num_parallel_models > 0:
-        cmd += ["-j", str(num_parallel_models)]
+        if num_parallel_models > 0:
+            cmd += ["-j", str(num_parallel_models)]
 
-      #onnx test
-      if os.path.exists(onnx_test_data_dir):
-        cmd.append(onnx_test_data_dir)
-        run_subprocess([exe] + cmd, cwd=cwd)
+        # onnx test
+        if os.path.exists(onnx_test_data_dir):
+            cmd.append(onnx_test_data_dir)
+            run_subprocess([exe] + cmd, cwd=cwd)
 
-      #model test
-      #OpenVINO can run most of the model tests, but only part of
-      #them are enabled here to save CI build time.
-      if config != 'Debug' and os.path.exists(model_dir):
-        model_dir_opset8 = os.path.join(model_dir, "opset8")
-        model_dir_opset8 = glob.glob(os.path.join(
-            model_dir_opset8, "test_*"))
-        model_dir_opset10 = os.path.join(model_dir, "opset10")
-        model_dir_opset10 = glob.glob(os.path.join(
-            model_dir_opset10, "*v1*"))
-        for dir_path in itertools.chain(model_dir_opset8,
-                                        model_dir_opset10):
-          model_test_cmd = cmd + [dir_path]
-          run_subprocess(
-            [exe] + model_test_cmd, cwd=cwd)
+        # model test
+        # OpenVINO can run most of the model tests, but only part of
+        # them are enabled here to save CI build time.
+        if config != 'Debug' and os.path.exists(model_dir):
+            model_dir_opset8 = os.path.join(model_dir, "opset8")
+            model_dir_opset8 = glob.glob(os.path.join(
+                model_dir_opset8, "test_*"))
+            model_dir_opset10 = os.path.join(model_dir, "opset10")
+            model_dir_opset10 = glob.glob(os.path.join(
+                model_dir_opset10, "*v1*"))
+            for dir_path in itertools.chain(model_dir_opset8,
+                                            model_dir_opset10):
+                model_test_cmd = cmd + [dir_path]
+                run_subprocess(
+                    [exe] + model_test_cmd, cwd=cwd)
+
 
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
     """dnnl temporary function for running onnx tests and
@@ -1345,9 +1354,8 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
-        nightly_build=False,
-        featurizers_build=False):
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
+        use_acl, nightly_build=False, featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1387,6 +1395,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_vitisai:
+            args.append('--use_vitisai')
         elif use_acl:
             args.append('--use_acl')
 
@@ -1411,8 +1421,11 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
         '-Dprotobuf_BUILD_SHARED_LIBS=OFF'
     ]
+
+    is_ninja = args.cmake_generator == 'Ninja'
+
     if is_windows():
-        if args.cmake_generator != 'Ninja':
+        if not is_ninja:
             cmd_args += ['-T', 'host=x64']
         cmd_args += ['-G', args.cmake_generator]
     elif is_macOS() and args.use_xcode:
@@ -1427,14 +1440,19 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     run_subprocess(cmd_args)
 
     # Absolute protoc path is needed for cmake
-    expected_protoc_path = (
-        os.path.join(
-            protoc_build_dir, 'Release', 'protoc.exe') if is_windows()
-        else (os.path.join(protoc_build_dir, 'Release', 'protoc')
-                if is_macOS() and args.use_xcode
-                else os.path.join(protoc_build_dir, 'protoc')))
+    config_dir = ''
+    suffix = ''
+
+    if (is_windows() and not is_ninja) or (is_macOS() and args.use_xcode):
+        config_dir = 'Release'
+
+    if is_windows():
+        suffix = '.exe'
+
+    expected_protoc_path = os.path.join(protoc_build_dir, config_dir, 'protoc' + suffix)
+
     if not os.path.exists(expected_protoc_path):
-        raise BuildError("Couldn't build protoc for host. Failing build.")
+        raise BuildError("Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
 
     return expected_protoc_path
 
@@ -1472,7 +1490,7 @@ def generate_documentation(source_dir, build_dir, configs):
         log.warning(
             'The updated opkernel document file ' + str(opkernel_doc_path)
             + ' is different from the checked in version. Consider '
-            'regenrating the file with CPU, DNNL and CUDA providers enabled.')
+            'regenerating the file with CPU, DNNL and CUDA providers enabled.')
         log.debug('diff:\n' + str(docdiff))
 
     docdiff = ''
@@ -1545,6 +1563,8 @@ def main():
     if args.update:
         cmake_extra_args = []
         path_to_protoc_exe = args.path_to_protoc_exe
+        if not args.skip_submodule_sync:
+            update_submodules(source_dir)
         if is_windows():
             if args.cmake_generator == 'Ninja':
                 if args.x86 or args.arm or args.arm64:
@@ -1617,8 +1637,6 @@ def main():
                 install_python_deps()
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
-        if not args.skip_submodule_sync:
-            update_submodules(source_dir)
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
         generate_build_tree(
@@ -1723,6 +1741,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_vitisai,
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,

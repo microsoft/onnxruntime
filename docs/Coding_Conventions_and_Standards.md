@@ -1,7 +1,7 @@
 # ONNX Runtime coding conventions and standards
 
 
-## Code Style
+## C++ Code Style
 
 Google style from https://google.github.io/styleguide/cppguide.html with a few minor alterations:
 
@@ -58,3 +58,15 @@ In order to check that all the code you expect to be covered by testing is cover
 There is a configuration file in onnxruntime\VSCodeCoverage.runsettings that can be used to configure code coverage so that it reports numbers for just the onnxruntime code. Select that file in Visual Studio via the Test menu: 'Test' -> 'Test Settings' -> 'Select Test Settings File'. 
 
 Using 'Show Code Coverage Coloring' will allow you to visually inspect which lines were hit by the tests. See <https://docs.microsoft.com/en-us/visualstudio/test/using-code-coverage-to-determine-how-much-code-is-being-tested?view=vs-2017>.
+
+## Python Code Style
+
+Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). 
+A maximum line length of 120 characters is allowed for consistency with the C++ code.
+
+Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/tree/master/.flake8).
+
+The [autopep8](https://pypi.org/project/autopep8/) tool can be used to automatically fix a range of PEP8 issues, as can [yapf](https://github.com/google/yapf). There's a yapf configuration file [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/.style.yapf).
+
+Editors such as PyCharm [(see here)](https://www.jetbrains.com/help/pycharm/code-inspection.html) and Visual Studio Code [(see here)](https://code.visualstudio.com/docs/python/linting#_flake8) can be configured to check for PEP8 issues. 
+

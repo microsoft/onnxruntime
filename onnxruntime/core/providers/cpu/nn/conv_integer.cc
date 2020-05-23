@@ -149,18 +149,18 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
         }
       }
 
-      QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(output_image_size),
-                    static_cast<int>(kernel_dim),
-                    Wdata + group_id * W_offset,
-                    static_cast<int>(kernel_dim),
-                    filter_offset,
-                    col_buffer_data == nullptr ? Xdata : col_buffer_data,
-                    static_cast<int>(output_image_size),
-                    input_offset,
-                    Ydata,
-                    static_cast<int>(output_image_size),
-                    thread_pool);
+      QGemm(static_cast<int>(M / conv_attrs_.group),
+            static_cast<int>(output_image_size),
+            static_cast<int>(kernel_dim),
+            Wdata + group_id * W_offset,
+            static_cast<int>(kernel_dim),
+            filter_offset,
+            col_buffer_data == nullptr ? Xdata : col_buffer_data,
+            static_cast<int>(output_image_size),
+            input_offset,
+            Ydata,
+            static_cast<int>(output_image_size),
+            thread_pool);
 
       Xdata += X_offset;
       Ydata += Y_offset;
