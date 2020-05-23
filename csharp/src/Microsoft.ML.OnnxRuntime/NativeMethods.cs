@@ -13,6 +13,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr GetVersionString;
     };
 
+    // NOTE: The order of the APIs in this struct should match exactly that in
+    // OrtApi ort_api_1_to_3 (onnxruntime_c_api.cc)
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
@@ -38,8 +40,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EnableCpuMemArena;
         public IntPtr DisableCpuMemArena;
         public IntPtr SetSessionLogId;
-        public IntPtr SetSessionLogSeverityLevel;
         public IntPtr SetSessionLogVerbosityLevel;
+        public IntPtr SetSessionLogSeverityLevel;
         public IntPtr SetSessionGraphOptimizationLevel;
         public IntPtr SetIntraOpNumThreads;
         public IntPtr SetInterOpNumThreads;
@@ -59,8 +61,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionGetOutputName;
         public IntPtr SessionGetOverridableInitializerName;
         public IntPtr CreateRunOptions;
-        public IntPtr RunOptionsSetRunLogSeverityLevel;
         public IntPtr RunOptionsSetRunLogVerbosityLevel;
+        public IntPtr RunOptionsSetRunLogSeverityLevel;
         public IntPtr RunOptionsSetRunTag;
         public IntPtr RunOptionsGetRunLogVerbosityLevel;
         public IntPtr RunOptionsGetRunLogSeverityLevel;
@@ -127,6 +129,15 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseTensorTypeAndShapeInfo;
         public IntPtr ReleaseSessionOptions;
         public IntPtr ReleaseCustomOpDomain;
+        public IntPtr GetDenotationFromTypeInfo;
+        public IntPtr CastTypeInfoToMapTypeInfo;
+        public IntPtr CastTypeInfoToSequenceTypeInfo;
+        public IntPtr GetMapKeyType;
+        public IntPtr GetMapValueType;
+        public IntPtr GetSequenceElementType;
+        public IntPtr ReleaseMapTypeInfo;
+        public IntPtr ReleaseSequenceTypeInfo;
+        public IntPtr SessionEndProfiling;
     }
 
     internal static class NativeMethods
@@ -160,11 +171,11 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtSessionGetInputName = (DOrtSessionGetInputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputName, typeof(DOrtSessionGetInputName));
             OrtSessionGetOutputName = (DOrtSessionGetOutputName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputName, typeof(DOrtSessionGetOutputName));
+            OrtSessionEndProfiling = (DOrtSessionEndProfiling)Marshal.GetDelegateForFunctionPointer(api_.SessionEndProfiling, typeof(DOrtSessionEndProfiling));
             OrtSessionGetOverridableInitializerName = (DOrtSessionGetOverridableInitializerName)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerName, typeof(DOrtSessionGetOverridableInitializerName));
             OrtSessionGetInputTypeInfo = (DOrtSessionGetInputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputTypeInfo, typeof(DOrtSessionGetInputTypeInfo));
             OrtSessionGetOutputTypeInfo = (DOrtSessionGetOutputTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputTypeInfo, typeof(DOrtSessionGetOutputTypeInfo));
             OrtSessionGetOverridableInitializerTypeInfo = (DOrtSessionGetOverridableInitializerTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerTypeInfo, typeof(DOrtSessionGetOverridableInitializerTypeInfo));
-
             OrtReleaseTypeInfo = (DOrtReleaseTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTypeInfo, typeof(DOrtReleaseTypeInfo));
             OrtReleaseSession = (DOrtReleaseSession)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSession, typeof(DOrtReleaseSession));
 
@@ -315,6 +326,12 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out IntPtr /*(char**)*/name);
         public static DOrtSessionGetOutputName OrtSessionGetOutputName;
 
+        public delegate IntPtr /*(OrtStatus*)*/DOrtSessionEndProfiling(
+                                                IntPtr /*(const OrtSession*)*/ session,
+                                                IntPtr /*(OrtAllocator*)*/ allocator,
+                                                out IntPtr /*(char**)*/profile_file);
+        public static DOrtSessionEndProfiling OrtSessionEndProfiling;
+
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerName(
                                                 IntPtr /*(OrtSession*)*/ session,
                                                 UIntPtr index,
@@ -322,28 +339,25 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out IntPtr /*(char**)*/name);
         public static DOrtSessionGetOverridableInitializerName OrtSessionGetOverridableInitializerName;
 
-        // release the typeinfo using OrtReleaseTypeInfo
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetInputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /*(struct OrtTypeInfo**)*/ typeInfo);
         public static DOrtSessionGetInputTypeInfo OrtSessionGetInputTypeInfo;
 
-        // release the typeinfo using OrtReleaseTypeInfo
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOutputTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
         public static DOrtSessionGetOutputTypeInfo OrtSessionGetOutputTypeInfo;
 
-        // release the typeinfo using OrtReleaseTypeInfo
         public delegate IntPtr /*(OrtStatus*)*/DOrtSessionGetOverridableInitializerTypeInfo(
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 UIntPtr index,
                                                 out IntPtr /* (struct OrtTypeInfo**)*/ typeInfo);
         public static DOrtSessionGetOverridableInitializerTypeInfo OrtSessionGetOverridableInitializerTypeInfo;
 
-
+        // release the typeinfo using OrtReleaseTypeInfo
         public delegate void DOrtReleaseTypeInfo(IntPtr /*(OrtTypeInfo*)*/session);
         public static DOrtReleaseTypeInfo OrtReleaseTypeInfo;
 
