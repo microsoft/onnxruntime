@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
 #include "core/profile/profile.h"
 #include "core/common/common.h"
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
 

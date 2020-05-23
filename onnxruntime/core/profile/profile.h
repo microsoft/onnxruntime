@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// These enclosed classes are wrappers over
+// generating Nvidia's visual profile APIs.
+// They can be used to plot the time intervals of forward and backward passes.
+// They can also be used to plot the time span of a specific operator.
+// When writing this file, Nvidia only supports this tool on Linux.
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
+
 #pragma once
 
 #include <cinttypes>
@@ -10,12 +17,6 @@
 #include <string>
 
 #include "core/common/common.h"
-
-// These enclosed classes are wrappers over
-// generating Nvidia's visual profile APIs.
-// They can be used to plot the time intervals of forward and backward passes.
-// They can also be used to plot the time span of a specific operator.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
 
 namespace onnxruntime {
 namespace profile {
@@ -107,7 +108,6 @@ class NvtxRangeCreator final : public RangeCreatorBase {
   void EndImpl() override;
 
  private:
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   // It records the event ID created by BeginImpl.
   // EndImpl needs this value to end the right event.
   uint64_t range_id_;
