@@ -22,27 +22,6 @@ INCLUDE macamd64.inc
 ;
 ; Macro Description:
 ;
-;   This macro uses AVX instructions to save a vector register as part of a
-;   function prologue as an alternative to save_xmm128.
-;
-; Arguments:
-;
-;   Register - Supplies the vector register to be saved.
-;
-;   Offset - Supplies the stack frame offset to store the contents of the
-;       vector register.
-;
-
-save_xmm128_avx MACRO Register, Offset
-
-        vmovaps Offset[rsp], Register
-        .savexmm128 Register, Offset
-
-        ENDM
-
-;
-; Macro Description:
-;
 ;   This macro generates an optimization for "add reg,128" which can instead
 ;   be encoded as "sub reg,-128" to reduce code size by using a signed 8-bit
 ;   value.
