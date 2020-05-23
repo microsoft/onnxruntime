@@ -8,6 +8,8 @@
 #include <string>
 #include <unordered_map>
 
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
+
 namespace onnxruntime {
 namespace profile {
 
@@ -43,3 +45,5 @@ class Context {
 
 }  // namespace profile
 }  // namespace onnxruntime
+
+#endif

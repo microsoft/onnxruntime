@@ -9,6 +9,14 @@
 #include <stdexcept>
 #include <string>
 
+#include "core/common/common.h"
+
+// These enclosed classes are wrappers over
+// generating Nvidia's visual profile APIs.
+// They can be used to plot the time intervals of forward and backward passes.
+// They can also be used to plot the time span of a specific operator.
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
+
 namespace onnxruntime {
 namespace profile {
 
@@ -53,24 +61,16 @@ class RangeCreatorBase {
 
   // Mark the beginning of a range.
   void Begin() {
-    if (is_begin_called_) {
-      throw std::runtime_error("Begin cannot be called more than once.");
-    }
-    if (is_end_called_) {
-      throw std::runtime_error("Begin cannot be called after calling End.");
-    }
+    ORT_ENFORCE(!is_begin_called_, "Begin cannot be called more than once.");
+    ORT_ENFORCE(!is_end_called_, "Begin cannot be called after calling End.");
     BeginImpl();
     is_begin_called_ = true;
   }
 
   // Mark the end of a range.
   void End() {
-    if (!is_begin_called_) {
-      throw std::runtime_error("End must be called after calling Begin.");
-    }
-    if (is_end_called_) {
-      throw std::runtime_error("End cannot be called more than once.");
-    }
+    ORT_ENFORCE(is_begin_called_, "End must be called after calling Begin.");
+    ORT_ENFORCE(!is_end_called_, "End cannot be called more than once.");
     EndImpl();
     is_end_called_ = true;
   }
@@ -88,13 +88,6 @@ class RangeCreatorBase {
   virtual void EndImpl() = 0;
 
  protected:
-  void Show() {
-    std::cout << "Range message: " << message_
-              << ", color: " << static_cast<uint32_t>(color_)
-              << ", is_begin_called: " << is_begin_called_
-              << ", is_end_called: " << is_end_called_ << std::endl;
-  }
-
   // Text on this event.
   const std::string message_;
 
@@ -137,11 +130,6 @@ class NvtxMarkerCreator final {
   void Mark();
 
  private:
-  void Show() {
-    std::cout << "Range message: " << message_
-              << ", color: " << static_cast<uint32_t>(color_) << std::endl;
-  }
-
   // Text on this marker.
   const std::string message_;
 
@@ -151,3 +139,5 @@ class NvtxMarkerCreator final {
 
 }  // namespace profile
 }  // namespace onnxruntime
+
+#endif

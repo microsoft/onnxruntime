@@ -6,14 +6,12 @@
 #if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
-#endif
 
 namespace onnxruntime {
 namespace profile {
 
 void NvtxRangeCreator::BeginImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxEventAttributes_t eventAttrib;
   eventAttrib.version = NVTX_VERSION;
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
@@ -23,19 +21,15 @@ void NvtxRangeCreator::BeginImpl() {
   eventAttrib.message.ascii = message_.c_str();
 
   range_id_ = nvtxRangeStartEx(&eventAttrib);
-#endif
 }
 
 void NvtxRangeCreator::EndImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxRangeEnd(range_id_);
-#endif
 }
 
 void NvtxNestedRangeCreator::BeginImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxEventAttributes_t eventAttrib;
   eventAttrib.version = NVTX_VERSION;
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
@@ -45,19 +39,15 @@ void NvtxNestedRangeCreator::BeginImpl() {
   eventAttrib.message.ascii = message_.c_str();
   
   nvtxRangePushEx(&eventAttrib);
-#endif
 }
 
 void NvtxNestedRangeCreator::EndImpl() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxRangePop();
-#endif
 }
 
 void NvtxMarkerCreator::Mark() {
 // enable only for debug builds because this function is for profiling only.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
   nvtxEventAttributes_t eventAttrib; 
   eventAttrib.version = NVTX_VERSION; 
   eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE; 
@@ -67,9 +57,9 @@ void NvtxMarkerCreator::Mark() {
   eventAttrib.message.ascii = message_.c_str();
 
   nvtxMarkEx(&eventAttrib); 
-#endif
 }
-
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif
