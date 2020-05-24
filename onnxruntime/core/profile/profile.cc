@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace profile {
 
-void NvtxRangeCreator::BeginImpl() 
+void NvtxRangeCreator::BeginImpl() {
 // enable only for debug builds because this function is for profiling only.
   nvtxEventAttributes_t eventAttrib;
   eventAttrib.version = NVTX_VERSION;
