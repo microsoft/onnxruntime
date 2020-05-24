@@ -52,11 +52,9 @@ class RangeCreatorBase {
   ~RangeCreatorBase() {
     if (!is_begin_called_) {
       std::cerr << "Begin must be called once." << std::endl;
-      std::exit(-1);
     }
     if (!is_end_called_) {
       std::cerr << "End must be called once." << std::endl;
-      std::exit(-1);
     }
   }
 
