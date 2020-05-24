@@ -996,6 +996,7 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
+
 def setup_migraphx_vars(args):
 
     migraphx_home = None
@@ -1011,6 +1012,7 @@ def setup_migraphx_vars(args):
                              "migraphx_home='{}' valid={}."
                              .format(migraphx_home, migraphx_home_not_valid))
     return migraphx_home or ''
+
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
     if args.use_dml:
