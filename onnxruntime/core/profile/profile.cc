@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
+#ifdef ENABLE_NVTX_PROFILE
 #include "core/profile/profile.h"
 #include "core/common/common.h"
 #include <nvToolsExt.h>
@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace profile {
 
-void NvtxRangeCreator::BeginImpl() {
+void NvtxRangeCreator::BeginImpl() 
 // enable only for debug builds because this function is for profiling only.
   nvtxEventAttributes_t eventAttrib;
   eventAttrib.version = NVTX_VERSION;

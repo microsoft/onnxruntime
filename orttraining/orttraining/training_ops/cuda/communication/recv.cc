@@ -36,9 +36,10 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int src = static_cast<int>(*remote_rank);
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator preRange(
     "PreRecv-" + std::to_string(src), profile::Color::Green);
+  // Begin of preparation for receiving data.
   preRange.Begin();
 #endif
 
@@ -75,16 +76,18 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
     info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   // This range object includes the first MPI_Recv which receives a scalar.  
   // It means we count the MPI's initialization in pre-recv stage.
   preRange.End();
 #endif
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator recvRange(
     "Recv-" + std::to_string(src), profile::Color::Green);
-  // Begin of actual communication.
+  // Begin of major communication tasks.
+  // The first MPI_Recv is not included because we don't want to
+  // count waiting time before setting up the actual communication.
   recvRange.Begin();
 #endif
 
@@ -117,12 +120,12 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
     info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
   recvRange.End();
 #endif
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
     "PostRecv-" + std::to_string(src), profile::Color::Green);
   postRange.Begin();
@@ -152,7 +155,7 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   bool* output_signal = output_signal_tensor->template MutableData<bool>();
   *output_signal = true;
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   postRange.End();
 #endif
 

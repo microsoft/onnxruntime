@@ -43,10 +43,11 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int dst = static_cast<int>(*remote_rank);
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator preRange(
     "PreSend-" + std::to_string(dst), profile::Color::Red);
-  
+  // Begin of preparation for sending data. This time range includes
+  // the time for sending a scalar.
   preRange.Begin();
 #endif
 
@@ -127,15 +128,6 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
 
   int mpi_code = 0;
 
-#if !defined(NDEBUG) && !defined(_WIN32)
-  preRange.End();
-#endif
-
-#if !defined(NDEBUG) && !defined(_WIN32)
-  profile::NvtxRangeCreator sendRange(
-    "Send-" + std::to_string(dst), profile::Color::Red);
-#endif
-
   // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
   // MPI_Send may block the entire GPU until it returns.
   mpi_code = MPI_Send(
@@ -143,7 +135,16 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
+  preRange.End();
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator sendRange(
+    "Send-" + std::to_string(dst), profile::Color::Red);
+  // Begin of major communication tasks.
+  // The first MPI_Send is not included because we don't want to
+  // count waiting time before setting up the actual communication.
   sendRange.Begin();
 #endif
 
@@ -160,14 +161,15 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     info_data.rank, info_data.tag, MPI_COMM_WORLD);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
+  // End of major communication tasks.
   sendRange.End();
 #endif
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   profile::NvtxRangeCreator postRange(
     "PostSend-" + std::to_string(dst), profile::Color::Red);
-
+  // Begin of post communication tasks.
   postRange.Begin();
 #endif
 
@@ -176,7 +178,8 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   bool* output_signal = output_signal_tensor->MutableData<bool>();
   *output_signal = true;
 
-#if !defined(NDEBUG) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
+  // End of post communication tasks.
   postRange.End();
 #endif
 

@@ -6,7 +6,7 @@
 // They can be used to plot the time intervals of forward and backward passes.
 // They can also be used to plot the time span of a specific operator.
 // When writing this file, Nvidia only supports this tool on Linux.
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
+#ifdef ENABLE_NVTX_PROFILE
 
 #pragma once
 
