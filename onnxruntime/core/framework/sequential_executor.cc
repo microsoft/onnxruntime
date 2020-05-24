@@ -173,7 +173,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 #ifdef ENABLE_NVTX_PROFILE
   auto& profile_context = profile::Context::GetInstance();
-  const auto tag = profile_context.GetThreadTag(std::this_thread::get_id());
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
     "forward-" + tag,
     profile::Color::White);

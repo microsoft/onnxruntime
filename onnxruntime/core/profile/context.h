@@ -21,11 +21,14 @@ class Context {
     return instance_;
   }
 
-  std::string GetThreadTag(const std::thread::id& thread_id) {
+  // Return tag for the specified thread.
+  // If the thread's tag doesn't exist, this function returns an empty string.
+  std::string GetThreadTagOrDefault(const std::thread::id& thread_id) {
     const std::lock_guard<std::mutex> lock(mtx_);
-    return thread_tag_.at(thread_id);
+    return thread_tag_[thread_id];
   }
 
+  // Set tag for the specified thread.
   void SetThreadTag(
       const std::thread::id& thread_id, const std::string& tag) {
     const std::lock_guard<std::mutex> lock(mtx_);
