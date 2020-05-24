@@ -8,7 +8,7 @@
 #include <string>
 #include <unordered_map>
 
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_Win32)
+#ifdef ENABLE_NVTX_PROFILE
 
 namespace onnxruntime {
 namespace profile {
