@@ -66,8 +66,9 @@ MODELS = {
     #"albert-base-v2": (["input_ids"], 12, False, "bert"),
     #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
-    # This model is very large. Need use_external_data_format=True to export it.
+    # Model>2GB. Need use_external_data_format=True to export it.
     #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
+    #"gpt2-large": (["input_ids"], 11, True, "gpt2"),  # no past state inputs & outputs
 }
 
 cpu_count = psutil.cpu_count(logical=True)
@@ -194,7 +195,7 @@ model_fusion_statistics = {}
 
 
 def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, use_gpu, fp16, overwrite):
-    suffix =  "_fp{}_{}.onnx".format(16 if fp16 else 32, "gpu" if use_gpu else "cpu")
+    suffix = "_fp{}_{}.onnx".format(16 if fp16 else 32, "gpu" if use_gpu else "cpu")
     optimized_model_filename = onnx_model_filename.replace(".onnx", suffix)
     if overwrite or not os.path.exists(optimized_model_filename):
         from optimizer import optimize_model
@@ -215,7 +216,7 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
         model_fusion_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
 
         # Use script to optimize model.
-        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16. 
+        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
         # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
         opt_model = optimize_model(onnx_model_filename,
                                    model_type,

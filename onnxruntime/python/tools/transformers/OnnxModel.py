@@ -9,13 +9,13 @@ import argparse
 import numpy as np
 from collections import deque
 import onnx
+import typing
 from onnx import ModelProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 
 
 class OnnxModel:
-
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
@@ -197,6 +197,15 @@ class OnnxModel:
             logger.debug(f"Expect {parent_op_type}, Got {parent.op_type}")
 
         return None
+
+    def match_parent_paths(self, node, paths, output_name_to_node):
+        for i, path in enumerate(paths):
+            assert isinstance(path, typing.List) or isinstance(path, typing.Tuple)
+            return_indice = []
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
+            if matched:
+                return i, matched, return_indice
+        return -1, None, None
 
     def match_parent_path(self,
                           node,
@@ -482,7 +491,7 @@ class OnnxModel:
         self.remove_nodes(unused_nodes)
 
         if len(unused_nodes) > 0:
-            logger.info(f"Removed unused constant nodes: {len(unused_nodes)}")
+            logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
     def prune_graph(self, outputs=None):
         """

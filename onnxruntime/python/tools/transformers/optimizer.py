@@ -261,8 +261,14 @@ def main():
 
     optimization_options = get_optimization_options(args)
 
-    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size, opt_level=args.opt_level,
-                                optimization_options=optimization_options, use_gpu=args.use_gpu, only_onnxruntime=args.only_onnxruntime)
+    bert_model = optimize_model(args.input,
+                                args.model_type,
+                                args.num_heads,
+                                args.hidden_size,
+                                opt_level=args.opt_level,
+                                optimization_options=optimization_options,
+                                use_gpu=args.use_gpu,
+                                only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
