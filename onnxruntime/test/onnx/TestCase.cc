@@ -176,7 +176,9 @@ class OnnxModelInfo : public TestModelInfo {
     }
 
     ONNX_NAMESPACE::ModelProto model_pb;
-    if (!model_pb.ParseFromFileDescriptor(model_fd)) {
+    ::google::protobuf::io::FileInputStream input(model_fd, 1 << 20);
+    const bool parse_result = model_pb.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
+    if (!parse_result) {
       (void)Env::Default().FileClose(model_fd);
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
