@@ -98,9 +98,14 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
 # training options
+option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+
+if (onnxruntime_ENABLE_NVTX_PROFILE)
+  add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -804,7 +809,13 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
-  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
+
+  if (onnxruntime_ENABLE_NVTX_PROFILE)
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft nvToolsExt)
+  else()
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
+  endif()
+  
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 

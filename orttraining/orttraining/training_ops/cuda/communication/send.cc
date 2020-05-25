@@ -5,8 +5,9 @@
 
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
-#include <mpi.h>
+#include "core/profile/profile.h"
 #include <limits>
+#include <mpi.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -41,6 +42,14 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* remote_rank_tensor = ctx->Input<Tensor>(1);
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int dst = static_cast<int>(*remote_rank);
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator preRange(
+    "PreSend-" + std::to_string(dst), profile::Color::Red);
+  // Begin of preparation for sending data. This time range includes
+  // the time for sending a scalar.
+  preRange.Begin();
+#endif
 
   // Create buffers
   const int tensor_num = static_cast<int>(element_types_.size());
@@ -125,6 +134,20 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
     info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+
+#ifdef ENABLE_NVTX_PROFILE
+  preRange.End();
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator sendRange(
+    "Send-" + std::to_string(dst), profile::Color::Red);
+  // Begin of major communication tasks.
+  // The first MPI_Send is not included because we don't want to
+  // count waiting time before setting up the actual communication.
+  sendRange.Begin();
+#endif
+
   mpi_code = MPI_Send(
     info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
     info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD);
@@ -138,10 +161,27 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
     info_data.rank, info_data.tag, MPI_COMM_WORLD);
   ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
 
+#ifdef ENABLE_NVTX_PROFILE
+  // End of major communication tasks.
+  sendRange.End();
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator postRange(
+    "PostSend-" + std::to_string(dst), profile::Color::Red);
+  // Begin of post communication tasks.
+  postRange.Begin();
+#endif
+
   // Communication is done, so output control signal can be set to true.
   Tensor* output_signal_tensor = ctx->Output(0, {});
   bool* output_signal = output_signal_tensor->MutableData<bool>();
   *output_signal = true;
+
+#ifdef ENABLE_NVTX_PROFILE
+  // End of post communication tasks.
+  postRange.End();
+#endif
 
   return Status::OK();
 }
