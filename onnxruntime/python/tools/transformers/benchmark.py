@@ -67,7 +67,8 @@ MODELS = {
     #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
     # This model is very large. Need use_external_data_format=True to export it.
-    #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
+    "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
+    "gpt2-large": (["input_ids"], 11, True, "gpt2"),  # no past state inputs & outputs
 }
 
 cpu_count = psutil.cpu_count(logical=True)
@@ -108,6 +109,7 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization
 
     execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
     try:
+        logger.info(f"create session for model: {onnx_model_path}")
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
     except onnxruntime.capi.onnxruntime_pybind11_state.Fail as e:
         logger.error(f"Failed to load model: {e}")
@@ -164,13 +166,13 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
     return dynamic_axes, output_names
 
 
-def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu):
-    test_session = create_onnxruntime_session(onnx_model_filename, use_gpu, enable_all_optimization=False)
+def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu, fp16):
+    test_session = create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=False)
     if test_session is None:
-        logger.error(f"{onnx_model_filename} is an invalid ONNX model")
+        logger.error(f"{onnx_model_path} is an invalid ONNX model")
         return False
 
-    logger.info(f"{onnx_model_filename} is a valid ONNX model")
+    logger.info(f"{onnx_model_path} is a valid ONNX model")
 
     # Compare the inference result with PyTorch
     example_ort_inputs = {k: t.cpu().numpy() for k, t in example_inputs.items()}
@@ -181,43 +183,68 @@ def validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_fla
         return False
 
     for i in range(len(example_outputs_flatten)):
-        if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=1e-03, atol=1e-03):
-            abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu()))
+        tol = 1e-02 if fp16 else 1e-4
+        if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=tol, atol=tol):
+            abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu().numpy()))
             logger.error(f"Output tensor {i} is not close to expected result. Max diff={abs_diff}")
             return False
 
-    logger.info(f"inference result of onnxruntime is validated on {onnx_model_filename}")
+    logger.info(f"inference result of onnxruntime is validated on {onnx_model_path}")
     return True
 
 
 model_fusion_statistics = {}
 
 
-def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hidden_size, use_gpu, fp16, overwrite):
-    suffix =  "_fp{}_{}.onnx".format(16 if fp16 else 32, "gpu" if use_gpu else "cpu")
-    optimized_model_filename = onnx_model_filename.replace(".onnx", suffix)
-    if overwrite or not os.path.exists(optimized_model_filename):
-        from optimizer import optimize_model
+def get_onnx_file_path(model_name: str, input_count: int, optimized_by_script: bool, use_gpu: bool, fp16: bool,
+                       optimized_by_onnxruntime: bool):
+    if not optimized_by_script:
+        filename = f"{model_name}_{input_count}"
+    else:
+        float_type = "fp16" if fp16 else "fp32"
+        device = "gpu" if use_gpu else "cpu"
+        filename = f"{model_name}_{input_count}_{float_type}_{device}"
+
+    if optimized_by_onnxruntime:
+        filename += f"_ort"
+
+    use_external_data = MODELS[model_name][2]
+    if use_external_data:
+        dirname = filename
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+        if os.name == 'nt':  # Windows should use back slash, otherwise OnnxRuntime will throw exception during loading the model.
+            return f"{dirname}\\{filename}.onnx"
+        return f"{dirname}/{filename}.onnx"
+
+    return f"{filename}.onnx"
+
+
+def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite):
+    if overwrite or not os.path.exists(ort_model_path):
+        # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
+        opt_model = optimize_by_onnxruntime(onnx_model_path,
+                                            use_gpu=use_gpu,
+                                            optimized_model_path=ort_model_path,
+                                            opt_level=99)
+        model_fusion_statistics[ort_model_path] = opt_model.get_fused_operator_statistics()
+    else:
+        logger.info(f"Skip optimization since model existed: {ort_model_path}")
+
+
+def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
+                        fp16, overwrite):
+    if overwrite or not os.path.exists(optimized_model_path):
+        from optimizer import optimize_model, optimize_by_onnxruntime
         from BertOnnxModel import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
         if fp16:
             optimization_options.enable_gelu_approximation = True
 
-        # Use onnxruntime to optimize model, which will be saved to *_ort_cpu.onnx
-        opt_model = optimize_model(onnx_model_filename,
-                                   model_type,
-                                   num_heads=num_attention_heads,
-                                   hidden_size=hidden_size,
-                                   opt_level=99,
-                                   optimization_options=optimization_options,
-                                   use_gpu=use_gpu,
-                                   only_onnxruntime=True)
-        model_fusion_statistics[onnx_model_filename] = opt_model.get_fused_operator_statistics()
-
         # Use script to optimize model.
-        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16. 
+        # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
         # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
-        opt_model = optimize_model(onnx_model_filename,
+        opt_model = optimize_model(onnx_model_path,
                                    model_type,
                                    num_heads=num_attention_heads,
                                    hidden_size=hidden_size,
@@ -225,14 +252,13 @@ def optimize_onnx_model(onnx_model_filename, model_type, num_attention_heads, hi
                                    optimization_options=optimization_options,
                                    use_gpu=use_gpu,
                                    only_onnxruntime=False)
-        model_fusion_statistics[optimized_model_filename] = opt_model.get_fused_operator_statistics()
+        model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
         if fp16:
             opt_model.convert_model_float32_to_float16()
-        opt_model.save_model_to_file(optimized_model_filename)
+        opt_model.save_model_to_file(optimized_model_path)
     else:
-        logger.info(f"Skip optimization since model existed: {optimized_model_filename}")
-    return optimized_model_filename
+        logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
 
 def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
@@ -252,15 +278,16 @@ def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimiz
     example_outputs_flatten = flatten(example_outputs)
     example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])
 
-    onnx_model_filename = "{}_{}.onnx".format(model_name, str(len(input_names)))
-    if overwrite or not os.path.exists(onnx_model_filename):
-        logger.info("Exporting ONNX model to {}".format(onnx_model_filename))
+    onnx_model_path = get_onnx_file_path(model_name, len(input_names), False, use_gpu, fp16, False)
+
+    if overwrite or not os.path.exists(onnx_model_path):
+        logger.info("Exporting ONNX model to {}".format(onnx_model_path))
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         torch.onnx.export(model=model,
                           args=tuple(example_inputs.values()),
-                          f=onnx_model_filename,
+                          f=onnx_model_path,
                           input_names=list(example_inputs.keys()),
                           output_names=output_names,
                           example_outputs=example_outputs,
@@ -269,22 +296,29 @@ def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimiz
                           opset_version=MODELS[model_name][1],
                           use_external_data_format=MODELS[model_name][2])
     else:
-        logger.info(f"Skip export since model existed: {onnx_model_filename}")
+        logger.info(f"Skip export since model existed: {onnx_model_path}")
 
     is_valid_onnx_model = True
     if validate_onnx:
-        is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten, use_gpu)
+        is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
+                                                  False)
 
-    if optimize_onnx or fp16:
+    if optimize_onnx or fp16:  # Use script (optimizer.py) to optimize
         model_type = MODELS[model_name][3]
-        onnx_model_filename = optimize_onnx_model(onnx_model_filename, model_type, config.num_attention_heads,
-                                                  config.hidden_size, use_gpu, fp16, overwrite)
+        optimized_model_path = get_onnx_file_path(model_name, len(input_names), True, use_gpu, fp16, False)
+        optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
+                            config.hidden_size, use_gpu, fp16, overwrite)
 
+        onnx_model_path = optimized_model_path
         if validate_onnx:
-            is_valid_onnx_model = validate_onnx_model(onnx_model_filename, example_inputs, example_outputs_flatten,
-                                                      use_gpu)
+            is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
+                                                      fp16)
+    else:  # Use OnnxRuntime to optimize
+        if is_valid_onnx_model:
+            ort_model_path = get_onnx_file_path(model_name, len(input_names), False, use_gpu, fp16, True)
+            optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite)
 
-    return onnx_model_filename, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
+    return onnx_model_path, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
 
 def get_latency_result(runtimes, batch_size):

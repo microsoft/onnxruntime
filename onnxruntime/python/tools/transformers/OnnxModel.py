@@ -8,8 +8,7 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-import onnx
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
 
 logger = logging.getLogger(__name__)
 
@@ -359,12 +358,12 @@ class OnnxModel:
                 for att in node.attribute:
                     if att.name == 'value' and att.t.data_type == 1:
                         att.CopyFrom(
-                            onnx.helper.make_attribute(
+                            helper.make_attribute(
                                 "value", numpy_helper.from_array(numpy_helper.to_array(att.t).astype(np.float16))))
             if node.op_type == 'Cast':
                 for att in node.attribute:
                     if att.name == 'to' and att.i == 1:
-                        att.CopyFrom(onnx.helper.make_attribute("to", 10))
+                        att.CopyFrom(helper.make_attribute("to", 10))
 
         for input_value_info in graph.input:
             if input_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
@@ -375,8 +374,8 @@ class OnnxModel:
                     cast_input = input_value_info.name
                     cast_output = input_value_info.name + '_float16'
                     self.replace_input_of_all_nodes(cast_input, cast_output)
-                    cast_node = onnx.helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
-                    cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.FLOAT16))])
+                    cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
+                    cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT16))])
                     self.add_node(cast_node)
 
         for output_value_info in graph.output:
@@ -385,8 +384,8 @@ class OnnxModel:
                 cast_output = output_value_info.name
                 self.replace_output_of_all_nodes(cast_output, cast_input)
                 self.replace_input_of_all_nodes(cast_output, cast_input)
-                cast_node = onnx.helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
-                cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.FLOAT))])
+                cast_node = helper.make_node('Cast', inputs=[cast_input], outputs=[cast_output])
+                cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
                 self.add_node(cast_node)
 
     # create a new name for node
@@ -599,8 +598,10 @@ class OnnxModel:
             with open(output_path, "w") as out:
                 out.write(str(self.model))
         else:
-            with open(output_path, "wb") as out:
-                out.write(self.model.SerializeToString())
+            save_model(self.model, output_path, format=None)
+            #external_data_helper.convert_model_to_external_data(self.model, all_tensors_to_one_file=True, location = output_path + ".data")
+            #with open(output_path, "wb") as out:
+            #    out.write(self.model.SerializeToString())
 
     def get_graph_inputs_excluding_initializers(self):
         """
