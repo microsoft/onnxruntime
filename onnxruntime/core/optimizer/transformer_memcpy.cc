@@ -73,7 +73,9 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kDnnlExecutionProvider &&
         provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
+        provider != onnxruntime::kVitisAIExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider &&
+        provider != onnxruntime::kNnapiExecutionProvider &&
         provider != onnxruntime::kAclExecutionProvider &&
         provider != onnxruntime::kArmNNExecutionProvider) {
       TransformerMemcpyImpl copy_impl(graph, provider);
@@ -220,6 +222,7 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
   } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider) {
     // TODO: copy between devices? i.e. multiple GPUs
     if (node_provider_type != onnxruntime::kCpuExecutionProvider &&
+        node_provider_type != onnxruntime::kVitisAIExecutionProvider &&
         node_provider_type != onnxruntime::kNGraphExecutionProvider && !node_provider_type.empty()) {
       ORT_THROW("Execution type '", node_provider_type, "' doesn't support memcpy ");
     }

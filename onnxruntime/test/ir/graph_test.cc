@@ -2,21 +2,6 @@
 // Licensed under the MIT License.
 
 #include <iostream>
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'identifier' : unreferenced formal parameter
-#pragma warning(disable : 4100)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#ifdef _MSC_VER
-#pragma warning(pop)
-#else
-#pragma GCC diagnostic pop
-#endif
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"

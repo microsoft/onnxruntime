@@ -34,8 +34,6 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
-  ORT_RETURN_IF_ERROR(CheckInputs(context));
-
   // Input and output shapes:
   //   Input 0 - input       : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights     : (hidden_size, 3 * hidden_size)
@@ -46,6 +44,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
+  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
 
   const auto dims = input->Shape().GetDims();
   int batch_size = static_cast<int>(dims[0]);
@@ -71,18 +70,19 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
+  auto& device_prop = GetDeviceProp();
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
       GetConstOnes<CudaT>(m), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n));
+      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);

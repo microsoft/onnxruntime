@@ -204,11 +204,18 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
 endif()
 
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
+endif()
+
+if (onnxruntime_USE_RKNPU)
+  file(GLOB_RECURSE onnxruntime_test_providers_rknpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/rknpu/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
@@ -293,6 +300,10 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+endif()
+
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
@@ -338,6 +349,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
@@ -373,6 +385,13 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/rknpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
 
 if(WIN32)
@@ -618,15 +637,15 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc)
-  target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
+  add_executable(onnxruntime_benchmark ${BENCHMARK_DIR}/main.cc ${BENCHMARK_DIR}/modeltest.cc ${BENCHMARK_DIR}/pooling.cc ${BENCHMARK_DIR}/batchnorm.cc ${BENCHMARK_DIR}/batchnorm2.cc ${BENCHMARK_DIR}/tptest.cc ${BENCHMARK_DIR}/eigen.cc ${BENCHMARK_DIR}/gelu.cc ${BENCHMARK_DIR}/activation.cc)
+  target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                       "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
-  target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark ${onnx_test_libs})
+  target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark::benchmark ${onnx_test_libs})
   add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
 endif()
@@ -780,7 +799,7 @@ endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 if(WIN32)
-  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -800,7 +819,29 @@ set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRU
 if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
-    add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-            WORKING_DIRECTORY ${REPO_ROOT}/java)
+    if(WIN32)
+      # If we're on windows, symlink the custom op test library somewhere we can see it
+      set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
+      file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
+      # On windows ctest requires a test to be an .exe(.com) file
+      # So there are two options 1) Install Chocolatey and its gradle package
+      # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
+      # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+      # That can handle both .exe and .bat
+      add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
+        -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
+        -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DREPO_ROOT=${REPO_ROOT}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
+    else()
+      if (onnxruntime_USE_CUDA)
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1
+                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      else()
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
+                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      endif()
+    endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()

@@ -4,188 +4,223 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/platform/threadpool.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include "core/providers/cpu/activation/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
 
-#define EIGEN_X ConstEigenVectorArrayMap<T>(X->template Data<T>(), X->Shape().Size())
-#define EIGEN_X_VAR(var) ConstEigenVectorArrayMap<T> var(X->template Data<T>(), X->Shape().Size())
-#define EIGEN_Y EigenVectorArrayMap<T>(Y->template MutableData<T>(), Y->Shape().Size())
-#define EIGEN_Y_VAR(var) EigenVectorArrayMap<T> var(Y->template MutableData<T>(), Y->Shape().Size())
+namespace functors {
 
 template <typename T>
-class Elu final : public OpKernel {
- public:
-  Elu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)) {}
+struct Elu : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (xm >= 0).select(xm, (T)alpha_ * (xm.exp() - 1));
-    return Status::OK();
+  float Cost() const final {
+    return 30.f;
   }
-
- private:
-  const float alpha_;
-};
-
-template <typename T>
-class HardSigmoid final : public OpKernel {
- public:
-  HardSigmoid(const OpKernelInfo& info)
-      : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 0.2f)), beta_(info.GetAttrOrDefault("beta", 0.5f)) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y_VAR(ym);
-    ym = (((T)alpha_ * xm + (T)beta_).cwiseMin(1.0f)).cwiseMax(0.0f);
-    return Status::OK();
-  }
-
- private:
-  const float alpha_;
-  const float beta_;
-};
-
-template <typename T>
-class LeakyRelu final : public OpKernel {
- public:
-  LeakyRelu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 0.01f)) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (xm >= 0).select(xm, (T)alpha_ * xm);
-    return Status::OK();
-  }
-
- private:
-  const float alpha_;
-};
-
-template <typename T>
-class ParametricSoftplus final : public OpKernel {
- public:
-  ParametricSoftplus(const OpKernelInfo& info)
-      : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)), beta_(info.GetAttrOrDefault("beta", 1.0f)) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (T)alpha_ *
-              (xm * (T)beta_ > 0)
-                  .select(xm * (T)beta_ + ((-xm * (T)beta_).exp() + 1.0f).log(), ((xm * (T)beta_).exp() + 1.0f).log());
-    return Status::OK();
-  }
-
- private:
-  const float alpha_;
-  const float beta_;
-};
-
-template <typename T>
-class Relu : public OpKernel {
- public:
-  Relu(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_Y = EIGEN_X.cwiseMax(0);
-    return Status::OK();
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (xm >= 0).select(xm, (T)alpha * (xm.exp() - 1));
   }
 };
 
 template <typename T>
-class Selu final : public OpKernel {
- public:
-  // TODO: I don't think float can represent such a long string(1.67326319217681884765625)
-  Selu(const OpKernelInfo& info)
-      : OpKernel(info),
-        alpha_(info.GetAttrOrDefault("alpha", 1.67326319217681884765625f)),
-        gamma_(info.GetAttrOrDefault("gamma", 1.05070102214813232421875f)) {}
+struct HardSigmoid : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, beta);
 
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (T)gamma_ * (xm.cwiseMax(0.0f) + ((T)alpha_ * (xm.array().exp() - 1.0f)).cwiseMin(0.0f));
-    return Status::OK();
+  float Cost() const final {
+    return 0.5f;
   }
-
- private:
-  const float alpha_;
-  const float gamma_;
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (((T)alpha * xm + (T)beta).cwiseMin(1.0f)).cwiseMax(0.0f);
+  }
 };
 
 template <typename T>
-class Sigmoid final : public OpKernel {
- public:
-  Sigmoid(const OpKernelInfo& info) : OpKernel(info) {}
+struct LeakyRelu : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y_VAR(ym);
+  float Cost() const final {
+    return 25.0f;
+  }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (xm >= 0).select(xm, (T)alpha * xm);
+  }
+};
+
+template <typename T>
+struct Softplus : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes&) {
+    return Status::OK();
+  }
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+  float Cost() const final {
+    return 15.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (xm > 0).select(xm + ((-xm).exp() + 1.0f).log(), ((xm).exp() + 1.0f).log());
+  }
+};
+
+template <typename T>
+struct Relu : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes&) {
+    return Status::OK();
+  }
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+  float Cost() const final {
+    return 1.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.cwiseMax(0);
+  }
+};
+
+template <typename T>
+struct Sigmoid : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes&) {
+    return Status::OK();
+  }
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+  float Cost() const final {
+    return 2.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
     ym = (xm >= 0).select(1 / (1. + (-xm.abs()).exp()), 1 - 1 / (1. + (-xm.abs()).exp()));
-    return Status::OK();
   }
 };
 
 template <>
-Status Sigmoid<float>::Compute(OpKernelContext* context) const;
+void Sigmoid<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const;
 
 template <typename T>
-class Softsign final : public OpKernel {
- public:
-  Softsign(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (1 + xm.abs()).inverse() * xm;
+struct Softsign : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
+  }
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+  float Cost() const final {
+    return 1.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (1 + xm.abs()).inverse() * xm;
   }
 };
 
 template <typename T>
-class Tanh final : public OpKernel {
- public:
-  Tanh(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_Y = EIGEN_X.tanh();
+struct Tanh : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
   }
-};
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
 
+  float Cost() const final {
+    return 1.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.tanh();
+  }
+};
 template <>
-Status Tanh<float>::Compute(OpKernelContext* context) const;
+void Tanh<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const;
 
 template <typename T>
-class ThresholdedRelu final : public OpKernel {
- public:
-  ThresholdedRelu(const OpKernelInfo& info) : OpKernel(info), alpha_(info.GetAttrOrDefault("alpha", 1.0f)) {}
+struct ThresholdedRelu : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
 
-  Status Compute(OpKernelContext* context) const override {
-    const auto* X = context->Input<Tensor>(0);
-    Tensor* Y = context->Output(0, X->Shape());
-    EIGEN_X_VAR(xm);
-    EIGEN_Y = (xm > (T)alpha_).select(xm, 0);
-    return Status::OK();
+  float Cost() const final {
+    return 1.0f;
   }
-
- private:
-  const float alpha_;
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (xm > (T)alpha).select(xm, 0);
+  }
 };
+
+template <typename T>
+struct Selu : public ElementWiseRangedTransform<T> {
+  ORT_GET_FLOAT_ATTR_AND_RETURN_2(alpha, gamma);
+
+  float Cost() const final {
+    return 4.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = (T)gamma * (xm.cwiseMax(0.0f) + ((T)alpha * (xm.array().exp() - 1.0f)).cwiseMin(0.0f));
+  }
+};
+
+}  // namespace functors
+
+DEFINE_ELE_KERNEL(Elu);
+DEFINE_ELE_KERNEL(HardSigmoid);
+DEFINE_ELE_KERNEL(LeakyRelu);
+DEFINE_ELE_KERNEL(Softplus);
+DEFINE_ELE_KERNEL(Relu);
+DEFINE_ELE_KERNEL(Sigmoid);
+DEFINE_ELE_KERNEL(Softsign);
+DEFINE_ELE_KERNEL(Tanh);
+DEFINE_ELE_KERNEL(ThresholdedRelu);
+DEFINE_ELE_KERNEL(Selu);
+
 }  // namespace onnxruntime

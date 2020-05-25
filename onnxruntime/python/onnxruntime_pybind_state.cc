@@ -35,7 +35,6 @@
 
 #if USE_DNNL
 #define BACKEND_DNNL "-DNNL"
-#include "core/providers/dnnl/dnnl_execution_provider.h"
 #else
 #define BACKEND_DNNL ""
 #endif
@@ -54,32 +53,39 @@
 #endif
 
 #ifdef USE_OPENVINO
-  #if OPENVINO_CONFIG_CPU_FP32
-  #define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+#if OPENVINO_CONFIG_CPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
 
-  #elif OPENVINO_CONFIG_GPU_FP32
-  #define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
+#elif OPENVINO_CONFIG_GPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
 
-  #elif OPENVINO_CONFIG_GPU_FP16
-  #define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
+#elif OPENVINO_CONFIG_GPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
 
-  #elif OPENVINO_CONFIG_MYRIAD
-  #define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+#elif OPENVINO_CONFIG_MYRIAD
+#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
 
-  #elif OPENVINO_CONFIG_VAD_M
-  #define BACKEND_OPENVINO "-OPENVINO_VAD_M"
+#elif OPENVINO_CONFIG_VAD_M
+#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
 
-  #elif OPENVINO_CONFIG_VAD_F
-  #define BACKEND_OPENVINO "-OPENVINO_VAD_F"
-  #endif
+#elif OPENVINO_CONFIG_VAD_F
+#define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+#endif
 #else
-  #define BACKEND_OPENVINO ""
+#define BACKEND_OPENVINO ""
 #endif
 
 #ifdef USE_NUPHAR
 #define BACKEND_NUPHAR "-NUPHAR"
 #else
 #define BACKEND_NUPHAR ""
+#endif
+
+#if USE_VITISAI
+#define BACKEND_VITISAI "-VITISAI"
+#include "core/providers/vitisai/vitisai_execution_provider.h"
+#else
+#define BACKEND_VITISAI ""
 #endif
 
 #if USE_OPENBLAS
@@ -103,9 +109,6 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_DNNL
-#include "core/providers/dnnl/dnnl_provider_factory.h"
-#endif
 #ifdef USE_NGRAPH
 #include "core/providers/ngraph/ngraph_provider_factory.h"
 #endif
@@ -116,6 +119,9 @@ std::string openvino_device;
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 std::string nuphar_settings;
+#endif
+#ifdef USE_VITISAI
+#include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
 
 namespace onnxruntime {
@@ -128,6 +134,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
+
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -269,7 +277,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kCpuExecutionProvider};
+                                                   kVitisAIExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
@@ -293,6 +301,9 @@ const std::vector<std::string>& GetAvailableProviders() {
 #endif
 #ifdef USE_NUPHAR
     available_providers.push_back(kNupharExecutionProvider);
+#endif
+#ifdef USE_VITISAI
+    available_providers.push_back(kVitisAIExecutionProvider);
 #endif
     return available_providers;
   };
@@ -332,6 +343,10 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #if USE_NUPHAR
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
       nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
+#endif
+    } else if (type == kVitisAIExecutionProvider) {
+#if USE_VITISAI
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
 #endif
     } else {
       // unknown provider
@@ -384,14 +399,14 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 
 #ifdef USE_OPENVINO
-  m.def("set_openvino_device", [](const std::string& device) {
-    openvino_device = device;} ,
-    "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used."
-  );
-  m.def("get_openvino_device", []() -> std::string {
-    return openvino_device;
-    }, ""
-  );
+  m.def(
+      "set_openvino_device", [](const std::string& device) { openvino_device = device; },
+      "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used.");
+  m.def(
+      "get_openvino_device", []() -> std::string {
+        return openvino_device;
+      },
+      "");
 #endif
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -416,10 +431,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-	    onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
+#endif
+#ifdef USE_VITISAI
+            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
         };
 
@@ -647,18 +665,10 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_property( 
-          "intra_op_num_threads", [](const SessionOptions* options) -> int {
-              return options->intra_op_param.thread_pool_size;
-          }, [](SessionOptions* options, int value) -> void {
-              options->intra_op_param.thread_pool_size = value;
-          },R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
-      .def_property( 
-          "inter_op_num_threads", [](const SessionOptions* options) -> int {
-              return options->inter_op_param.thread_pool_size;
-          }, [](SessionOptions* options, int value) -> void {
-              options->inter_op_param.thread_pool_size = value;
-          },R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")     
+      .def_property(
+          "intra_op_num_threads", [](const SessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; }, [](SessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property(
+          "inter_op_num_threads", [](const SessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; }, [](SessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("execution_mode", &SessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
@@ -739,55 +749,57 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-        std::ostringstream res;
-        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          res << "[]";
-        } else {
-          res << "[";
-          for (int i = 0; i < shape->dim_size(); ++i) {
-            if (utils::HasDimValue(shape->dim(i))) {
-              res << shape->dim(i).dim_value();
-            } else if (utils::HasDimParam(shape->dim(i))) {
-              res << "'" << shape->dim(i).dim_param() << "'";
+      .def(
+          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+            std::ostringstream res;
+            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              res << "[]";
             } else {
-              res << "None";
+              res << "[";
+              for (int i = 0; i < shape->dim_size(); ++i) {
+                if (utils::HasDimValue(shape->dim(i))) {
+                  res << shape->dim(i).dim_value();
+                } else if (utils::HasDimParam(shape->dim(i))) {
+                  res << "'" << shape->dim(i).dim_param() << "'";
+                } else {
+                  res << "None";
+                }
+
+                if (i < shape->dim_size() - 1) {
+                  res << ", ";
+                }
+              }
+              res << "]";
+            }
+            res << ")";
+
+            return std::string(res.str());
+          },
+          "converts the node into a readable string")
+      .def_property_readonly(
+          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              return arr;
             }
 
-            if (i < shape->dim_size() - 1) {
-              res << ", ";
+            arr.resize(shape->dim_size());
+            for (int i = 0; i < shape->dim_size(); ++i) {
+              if (utils::HasDimValue(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_value());
+              } else if (utils::HasDimParam(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_param());
+              } else {
+                arr[i] = py::none();
+              }
             }
-          }
-          res << "]";
-        }
-        res << ")";
-
-        return std::string(res.str());
-      },
-           "converts the node into a readable string")
-      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          return arr;
-        }
-
-        arr.resize(shape->dim_size());
-        for (int i = 0; i < shape->dim_size(); ++i) {
-          if (utils::HasDimValue(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_value());
-          } else if (utils::HasDimParam(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_param());
-          } else {
-            arr[i] = py::none();
-          }
-        }
-        return arr;
-      },
-                             "node shape (assuming the node holds a tensor)");
+            return arr;
+          },
+          "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -988,7 +1000,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 // static variable used to create inference session and training session.
 static std::unique_ptr<Environment> session_env;
 
-void initialize_env(){
+void initialize_env() {
   auto initialize = [&]() {
     // Initialization of the module
     ([]() -> void {
@@ -1011,8 +1023,8 @@ void initialize_env(){
   initialize();
 }
 
-onnxruntime::Environment& get_env(){
-  if (!session_env){
+onnxruntime::Environment& get_env() {
+  if (!session_env) {
     initialize_env();
   }
   return *session_env;

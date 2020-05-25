@@ -335,7 +335,8 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Assign inputs and outputs to subgraph's meta_def
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = "TRTKernel_" + graph.Name() + "_" + std::to_string(kernels_index++);
+  const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
+  meta_def->name = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
   meta_def->domain = kMSDomain;
 
   for (const auto& input : inputs) {
@@ -694,9 +695,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     for (unsigned int i = 0, end = trt_network->getNbInputs(); i < end; ++i) {
       auto input = trt_network->getInput(i);
       nvinfer1::Dims dims = input->getDimensions();
-      nvinfer1::Dims dims_min = dims;
-      nvinfer1::Dims dims_opt = dims;
-      nvinfer1::Dims dims_max = dims;
+      nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
 
       int nb_dims = dims.nbDims;
       if (input->isShapeTensor()) {  // Shape tensor
@@ -850,16 +849,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       auto trt_builder = trt_state->builder;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        // TODO: check if getInput indexing is same with binding index
-        auto input = trt_state->network->getInput(i);
-        nvinfer1::Dims dims = input->getDimensions();
-        nvinfer1::Dims dims_min = dims;
-        nvinfer1::Dims dims_opt = dims;
-        nvinfer1::Dims dims_max = dims;
-
         // Check and update shape ranges for dynamic shape inputs
         auto& shape_ranges = trt_state->input_shape_ranges;
         if (shape_ranges.find(i) != shape_ranges.end()) {
+          // TODO: check if getInput indexing is same with binding index
+          auto input = trt_state->network->getInput(i);
+          nvinfer1::Dims dims = input->getDimensions();
+          nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
+
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shape = ort.GetTensorShape(tensor_info);
@@ -869,10 +866,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           for (int j = 0, end = nb_dims; j < end; ++j) {
             auto& shape_range = shape_ranges[i];
             if (shape_range.find(j) != shape_range.end()) {
+              dims_min.d[j] = shape_range[j].first;
+              dims_opt.d[j] = shape_range[j].second;
+              dims_max.d[j] = shape_range[j].second;
+
               // Update minimum dimension
               if (tensor_shape[j] < shape_range[j].first) {
                 shape_range[j].first = tensor_shape[j];
                 dims_min.d[j] = tensor_shape[j];
+                dims_opt.d[j] = tensor_shape[j];
                 dimension_update = true;
               }
               // Update maximum dimension
