@@ -13,8 +13,6 @@
 #include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
 
-#include "armnn/ArmNN.hpp"
-
 #define PREF_DIM 4
 
 namespace onnxruntime {

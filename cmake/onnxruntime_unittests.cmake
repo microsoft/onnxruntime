@@ -323,10 +323,6 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_unittests_internal.cmake)
-endif()
-
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()

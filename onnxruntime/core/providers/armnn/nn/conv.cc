@@ -5,8 +5,6 @@
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
-#include <thread>
-#include <mutex>
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -16,8 +14,6 @@
 #include "core/providers/armnn/nn/conv.h"
 #include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
-
-#include "armnn/ArmNN.hpp"
 
 #define PREF_DIM 4
 

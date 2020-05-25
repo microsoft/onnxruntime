@@ -5,14 +5,10 @@
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
-#include <thread>
-#include <mutex>
 
 #include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/activation/activations.h"
 #include "core/providers/armnn/armnn_fwd.h"
-
-#include "armnn/ArmNN.hpp"
 
 namespace onnxruntime {
 namespace armnn_ep {
