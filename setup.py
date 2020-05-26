@@ -65,6 +65,9 @@ elif '--use_dnnl' in sys.argv:
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
+elif '--use_vitisai' in sys.argv:
+    package_name = 'onnxruntime-vitisai'
+    sys.argv.remove('--use_vitisai')
 # --use_acl is specified in build.py, but not parsed here
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
@@ -129,7 +132,7 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so']
+                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):

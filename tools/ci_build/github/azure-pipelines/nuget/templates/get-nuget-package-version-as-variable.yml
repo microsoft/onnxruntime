@@ -24,7 +24,7 @@ steps:
       SETLOCAL EnableDelayedExpansion
       FOR /R %%i IN (Microsoft.ML.OnnxRuntime.DirectML*.nupkg) do (
         set filename=%%~ni
-        set ortversion=!filename:~33!
+        set ortversion=!filename:~34!
         @echo DirectMLNuGetPackageVersionNumber is !ortversion!
         @echo ##vso[task.setvariable variable=DirectMLNuGetPackageVersionNumber;]!ortversion!
       )

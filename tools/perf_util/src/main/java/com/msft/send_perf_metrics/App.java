@@ -1,6 +1,5 @@
 package com.msft.send_perf_metrics;
 
-import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -13,11 +12,9 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
 import java.sql.Connection;
-import java.sql.Types;
+import java.sql.PreparedStatement;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 public class App {
 
@@ -94,63 +91,57 @@ public class App {
 		}
 	}
 
+
 	static private void loadMetricsIntoMySQL(java.sql.Connection conn, String commit_id, String batch_id,
 											 JSONObject json_object) throws Exception {
 
-		try (java.sql.PreparedStatement st = conn.prepareStatement(
-				"INSERT INTO perf_test_training_data (BatchId,CommitId,Model,ModelName,DisplayName,UseMixedPrecision,Optimizer,BatchSize,SeqLen,PredictionsPerSeq," +
-						"NumOfBatches,WeightUpdateSteps,Round,GradAccSteps,AvgTimePerBatch,Throughput,StabilizedThroughput,TotalTime,AvgCPU,Memory,RunConfig,Time) " +
-						"values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now())"
-						+ "  ON DUPLICATE KEY UPDATE AvgTimePerBatch=?,Throughput=?,StabilizedThroughput=?,TotalTime=?,AvgCPU=?,Memory=?")) {
+		// field name -> json value
+		Map<String, Object> field_mapping = new LinkedHashMap();
+		Set<String> update_on_duplicate_fields =
+			new LinkedHashSet<> (Arrays.asList("AvgTimePerBatch", "Throughput", "StabilizedThroughput", "TotalTime", "AvgCPU", "Memory"));
 
-			int i = 0;
-
-			// unique key section
-			st.setString(++i, batch_id);
-			st.setString(++i, commit_id.substring(0, 8));
-			st.setString(++i, (String) json_object.get("Model"));
-			st.setString(++i, (String) json_object.get("ModelName"));
-			st.setString(++i, (String) json_object.get("DisplayName"));
-			st.setBoolean(++i, (Boolean) json_object.get("UseMixedPrecision"));
-			st.setString(++i, (String) json_object.get("Optimizer"));
-			st.setInt(++i, (int)(long) json_object.get("BatchSize"));
-
-			// non-key section
-			JSONObject properties = (JSONObject) json_object.get("DerivedProperties");
-			if (properties != null) {
-				if (properties.get("SeqLen") == null) 				//  mysql allows null value in unique key column
-					st.setNull(++i, Types.INTEGER);
-				else
-					st.setInt(++i, Integer.parseInt((String) properties.get("SeqLen")));
-
-				if (properties.get("PredictionsPerSeq") == null) 				//  mysql allows null value in unique key column
-					st.setNull(++i, Types.INTEGER);
-				else
-					st.setInt(++i, Integer.parseInt((String) properties.get("PredictionsPerSeq")));
+		field_mapping.put("BatchId", batch_id);
+		field_mapping.put("CommitId", commit_id.substring(0, 8));
+		json_object.forEach((key, value) -> {
+			if (key.equals("DerivedProperties")) {
+				JSONObject properties = (JSONObject) json_object.get("DerivedProperties");
+				properties.forEach((sub_key, sub_value) -> {
+					field_mapping.put((String)sub_key, sub_value);
+				});
 			} else {
-				st.setNull(++i, Types.INTEGER);
-				st.setNull(++i, Types.INTEGER);
+				field_mapping.put((String)key, value);
+			}
+		});
+
+		// building sql statement
+		StringBuilder sb = new StringBuilder("INSERT INTO perf_test_training_data (");
+		field_mapping.forEach((key, value) -> {
+			sb.append(key).append(",");
+		});
+		sb.append("Time) values (");
+		for(int i = 0; i < field_mapping.size(); i++) {
+			sb.append("?,");
+		}
+		sb.append("Now()) ON DUPLICATE KEY UPDATE ");
+		update_on_duplicate_fields.forEach((key) -> {
+			if(field_mapping.get(key) != null) {
+				sb.append(key).append("=?,");
+			}
+		});
+
+		try (java.sql.PreparedStatement st = conn.prepareStatement(sb.substring(0, sb.length() - 1))) {
+			int i = 0; // param index
+			for (Map.Entry<String, Object> entry : field_mapping.entrySet()) {
+				setSqlParam(++i, st, entry.getValue());
 			}
 
-			st.setInt(++i, (int)(long)  json_object.get("NumOfBatches"));
-			st.setInt(++i, (int)(long)  json_object.get("WeightUpdateSteps"));
-			st.setInt(++i, (int)(long)  json_object.get("Round"));
-			st.setInt(++i, (int)(long)  json_object.get("GradAccSteps"));
-			st.setFloat(++i, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
-			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
-			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
-			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
-			st.setInt(++i, (int)(long) json_object.get("AvgCPU"));
-			st.setInt(++i, (int)((long) json_object.get("Memory") >> 20));  // mb
-			st.setString(++i, (String) json_object.get("RunConfig"));
-
 			// update section
-			st.setFloat(++i, (float)(double) json_object.get("AvgTimePerBatch"));  // ms
-			st.setFloat(++i, (float)(double) json_object.get("Throughput"));  // examples/sec
-			st.setFloat(++i, (float)(double) json_object.get("StabilizedThroughput"));  // examples/sec
-			st.setFloat(++i, (float)(double) json_object.get("TotalTime"));  // secs
-			st.setInt(++i, (int)((long) json_object.get("Memory") >> 20));  // mb
-			st.setString(++i, (String) json_object.get("RunConfig"));
+			for(String key : update_on_duplicate_fields) {
+				Object value = field_mapping.get(key);
+				if(value != null) {
+					setSqlParam(++i, st, value);
+				}
+			}
 
 			st.executeUpdate();
 		} catch (Exception e) {
@@ -158,6 +149,20 @@ public class App {
 			throw e;
 		}
 
+	}
+
+	static void setSqlParam(int param_index, PreparedStatement st, Object value) throws Exception {
+		if (value instanceof String) {
+			st.setString(param_index, (String) value);
+		} else if (value instanceof Long) {
+			st.setInt(param_index, (int) (long) value);
+		} else if (value instanceof Double) {
+			st.setFloat(param_index, (float) (double) value);
+		} else if (value instanceof Boolean) {
+			st.setBoolean(param_index, (Boolean) value);
+		} else {
+			throw new Exception("Unsupported data type:" + value.getClass().getName());
+		}
 	}
 
 }

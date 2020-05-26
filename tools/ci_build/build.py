@@ -101,6 +101,8 @@ def parse_arguments():
 
     # Training options
     parser.add_argument(
+        "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
+    parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
         "--enable_training_e2e_tests", action="store_true",
@@ -279,6 +281,8 @@ def parse_arguments():
         "--enable_msinternal", action="store_true",
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
+    parser.add_argument(
+        "--use_vitisai", action='store_true', help="Build with Vitis-AI")
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
@@ -579,6 +583,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
+        "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -611,6 +616,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
         # Training related flags
+        "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
+            "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + (
@@ -635,7 +642,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
-            args.use_openvino or args.gen_doc):
+            args.use_openvino or args.use_vitisai or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
@@ -1357,9 +1364,8 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
-        nightly_build=False,
-        featurizers_build=False):
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
+        use_acl, nightly_build=False, featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1399,6 +1405,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_vitisai:
+            args.append('--use_vitisai')
         elif use_acl:
             args.append('--use_acl')
 
@@ -1743,6 +1751,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_vitisai,
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,
