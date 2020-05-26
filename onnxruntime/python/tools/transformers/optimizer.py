@@ -30,7 +30,7 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper, load_model
 from BertOnnxModel import BertOnnxModel, BertOptimizationOptions
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
@@ -227,9 +227,7 @@ def optimize_model(input,
     if run_onnxruntime and opt_level > 0:
         input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
 
-    model = ModelProto()
-    with open(input_model_path, "rb") as f:
-        model.ParseFromString(f.read())
+    model = load_model(input_model_path, format=None, load_external_data=True)
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
