@@ -667,7 +667,8 @@ def main():
         output_fusion_statistics(model_fusion_statistics, csv_filename)
 
     if len(results) == 0:
-        logger.warning("No any result avaiable.")
+        if args.batch_sizes != [0]:
+            logger.warning("No any result avaiable.")
         return
 
     csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
