@@ -37,7 +37,8 @@ ONNX_OPERATOR_KERNEL_EX(Pad,
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Pad,
     2, 10,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()}),
     Pad);
 
 // The interface for the 'Pad' op was changed in opset-11
@@ -47,7 +48,15 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
 ONNX_CPU_OPERATOR_KERNEL(
     Pad,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()), Pad);
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<int32_t>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<uint32_t>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>()}),
+    Pad);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
 template <typename T>
@@ -342,7 +351,6 @@ union PadValue
 {
   uint64_t u64;
   uint32_t u32;
-  uint16_t u16;
   uint8_t  u8;
   double   f64;
   float    f32;
@@ -350,13 +358,7 @@ union PadValue
 
 static PadValue PadValueFromFloat(float value, MLDataType data_type) {
   PadValue result;
-  if (data_type == DataTypeImpl::GetType<BFloat16>()) {
-    result.u16 = BFloat16(value).val;
-  }
-  else if (data_type == DataTypeImpl::GetType<MLFloat16>()) {
-    result.u16 = MLFloat16(math::floatToHalf(value)).val;
-  }
-  else if (data_type == DataTypeImpl::GetType<float>()) {
+  if (data_type == DataTypeImpl::GetType<float>()) {
     result.f32 = value;
   }
   else if (data_type == DataTypeImpl::GetType<double>()) {
@@ -423,9 +425,6 @@ Status Pad::Compute(OpKernelContext* ctx) const {
         case sizeof(uint64_t):
           value.u64 = reinterpret_cast<const uint64_t*>(value_data)[0];
           break;
-        case sizeof(uint16_t):
-          value.u16 = reinterpret_cast<const uint16_t*>(value_data)[0];
-          break;
         case sizeof(uint8_t):
           value.u8 = reinterpret_cast<const uint8_t*>(value_data)[0];
           break;
@@ -449,9 +448,6 @@ Status Pad::Compute(OpKernelContext* ctx) const {
       break;
     case sizeof(uint64_t):
       status = PadImpl<uint64_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u64);
-      break;
-    case sizeof(uint16_t):
-      status = PadImpl<uint16_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u16);
       break;
     case sizeof(uint8_t):
       status = PadImpl<uint8_t>(ctx, *pads_to_use, *slices_to_use, mode_, value.u8);

@@ -92,33 +92,6 @@ void RunAllOpsetAllDomainPadTests<>(
                                     output,
                                     mode, expect, error_msg);
 }
-template<>
-void RunAllOpsetAllDomainPadTests<>(
-    const std::vector<int64_t>& input_dims,
-    const std::vector<MLFloat16>& input,
-    const std::vector<int64_t>& pads,
-    MLFloat16 value,
-    const std::vector<int64_t>& output_dims,
-    const std::vector<MLFloat16>& output,
-    std::string mode,
-    OpTester::ExpectResult expect,
-    const std::string& error_msg) {
-  // ONNX domain supports float16 type
-  RunOnnxOpsetTypedTest<MLFloat16, 10>(input_dims,
-                                       input,
-                                       pads,
-                                       value,
-                                       output_dims,
-                                       output,
-                                       mode, expect, error_msg);
-  RunOnnxOpsetTypedTest<MLFloat16, 11>(input_dims,
-                                       input,
-                                       pads,
-                                       value,
-                                       output_dims,
-                                       output,
-                                       mode, expect, error_msg);
-}
 // There is only support for float type for MSDomain kernel in ORT
 template<>
 void RunAllOpsetAllDomainPadTests<>(
@@ -164,7 +137,7 @@ void RunAllOpsetAllDomainPadTests<>(
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
 // Those tests will fallback to other EP.
 
-using PadTypes = ::testing::Types<MLFloat16, float, double, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t>;
+using PadTypes = ::testing::Types<float, double, int8_t, int32_t, int64_t, uint8_t, uint32_t, uint64_t>;
 
 template <typename T>
 class PadOpTest : public ::testing::Test {
