@@ -42,15 +42,18 @@ target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
 
 # add libraries
 if (WIN32)
-  target_link_libraries(onnxruntime_binding PRIVATE
-    ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE}/onnxruntime.lib)
+  target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE})
+else()
+  target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_BUILD_DIR})
+endif()
+
+if (WIN32)
+  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime.lib)
 elseif (APPLE)
-  target_link_libraries(onnxruntime_binding PRIVATE
-    ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.${ort_version}.dylib)
+  target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
-  target_link_libraries(onnxruntime_binding PRIVATE
-    ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so.${ort_version})
+  target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.so.${ort_version})
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
