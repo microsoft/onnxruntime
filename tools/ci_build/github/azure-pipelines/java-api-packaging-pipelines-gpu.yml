@@ -221,6 +221,6 @@ jobs:
 
   - task: CmdLine@2
     inputs:
-    script: |
-        sudo docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src -volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -v $(OnnxRuntimeVersion) -r /build
-    workingDirectory: $(Build.BinariesDirectory)/final-jar
+      script: |
+          sudo docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src -volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -v $(OnnxRuntimeVersion) -r /build
+      workingDirectory: $(Build.BinariesDirectory)/final-jar
