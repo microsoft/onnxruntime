@@ -393,6 +393,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                         "inputs": num_inputs,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
+                        "datetime": str(datetime.now()),
                     }
 
                     result.update(get_latency_result(runtimes, batch_size))
@@ -456,6 +457,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "inputs": 1,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
+                        "datetime": str(datetime.now()),
                     }
                     result.update(get_latency_result(runtimes, batch_size))
                     logger.info(result)
@@ -485,7 +487,7 @@ def output_details(results, csv_filename):
 
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
-        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimize"]
+        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimize", "datetime"]
         data_names = []
         for batch_size in args.batch_sizes:
             for sequence_length in args.sequence_lengths:
@@ -518,11 +520,12 @@ def output_summary(results, csv_filename, args):
 def output_fusion_statistics(model_fusion_statistics, csv_filename):
     from transformers import __version__ as transformers_version
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = ["model_filename", "transformers", "torch"] + list(
+        column_names = ["model_filename", "datetime", "transformers", "torch"] + list(
             next(iter(model_fusion_statistics.values())).keys())
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
         for key in model_fusion_statistics.keys():
+            model_fusion_statistics[key]["datetime"] = str(datetime.now())
             model_fusion_statistics[key]["transformers"] = transformers_version
             model_fusion_statistics[key]["torch"] = torch.__version__
             model_fusion_statistics[key]["model_filename"] = key

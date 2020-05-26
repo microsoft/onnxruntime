@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
+from typing import List, Tuple
 import logging
 import sys
 import argparse
@@ -199,7 +200,7 @@ class OnnxModel:
 
     def match_parent_paths(self, node, paths, output_name_to_node):
         for i, path in enumerate(paths):
-            assert isinstance(path, typing.List) or isinstance(path, typing.Tuple)
+            assert isinstance(path, List) or isinstance(path, Tuple)
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:
