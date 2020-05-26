@@ -1087,4 +1087,8 @@ struct NnApi {
  */
 const NnApi* NnApiImplementation();
 
+#ifdef __ANDROID__
+int32_t GetAndroidSdkVersion();
+#endif // __ANDROID__
+
 #endif  // TENSORFLOW_LITE_NNAPI_NNAPI_IMPLEMENTATION_H_

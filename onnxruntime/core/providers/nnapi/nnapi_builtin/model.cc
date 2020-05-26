@@ -2,11 +2,18 @@
 // Licensed under the MIT License.
 
 #include "model.h"
-#include "nnapi_lib/nnapi_implementation.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
 namespace onnxruntime {
-namespace nnapi{
+namespace nnapi {
 
 Model::Model() : nnapi_(NnApiImplementation()) {}
 
-} } // namespace onnxruntime::nnapi
+Model::~Model() {
+  nnapi_->ANeuralNetworksModel_free(model_);
+  nnapi_->ANeuralNetworksCompilation_free(compilation_);
+  nnapi_->ANeuralNetworksExecution_free(execution_);
+}
+
+}  // namespace nnapi
+}  // namespace onnxruntime
