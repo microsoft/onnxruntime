@@ -417,15 +417,14 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         for (auto& cut_edge : cut_edges) {
           auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
           if (process_edge.size() == 1) {
-            TrainingSession::TrainingConfiguration::CutEdge cut_edge{process_edge[0]};
-            cut_info.emplace_back(cut_edge);
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0]};
+            cut_info.emplace_back(edge);
           } else {
             ORT_ENFORCE(process_edge.size() == 2);
             auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
 
-            TrainingSession::TrainingConfiguration::CutEdge cut_edge{process_edge[0], consumer_list};
-
-            cut_info.emplace_back(cut_edge);
+            TrainingSession::TrainingConfiguration::CutEdge edge{process_edge[0], consumer_list};
+            cut_info.emplace_back(edge);
           }
         }
         return cut_info;
