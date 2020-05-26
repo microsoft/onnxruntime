@@ -353,9 +353,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
             if name in replace_name_dict:
                 n.input[i] = replace_name_dict[name]
 
-    if _enable_internal_postprocess:
-        onnx_model = postprocess.run_postprocess(onnx_model)
-
     # onnx model initializer may contain non-trainable registered buffers that are not part
     # of pytorch model named parameteres.
     named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
@@ -364,7 +361,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
 
-    onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
+    if _enable_internal_postprocess:
+        onnx_model = postprocess.run_postprocess(onnx_model)
 
     return onnx_model
 
