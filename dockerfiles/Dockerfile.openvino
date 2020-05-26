@@ -52,5 +52,5 @@ RUN apt update && \
     cd ${MY_ROOT} && \
     locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8 && \
     cd ${MY_ROOT} && \
-    cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino $DEVICE --build_wheel --use_full_protobuf && \
+    cd onnxruntime && ./build.sh --use_openmp --config Release --update --build --parallel --use_openvino $DEVICE --build_wheel --use_full_protobuf && \
     pip install build/Linux/Release/dist/*-linux_x86_64.whl && rm -rf /code/onnxruntime /code/cmake-3.14.3-Linux-x86_64
