@@ -246,7 +246,7 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
 
 /**
  * Remove nodes with only one output edge using bottom-up bfs traversal.
- * @param node: The node to start with. If it's null pointer, return false. 
+ * @param node: The node to start with. 
  * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
 */
 bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
