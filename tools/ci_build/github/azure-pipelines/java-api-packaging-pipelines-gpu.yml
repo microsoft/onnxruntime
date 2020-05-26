@@ -196,6 +196,7 @@ jobs:
         popd
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
+        PATH=.\test;"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.1\bin";C:\local\cudnn-10.1-windows10-x64-v7.6.5.32\cuda\bin;%PATH%
         java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
@@ -222,5 +223,5 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-          sudo docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src -volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -v $(OnnxRuntimeVersion) -r /build
+          sudo docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /onnxruntime_src/tools/ci_build/github/linux/java_linux_final_test.sh -v $(OnnxRuntimeVersion) -r /build
       workingDirectory: $(Build.BinariesDirectory)/final-jar
