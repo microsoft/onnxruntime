@@ -18,44 +18,33 @@ EXIT_CODE=1
 
 uname -a
 
-# CentOS docker image does not have Java and we need jar here
-if [ `uname -s` == 'Linux' ]; then
-  sudo apt-get install -y openjdk-8-jdk
-  sudo apt autoremove
-  PATH=/usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin:${PATH}
-fi
-
 echo "Version: $VERSION_NUMBER"
 NATIVE_FOLDER=ai/onnxruntime/native/$ARCH
 
 mkdir -p $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER
-mkdir $BINARY_DIR/$ARTIFACT_NAME/jar
-echo "Directories created"
 
-# We are only interested in one jar
-# Extract to strip symbols
-echo "Extract the original jar"
-pushd $BINARY_DIR/$ARTIFACT_NAME/jar
-jar xf $BINARY_DIR/$BUILD_CONFIG/java/build/libs/onnxruntime-$VERSION_NUMBER.jar
-ls -laR
-popd
+echo "Directories created"
 
 echo "Copy debug symbols in a separate file and strip the original binary."
 
 if [[ $LIB_NAME == *.dylib ]]
 then
     # ORT LIB
-    dsymutil $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/$LIB_NAME.dSYM
-    strip -S $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$LIB_NAME
-    cp $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime.dylib
+    dsymutil $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/$LIB_NAME.dSYM
+    cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime.dylib
+    strip -S $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime.dylib
     # JNI Lib
-    dsymutil $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$NATIVE_LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/$NATIVE_LIB_NAME.dSYM
-    strip -S $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$NATIVE_LIB_NAME
-    cp $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.dylib
+    dsymutil $BINARY_DIR/$BUILD_CONFIG/$NATIVE_LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/$NATIVE_LIB_NAME.dSYM
+    cp $BINARY_DIR/$BUILD_CONFIG/$NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.dylib
+    strip -S $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.dylib
+    # Add custom lib for testing. This should be added to testing.jar
+    cp $BINARY_DIR/$BUILD_CONFIG/custom_op_library.dylib $BINARY_DIR/$ARTIFACT_NAME
 elif [[ $LIB_NAME == *.so ]]
 then
-    cp $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime.so
-    cp $BINARY_DIR/$ARTIFACT_NAME/jar/$NATIVE_FOLDER/$NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.so
+    cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime.so
+    cp $BINARY_DIR/$BUILD_CONFIG/$NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.so
+     # Add custom lib
+    cp $BINARY_DIR/$BUILD_CONFIG/custom_op_library.so $BINARY_DIR/$ARTIFACT_NAME
 fi
 
 find $BINARY_DIR/$ARTIFACT_NAME -ls
