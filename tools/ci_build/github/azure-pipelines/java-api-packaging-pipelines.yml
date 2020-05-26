@@ -217,13 +217,13 @@ jobs:
     inputs:
       script: |
         pushd onnxruntime-java-linux-x64
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\testing.jar custom_op_library.so
-        del /F /Q custom_op_library.so
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\testing.jar libcustom_op_library.so
+        del /F /Q libcustom_op_library.so
         jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar .
         popd
         pushd onnxruntime-java-osx-x64
-        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\testing.jar custom_op_library.dylib
-        del /F /Q custom_op_library.dylib
+        jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\testing.jar libcustom_op_library.dylib
+        del /F /Q libcustom_op_library.dylib
         jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\onnxruntime-$(OnnxRuntimeVersion).jar .
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'

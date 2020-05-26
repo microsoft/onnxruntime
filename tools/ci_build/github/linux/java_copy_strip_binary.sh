@@ -38,13 +38,13 @@ then
     cp $BINARY_DIR/$BUILD_CONFIG/$NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.dylib
     strip -S $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.dylib
     # Add custom lib for testing. This should be added to testing.jar
-    cp $BINARY_DIR/$BUILD_CONFIG/custom_op_library.dylib $BINARY_DIR/$ARTIFACT_NAME
+    cp $BINARY_DIR/$BUILD_CONFIG/libcustom_op_library.dylib $BINARY_DIR/$ARTIFACT_NAME
 elif [[ $LIB_NAME == *.so ]]
 then
     cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime.so
     cp $BINARY_DIR/$BUILD_CONFIG/$NATIVE_LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime4j_jni.so
      # Add custom lib
-    cp $BINARY_DIR/$BUILD_CONFIG/custom_op_library.so $BINARY_DIR/$ARTIFACT_NAME
+    cp $BINARY_DIR/$BUILD_CONFIG/libcustom_op_library.so $BINARY_DIR/$ARTIFACT_NAME
 fi
 
 find $BINARY_DIR/$ARTIFACT_NAME -ls
