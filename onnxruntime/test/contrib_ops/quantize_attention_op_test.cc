@@ -10,11 +10,11 @@ namespace onnxruntime {
 namespace test {
 
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> ToInteger(const std::vector<float>& data, float scale) {
+inline std::vector<Integer> ToInteger(const std::vector<float>& data, float scale, Integer zero_point = 0) {
   std::vector<Integer> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(std::round(data[i] / scale)));
+    result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
   }
   return result;
 }
@@ -33,6 +33,7 @@ static void RunAttentionTest(
   int min_cuda_architecture = 530;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16;
 
   if (enable_cuda) {
     OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
@@ -64,7 +65,42 @@ static void RunAttentionTest(
       tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
     }
 
-    tester.Run();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+
+  if (enable_cpu) {
+    OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+
+    std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+    std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+    std::vector<int64_t> bias_dims = {3 * hidden_size};
+    std::vector<int64_t> mask_index_dims = {batch_size};
+    std::vector<int64_t> output_dims = input_dims;
+
+    float input_scale = 0.1f;
+    float weight_scale = 0.1f;
+
+    tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, input_scale, 128));
+    tester.AddInput<int8_t>("weight", weights_dims, ToInteger<int8_t>(weights_data, weight_scale));
+    tester.AddInput<float>("bias", bias_dims, bias_data);
+    tester.AddInput<float>("input_scale", {1}, {input_scale});
+    tester.AddInput<float>("weight_scale", {1}, {weight_scale});
+    tester.AddOutput<float>("output", output_dims, output_data);
+
+    if (mask_index_data.size() > 0) {  // mask index is optional.
+      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+    } else {  // mask index is optional.
+       tester.AddInput<int32_t>( "", mask_index_dims, {1} );
+    }
+
+    tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

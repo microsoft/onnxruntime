@@ -117,7 +117,6 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                   w_zp_tensor));
 
   const auto dims = input->Shape().GetDims();
-  /*int input_size = static_cast<int>(input->Shape().Size());*/
   int batch_size = static_cast<int>(dims[0]);
   int sequence_length = static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
