@@ -62,6 +62,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
+  void* GetProviderRunOptions() { return provider_run_options_; }
+
  private:
   const SessionState& session_state_;
   const bool& terminate_flag_;
