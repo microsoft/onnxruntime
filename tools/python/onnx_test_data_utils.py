@@ -7,8 +7,6 @@ import numpy as np
 
 import onnx
 from onnx import numpy_helper
-from onnx import mapping
-from onnx import TensorProto
 
 
 def read_tensorproto_pb_file(filename):
@@ -88,15 +86,15 @@ def update_name_in_pb(filename, name, output_filename):
 def get_arg_parser():
     parser = argparse.ArgumentParser(
         description="""
-        Utilities for working with the input/output protobuf files used by the ONNX test cases and onnx_test_runner. 
-        These are expected to only contain a serialized TensorProto. 
-        
+        Utilities for working with the input/output protobuf files used by the ONNX test cases and onnx_test_runner.
+        These are expected to only contain a serialized TensorProto.
+
         dump_pb: Dumps the TensorProto data from an individual pb file, or all pb files in a directory.
         numpy_to_pb: Convert numpy array saved to a file with numpy.save() to a TensorProto, and serialize to a pb file.
         image_to_pb: Convert data from an image file into a TensorProto, and serialize to a pb file.
         random_to_pb: Create a TensorProto with random data, and serialize to a pb file.
-        update_name_in_pb: Update the TensorProto.name value in a pb file. 
-                           Updates the input file unless --output <filename> is specified. 
+        update_name_in_pb: Update the TensorProto.name value in a pb file.
+                           Updates the input file unless --output <filename> is specified.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )

@@ -1,7 +1,7 @@
 ## Build ONNX Runtime Server on Linux
 Read more about ONNX Runtime Server [here](./ONNX_Runtime_Server_Usage.md).
 
-### Pre-Requisites
+### Prerequisites
 
 1. [golang](https://golang.org/doc/install)
 2. [grpc](https://github.com/grpc/grpc/blob/master/BUILDING.md). Please be aware that the docs at "[https://grpc.io/docs/quickstart/cpp/](https://grpc.io/docs/quickstart/cpp/)" is outdated, because building with make on UNIX systems is deprecated.
