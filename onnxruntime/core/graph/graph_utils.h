@@ -249,6 +249,6 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
  * @param node: The node to start with. If it's null pointer, return false. 
  * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
 */
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node* node);
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
 }  // namespace graph_utils
 }  // namespace onnxruntime

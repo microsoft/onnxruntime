@@ -745,13 +745,10 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
   return true;
 }
 
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node* start_node) {
-  if (start_node == nullptr) {
-    return false;
-  }
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   std::queue<const Node*> q;
   std::vector<NodeIndex> nodes_to_remove;
-  q.push(start_node);
+  q.push(&start_node);
   // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output. 
   while (q.size() != 0) {
     const Node& cur_node = *(q.front());

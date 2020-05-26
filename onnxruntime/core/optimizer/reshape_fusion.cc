@@ -171,7 +171,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   for (int i = 0; i < concat_input_count; ++i) {
     const Node* p_cur_node = graph_utils::GetInputNode(concat, i);
     if (p_cur_node != nullptr) {
-      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, p_cur_node);
+      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_cur_node);
     }
   }
 
