@@ -13,10 +13,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
-
-#if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/utils.h"
-#endif
 
 // #define TRACE_EXECUTION
 
@@ -120,7 +117,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                   const logging::Logger& logger) {
+                                   const logging::Logger& logger,
+                                   const AllocatorPtr custom_cpu_allocator) {
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
@@ -133,7 +131,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
+  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, custom_cpu_allocator};
 
   const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
@@ -197,7 +195,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
     // construct OpKernelContext
     // TODO: log kernel inputs?
-    OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
+    auto provider_type = p_op_kernel->Node().GetExecutionProviderType();
+    OpKernelContextInternal op_kernel_context(session_state,
+                                              frame,
+                                              *p_op_kernel,
+                                              logger,
+                                              terminate_flag_, 
+                                              utils::GetProviderRunOptions(provider_run_options_, provider_type));
+    
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
@@ -209,7 +214,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+        auto execution_provider_type = provider_type;
           if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
             execution_provider_type = kCpuExecutionProvider;
           }

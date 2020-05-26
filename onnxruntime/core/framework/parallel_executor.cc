@@ -18,8 +18,9 @@
 
 namespace onnxruntime {
 
-ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
-    : out_standings_(0), terminate_flag_(terminate_flag), executor_pool_(session_state.GetInterOpThreadPool()) {
+ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag,
+                                   const std::unordered_map<string, void*>& provider_run_options)
+    : out_standings_(0), executor_pool_(session_state.GetInterOpThreadPool()), IExecutor{terminate_flag, provider_run_options} {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
@@ -31,7 +32,8 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
                                  const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches,
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                 const logging::Logger& logger) {
+                                 const logging::Logger& logger,
+                                 const AllocatorPtr custom_cpu_allocator) {
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {
@@ -39,7 +41,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   }
 
   root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                 fetch_allocators, session_state);
+                                                 fetch_allocators, session_state, custom_cpu_allocator);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
     auto p_op_kernel = session_state.GetKernel(node_index);
@@ -109,7 +111,8 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
 
 Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                       const SessionState& session_state,
-                                      const logging::Logger& logger) {
+                                      const logging::Logger& logger,
+                                      const std::unordered_map<string, void*>& provider_run_options) {
   LOGS(logger, INFO) << "Begin execution";
 
   Status status = Status::OK();
@@ -139,7 +142,13 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       ORT_THROW("Got nullptr from GetKernel for node: ", node.Name());
     }
 
-    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
+    auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
+    OpKernelContextInternal op_kernel_context(session_state,
+                                              *root_frame_,
+                                              *p_op_kernel,
+                                              logger,
+                                              terminate_flag_,
+                                              utils::GetProviderRunOptions(provider_run_options, execution_provider_type));
 
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
@@ -150,7 +159,6 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
-          auto execution_provider_type = node.GetExecutionProviderType();
           if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
             execution_provider_type = kCpuExecutionProvider;
           }
@@ -161,7 +169,6 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
         if (fence) {
-          auto execution_provider_type = node.GetExecutionProviderType();
           if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
             execution_provider_type = kCpuExecutionProvider;
           }
@@ -296,7 +303,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
 
     Status status;
     try {
-      status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
+      status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger), std::cref(provider_run_options_));
     } catch (const std::exception& ex) {
       status = create_exception_message(&ex);
     } catch (...) {

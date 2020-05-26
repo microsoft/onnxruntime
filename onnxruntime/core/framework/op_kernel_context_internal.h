@@ -21,10 +21,12 @@ class OpKernelContextInternal : public OpKernelContext {
                                    IExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const bool& terminate_flag)
+                                   const bool& terminate_flag,
+                                   void* provider_run_options)
       : OpKernelContext(&frame, &kernel, session_state.GetThreadPool(), logger),
         session_state_(session_state),
-        terminate_flag_(terminate_flag) {
+        terminate_flag_(terminate_flag),
+        provider_run_options_(provider_run_options) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
     int num_implicit_inputs = static_cast<int>(implicit_inputs.size());
     implicit_input_values_.reserve(num_implicit_inputs);
@@ -64,6 +66,7 @@ class OpKernelContextInternal : public OpKernelContext {
   const SessionState& session_state_;
   const bool& terminate_flag_;
   std::vector<const OrtValue*> implicit_input_values_;
+  void* provider_run_options_;
 };
 
 }  // namespace onnxruntime

@@ -450,8 +450,9 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       fetches.clear();
     }
 
+    const std::unordered_map<string, void*> provider_run_options;
     status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(), provider_run_options, nullptr);
 
     ORT_RETURN_IF_ERROR(status);
 

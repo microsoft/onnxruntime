@@ -40,6 +40,8 @@ void DefaultFree(void* p);
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info);
 
+void* GetProviderRunOptions(const unordered_map<string, void*>& provider_run_options, const string& provider);
+
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue);
 
@@ -69,6 +71,8 @@ void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                            const std::unordered_map<string, void*>& provider_run_options,
+                            const AllocatorPtr custom_allocator, 
                             bool only_execute_path_to_fetches = false);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
@@ -76,7 +80,9 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, 
+                               const std::unordered_map<string, void*>& provider_run_options,
+                               const AllocatorPtr custom_allocator);
 
 #if defined(DEBUG_NODE_INPUTS_OUTPUTS)
 // to create a build with these enabled run the build script with 1 to dump just shapes, or 2 to dump shapes and data

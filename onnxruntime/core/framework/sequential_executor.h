@@ -18,18 +18,18 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
-      : terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
+  SequentialExecutor(const bool& terminate_flag, const unordered_map<string, void*>& provider_run_options, const bool only_execute_path_to_fetches = false)
+      : only_execute_path_to_fetches_(only_execute_path_to_fetches), IExecutor{terminate_flag, provider_run_options} {}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                         const logging::Logger& logger) override;
+                         const logging::Logger& logger,
+                         const AllocatorPtr custom_cpu_allocator) override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
-  const bool& terminate_flag_;
   const bool only_execute_path_to_fetches_;
 };
 }  // namespace onnxruntime

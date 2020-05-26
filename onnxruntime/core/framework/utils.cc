@@ -93,6 +93,16 @@ void DefaultFree(void* p) {
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info) {
   return session_state.GetExecutionProviders().GetAllocator(memory_info);
 }
+    
+void* GetProviderRunOptions(const unordered_map<string, void*>& provider_run_options, const string& provider) {
+  void* run_options = nullptr;
+  const auto& entry = provider_run_options.find(provider);
+  if (entry != provider_run_options.cend()) {
+    run_options = entry->second;
+  }
+
+  return run_options;
+}
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
@@ -457,17 +467,18 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
+                                       const logging::Logger& logger, const std::unordered_map<string, void*>& provider_run_options,
+                                       const AllocatorPtr custom_allocator, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
+    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, provider_run_options, only_execute_path_to_fetches));
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, provider_run_options, only_execute_path_to_fetches));
     } else {
-      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag, provider_run_options));
     }
   }
 
@@ -480,7 +491,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                        logger));
+                                        logger, custom_allocator));
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -516,7 +527,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                        logger));
+                                        logger, custom_allocator));
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
@@ -530,14 +541,17 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
+                            const logging::Logger& logger, 
+                            const std::unordered_map<string, void*>& provider_run_options, 
+                            const AllocatorPtr custom_allocator, bool only_execute_path_to_fetches) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
+                                 execution_mode, terminate_flag, logger, provider_run_options,
+                                 custom_allocator, only_execute_path_to_fetches);
 
   return status;
 }
@@ -545,9 +559,12 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, 
+                               const std::unordered_map<string, void*>& provider_run_options,
+                               const AllocatorPtr custom_allocator) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger, provider_run_options,
+                                 custom_allocator);
   return status;
 }
 
