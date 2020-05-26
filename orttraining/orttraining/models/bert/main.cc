@@ -155,6 +155,11 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_stage_paths", "Specify the forward ONNX files for pipeline evaluation.", cxxopts::value<std::vector<std::string>>()->default_value(""))
+      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info of "
+      "size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the first "
+      "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
+      "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
+      "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
   options
@@ -382,14 +387,54 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     // If user doesn't provide partitioned model files, a cut list should be provided for ORT to do partition
     // online. If the pipeline contains n stages, the cut list should be of length (n-1), in order to cut the
     // graph into n partitions.
-    // TODO: find a better way (maybe a parser?) to better handle custom cut information.
     if (params.pipeline_parallel_size > 1 && params.pipeline_stage_paths.empty()) {
-      TrainingSession::TrainingConfiguration::CutInfo cut0 = {TrainingSession::TrainingConfiguration::CutEdge("186"),
-                                                              TrainingSession::TrainingConfiguration::CutEdge("71", {"273"})};
-      TrainingSession::TrainingConfiguration::CutInfo cut1 = {TrainingSession::TrainingConfiguration::CutEdge("308"),
-                                                              TrainingSession::TrainingConfiguration::CutEdge("71", {"395"})};
-      params.pipeline_partition_cut_list.emplace_back(cut0);
-      params.pipeline_partition_cut_list.emplace_back(cut1);
+      auto cut_info_groups = flags["cut_group_info"].as<std::vector<std::string>>();
+
+      ORT_RETURN_IF_NOT(static_cast<int>(cut_info_groups.size() + 1) == params.pipeline_parallel_size,
+                        "cut_info length plus one must match pipeline parallel size");
+
+      auto process_with_delimiter = [](std::string& input_str, const std::string& delimiter) {
+        std::vector<std::string> result;
+        size_t pos = 0;
+        std::string token;
+        while ((pos = input_str.find(delimiter)) != std::string::npos) {
+          token = input_str.substr(0, pos);
+          result.emplace_back(token);
+          input_str.erase(0, pos + delimiter.length());
+        }
+        // push the last split of substring into result.
+        result.emplace_back(input_str);
+        return result;
+      };
+
+      auto process_cut_info = [&](std::string& cut_info_string) {
+        TrainingSession::TrainingConfiguration::CutInfo cut_info;
+        const std::string edge_delimiter = ":";
+        const std::string consumer_delimiter = "/";
+        const std::string producer_consumer_delimiter = "-";
+
+        auto cut_edges = process_with_delimiter(cut_info_string, edge_delimiter);
+        for (auto& cut_edge : cut_edges) {
+          auto process_edge = process_with_delimiter(cut_edge, producer_consumer_delimiter);
+          if (process_edge.size() == 1) {
+            TrainingSession::TrainingConfiguration::CutEdge cut_edge{process_edge[0]};
+            cut_info.emplace_back(cut_edge);
+          } else {
+            ORT_ENFORCE(process_edge.size() == 2);
+            auto consumer_list = process_with_delimiter(process_edge[1], consumer_delimiter);
+
+            TrainingSession::TrainingConfiguration::CutEdge cut_edge{process_edge[0], consumer_list};
+
+            cut_info.emplace_back(cut_edge);
+          }
+        }
+        return cut_info;
+      };
+
+      for (auto& cut_info : cut_info_groups) {
+        TrainingSession::TrainingConfiguration::CutInfo cut = process_cut_info(cut_info);
+        params.pipeline_partition_cut_list.emplace_back(cut);
+      }
     }
 
     int64_t seed = flags["seed"].as<int64_t>();
