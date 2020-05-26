@@ -135,9 +135,12 @@ class TrainingSession : public InferenceSession {
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
 
-    // struct to describe a specific edge (not node_arg). This information is
-    // used in pipeline online partition tool to identify which edge to cut to
-    // make the corresponding partition.
+    // struct to describe a specific edge. An edge is not the same as a node_arg. Edge represents a connection between two operators.
+    // For example, an operator A's output tensor T is connecting to another operator B's input, then this constructs
+    // an edge from A to B. If A's output tensor T has multiple consumers, i.e. it's fed into multiple operators' inputs,
+    // there would be multiple edges, each from A, to a consumer operator.
+    // CutEdge information is used in pipeline online partition tool to identify which edge to cut to make the
+    // corresponding partition.
     struct CutEdge {
       std::string node_arg_name;
       optional<std::vector<std::string>> consumer_nodes;
@@ -151,6 +154,7 @@ class TrainingSession : public InferenceSession {
       // the consumer node names which you want to perform the cut on.
       CutEdge(std::string edge, std::vector<std::string> nodes) : node_arg_name(edge), consumer_nodes(nodes){};
     };
+    // CutInfo is a group of CutEdges that describes a specific cut that composed of splitting those edges.
     typedef std::vector<CutEdge> CutInfo;
 
     struct PipelineConfiguration {
@@ -160,6 +164,8 @@ class TrainingSession : public InferenceSession {
       // Tensors to fetch as specified by the user.
       // Each pipeline stage should pick up some strings from this field..
       std::vector<std::string> fetch_names;
+      // cut_list contains the list of CutInfo to make the graph partitions.
+      // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
       std::vector<CutInfo> cut_list;
     };
 

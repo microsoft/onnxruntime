@@ -31,13 +31,14 @@ NodeArg& CreateTypedNodeArg(Graph& graph, onnx::TensorProto_DataType type, const
   return node_arg;
 }
 
-void AddInputEvent(Graph& graph,
-                   const std::string& event_name,
-                   std::vector<NodeArg*>& input_args,
-                   std::vector<std::string>& new_input_names) {
-  auto& event_id = CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_name);
-  new_input_names.push_back(event_id.Name());
-  input_args.push_back(&event_id);
+void AddNewNodeArg(Graph& graph,
+                   const std::string& op_name,
+                   onnx::TensorProto_DataType type,
+                   std::vector<NodeArg*>& new_node_args,
+                   std::vector<std::string>& new_names) {
+  auto& new_node_arg = CreateTypedNodeArg(graph, type, op_name);
+  new_names.push_back(new_node_arg.Name());
+  new_node_args.push_back(&new_node_arg);
 }
 
 // gradient graph can contain some dangling leaf nodes. Add them all to WaitEvent
@@ -121,7 +122,8 @@ Node* AddBackwardRecord(Graph& graph,
                         std::string &event_id_tensor_name,
                         std::string &output_tensor_name) {
   std::vector<NodeArg*> input_args;
-  AddInputEvent(graph, "backward_recorded_event_id", input_args, new_input_names);
+  AddNewNodeArg(graph, "backward_recorded_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                input_args, new_input_names);
   std::vector<NodeArg*> output_args{};
 
   if (backward_send) {
@@ -176,7 +178,8 @@ Node* AddForwardWait(Graph& graph,
 
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
-  AddInputEvent(graph, "forward_waited_event_id", input_args, new_input_names);
+  AddNewNodeArg(graph, "forward_waited_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                input_args, new_input_names);
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
 
   if (graph_inputs.size() == 0) {
@@ -238,7 +241,8 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
   {
     std::vector<NodeArg*> input_args;
     std::vector<NodeArg*> output_args;
-    AddInputEvent(graph, "forward_recorded_event_id", input_args, new_input_names);
+    AddNewNodeArg(graph, "forward_recorded_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                  input_args, new_input_names);
 
     // Add send forward op's output as record op's input and output
     for (auto& output : forward_send->MutableOutputDefs()) {
@@ -259,7 +263,8 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
   {
     std::vector<NodeArg*> input_args;
     std::vector<NodeArg*> output_args;
-    AddInputEvent(graph, "backward_waited_event_id", input_args, new_input_names);
+    AddNewNodeArg(graph, "backward_waited_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                  input_args, new_input_names);
 
     input_args.insert(std::end(input_args),
                       std::begin(record_node->MutableOutputDefs()),
@@ -726,18 +731,11 @@ Status TransformGraphForPipeline(
   return Status::OK();
 }
 
-void AddNewNodeArg(Graph& graph,
-                   const std::string& op_name,
-                   onnx::TensorProto_DataType type,
-                   std::vector<NodeArg*>& new_node_args,
-                   std::vector<std::string>& new_names) {
-  auto& event_id = CreateTypedNodeArg(graph, type, op_name);
-  new_names.push_back(event_id.Name());
-  new_node_args.push_back(&event_id);
-}
-
+// This function is used when you want to create a scalar constant in a graph.
+// It may create a NodeArg so that other Node can references its value.
+// It also cerates an initializer to store its value.
 template <typename T>
-void AddNewNodeArgAndInitializer(Graph& graph,
+void AddNewScalarNodeArgAndInitializer(Graph& graph,
                                  const std::string& op_name,
                                  onnx::TensorProto_DataType type,
                                  T data,
@@ -764,7 +762,7 @@ void AddNewNodeArgAndInitializer(Graph& graph,
 
 // split the graph into disconnected subgraph based on provided CutInfo
 common::Status SplitGraph(Graph& graph,
-                          std::vector<TrainingSession::TrainingConfiguration::CutInfo> split_edge_groups_,
+                          std::vector<TrainingSession::TrainingConfiguration::CutInfo> split_edge_groups,
                           std::vector<Node*>& send_nodes,
                           std::vector<Node*>& recv_nodes) {
   std::vector<std::string> new_input_names;
@@ -792,10 +790,10 @@ common::Status SplitGraph(Graph& graph,
   //    newly inserted send's input. Also, to keep this on going for any following cut, we create an updated_node_arg_v2,
   //    and update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg_v2
   std::map<NodeArg*, NodeArg*> updated_node_args;
-  for (size_t index = 0; index < split_edge_groups_.size(); ++index) {
-    // each entry in split_edge_groups_ represents a partition cut. Each cut can contain the split of
+  for (size_t index = 0; index < split_edge_groups.size(); ++index) {
+    // each entry in split_edge_groups represents a partition cut. Each cut can contain the split of
     // several edges.
-    auto& edgeIds = split_edge_groups_[index];
+    auto& edgeIds = split_edge_groups[index];
 
     // for each cut, record the inserted input/output args.
     std::vector<NodeArg*> send_input_args;
@@ -805,34 +803,36 @@ common::Status SplitGraph(Graph& graph,
 
     auto cut_index_str = std::to_string(index);
     // add input node_arg and initializer for send/recv
-    AddNewNodeArgAndInitializer<bool>(graph,
+    AddNewScalarNodeArgAndInitializer<bool>(graph,
                                       "send_input_signal" + cut_index_str,
                                       ONNX_NAMESPACE::TensorProto_DataType_BOOL,
                                       true, /* initializer data */
                                       send_input_args,
                                       new_input_names);
-    AddNewNodeArgAndInitializer<bool>(graph,
+    AddNewScalarNodeArgAndInitializer<bool>(graph,
                                       "recv_input_signal" + cut_index_str,
                                       ONNX_NAMESPACE::TensorProto_DataType_BOOL,
                                       true, /* initializer data */
                                       recv_input_args,
                                       new_input_names);
 
-    AddNewNodeArgAndInitializer<size_t>(graph,
+    AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                       "send_dst_rank" + cut_index_str,
                                       ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                       index + 1, /* initializer data */
                                       send_input_args,
                                       new_input_names);
-    AddNewNodeArgAndInitializer<size_t>(graph,
+    AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                       "recv_src_rank" + cut_index_str,
                                       ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                       index, /* initializer data */
                                       recv_input_args,
                                       new_input_names);
     // add output node_arg for send/recv
-    AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL, send_output_args, new_output_names);
-    AddNewNodeArg(graph, "receive_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL, recv_output_args, new_output_names);
+    AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                  send_output_args, new_output_names);
+    AddNewNodeArg(graph, "receive_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                  recv_output_args, new_output_names);
 
     // add attribute data for send/recv
     ONNX_NAMESPACE::AttributeProto tag;
@@ -849,7 +849,7 @@ common::Status SplitGraph(Graph& graph,
     for (auto& id : edgeIds) {
       // find node whose output contains id.node_arg_name
       auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
-      if (producer_node == nullptr) {
+      if (!producer_node) {
         ORT_THROW("Cannot find producer node of node_arg with name: ", id.node_arg_name, ". Wrong cutting infomation.");
       }
 
@@ -910,7 +910,7 @@ common::Status SplitGraph(Graph& graph,
       updated_node_args[original_node_arg] = &new_receive_output;
 
       // deal with shape inference for newly added edge
-      auto& output_edge_name = original_node_arg->Name();  //output_edge_name should be id.node_arg_name. Consider remove this variable
+      auto& output_edge_name = original_node_arg->Name();
 
       // deal with updating the consumer's input node_args
       std::vector<Node*> consumer_nodes;
