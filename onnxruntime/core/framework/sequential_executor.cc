@@ -18,6 +18,12 @@
 #include "core/framework/utils.h"
 #endif
 
+#ifdef ENABLE_NVTX_PROFILE
+// This header is for profile using Nvidia's visual profilier.
+#include "core/profile/profile.h"
+#include "core/profile/context.h"
+#endif
+
 // #define TRACE_EXECUTION
 
 // Define this symbol to create Concurrency Visualizer markers.
@@ -165,6 +171,17 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   diagnostic::marker_series series(series_name);
 #endif
 
+#ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+  profile::NvtxRangeCreator forward_range(
+    "forward-" + tag,
+    profile::Color::White);
+  profile::NvtxRangeCreator backward_range(
+    "backward-" + tag,
+    profile::Color::Black);
+#endif
+
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -182,6 +199,18 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+      // Start timing forward pass when encountering the first forward node.
+      forward_range.Begin();
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled()) {
+      // Start timing backward pass when encountering the first backward node.
+      // In the meanwhile, forward range ends.
+      forward_range.End();
+      backward_range.Begin();
+    }
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
@@ -371,6 +400,23 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
+
+#ifdef ENABLE_NVTX_PROFILE
+  // Make sure forward Range object call Begin and End.
+  if (!forward_range.IsBeginCalled()) {
+    forward_range.Begin();
+  }
+  if (!forward_range.IsEndCalled()) {
+    forward_range.End();
+  }
+  // Make sure backward Range object call Begin and End.
+  if (!backward_range.IsBeginCalled()) {
+    backward_range.Begin();
+  }
+  if (!backward_range.IsEndCalled()) {
+    backward_range.End();
+  }
+#endif
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output

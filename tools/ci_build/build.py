@@ -101,6 +101,8 @@ def parse_arguments():
 
     # Training options
     parser.add_argument(
+        "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
+    parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
         "--enable_training_e2e_tests", action="store_true",
@@ -608,6 +610,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
         # Training related flags
+        "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
+            "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + (
