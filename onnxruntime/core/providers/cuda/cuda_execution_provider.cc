@@ -56,8 +56,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-thread_local std::shared_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_cache_;
-
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
@@ -171,13 +169,13 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
-  if (per_thread_context_cache_ == nullptr) {
-    per_thread_context_cache_ = onnxruntime::make_unique<PerThreadContextMap>();
+  if (PerThreadContextCache() == nullptr) {
+    PerThreadContextCache() = onnxruntime::make_unique<PerThreadContextMap>();
   }
 
   // try to use cached context
-  auto cached_context_it = per_thread_context_cache_->find(this);
-  if (cached_context_it != per_thread_context_cache_->end()) {
+  auto cached_context_it = PerThreadContextCache()->find(this);
+  if (cached_context_it != PerThreadContextCache()->end()) {
     auto cached_context = cached_context_it->second.lock();
     ORT_ENFORCE(cached_context);
     return *cached_context;
@@ -197,22 +195,22 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
     }
 
     // insert into active_contexts, should not already be present
-    const auto active_context_insert_result = context_state_.active_contexts.insert(context);
-    ORT_ENFORCE(active_context_insert_result.second);
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
 
     // insert into caches_to_update_on_destruction, may already be present
-    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache_));
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(PerThreadContextCache()));
   }
 
-  per_thread_context_cache_->insert(std::make_pair(this, context));
+  PerThreadContextCache()->insert(std::make_pair(this, context));
 
   return *context;
 }
 
 void CUDAExecutionProvider::ReleasePerThreadContext() const {
-  ORT_ENFORCE(per_thread_context_cache_ != nullptr);
-  auto cached_context_it = per_thread_context_cache_->find(this);
-  ORT_ENFORCE(cached_context_it != per_thread_context_cache_->end());
+  ORT_ENFORCE(PerThreadContextCache() != nullptr);
+  auto cached_context_it = PerThreadContextCache()->find(this);
+  ORT_ENFORCE(cached_context_it != PerThreadContextCache()->end());
   auto cached_context = cached_context_it->second.lock();
   ORT_ENFORCE(cached_context);
 
@@ -222,7 +220,7 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
     context_state_.retired_context_pool.push_back(cached_context);
   }
 
-  per_thread_context_cache_->erase(cached_context_it);
+  PerThreadContextCache()->erase(cached_context_it);
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
