@@ -6,6 +6,7 @@ if (NOT WINDOWS_STORE)
 endif()
 
 include(precompiled_header.cmake)
+include(target_delayload.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
 
@@ -599,11 +600,11 @@ set_target_properties(winml_dll
 set(os_component_link_flags_list ${os_component_link_flags})
 separate_arguments(os_component_link_flags_list)
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll)
-
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/winml.def ${os_component_link_flags_list})
+target_delayload(winml_dll api-ms-win-core-libraryloader-l1-2-1.dll api-ms-win-core-threadpool-legacy-l1-1-0.dll api-ms-win-core-processtopology-obsolete-l1-1-0.dll api-ms-win-core-kernel32-legacy-l1-1-0.dll d3d12.dll d3d11.dll dxgi.dll directml.dll)
 
 if (EXISTS ${dxcore_header})
-  target_link_options(winml_dll PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+  target_delayload(winml_dll ext-ms-win-dxcore-l1-*.dll)
 endif()
 
 set_target_properties(winml_dll
@@ -626,14 +627,6 @@ target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 
 target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
-target_link_libraries(winml_dll PRIVATE windowsapp.lib)
-
-if (onnxruntime_BUILD_FOR_WINDOWS_STORE)
-  target_link_libraries(winml_dll PRIVATE dloadhelper.lib)
-else()
-  target_link_libraries(winml_dll PRIVATE delayimp.lib)
-endif()
-
 
 # Any project that links in debug_alloc.obj needs this lib.
 # unresolved external symbol __imp_SymSetOptions
