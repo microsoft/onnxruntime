@@ -1,11 +1,10 @@
-# ported from trainer.py of huggingface transformers
-# Still missing gradient clipping and the approach in AdamW.
+# adapted from Trainer.py of huggingface transformers
 
 import json
 import logging
 import os
 import random
-from pathlib import Path
+
 from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
@@ -67,11 +66,7 @@ class TrainOutput(NamedTuple):
     global_step: int
     training_loss: float
 
-# ported from transformers optimization.py
 def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_lr):
-    """ Create a schedule with a learning rate that decreases linearly after
-    linearly increasing during a warmup period.
-    """
 
     def lr_lambda_linear(current_step):
         if current_step < num_warmup_steps:
@@ -80,13 +75,6 @@ def get_linear_schedule_with_warmup(num_warmup_steps, num_training_steps, base_l
             0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
         )
 
-    # the original method returns a LambdaLR instance.
-    # return LambdaLR(optimizer, lr_lambda, last_epoch)
-
-    # ORTTrainer, however, needs a function that takes a global_step and return a lr.
-    # duplicate LambdaLR.get_lr here:
-    # return [base_lr * lmbda(self.last_epoch)
-    #             for lmbda, base_lr in zip(self.lr_lambdas, self.base_lrs)]
     def lambda_lr_get_lr(current_global_step):
         # LambdaLR increment self.last_epoch at evert sept()
         return base_lr * lr_lambda_linear(current_global_step)
@@ -99,23 +87,18 @@ class ORTTransformerTrainer:
 
     model: PreTrainedModel
     args: TrainingArguments
-    data_collator: DataCollator
-    train_dataset: Optional[Dataset]
-    eval_dataset: Optional[Dataset]
-    compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None
-    prediction_loss_only: bool
-    tb_writer: Optional["SummaryWriter"] = None
+    train_dataset: Dataset
+    eval_dataset: Dataset
+    compute_metrics: Callable[[EvalPrediction], Dict]
 
     def __init__(
         self,
         model: PreTrainedModel,
         model_desc: ModelDescription,
         args: TrainingArguments,
-        data_collator: Optional[DataCollator] = None,
-        train_dataset: Optional[Dataset] = None,
-        eval_dataset: Optional[Dataset] = None,
-        compute_metrics: Optional[Callable[[EvalPrediction], Dict]] = None,
-        prediction_loss_only=False,
+        train_dataset: Dataset,
+        eval_dataset: Dataset,
+        compute_metrics: Callable[[EvalPrediction], Dict],
     ):
         """
         """
@@ -123,20 +106,10 @@ class ORTTransformerTrainer:
         self.model = model
         self.model_desc = model_desc
         self.args = args
-        if data_collator is not None:
-            self.data_collator = data_collator
-        else:
-            self.data_collator = DefaultDataCollator()
+        self.data_collator = DefaultDataCollator()
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.compute_metrics = compute_metrics
-        self.prediction_loss_only = prediction_loss_only
-        if is_tensorboard_available() and self.args.local_rank in [-1, 0]:
-            self.tb_writer = SummaryWriter(log_dir=self.args.logging_dir)
-        if not is_tensorboard_available():
-            logger.warning(
-                "You are instantiating a Trainer but Tensorboard is not installed. You should consider installing it."
-            )
         set_seed(self.args.seed)
         # Create output directory if needed
         if self.args.local_rank in [-1, 0]:
@@ -155,11 +128,9 @@ class ORTTransformerTrainer:
             collate_fn=self.data_collator.collate_batch,
         )
 
-    def get_eval_dataloader(self, eval_dataset: Optional[Dataset] = None) -> DataLoader:
-        if eval_dataset is None and self.eval_dataset is None:
-            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+    def get_eval_dataloader(self) -> DataLoader:
         return DataLoader(
-            eval_dataset if eval_dataset is not None else self.eval_dataset,
+            self.eval_dataset,
             batch_size=self.args.eval_batch_size,
             shuffle=False,
             collate_fn=self.data_collator.collate_batch,
@@ -173,6 +144,7 @@ class ORTTransformerTrainer:
             shuffle=False,
             collate_fn=self.data_collator.collate_batch,
         )
+
 
     def train(self):
         """
@@ -193,18 +165,17 @@ class ORTTransformerTrainer:
         loss_scaler = LossScaler('loss_scale_input_name', True, up_scale_window=2000)
 
         def map_optimizer_attributes(name):
-            no_decay_keys = ["bias", "gamma", "beta", "LayerNorm"]
-            no_decay = any(no_decay_key in name for no_decay_key in no_decay_keys)
+            # no_decay_keys = ["bias", "LayerNorm.weight"]
+            no_decay = "bias" in name or "LayerNorm.weight" in name
             if no_decay:
-                return {"alpha": 0.9, "beta": 0.999, "lambda": 0.0, "epsilon": 1e-6}
+                return {"weight_decay": 0.0, "weight_decay_mode" : 1}
             else:
-                return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
+                return {"weight_decay": self.args.weight_decay, "weight_decay_mode" : 1}
 
         self.model = ORTTrainer(self.model, None,
             self.model_desc, 
             "AdamOptimizer",
-            # TODO: how to support AdamW
-            map_optimizer_attributes=None,
+            map_optimizer_attributes=map_optimizer_attributes,
             learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
             device=self.args.device,
             postprocess_model=postprocess_model,
@@ -216,9 +187,6 @@ class ORTTransformerTrainer:
             loss_scaler=loss_scaler,
             enable_grad_norm_clip=False,
             _opset_version=12)
-
-        if self.tb_writer is not None:
-            self.tb_writer.add_text("args", self.args.to_json_string())
 
         # Train!
         logger.info("***** Running training *****")
@@ -243,6 +211,7 @@ class ORTTransformerTrainer:
         train_iterator = trange(
             epochs_trained, int(num_train_epochs), desc="Epoch", disable=self.args.local_rank not in [-1, 0],
         )
+
         for epoch in train_iterator:
             epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=self.args.local_rank not in [-1, 0])
             for step, inputs in enumerate(epoch_iterator):
@@ -252,19 +221,19 @@ class ORTTransformerTrainer:
                     steps_trained_in_current_epoch -= 1
                     continue
 
+                if step == 0:
+                    self.model.eval()
+                    for k, v in inputs.items():
+                        inputs[k] = v.to(self.args.device)
+                    outputs = self.model(**inputs)
+
                 tr_loss += self._training_step(self.model, inputs)
 
+
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
-                    # last step in epoch but step is always smaller than gradient_accumulation_steps
                     len(epoch_iterator) <= self.args.gradient_accumulation_steps
                     and (step + 1) == len(epoch_iterator)
                 ):
-                    # TODO:
-                    # if self.args.fp16:
-                    #     torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), self.args.max_grad_norm)
-                    # else:
-                    #     torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
-
                     global_step += 1
 
                     if self.args.local_rank in [-1, 0]:
@@ -284,9 +253,6 @@ class ORTTransformerTrainer:
                             logs["loss"] = loss_scalar
                             logging_loss = tr_loss
 
-                            if self.tb_writer:
-                                for k, v in logs.items():
-                                    self.tb_writer.add_scalar(k, v, global_step)
                             epoch_iterator.write(json.dumps({**logs, **{"step": global_step}}))
 
                 if self.args.max_steps > 0 and global_step > self.args.max_steps:
@@ -296,14 +262,11 @@ class ORTTransformerTrainer:
                 train_iterator.close()
                 break
 
-        if self.tb_writer:
-            self.tb_writer.close()
-
         logger.info("\n\nTraining completed. \n\n")
         return TrainOutput(global_step, tr_loss / global_step)
 
     def _training_step(
-        self, model: nn.Module, inputs: Dict[str, torch.Tensor]
+        self, model: ORTTrainer, inputs: Dict[str, torch.Tensor]
     ) -> float:
         model.train()
         for k, v in inputs.items():
@@ -319,24 +282,16 @@ class ORTTransformerTrainer:
         os.makedirs(output_dir, exist_ok=True)
         self.model.save_as_onnx(os.path.join(output_dir, "transformer.onnx"))
 
-    def evaluate(
-        self, eval_dataset: Optional[Dataset] = None, prediction_loss_only: Optional[bool] = None
-    ) -> Dict[str, float]:
+    def evaluate(self) -> Dict[str, float]:
         """
         Run evaluation and return metrics.
 
-        The calling script will be responsible for providing a method to compute metrics, as they are
-        task-dependent.
-
-        Args:
-            eval_dataset: (Optional) Pass a dataset if you wish to override
-            the one on the instance.
         Returns:
             A dict containing:
                 - the eval loss
                 - the potential metrics computed from the predictions
         """
-        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        eval_dataloader = self.get_eval_dataloader()
 
         output = self._prediction_loop(eval_dataloader, description="Evaluation")
         return output.metrics
@@ -352,15 +307,13 @@ class ORTTransformerTrainer:
         return self._prediction_loop(test_dataloader, description="Prediction")
 
     def _prediction_loop(
-        self, dataloader: DataLoader, description: str, prediction_loss_only: Optional[bool] = None
+        self, dataloader: DataLoader, description: str
     ) -> PredictionOutput:
         """
         Prediction/evaluation loop, shared by `evaluate()` and `predict()`.
 
         Works both with or without labels.
         """
-
-        prediction_loss_only = prediction_loss_only if prediction_loss_only is not None else self.prediction_loss_only
 
         logger.info("***** Running %s *****", description)
         logger.info("  Num examples = %d", len(dataloader.dataset))
@@ -384,16 +337,15 @@ class ORTTransformerTrainer:
                 else:
                     logits = outputs[0]
 
-            if not prediction_loss_only:
-                if preds is None:
-                    preds = logits.detach().cpu().numpy()
+            if preds is None:
+                preds = logits.detach().cpu().numpy()
+            else:
+                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+            if inputs.get("labels") is not None:
+                if label_ids is None:
+                    label_ids = inputs["labels"].detach().cpu().numpy()
                 else:
-                    preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-                if inputs.get("labels") is not None:
-                    if label_ids is None:
-                        label_ids = inputs["labels"].detach().cpu().numpy()
-                    else:
-                        label_ids = np.append(label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+                    label_ids = np.append(label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
 
         if self.compute_metrics is not None and preds is not None and label_ids is not None:
             metrics = self.compute_metrics(EvalPrediction(predictions=preds, label_ids=label_ids))

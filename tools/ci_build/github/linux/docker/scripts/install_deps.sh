@@ -117,14 +117,8 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
       echo "cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}"
       cp ../scripts/pyt_patch/symbolic_opset10.py ${PATH_TO_SYMBOLIC10}
     fi
-    if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-      
-      # To take advantage of HF Transformers Trainer class (expected to be in 2.9.0) we like use 
-      # a private wheel that has the Trainer in it.
-      # We will move back to use the public latest Transformers release once 2.9.0 is available.
-      # ${PYTHON_EXE} -m pip install transformers
-      GetFile https://orttraining.blob.core.windows.net/transformers-wheel/transformers-2.8.0-py3-none-any.whl /tmp/transformers-2.8.0-py3-none-any.whl
-      ${PYTHON_EXE} -m pip install /tmp/transformers-2.8.0-py3-none-any.whl
+    if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then      
+      ${PYTHON_EXE} -m pip install  transformers==v2.10.0
 
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn

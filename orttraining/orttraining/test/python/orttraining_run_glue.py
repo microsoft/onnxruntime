@@ -1,6 +1,4 @@
-# Code ported from run_glue.py of huggingface transformers
-# Still missing gradient clipping and the approach in AdamW.
-# Finetuning sequence classification models on GLUE (Bert, XLM, XLNet, RoBERTa, Albert, XLM-RoBERTa).
+# adapted from run_glue.py of huggingface transformers
 
 import dataclasses
 import logging
@@ -109,7 +107,6 @@ class ORTGlueTest(unittest.TestCase):
         )
         logger.info("Training/evaluation parameters %s", training_args)
 
-        # Set seed
         set_seed(training_args.seed)
         onnxruntime.set_seed(training_args.seed)
 
@@ -119,7 +116,6 @@ class ORTGlueTest(unittest.TestCase):
         except KeyError:
             raise ValueError("Task not found: %s" % (data_args.task_name))
 
-        # Load pretrained model and tokenizer
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,
             num_labels=num_labels,
@@ -137,9 +133,8 @@ class ORTGlueTest(unittest.TestCase):
             cache_dir=model_args.cache_dir,
         )
 
-        # Get datasets
         train_dataset = (
-            GlueDataset(data_args, tokenizer=tokenizer, local_rank=training_args.local_rank)
+            GlueDataset(data_args, tokenizer=tokenizer)
             if training_args.do_train
             else None
         )
@@ -147,7 +142,7 @@ class ORTGlueTest(unittest.TestCase):
         print(data_args)
         print(training_args.local_rank)
         eval_dataset = (
-            GlueDataset(data_args, tokenizer=tokenizer, local_rank=training_args.local_rank, evaluate=True)
+            GlueDataset(data_args, tokenizer=tokenizer, mode="dev")
             if training_args.do_eval
             else None
         )
@@ -159,7 +154,6 @@ class ORTGlueTest(unittest.TestCase):
                 preds = np.squeeze(p.predictions)
             return glue_compute_metrics(data_args.task_name, preds, p.label_ids)
 
-        # this is specific to bert model (BertForSequenceClassification). It may not work with other models.
         model_desc = ModelDescription([
             IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
             IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
@@ -188,27 +182,13 @@ class ORTGlueTest(unittest.TestCase):
         if training_args.do_eval and training_args.local_rank in [-1, 0]:
             logger.info("*** Evaluate ***")
 
-            # Loop to handle MNLI double evaluation (matched, mis-matched)
-            eval_datasets = [eval_dataset]
-            if data_args.task_name == "mnli":
-                mnli_mm_data_args = dataclasses.replace(data_args, task_name="mnli-mm")
-                eval_datasets.append(
-                    GlueDataset(mnli_mm_data_args, tokenizer=tokenizer, local_rank=training_args.local_rank, evaluate=True)
-                )
+            result = trainer.evaluate()
 
-            for eval_dataset in eval_datasets:
-                result = trainer.evaluate(eval_dataset=eval_dataset)
+            logger.info("***** Eval results {} *****".format(data_args.task_name))
+            for key, value in result.items():
+               logger.info("  %s = %s", key, value)
 
-                output_eval_file = os.path.join(
-                    training_args.output_dir, f"eval_results_{eval_dataset.args.task_name}.txt"
-                )
-                with open(output_eval_file, "w") as writer:
-                    logger.info("***** Eval results {} *****".format(eval_dataset.args.task_name))
-                    for key, value in result.items():
-                        logger.info("  %s = %s", key, value)
-                        writer.write("%s = %s\n" % (key, value))
-
-                results.update(result)
+            results.update(result)
 
         return results
 
