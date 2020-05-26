@@ -61,7 +61,7 @@ class BertOnnxModel(OnnxModel):
         fusion.apply()
 
     def gelu_approximation(self):
-        fusion = FusionGeluApproximation()
+        fusion = FusionGeluApproximation(self)
         fusion.apply()
 
     def fuse_add_bias_skip_layer_norm(self):

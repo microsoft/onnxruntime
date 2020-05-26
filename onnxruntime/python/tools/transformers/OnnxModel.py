@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class OnnxModel:
-
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
@@ -364,7 +363,7 @@ class OnnxModel:
                     numpy_helper.from_array(numpy_helper.to_array(initializer).astype(np.float16), initializer.name))
 
         for node in graph.node:
-            if node.op_type == 'Constant':
+            if node.op_type in ['Constant', 'ConstantOfShape']:
                 for att in node.attribute:
                     if att.name == 'value' and att.t.data_type == 1:
                         att.CopyFrom(

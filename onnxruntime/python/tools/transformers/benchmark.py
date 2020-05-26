@@ -67,7 +67,7 @@ MODELS = {
     #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
     # Model>2GB. Need use_external_data_format=True to export it.
-    "xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
+    #"xlm-mlm-en-2048": (["input_ids"], 11, True, "bert"),
     "gpt2-large": (["input_ids"], 11, True, "gpt2"),  # no past state inputs & outputs
 }
 
@@ -90,7 +90,7 @@ class GPT2ModelNoPastState(GPT2Model):
 
 
 def load_pretrained_model(model_name, config, cache_dir):
-    if model_name in ["gpt2", "distilgpt2"]:
+    if model_name in ["gpt2", "distilgpt2", "gpt2-large"]:
         return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
@@ -183,10 +183,14 @@ def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten
         return False
 
     for i in range(len(example_outputs_flatten)):
-        tol = 1e-02 if fp16 else 1e-4
-        if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=tol, atol=tol):
-            abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu().numpy()))
-            logger.error(f"Output tensor {i} is not close to expected result. Max diff={abs_diff}")
+        abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu().numpy()))
+        if abs_diff > 1e-4:
+            logger.info(f"Max absolute diff={abs_diff} for output tensor {i}")
+
+        rtol = 5e-02 if fp16 else 1e-4
+        atol = 1e-01 if fp16 else 1e-4
+        if not numpy.allclose(example_ort_outputs[i], example_outputs_flatten[i].cpu(), rtol=rtol, atol=atol):
+            logger.error(f"Output tensor {i} is not close: rtol={rtol}, atol={atol}")
             return False
 
     logger.info(f"inference result of onnxruntime is validated on {onnx_model_path}")
@@ -196,8 +200,8 @@ def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten
 model_fusion_statistics = {}
 
 
-def get_onnx_file_path(onnx_dir:str, model_name: str, input_count: int, optimized_by_script: bool, use_gpu: bool, fp16: bool,
-                       optimized_by_onnxruntime: bool):
+def get_onnx_file_path(onnx_dir: str, model_name: str, input_count: int, optimized_by_script: bool, use_gpu: bool,
+                       fp16: bool, optimized_by_onnxruntime: bool):
     if not optimized_by_script:
         filename = f"{model_name}_{input_count}"
     else:
@@ -211,7 +215,7 @@ def get_onnx_file_path(onnx_dir:str, model_name: str, input_count: int, optimize
     use_external_data = MODELS[model_name][2]
     directory = os.path.join(onnx_dir, filename) if use_external_data else onnx_dir
     if not os.path.exists(directory):
-      os.makedirs(directory)
+        os.makedirs(directory)
 
     return os.path.join(directory, f"{filename}.onnx")
 
@@ -237,7 +241,6 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
         if fp16:
             optimization_options.enable_gelu_approximation = True
 
-
         # Use script to optimize model.
         # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
         # It is better to be conservative so we use opt_level=0 here, in case MemcpyFromHost is added to the graph by OnnxRuntime.
@@ -258,7 +261,8 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
 
-def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
+def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx,
+                      overwrite):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -358,7 +362,8 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
 
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite)
+                    model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx,
+                    overwrite)
             if not is_valid_onnx_model:
                 continue
 
@@ -383,7 +388,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                         "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
                         "device": "cuda" if use_gpu else "cpu",
-                        "optimize": optimize_onnx,
+                        "optimizer": optimize_onnx,
                         "fp16": fp16,
                         "model_name": model_name,
                         "inputs": num_inputs,
@@ -447,7 +452,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "engine": "torchscript" if torchscript else "torch",
                         "version": torch.__version__,
                         "device": "cuda" if use_gpu else "cpu",
-                        "optimize": "",
+                        "optimizer": "",
                         "fp16": fp16,
                         "model_name": model_name,
                         "inputs": 1,
@@ -468,8 +473,8 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "fp16", "optimize", "model_name", "inputs", "batch_size", "sequence_length",
-            "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile",
+            "engine", "version", "device", "fp16", "optimizer", "model_name", "inputs", "batch_size", "sequence_length",
+            "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile",
             "latency_95_percentile", "latency_99_percentile"
         ]
 
@@ -483,7 +488,7 @@ def output_details(results, csv_filename):
 
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
-        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimize", "datetime"]
+        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimizer"]
         data_names = []
         for batch_size in args.batch_sizes:
             for sequence_length in args.sequence_lengths:

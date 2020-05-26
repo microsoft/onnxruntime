@@ -5,6 +5,7 @@
 from logging import getLogger
 from OnnxModel import OnnxModel
 from typing import Union, List
+
 logger = getLogger(__name__)
 
 

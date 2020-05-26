@@ -8,18 +8,16 @@ from onnx import helper
 from OnnxModel import OnnxModel
 from fusion_base import Fusion
 
-logger = getLogger(__name__)
 
-
-class FusionGeluApproximation:
+class FusionGeluApproximation(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, 'FastGelu(GeluApproximation)', ['Gelu', 'BiasGelu'])
 
-    def fuse(self, reshape_node, input_name_to_nodes, output_name_to_node):
-        new_node = onnx.helper.make_node("FastGelu",
-                                         inputs=node.input,
-                                         outputs=node.output,
-                                         name=model.create_node_name("FastGelu", node.op_type + "_Approximation"))
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        new_node = helper.make_node("FastGelu",
+                                    inputs=node.input,
+                                    outputs=node.output,
+                                    name=self.model.create_node_name("FastGelu", node.op_type + "_Approximation"))
         new_node.domain = "com.microsoft"
         self.nodes_to_remove.append(node)
         self.nodes_to_add.append(new_node)
