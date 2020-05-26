@@ -76,7 +76,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
 }
 
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
-  if (custom_cpu_allocator_ != nullptr && info.name == onnxruntime::CPU && info.mem_type == OrtMemTypeDefault)
+  if (custom_cpu_allocator_ != nullptr && std::strncmp(info.name, onnxruntime::CPU, 3) == 0 && info.mem_type == OrtMemTypeDefault)
     return custom_cpu_allocator_;
       
   return GetAllocatorImpl(info);
