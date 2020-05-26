@@ -196,7 +196,7 @@ def validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten
 model_fusion_statistics = {}
 
 
-def get_onnx_file_path(model_name: str, input_count: int, optimized_by_script: bool, use_gpu: bool, fp16: bool,
+def get_onnx_file_path(onnx_dir:str, model_name: str, input_count: int, optimized_by_script: bool, use_gpu: bool, fp16: bool,
                        optimized_by_onnxruntime: bool):
     if not optimized_by_script:
         filename = f"{model_name}_{input_count}"
@@ -209,15 +209,11 @@ def get_onnx_file_path(model_name: str, input_count: int, optimized_by_script: b
         filename += f"_ort"
 
     use_external_data = MODELS[model_name][2]
-    if use_external_data:
-        dirname = filename
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-        if os.name == 'nt':  # Windows should use back slash, otherwise OnnxRuntime will throw exception during loading the model.
-            return f"{dirname}\\{filename}.onnx"
-        return f"{dirname}/{filename}.onnx"
+    directory = os.path.join(onnx_dir, filename) if use_external_data else onnx_dir
+    if not os.path.exists(directory):
+      os.makedirs(directory)
 
-    return f"{filename}.onnx"
+    return os.path.join(directory, f"{filename}.onnx")
 
 
 def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite):
@@ -262,7 +258,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
         logger.info(f"Skip optimization since model existed: {optimized_model_path}")
 
 
-def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
+def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -279,7 +275,7 @@ def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimiz
     example_outputs_flatten = flatten(example_outputs)
     example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])
 
-    onnx_model_path = get_onnx_file_path(model_name, len(input_names), False, use_gpu, fp16, False)
+    onnx_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), False, use_gpu, fp16, False)
 
     if overwrite or not os.path.exists(onnx_model_path):
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
@@ -306,7 +302,7 @@ def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimiz
 
     if optimize_onnx or fp16:  # Use script (optimizer.py) to optimize
         model_type = MODELS[model_name][3]
-        optimized_model_path = get_onnx_file_path(model_name, len(input_names), True, use_gpu, fp16, False)
+        optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, fp16, False)
         optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
                             config.hidden_size, use_gpu, fp16, overwrite)
 
@@ -316,7 +312,7 @@ def export_onnx_model(model_name, cache_dir, input_names, use_gpu, fp16, optimiz
                                                       fp16)
     else:  # Use OnnxRuntime to optimize
         if is_valid_onnx_model:
-            ort_model_path = get_onnx_file_path(model_name, len(input_names), False, use_gpu, fp16, True)
+            ort_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), False, use_gpu, fp16, True)
             optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite)
 
     return onnx_model_path, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
@@ -339,7 +335,7 @@ def get_latency_result(runtimes, batch_size):
 
 
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, verbose, overwrite):
+                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite):
     import onnxruntime
 
     results = []
@@ -362,7 +358,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
 
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
-                    model_name, cache_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite)
+                    model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx, overwrite)
             if not is_valid_onnx_model:
                 continue
 
@@ -561,6 +557,12 @@ def parse_arguments():
                         default="./cache_models",
                         help="Directory to cache pre-trained models")
 
+    parser.add_argument("--onnx_dir",
+                        required=False,
+                        type=str,
+                        default="./onnx_models",
+                        help="Directory to store onnx models")
+
     parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="Run on cuda device")
 
     parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference")
@@ -657,7 +659,7 @@ def main():
         try:
             results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
-                                       args.cache_dir, args.verbose, args.overwrite)
+                                       args.cache_dir, args.onnx_dir, args.verbose, args.overwrite)
         except:
             logger.error(f"Exception", exc_info=True)
 
