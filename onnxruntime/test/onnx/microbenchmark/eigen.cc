@@ -11,7 +11,14 @@
 #pragma warning(disable : 4805)
 #pragma warning(disable : 4554)
 #endif
+
+#ifndef EIGEN_USE_THREADS
+#define EIGEN_USE_THREADS
+#endif
+
+#include <unsupported/Eigen/CXX11/ThreadPool>
 #include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #elif defined(_MSC_VER)

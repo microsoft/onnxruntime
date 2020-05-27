@@ -71,7 +71,7 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto* output = y.template MutableData<T>();
 
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
-  concurrency::ThreadPool::TryParallelFor(tp, num_of_elements, 2.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+  concurrency::ThreadPool::TryParallelFor(tp, num_of_elements, 8.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     MlasQuantizeLinear(x_data + begin, output + begin, end - begin, scale, zero_point);
   });
 

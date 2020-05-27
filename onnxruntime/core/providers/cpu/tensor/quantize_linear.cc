@@ -69,7 +69,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(IsScalarOr1ElementVector(&x_scale), "x_scale must be a scalar or 1D tensor or size 1.");
     ORT_ENFORCE(IsScalarOr1ElementVector(&x_zero_point), "x_zero_point must be a scalar or 1D tensor or size 1.");
 
-    concurrency::ThreadPool::TryParallelFor(tp, x_shape.Size(), 2.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    concurrency::ThreadPool::TryParallelFor(tp, x_shape.Size(), 8.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       const T* input_tmp = input + begin;
       float* output_tmp = output + begin;
       int32_t zp = static_cast<int32_t>(*zero_point);
@@ -141,7 +141,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale), "x_scale must be a scalar or 1D tensor or size 1.");
     ORT_ENFORCE(IsScalarOr1ElementVector(&y_zero_point), "x_zero_point must be a scalar or 1D tensor or size 1.");
 
-    concurrency::ThreadPool::TryParallelFor(tp, x_shape.Size(), 2.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    concurrency::ThreadPool::TryParallelFor(tp, x_shape.Size(), 8.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       MlasQuantizeLinear(input + begin, output + begin, end - begin, *scale, *zero_point);
     });
   }
