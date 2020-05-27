@@ -44,7 +44,9 @@ static void BM_EigenBroadCast(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_EigenBroadCast)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_EigenBroadCast)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 static void BM_EigenBroadCast_SingleThread(benchmark::State& state) {
   const std::vector<size_t> dims_vec{1, 64, 75, 75};
@@ -61,4 +63,6 @@ static void BM_EigenBroadCast_SingleThread(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_EigenBroadCast_SingleThread)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_EigenBroadCast_SingleThread)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond);

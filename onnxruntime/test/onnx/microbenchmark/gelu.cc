@@ -26,7 +26,15 @@ static void BM_GeluSingleThreadPlainLoop(benchmark::State& state) {
 }
 
 //Use eigen and mlas to implement Gelu, single thread
-BENCHMARK(BM_GeluSingleThreadPlainLoop)->UseRealTime()->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000);
+BENCHMARK(BM_GeluSingleThreadPlainLoop)
+    ->UseRealTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000);
 
 static void BM_GeluSingleThreadMlas(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
@@ -43,7 +51,15 @@ static void BM_GeluSingleThreadMlas(benchmark::State& state) {
   aligned_free(output);
 }
 
-BENCHMARK(BM_GeluSingleThreadMlas)->UseRealTime()->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000);
+BENCHMARK(BM_GeluSingleThreadMlas)
+    ->UseRealTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000);
 
 //Use ParallelFor to implement Gelu, single thread
 static void BM_GeluParallelFor(benchmark::State& state) {
@@ -70,7 +86,45 @@ static void BM_GeluParallelFor(benchmark::State& state) {
   aligned_free(output);
 }
 
-BENCHMARK(BM_GeluParallelFor)->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Args({1000, 1})->Args({1000, 5})->Args({1000, 10})->Args({1000, 40})->Args({2500, 1})->Args({2500, 5})->Args({2500, 10})->Args({2500, 40})->Args({2500, 80})->Args({2500, 160})->Args({5000, 1})->Args({5000, 5})->Args({5000, 10})->Args({5000, 40})->Args({5000, 80})->Args({5000, 160})->Args({10000, 1})->Args({10000, 5})->Args({10000, 10})->Args({10000, 40})->Args({20000, 1})->Args({20000, 5})->Args({20000, 10})->Args({20000, 40})->Args({40000, 1})->Args({40000, 5})->Args({40000, 10})->Args({40000, 40})->Args({98304, 1})->Args({98304, 5})->Args({98304, 10})->Args({98304, 40})->Args({1572864, 1})->Args({1572864, 5})->Args({1572864, 10})->Args({1572864, 40});
+BENCHMARK(BM_GeluParallelFor)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Args({1000, 1})
+    ->Args({1000, 5})
+    ->Args({1000, 10})
+    ->Args({1000, 40})
+    ->Args({2500, 1})
+    ->Args({2500, 5})
+    ->Args({2500, 10})
+    ->Args({2500, 40})
+    ->Args({2500, 80})
+    ->Args({2500, 160})
+    ->Args({5000, 1})
+    ->Args({5000, 5})
+    ->Args({5000, 10})
+    ->Args({5000, 40})
+    ->Args({5000, 80})
+    ->Args({5000, 160})
+    ->Args({10000, 1})
+    ->Args({10000, 5})
+    ->Args({10000, 10})
+    ->Args({10000, 40})
+    ->Args({20000, 1})
+    ->Args({20000, 5})
+    ->Args({20000, 10})
+    ->Args({20000, 40})
+    ->Args({40000, 1})
+    ->Args({40000, 5})
+    ->Args({40000, 10})
+    ->Args({40000, 40})
+    ->Args({98304, 1})
+    ->Args({98304, 5})
+    ->Args({98304, 10})
+    ->Args({98304, 40})
+    ->Args({1572864, 1})
+    ->Args({1572864, 5})
+    ->Args({1572864, 10})
+    ->Args({1572864, 40});
 
 static void BM_ScaledTanhParallelFor(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
@@ -96,7 +150,37 @@ static void BM_ScaledTanhParallelFor(benchmark::State& state) {
   aligned_free(output);
 }
 
-BENCHMARK(BM_ScaledTanhParallelFor)->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Args({1000, 1})->Args({1000, 5})->Args({1000, 10})->Args({1000, 40})->Args({2500, 1})->Args({2500, 5})->Args({2500, 10})->Args({2500, 40})->Args({2500, 80})->Args({2500, 160})->Args({5000, 1})->Args({5000, 5})->Args({5000, 10})->Args({5000, 40})->Args({5000, 80})->Args({5000, 160})->Args({10000, 1})->Args({10000, 5})->Args({10000, 10})->Args({10000, 40})->Args({20000, 1})->Args({20000, 5})->Args({20000, 10})->Args({20000, 40})->Args({40000, 1})->Args({40000, 5})->Args({40000, 10})->Args({40000, 40});
+BENCHMARK(BM_ScaledTanhParallelFor)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Args({1000, 1})
+    ->Args({1000, 5})
+    ->Args({1000, 10})
+    ->Args({1000, 40})
+    ->Args({2500, 1})
+    ->Args({2500, 5})
+    ->Args({2500, 10})
+    ->Args({2500, 40})
+    ->Args({2500, 80})
+    ->Args({2500, 160})
+    ->Args({5000, 1})
+    ->Args({5000, 5})
+    ->Args({5000, 10})
+    ->Args({5000, 40})
+    ->Args({5000, 80})
+    ->Args({5000, 160})
+    ->Args({10000, 1})
+    ->Args({10000, 5})
+    ->Args({10000, 10})
+    ->Args({10000, 40})
+    ->Args({20000, 1})
+    ->Args({20000, 5})
+    ->Args({20000, 10})
+    ->Args({20000, 40})
+    ->Args({40000, 1})
+    ->Args({40000, 5})
+    ->Args({40000, 10})
+    ->Args({40000, 40});
 
 static void TestPartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
                               std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
@@ -138,7 +222,15 @@ static void BM_GeluBatchParallelFor(benchmark::State& state) {
   aligned_free(output);
 }
 
-BENCHMARK(BM_GeluBatchParallelFor)->UseRealTime()->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000);
+BENCHMARK(BM_GeluBatchParallelFor)
+    ->UseRealTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000);
 
 //The one we're currently using
 static void BM_GeluBatchParallelFor2(benchmark::State& state) {
@@ -180,7 +272,17 @@ static void BM_GeluBatchParallelFor2(benchmark::State& state) {
   aligned_free(output_data);
 }
 
-BENCHMARK(BM_GeluBatchParallelFor2)->UseRealTime()->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000)->Arg(98304)->Arg(1572864);
+BENCHMARK(BM_GeluBatchParallelFor2)
+    ->UseRealTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000)
+    ->Arg(98304)
+    ->Arg(1572864);
 
 static void BM_GeluBatchParallelFor3(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
@@ -206,4 +308,14 @@ static void BM_GeluBatchParallelFor3(benchmark::State& state) {
   aligned_free(output);
 }
 
-BENCHMARK(BM_GeluBatchParallelFor3)->UseRealTime()->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000)->Arg(98304)->Arg(1572864);
+BENCHMARK(BM_GeluBatchParallelFor3)
+    ->UseRealTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000)
+    ->Arg(98304)
+    ->Arg(1572864);

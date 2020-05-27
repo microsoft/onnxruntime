@@ -168,4 +168,3 @@ BENCHMARK(BM_DequantizeLinearParallelFor)
     ->Arg(80000)
     ->Arg(98304)
     ->Arg(1572864);
-
