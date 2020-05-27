@@ -6,6 +6,7 @@ import unittest
 import pytest
 import sys
 import copy
+import numpy as np
 from numpy.testing import assert_allclose, assert_array_equal
 
 import onnx
@@ -17,6 +18,8 @@ from torchvision import datasets, transforms
 from helper import get_name
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample, save_checkpoint, load_checkpoint
+
+SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 
 def ort_trainer_learning_rate_description():
     return IODescription('Learning_Rate', [1, ], torch.float32)
@@ -236,14 +239,14 @@ class MNISTWrapper():
 
         kwargs = {'num_workers': 0, 'pin_memory': True}
         train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=True, download=True,
-                        transform=transforms.Compose([transforms.ToTensor(),
-                                                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=True, download=True,
+                           transform=transforms.Compose([transforms.ToTensor(),
+                                                         transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_batch_size, shuffle=True, **kwargs)
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))])),
+            datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=False, transform=transforms.Compose([
+                           transforms.ToTensor(),
+                           transforms.Normalize((0.1307,), (0.3081,))])),
             batch_size=args_test_batch_size, shuffle=True, **kwargs)
 
         return train_loader, test_loader
@@ -258,19 +261,20 @@ class MNISTWrapper():
         model_desc = MNISTWrapper.mnist_model_description()
         return model, model_desc
 
-    def get_trainer(self, model, model_desc, device):
+    def get_trainer(self, model, model_desc, device, onnx_opset_ver=12, frozen_weights=[]):
         return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
-                                torch.float32), device, _opset_version=12)
+                                torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights)
 
 class TestOrtTrainer(unittest.TestCase):
-    def testMNISTTrainingAndTesting(self):
+
+    def run_mnist_training_and_testing(onnx_opset_ver):
         torch.manual_seed(1)
         device = torch.device("cuda")
 
         mnist = MNISTWrapper()
         train_loader, test_loader = mnist.get_loaders()
         model, model_desc = mnist.get_model()
-        trainer = mnist.get_trainer(model, model_desc, device)
+        trainer = mnist.get_trainer(model, model_desc, device, onnx_opset_ver=onnx_opset_ver)
 
         learningRate = 0.01
         args_epochs = 2
@@ -308,6 +312,12 @@ class TestOrtTrainer(unittest.TestCase):
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_test_losses, actual_test_losses, rtol=rtol, err_msg="test loss mismatch")
         assert_allclose(expected_test_accuracies, actual_accuracies, rtol=rtol, err_msg="test accuracy mismatch")
+
+    def testMNISTTrainingAndTestingOpset10(self):
+        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 10)
+
+    def testMNISTTrainingAndTestingOpset12(self):
+        TestOrtTrainer.run_mnist_training_and_testing(onnx_opset_ver = 12)
 
     def testMNISTResumeTrainingAndTesting(self):
         torch.manual_seed(1)
@@ -377,7 +387,7 @@ class TestOrtTrainer(unittest.TestCase):
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
         state_dict = trainer.state_dict()
-        assert state_dict.keys() == {'model_.fc1.bias', 'model_.fc1.weight', 'model_.fc2.bias', 'model_.fc2.weight'}
+        assert state_dict.keys() == {'fc1.bias', 'fc1.weight', 'fc2.bias', 'fc2.weight'}
 
     def testMNISTSaveAsONNX(self):
         torch.manual_seed(1)
@@ -425,6 +435,93 @@ class TestOrtTrainer(unittest.TestCase):
             data = data.reshape(data.shape[0], -1)
 
             loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+    def testMNISTInitializerNames(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device)
+        learningRate = 0.02
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        assert set([n.name for n in trainer.onnx_model_.graph.initializer]) \
+            == set([n for n, t in model.named_parameters()])
+
+    def testMNISTFrozenWeight(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device, frozen_weights=['fc1.weight'])
+
+        learningRate = 0.02
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        fc1_trainstep_1 = trainer.state_dict()['fc1.weight']
+        fc2_trainstep_1 = trainer.state_dict()['fc2.weight']
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        fc1_trainstep_2 = trainer.state_dict()['fc1.weight']
+        fc2_trainstep_2 = trainer.state_dict()['fc2.weight']
+        assert np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and \
+            not np.array_equal(fc2_trainstep_1, fc2_trainstep_2)
+
+    def testMNISTFrozenWeightCheckpoint(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device, frozen_weights=['fc1.weight'])
+
+        learningRate = 0.02
+        epoch = 0
+
+        # do one train step
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        # do one eval step
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.eval_step(data, target)
+
+        # save checkpoint, load model and compare
+        state_dict = trainer.state_dict()
+
+        new_model, _ = mnist.get_model()
+        trainer = mnist.get_trainer(new_model, model_desc, device, frozen_weights=['fc1.weight'])
+        trainer.load_state_dict(state_dict)
+
+        ckpt_loss, _ = trainer.eval_step(data, target)
+        assert loss == ckpt_loss
 
     def testBertTrainingBasic(self):
         expected_losses = [

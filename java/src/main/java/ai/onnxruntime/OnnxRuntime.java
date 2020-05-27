@@ -57,7 +57,7 @@ final class OnnxRuntime {
     }
     String detectedArch = null;
     String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
-    if (arch.indexOf("amd64") == 0) {
+    if (arch.indexOf("amd64") == 0 || arch.indexOf("x86_64") == 0) {
       detectedArch = "x64";
     } else if (arch.indexOf("x86") == 0) {
       detectedArch = "x86";

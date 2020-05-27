@@ -204,7 +204,7 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
 endif()
 
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
     )
@@ -314,6 +314,11 @@ if(onnxruntime_USE_DML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
 endif()
 
+if(onnxruntime_USE_MIGRAPHX)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
+endif()
+
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -341,6 +346,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_CUDA}
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
@@ -830,8 +836,13 @@ if (onnxruntime_BUILD_JAVA)
         -DREPO_ROOT=${REPO_ROOT}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
-      add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-               WORKING_DIRECTORY ${REPO_ROOT}/java)
+      if (onnxruntime_USE_CUDA)
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1
+                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      else()
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
+                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      endif()
     endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()

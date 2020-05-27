@@ -97,6 +97,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
+#if USE_MIGRAPHX
+                opt.AppendExecutionProvider_MIGraphX(0);
+#endif
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi();
 #endif
@@ -289,6 +292,47 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     validateRunResultData(outputTensor);
                 }
             }
+        }
+
+        [Fact]
+        public void InferenceSessionManualDisposeAfterUse()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            // Set the graph optimization level for this session.
+            SessionOptions options = new SessionOptions();
+            options.ProfileOutputPathPrefix = "Ort_P_";
+            options.EnableProfiling = true;
+            var session = new InferenceSession(modelPath, options);
+
+
+            var inputMeta = session.InputMetadata;
+            var container = new List<NamedOnnxValue>();
+
+            float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+            foreach (var name in inputMeta.Keys)
+            {
+                Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                Assert.True(inputMeta[name].IsTensor);
+                var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+            }
+
+            // Run inference with named inputs and outputs created with in Run()
+            using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+            {
+                validateRunResults(results);
+            }
+
+            string profile_file = session.EndProfiling();
+
+            // Profile file should have the output path prefix in it
+            Assert.Contains("Ort_P_", profile_file);
+
+            // Should be able to dispose the session manually
+            session.Dispose();
+
         }
 
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
@@ -575,7 +619,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-
 
         [Theory]
         [MemberData(nameof(GetModelsForTest))]
@@ -1427,6 +1470,65 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(0.40904793, map["1"], 6);
                     Assert.Equal(0.33156919, map["2"], 6);
                 }
+
+            }
+        }
+
+        [Fact]
+        private void TestModelSequenceOfTensors()
+        {
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_sequence_tensors.onnx");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var outMeta = session.OutputMetadata;
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["output_sequence"].OnnxValueType);
+
+                var container = new List<NamedOnnxValue>();
+                var firstInputTensor = new DenseTensor<Int64>(new Int64[] { 1, 2, 3, 4, 5, 6 }, new int[] { 2, 3 });
+                var secondInputTensor = new DenseTensor<Int64>(new Int64[] { 7, 8, 9, 10, 11, 12 }, new int[] { 2, 3 });
+
+                var firstNov = NamedOnnxValue.CreateFromTensor("tensor1", firstInputTensor);
+                var secondNov = NamedOnnxValue.CreateFromTensor("tensor2", secondInputTensor);
+
+                container.Add(firstNov);
+                container.Add(secondNov);
+
+                using (var outputs = session.Run(container))
+                {
+                    // output is a sequence<tensors>
+                    // try-cast to an sequence of NOV
+                    var outNode = outputs.ElementAtOrDefault(0);
+                    Assert.Equal("output_sequence", outNode.Name);
+
+                    // try-cast to an sequence of NOV
+                    var seq = outNode.AsEnumerable<NamedOnnxValue>();
+
+                    // make sure that the sequence holds only 2 elements (tensors)
+                    Assert.True(seq.Count() == 2);
+
+                    // try-cast the elements in sequence to tensor type
+                    var firstTensorInOuputSequence = seq.First().AsTensor<Int64>();
+                    var secondTensorInOuputSequence = seq.Last().AsTensor<Int64>();
+
+                    // make sure the tensors in the output sequence hold the correct values
+                    Assert.True(firstTensorInOuputSequence.GetValue(0) == 1);
+                    Assert.True(firstTensorInOuputSequence.GetValue(1) == 2);
+                    Assert.True(firstTensorInOuputSequence.GetValue(2) == 3);
+                    Assert.True(firstTensorInOuputSequence.GetValue(3) == 4);
+                    Assert.True(firstTensorInOuputSequence.GetValue(4) == 5);
+                    Assert.True(firstTensorInOuputSequence.GetValue(5) == 6);
+
+                    Assert.True(secondTensorInOuputSequence.GetValue(0) == 7);
+                    Assert.True(secondTensorInOuputSequence.GetValue(1) == 8);
+                    Assert.True(secondTensorInOuputSequence.GetValue(2) == 9);
+                    Assert.True(secondTensorInOuputSequence.GetValue(3) == 10);
+                    Assert.True(secondTensorInOuputSequence.GetValue(4) == 11);
+                    Assert.True(secondTensorInOuputSequence.GetValue(5) == 12);
+
+
+                }
             }
         }
 
@@ -1514,6 +1616,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_TENSORRT
             ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
+#endif
+#if USE_MIGRAPHX
+            ,"OrtSessionOptionsAppendExecutionProvider_MIGraphX"
 #endif
 #if USE_NNAPI
             ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"

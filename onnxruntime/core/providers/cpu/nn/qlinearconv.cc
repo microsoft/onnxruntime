@@ -118,7 +118,6 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
-
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
 
@@ -192,18 +191,18 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       }
 
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-      QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(output_image_size),
-                    static_cast<int>(kernel_dim),
-                    Wdata + group_id * W_offset,
-                    static_cast<int>(kernel_dim),
-                    W_zero_point_value,
-                    col_buffer_data == nullptr ? Xdata : col_buffer_data,
-                    static_cast<int>(output_image_size),
-                    X_zero_point_value,
-                    gemm_output,
-                    static_cast<int>(output_image_size),
-                    context->GetOperatorThreadPool());
+      QGemm(static_cast<int>(M / conv_attrs_.group),
+            static_cast<int>(output_image_size),
+            static_cast<int>(kernel_dim),
+            Wdata + group_id * W_offset,
+            static_cast<int>(kernel_dim),
+            W_zero_point_value,
+            col_buffer_data == nullptr ? Xdata : col_buffer_data,
+            static_cast<int>(output_image_size),
+            X_zero_point_value,
+            gemm_output,
+            static_cast<int>(output_image_size),
+            context->GetOperatorThreadPool());
 
       MlasRequantizeOutput(gemm_output,
                            Ydata,

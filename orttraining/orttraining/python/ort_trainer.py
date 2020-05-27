@@ -11,6 +11,7 @@ import torch.onnx
 import onnxruntime as ort
 from distutils.version import LooseVersion
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
+import onnxruntime.capi.pt_patch
 
 DEFAULT_OPSET_VERSION = 10
 
@@ -326,11 +327,29 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        do_constant_folding=False,
                        **other_export_options)
 
-    model = onnx.load_model_from_string(f.getvalue())
+    onnx_model = onnx.load_model_from_string(f.getvalue())
 
-    model = FuseSofmaxNLLToSoftmaxCE(model)
+    # Remove 'model_.' prefix introduced by model wrapper for initializers.
+    replace_name_dict = {}
+    for n in onnx_model.graph.initializer:
+        if n.name.startswith('model_.'):
+            replace_name_dict[n.name] = n.name[len('model_.'):]
+            n.name = replace_name_dict[n.name]
+    for n in onnx_model.graph.node:
+        for i, name in enumerate(n.input):
+            if name in replace_name_dict:
+                n.input[i] = replace_name_dict[name]
 
-    return model
+    # onnx model initializer may contain non-trainable registered buffers that are not part
+    # of pytorch model named parameteres.
+    assert set([n for n, t in model.model_.named_parameters()]).issubset(
+        set([n.name for n in onnx_model.graph.initializer])), \
+        "Initializer names do not match between PyTorch model and ONNX model, " \
+        "please report a bug to ONNX Runtime."
+
+    onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
+
+    return onnx_model
 
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
@@ -361,6 +380,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     torch_params = {}
     optimizer_attributes_map = {}
     optimizer_int_attributes_map = {}
+
+    unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
+    if unused_frozen_weights:
+        raise RuntimeError("{} in frozen_weights not found in model weights.".format(unused_frozen_weights))
+
     weights_to_train = set()
     for initializer in model.graph.initializer:
         if initializer.name in frozen_weights:
@@ -639,15 +663,36 @@ class ORTTrainer():
     def eval(self):
         self.is_train = False
 
+    def _update_onnx_model_initializers(self, state_tensors):
+        # replace the initializers with new value
+        new_weights = []
+        replace_indices = []
+        for i, w in enumerate(self.onnx_model_.graph.initializer):
+            if w.name in state_tensors:
+                new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
+                replace_indices.append(i)
+        replace_indices.sort(reverse=True)
+        for w_i in replace_indices:
+            del self.onnx_model_.graph.initializer[w_i]
+        self.onnx_model_.graph.initializer.extend(new_weights)
+
     def state_dict(self):
         if not self.session:
             warnings.warn("ONNXRuntime training session is not initialized yet. "
                           "Please run train_step or eval_step at least once before calling state_dict().")
             return {}
+
+        # extract trained weights
         session_state = self.session.get_state()
         torch_state = {}
         for name in session_state:
             torch_state[name] = torch.from_numpy(session_state[name])
+
+        # extract untrained weights and buffer
+        for n in self.onnx_model_.graph.initializer:
+            if n.name not in torch_state:
+                torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
+
         return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
@@ -659,10 +704,21 @@ class ORTTrainer():
             self.strict_ = strict
             return
 
-        session_state = {}
+        # update onnx model from loaded state dict
+        cur_initializers_names = [n.name for n in self.onnx_model_.graph.initializer]
+        new_initializers = {}
+
         for name in state_dict:
-            session_state[name] = state_dict[name].numpy()
-        self.session.load_state(session_state, strict)
+            if name in cur_initializers_names:
+                new_initializers[name] = state_dict[name].numpy()
+            elif strict:
+                raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+
+        self._update_onnx_model_initializers(new_initializers)
+
+        # create new session based on updated onnx model
+        self.state_dict_ = None
+        self._init_session()
 
     def save_as_onnx(self, path):
         if not self.session:
@@ -670,19 +726,7 @@ class ORTTrainer():
                           "Please run train_step or eval_step at least once before calling save_as_onnx().")
             return
         state_tensors = self.session.get_state()
-        # replace the initializers with new value
-        new_weights = []
-        replace_indices = []
-        i = 0
-        for w in self.onnx_model_.graph.initializer:
-            if w.name in state_tensors:
-                new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
-                replace_indices.append(i)
-            i += 1
-        replace_indices.sort(reverse=True)
-        for w_i in replace_indices:
-            del self.onnx_model_.graph.initializer[w_i]
-        self.onnx_model_.graph.initializer.extend(new_weights)
+        self._update_onnx_model_initializers(state_tensors)
 
         with open(path, "wb") as f:
             f.write(self.onnx_model_.SerializeToString())

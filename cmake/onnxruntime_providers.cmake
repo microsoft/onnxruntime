@@ -43,6 +43,10 @@ if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
+if(onnxruntime_USE_VITISAI)
+  set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES vitisai)
+endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
@@ -51,7 +55,7 @@ if(onnxruntime_USE_TENSORRT)
   set(PROVIDERS_TENSORRT onnxruntime_providers_tensorrt)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
 endif()
-if(onnxruntime_USE_NNAPI)
+if(onnxruntime_USE_NNAPI_DNNLIBRARY)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
@@ -62,6 +66,10 @@ endif()
 if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
+endif()
+if(onnxruntime_USE_MIGRAPHX)
+  set(PROVIDERS_MIGRAPHX onnxruntime_providers_migraphx)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
 endif()
 if(onnxruntime_USE_OPENVINO)
   set(PROVIDERS_OPENVINO onnxruntime_providers_openvino)
@@ -207,9 +215,6 @@ if (onnxruntime_USE_CUDA)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
   else()
-    if(HAS_D2FH4)
-      target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /d2FH4->")
-    endif()
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
   endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
@@ -416,6 +421,22 @@ if (onnxruntime_USE_NUPHAR)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 endif()
 
+if (onnxruntime_USE_VITISAI)
+  file(GLOB_RECURSE onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
+  add_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_vitisai ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${VITISAI_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/vitisai  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_vitisai PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (onnxruntime_USE_OPENVINO)
 
   include_directories("${CMAKE_CURRENT_BINARY_DIR}/onnx")
@@ -464,7 +485,7 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   add_definitions(-DUSE_NNAPI=1)
   option(DNN_READ_ONNX "" ON)
   set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
@@ -588,6 +609,32 @@ if (onnxruntime_USE_DML)
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
+endif()
+
+if (onnxruntime_USE_MIGRAPHX)
+  # Add search paths for default rocm installation
+  list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hcc /opt/rocm/hip /opt/rocm)
+
+  find_package(hip)
+  find_package(migraphx PATHS ${AMD_MIGRAPHX_HOME})
+
+  set(migraphx_libs migraphx::c hip::host)
+
+  file(GLOB_RECURSE onnxruntime_providers_migraphx_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
+  add_library(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
+  target_link_libraries(onnxruntime_providers_migraphx PRIVATE ${migraphx_libs})
+  set_target_properties(onnxruntime_providers_migraphx PROPERTIES FOLDER "ONNXRuntime")
+  target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
+  target_include_directories(onnxruntime_providers_migraphx PRIVATE ${ONNXRUNTIME_ROOT})
+  onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_common onnxruntime_framework onnx)
+  add_dependencies(onnxruntime_providers_migraphx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/migraphx  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_migraphx PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_USE_ACL)

@@ -432,8 +432,16 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
-// mapping of max_sequence_length and max_predictions_per_sequence position derived from training data
-std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping;
+// use this table mapping to define what to be stored in mapped_dimensions, and ultimately in json structure
+// Be mindful on the position, if it's invalid or out of bound, the property population process will be
+// either incorrect or aborted. Also make sure to substract the index position by 1 to get valid correspondent value
+// namely, in the graph, sequence is at position 1, but in initial tensor shape vector loaded from training data is at position 0,
+// batch is not part of the initial tensor shape vector till later
+// see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
+const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
+  {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+  {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
+};
 
 // generic properties for storing perf metrics
 MapStringToString mapped_dimensions;
@@ -515,17 +523,6 @@ void setup_training_params(BertParameters& params) {
       {"masked_lm_ids", "masked_lm_ids"},
       {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
-
-  // use this table mapping to define what to be stored in mapped_dimensions, and ultimately in json structure
-  // Be mindful on the position, if it's invalid or out of bound, the property population process will be
-  // either incorrect or aborted. Also make sure to substract the index position by 1 to get valid correspondent value
-  // namely, in the graph, sequence is at position 1, but in initial tensor shape vector loaded from training data is at position 0,
-  // batch is not part of the initial tensor shape vector till later
-  // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
-  input_to_dimension_mapping = {
-      {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
-      {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
-  };
 
   params.model_type = "bert";
 
