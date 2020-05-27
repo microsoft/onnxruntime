@@ -55,6 +55,16 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_Scalar) {
   test.Run();
 }
 
+// dequantize without zero point
+TEST( DequantizeLinearOpTest, DequantizeLinear_Without_Zero_Point )
+{
+   OpTester test( "DequantizeLinear", 10 );
+   test.AddInput<int8_t>( "x", {}, { 100 } );
+   test.AddInput<float>( "x_scale", {}, { 2.0f } );
+   test.AddOutput<float>( "y", {}, { 200.0f } );
+   test.Run();
+}
+
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, QuantizeLinear_uint8) {
   OpTester test("QuantizeLinear", 10);
