@@ -42,6 +42,7 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/gemm_transpose_transformer.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/util/math.h"
@@ -634,6 +635,24 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
 }
 
+TEST_F(GraphTransformationTests, GemmTransposeFusion) {
+  auto model_uri = MODEL_FOLDER "fusion/gemm_transpose_transform.onnx";
+  std::shared_ptr<Model> p_model;
+  auto status = Model::Load(model_uri, p_model, nullptr, *logger_);
+  ASSERT_TRUE(status.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GemmTransposeTransformer>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+  auto model_uri2 = "pengwa_test.onnx";
+  Model::Save(*p_model, model_uri2);
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 1);
+}
+
 TEST_F(GraphTransformationTests, TransposeMatmulFusionOnTwoTranspose) {
   auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion_2_transpose.onnx";
   std::shared_ptr<Model> p_model;
@@ -1116,7 +1135,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
   }
 }
 
-
 TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_with_graph_inputs.onnx";
   std::shared_ptr<Model> p_model;
@@ -1135,7 +1153,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   ASSERT_EQ(op_to_count["Concat"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
 }
-
 
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
@@ -1771,9 +1788,9 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
 #ifdef ENABLE_TRAINING
       EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
-#else     
+#else
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
-#endif     
+#endif
       EXPECT_EQ(output_defs[0]->Name(), "19");
     } else {
       EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();

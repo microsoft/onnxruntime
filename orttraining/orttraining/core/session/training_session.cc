@@ -132,7 +132,7 @@ Status TrainingSession::ConfigureForTraining(
 
   std::string loss_name{};
   optional<std::string> loss_scale_input_name =
-        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
+      is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
   if (config.use_pipeline) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
@@ -200,14 +200,13 @@ Status TrainingSession::ConfigureForTraining(
   // TODO: this is a temp workaround for removing rank tensor before adding optimizer.
   // Re-visit after we port logic for model splitting and hence know the rank tensor name.
   for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
-      const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
-      ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
-      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        it = weights_to_train_.erase(it);
-      }
-      else{
-          ++it;
-      }
+    const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
+    ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
+    if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      it = weights_to_train_.erase(it);
+    } else {
+      ++it;
+    }
   }
 
   // add optimizer or gradient accumulation
@@ -683,6 +682,12 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
 }
 
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
+  static int used;
+  if (used == 0) {
+    this->Save("py-ort_graph.onnx", TrainingSession::SaveOption::NO_RELOAD);
+  }
+  used++;
+
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
     // override all dropout raiots to 0
@@ -690,8 +695,8 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       OrtValue feed_value;
       // We allocate on CPU first, copy will be taken care off downstream.
       auto cpu_allocator = session_state_->GetExecutionProviders()
-                           .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
+                               .Get(onnxruntime::kCpuExecutionProvider)
+                               ->GetAllocator(0, OrtMemTypeDefault);
       feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
@@ -721,11 +726,11 @@ Status TrainingSession::SetDropoutEvalFeedNames() {
 
   for (const auto& node : graph.Nodes()) {
     auto it = Dropout_Nodes.find(node.OpType());
-    if(it != Dropout_Nodes.cend()) {
+    if (it != Dropout_Nodes.cend()) {
       auto& ratio_name = node.InputDefs()[1]->Name();
       dropout_eval_feeds_.insert(ratio_name);
       ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-      "Input: " + ratio_name + " should not have any producer node.");
+                  "Input: " + ratio_name + " should not have any producer node.");
       defs.AddGraphInputs({ratio_name});
     }
   }

@@ -29,6 +29,7 @@
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/gemm_transpose_transformer.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -114,7 +115,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-
+      transformers.emplace_back(onnxruntime::make_unique<GemmTransposeTransformer>(l1_execution_providers));
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
 
@@ -171,8 +172,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
   // These transformers could only be enabled by custom transformer list.
 #ifndef DISABLE_CONTRIB_OPS
   if (level == TransformerLevel::Level2) {
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
+    std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+    transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
   }
 #endif
 
