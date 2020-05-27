@@ -80,9 +80,12 @@ static void BM_QuantizeLinearParallelFor(benchmark::State& state) {
   std::unique_ptr<concurrency::ThreadPool> tp(
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
   for (auto _ : state) {
-    concurrency::ThreadPool::TryParallelFor(tp.get(), batch_size, 10.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      MlasQuantizeLinear(data + begin, output + begin, end - begin, scale, zero_point);
-    });
+    concurrency::ThreadPool::TryParallelFor(tp.get(),
+                                            batch_size,
+                                            TensorOpCost{4.0, 4.0, 4.0 /*cost*/},
+                                            [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+                                              MlasQuantizeLinear(data + begin, output + begin, end - begin, scale, zero_point);
+                                            });
   }
   aligned_free(data);
   aligned_free(output);
@@ -144,13 +147,12 @@ static void BM_DequantizeLinearParallelFor(benchmark::State& state) {
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
 
   for (auto _ : state) {
-    concurrency::ThreadPool::TryParallelFor(tp.get(), batch_size, 10.0 /*cost*/, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    concurrency::ThreadPool::TryParallelFor(tp.get(), batch_size, TensorOpCost{4.0, 4.0, 4.0 /*cost*/}, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       const uint8_t* input_tmp = data + begin;
       float* output_tmp = output + begin;
       for (; output_tmp != output + end;) {
         *output_tmp++ = static_cast<float>(static_cast<int32_t>(*input_tmp++) - zp) * sc;
-      }
-    });
+      } });
   }
   aligned_free(data);
   aligned_free(output);
