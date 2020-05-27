@@ -33,11 +33,16 @@ BENCHMARK(BM_QuantizeLinearSingleThreadPlainLoop)
     ->UseRealTime()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
-    ->Arg(100)
     ->Arg(1000)
     ->Arg(10000)
     ->Arg(20000)
-    ->Arg(40000);
+    ->Arg(40000)
+    ->Arg(80000)
+    ->Arg(98304)
+    ->Arg(160000)
+    ->Arg(320000)
+    ->Arg(640000)
+    ->Arg(1280000);
 
 //Use mlas to implement QuantizeLinear
 static void BM_QuantizeLinearSingleThreadMlas(benchmark::State& state) {
@@ -58,14 +63,16 @@ BENCHMARK(BM_QuantizeLinearSingleThreadMlas)
     ->UseRealTime()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
-    ->Arg(100)
     ->Arg(1000)
     ->Arg(10000)
     ->Arg(20000)
     ->Arg(40000)
     ->Arg(80000)
     ->Arg(98304)
-    ->Arg(1572864);
+    ->Arg(160000)
+    ->Arg(320000)
+    ->Arg(640000)
+    ->Arg(1280000);
 
 //Use ParallelFor to implement Gelu, single thread
 static void BM_QuantizeLinearParallelFor(benchmark::State& state) {
@@ -95,14 +102,15 @@ BENCHMARK(BM_QuantizeLinearParallelFor)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
     ->Arg(1000)
-    ->Arg(2500)
-    ->Arg(5000)
     ->Arg(10000)
     ->Arg(20000)
     ->Arg(40000)
     ->Arg(80000)
     ->Arg(98304)
-    ->Arg(1572864);
+    ->Arg(160000)
+    ->Arg(320000)
+    ->Arg(640000)
+    ->Arg(1280000);
 
 static void BM_DequantizeLinearSingleThread(benchmark::State& state) {
   const float sc = 0.1f;
@@ -124,14 +132,16 @@ BENCHMARK(BM_DequantizeLinearSingleThread)
     ->UseRealTime()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
-    ->Arg(100)
     ->Arg(1000)
     ->Arg(10000)
     ->Arg(20000)
     ->Arg(40000)
     ->Arg(80000)
     ->Arg(98304)
-    ->Arg(1572864);
+    ->Arg(160000)
+    ->Arg(320000)
+    ->Arg(640000)
+    ->Arg(1280000);
 
 static void BM_DequantizeLinearParallelFor(benchmark::State& state) {
   const float sc = 0.1f;
@@ -162,11 +172,13 @@ BENCHMARK(BM_DequantizeLinearParallelFor)
     ->UseRealTime()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
-    ->Arg(100)
     ->Arg(1000)
     ->Arg(10000)
     ->Arg(20000)
     ->Arg(40000)
     ->Arg(80000)
     ->Arg(98304)
-    ->Arg(1572864);
+    ->Arg(160000)
+    ->Arg(320000)
+    ->Arg(640000)
+    ->Arg(1280000);
