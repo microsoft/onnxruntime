@@ -6,47 +6,38 @@
 
 #pragma once
 
-#include "core/common/common.h"
+#include "core/providers/cpu/math/einsum_auxiliary_ops.h"
 #include "core/providers/cuda/tensor/transpose.h"
-#include "core/providers/cpu/reduction/reduction_ops.h"
-
-#include <vector>
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 
-namespace cuda {
-
 namespace EinsumOp {
 
-// Thin wrapper over the Transpose op
-std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<size_t>& permutation, AllocatorPtr allocator, const OpKernelInfo& info);
+namespace DeviceHelpers {
 
-// Thin wrapper over the MatMul op
-// Not using the MatMulHelper to compute output dims as it adds a lot of checking overhead involving transposes of the inputs
-// In our case, we have a more simplistic version which doesn't need to have those checks
+// These are CUDA EP specific device helper implementations
+namespace CudaDeviceHelpers {
+
+Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+                 Tensor& output, const TensorShape* input_shape_override, void* cublas_handle);
+
+Status DataCopy(const Tensor& input, Tensor& output);
+
 template <typename T>
-std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_1_shape_override,
-                               const Tensor& input_2, const std::vector<int64_t>& input_2_shape_override,
-                               AllocatorPtr allocator, concurrency::ThreadPool* tp);
+void MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
+            size_t left_stride, size_t right_stride, size_t output_stride,
+            size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+            void* cublas_handle);
 
-// Thin wrapper over the ReduceSum op
-template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
-
-// Diagonal - A specialized implementation somewhat similar to Torch's Diagonal op
-// but is specific enough to what is just required for the Einsum op.
-// Expects the input to be atleast 2-D and 0 <= dim_1, dim_2 < rank.
-// input_shape[dim_1] == input_shape[dim_2] and dim_1 cannot be same as dim_2.
-// The rank of the output is 1 less than the rank of the input and the squeezed dim is the greater of dim_1 and dim_2.
-
-// Eg. input_shape = [2, 3, 5, 3] and dim_1 = 1 and dim_2 = 3
-// The output_shape will be [2, 3, 5] and dim_1 will contain the diagonal elements
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
 
-}  // namespace EinsumOp
+}  // namespace CudaDeviceHelpers
 
-}  // namespace cuda
+}  // namespace DeviceHelpers
+
+}  // namespace EinsumOp
 
 }  // namespace onnxruntime

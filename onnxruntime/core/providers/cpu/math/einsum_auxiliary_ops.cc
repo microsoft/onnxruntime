@@ -7,86 +7,43 @@ namespace onnxruntime {
 
 namespace EinsumOp {
 
-std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<size_t>& permutation, AllocatorPtr allocator) {
-  auto input_rank = input_shape_override.size();
-  ORT_ENFORCE(input_rank == permutation.size(), "Length of permutation must match the rank of the input to be permutated");
+namespace DeviceHelpers {
 
-  std::vector<int64_t> output_dims;
-  output_dims.reserve(input_rank);
+namespace CpuDeviceHelpers {
 
-  for (const auto& dim : permutation) {
-    output_dims.push_back(input_shape_override.at(dim));
-  }
-
-  // Pass in allocator as that will be used as an allocator deleter by the framework
-  // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
-
-  TensorShape overriden_shape(input_shape_override);
-  TransposeBase::DoTranspose(permutation, input, *output, &overriden_shape);
-
-  return output;
+// CPU specific Data copy helper
+Status DataCopy(const Tensor& input, Tensor& output) {
+  ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
+              "Einsum op: The candidate output does not match the actual output's shape");
+  // There are no string tensors in Einsum's case - so safely use memcpy
+  memcpy(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes());
+  return Status::OK();
 }
 
+// CPU specific Transpose helper
+Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+                 Tensor& output, const TensorShape* input_shape_override, void* /*cublas_handle*/) {
+  return TransposeBase::DoTranspose(permutation, input, output, input_shape_override);
+}
+
+// CPU specific MatMul helper
 template <typename T>
-std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-                               const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
-                               AllocatorPtr allocator, concurrency::ThreadPool* tp) {
-  // Sanity checks before the actual MatMul
-  ORT_ENFORCE(input_1.DataType() == input_2.DataType(), "Data types of the inputs must match for MatMul");
-  ORT_ENFORCE(input_shape_1_override.size() == 3 && input_shape_2_override.size() == 3, "Only 1 batch dimension is allowed for MatMul");
-  ORT_ENFORCE(input_shape_1_override[0] == input_shape_2_override[0], "Batch dimension should match for MatMul;");
-  ORT_ENFORCE(input_shape_1_override[2] == input_shape_2_override[1], "Incompatible matrix dimensions for matMul");
-
-  size_t batches = static_cast<size_t>(input_shape_1_override[0]);
-  size_t M = static_cast<size_t>(input_shape_1_override[1]);
-  size_t K = static_cast<size_t>(input_shape_1_override[2]);
-  size_t N = static_cast<size_t>(input_shape_2_override[2]);
-
-  size_t left_offset = M * K;
-  size_t right_offset = K * N;
-  size_t output_offset = M * N;
-
-  std::vector<int64_t> output_dims;
-  output_dims.reserve(3);
-  output_dims.push_back(static_cast<int64_t>(batches));
-  output_dims.push_back(static_cast<int64_t>(M));
-  output_dims.push_back(static_cast<int64_t>(N));
-
-  // Pass in allocator as that will be used as an allocator deleter by the framework
-  // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
-
-  const T* input_1_data = input_1.template Data<T>();
-  const T* input_2_data = input_2.template Data<T>();
-  T* output_data = output->template MutableData<T>();
-
-  // Process each batch
-  // TODO: Currently we parallelize a single MatMul operation, add logic to determine if
-  // we can parallelizing on batches would be more optimal
-  for (size_t i = 0; i < batches; ++i) {
+void MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
+            size_t left_stride, size_t right_stride, size_t output_stride,
+            size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+            void* /*cublas_handle*/) {
+  for (size_t i = 0; i < num_batches; ++i) {
     math::MatMul<T>(
         static_cast<int>(M),
         static_cast<int>(N),
         static_cast<int>(K),
-        input_1_data + i * left_offset,
-        input_2_data + i * right_offset,
-        output_data + i * output_offset, tp);
+        input_1_data + i * left_stride,
+        input_2_data + i * right_stride,
+        output_data + i * output_stride, tp);
   }
-
-  return output;
 }
 
-template <typename T>
-std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp) {
-  TensorShape overriden_shape(input_shape_override);
-  auto output = onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true, &overriden_shape);
-  return onnxruntime::make_unique<Tensor>(std::move(output));
-}
-
-// A specific helper just for the Diagonal op
+// CPU specific Diagonal helper(s)
 static inline bool IsTransposeRequiredForDiagonal(int64_t dim_1, int64_t dim_2, int64_t rank) {
   // If the input is 2D, we don't need a transpose
   if (rank == 2)
@@ -239,7 +196,8 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
     }
 
     // Permutate the input so that the dims from which we need the diagonal forms the innermost dims
-    auto transposed = Transpose(input, input_dims, permutation, allocator);
+    // (Pass in CPU Transpose function here as this Diagonal method will only be used for CPU based diagonal parsing)
+    auto transposed = EinsumOp::Transpose(input, input_dims, permutation, allocator, nullptr, Transpose);
 
     // Parse the diagonal from the innermost dims
     output = DiagonalInnermostDims(*transposed, preserve_innermost_dim_val, allocator);
@@ -254,7 +212,8 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
     }
 
     // Permutate using the reverse permutation to get back the original axes ordering
-    output = Transpose(*output, output->Shape().GetDims(), reverse_permutation, allocator);
+    // (Pass in CPU Transpose function here as this Diagonal method will only be used for CPU based diagonal parsing)
+    output = EinsumOp::Transpose(*output, output->Shape().GetDims(), reverse_permutation, allocator, nullptr, Transpose);
   } else {
     // No transposing required
     output = DiagonalInnermostDims(input, preserve_innermost_dim_val, allocator);
@@ -271,35 +230,149 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   return output;
 }
 
-// Explicit template instantiation
+}  // namespace CpuDeviceHelpers
+
+}  // namespace DeviceHelpers
+
+// The following are thin wrappers over device specific helpers
+std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                  const std::vector<size_t>& permutation, AllocatorPtr allocator,
+                                  void* cublas_handle, const DeviceHelpers::Transpose& device_transpose_func) {
+  auto input_rank = input_shape_override.size();
+  ORT_ENFORCE(input_rank == permutation.size(), "Length of permutation must match the rank of the input to be permutated");
+
+  std::vector<int64_t> output_dims;
+  output_dims.reserve(input_rank);
+
+  for (const auto& dim : permutation) {
+    output_dims.push_back(input_shape_override.at(dim));
+  }
+
+  // Pass in allocator as that will be used as an allocator deleter by the framework
+  // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+
+  TensorShape overriden_shape(input_shape_override);
+
+  auto status = device_transpose_func(permutation, input, *output, &overriden_shape, cublas_handle);
+
+  if (!status.IsOK()) {
+    // TODO: Throw with error message
+  }
+
+  return output;
+}
+
+template <typename T>
+std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
+                               const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp, void* cublas_handle,
+                               const DeviceHelpers::MatMul<T>& device_matmul_func) {
+  // Sanity checks before the actual MatMul
+  ORT_ENFORCE(input_1.DataType() == input_2.DataType(), "Data types of the inputs must match for MatMul");
+  ORT_ENFORCE(input_shape_1_override.size() == 3 && input_shape_2_override.size() == 3, "Only 1 batch dimension is allowed for MatMul");
+  ORT_ENFORCE(input_shape_1_override[0] == input_shape_2_override[0], "Batch dimension should match for MatMul;");
+  ORT_ENFORCE(input_shape_1_override[2] == input_shape_2_override[1], "Incompatible matrix dimensions for matMul");
+
+  size_t batches = static_cast<size_t>(input_shape_1_override[0]);
+  size_t M = static_cast<size_t>(input_shape_1_override[1]);
+  size_t K = static_cast<size_t>(input_shape_1_override[2]);
+  size_t N = static_cast<size_t>(input_shape_2_override[2]);
+
+  size_t left_offset = M * K;
+  size_t right_offset = K * N;
+  size_t output_offset = M * N;
+
+  std::vector<int64_t> output_dims;
+  output_dims.reserve(3);
+  output_dims.push_back(static_cast<int64_t>(batches));
+  output_dims.push_back(static_cast<int64_t>(M));
+  output_dims.push_back(static_cast<int64_t>(N));
+
+  // Pass in allocator as that will be used as an allocator deleter by the framework
+  // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
+
+  const T* input_1_data = input_1.template Data<T>();
+  const T* input_2_data = input_2.template Data<T>();
+  T* output_data = output->template MutableData<T>();
+
+  device_matmul_func(input_1_data, input_2_data, output_data,
+                     left_offset, right_offset, output_offset, batches, M, K, N, tp, cublas_handle);
+
+  return output;
+}
+
+template <typename T>
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
+                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+                                  concurrency::ThreadPool* tp, const DeviceHelpers::ReduceSum& device_reduce_sum_func) {
+  TensorShape overriden_shape(input_shape_override);
+  //auto output = onnxruntime::ReduceSum<T>::Impl(input, reduce_axes, allocator, tp, true, &overriden_shape);
+  auto output = device_reduce_sum_func(input, reduce_axes, allocator, tp, true, &overriden_shape);
+  return onnxruntime::make_unique<Tensor>(std::move(output));
+}
+
+// Explicit template instantiations of functions
 
 // float
+template void DeviceHelpers::CpuDeviceHelpers::MatMul<float>(const float* input_1_data, const float* input_2_data, float* output_data,
+                                                             size_t left_stride, size_t right_stride, size_t output_stride,
+                                                             size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                                             void* cublas_handle);
+
 template std::unique_ptr<Tensor> MatMul<float>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
                                                const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
-                                               AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                               AllocatorPtr allocator, concurrency::ThreadPool* tp, void* cublas_handle,
+                                               const DeviceHelpers::MatMul<float>& device_matmul_func);
+
 template std::unique_ptr<Tensor> ReduceSum<float>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                  const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+                                                  concurrency::ThreadPool* tp, const DeviceHelpers::ReduceSum& device_reduce_sum_func);
 
 // int32_t
+template void DeviceHelpers::CpuDeviceHelpers::MatMul<int32_t>(const int32_t* input_1_data, const int32_t* input_2_data, int32_t* output_data,
+                                                               size_t left_stride, size_t right_stride, size_t output_stride,
+                                                               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                                               void* cublas_handle);
+
 template std::unique_ptr<Tensor> MatMul<int32_t>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
                                                  const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
-                                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                 AllocatorPtr allocator, concurrency::ThreadPool* tp, void* cublas_handle,
+                                                 const DeviceHelpers::MatMul<int32_t>& device_matmul_func);
+
 template std::unique_ptr<Tensor> ReduceSum<int32_t>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                                    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+                                                    concurrency::ThreadPool* tp, const DeviceHelpers::ReduceSum& device_reduce_sum_func);
 
 // double
+template void DeviceHelpers::CpuDeviceHelpers::MatMul<double>(const double* input_1_data, const double* input_2_data, double* output_data,
+                                                              size_t left_stride, size_t right_stride, size_t output_stride,
+                                                              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                                              void* cublas_handle);
+
 template std::unique_ptr<Tensor> MatMul<double>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
                                                 const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
-                                                AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                AllocatorPtr allocator, concurrency::ThreadPool* tp, void* cublas_handle,
+                                                const DeviceHelpers::MatMul<double>& device_matmul_func);
+
 template std::unique_ptr<Tensor> ReduceSum<double>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                                   const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                   const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+                                                   concurrency::ThreadPool* tp, const DeviceHelpers::ReduceSum& device_reduce_sum_func);
 
 // int64_t
+template void DeviceHelpers::CpuDeviceHelpers::MatMul<int64_t>(const int64_t* input_1_data, const int64_t* input_2_data, int64_t* output_data,
+                                                               size_t left_stride, size_t right_stride, size_t output_stride,
+                                                               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                                               void* cublas_handle);
+
 template std::unique_ptr<Tensor> MatMul<int64_t>(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
                                                  const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
-                                                 AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                 AllocatorPtr allocator, concurrency::ThreadPool* tp, void* cublas_handle,
+                                                 const DeviceHelpers::MatMul<int64_t>& device_matmul_func);
 template std::unique_ptr<Tensor> ReduceSum<int64_t>(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                                    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator, concurrency::ThreadPool* tp);
+                                                    const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
+                                                    concurrency::ThreadPool* tp, const DeviceHelpers::ReduceSum& reduce_sum_func);
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime

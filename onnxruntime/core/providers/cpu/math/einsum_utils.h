@@ -90,7 +90,8 @@ class EinsumComputePreprocessor final {
  public:
   explicit EinsumComputePreprocessor(EinsumEquationPreprocessor& equation_preprocessor,
                                      const std::vector<const Tensor*>& inputs,
-                                     AllocatorPtr allocator);
+                                     AllocatorPtr allocator,
+                                     void* cublas_handle);
 
   // The main method that does all the pre-processing - must be invoked before other methods are called
   // to get relevant metadata
@@ -121,6 +122,11 @@ class EinsumComputePreprocessor final {
 
   // Get the number of subscript indices (subscript labels) in the einsum equation
   int64_t GetNumSubscriptIndices() const;
+
+  // Pass-in device specific functions
+  // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
+  void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Diagonal& diagonal_func,
+                        const EinsumOp::DeviceHelpers::Transpose& transpose_func);
 
  private:
   // Process subscripts of each input and collect metadata along the way
@@ -190,11 +196,51 @@ class EinsumComputePreprocessor final {
 
   // Allocator to use for ad-hoc tensor buffer allocation
   AllocatorPtr allocator_;
+
+  // Device specific diagonal function
+  EinsumOp::DeviceHelpers::Diagonal device_diagonal_func_;
+
+  // Device specific transpose function
+  EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
+
+  // CuBLAS handle to be used in case the processing is done on the CUDA EP
+  void* cublas_handle_;
 };
 
 // This method does the heavy-lifting compute portion of Einsum Compute()
 template <typename T>
-Status EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
-                                   EinsumComputePreprocessor& einsum_compute_preprocessor);
+class EinsumTypedComputeProcessor {
+ public:
+  explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
+                                       EinsumComputePreprocessor& einsum_compute_preprocessor,
+                                       void* cublas_handle)
+      : context_(context),
+        allocator_(allocator),
+        einsum_compute_preprocessor_(einsum_compute_preprocessor),
+        cublas_handle_(cublas_handle) {
+  }
+
+  // Pass-in device specific functions
+  // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
+  void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
+                        const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
+                        const EinsumOp::DeviceHelpers::ReduceSum& device_reduce_sum_func,
+                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func);
+
+  Status Run();
+
+ private:
+  OpKernelContext* context_;
+  AllocatorPtr allocator_;
+  EinsumComputePreprocessor& einsum_compute_preprocessor_;
+
+  EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
+  EinsumOp::DeviceHelpers::MatMul<T> device_matmul_func_;
+  EinsumOp::DeviceHelpers::ReduceSum device_reduce_sum_func_;
+  EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
+
+  // CuBLAS handle to be used in case the processing is done on the CUDA EP
+  void* cublas_handle_;
+};
 
 }  // namespace onnxruntime

@@ -7,6 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/cpu/controlflow/scan.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
 
 namespace onnxruntime {
 class SessionState;
@@ -20,6 +21,10 @@ class Scan final : public onnxruntime::Scan<OpSet> {
   Scan(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
+
+ private:
+  // We need to access to the CUDA EP instance to get the cublas handle which is needed in the CUDA Transpose kernel
+  CUDAExecutionProvider* cuda_ep_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

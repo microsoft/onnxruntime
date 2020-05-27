@@ -318,10 +318,9 @@ static Status PrepareForReduce(const Tensor* X,
 
   const auto& input_dims = input_shape.GetDims();
   std::vector<bool> reduced(rank, false);
-  std::vector<int64_t> temp_output_dims;
-  temp_output_dims.reserve(input_dims.size());
+  prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
-    temp_output_dims = input_dims;
+    prepare_reduce_metadata.output_dims = input_dims;
     for (auto reduced_axis : axes) {
       const int64_t axis = HandleNegativeAxis(reduced_axis, rank);
       ORT_ENFORCE(axis < rank, "Reduced axis is greater than rank: ", axis);
@@ -329,7 +328,7 @@ static Status PrepareForReduce(const Tensor* X,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
-      temp_output_dims[axis] = 1;
+      prepare_reduce_metadata.output_dims[axis] = 1;
       reduced[axis] = true;
     }
   } else {
@@ -339,34 +338,34 @@ static Status PrepareForReduce(const Tensor* X,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
-      temp_output_dims.push_back(dim == 0 ? 0 : 1);
+      prepare_reduce_metadata.output_dims.push_back(dim == 0 ? 0 : 1);
     }
   }
 
   if (keepdims) {
-    prepare_reduce_metadata.output_dims = temp_output_dims;
+    prepare_reduce_metadata.squeezed_output_dims = prepare_reduce_metadata.output_dims;
   } else if (axes.size() > 0) {
     // we are not going to keep the reduced dims, hence compute the final output dim accordingly
-    prepare_reduce_metadata.output_dims.reserve(rank);  // even though we won't use the full capacity, it is better to reserve for peak possible usage
+    prepare_reduce_metadata.squeezed_output_dims.reserve(rank);  // even though we won't use the full capacity, it is better to reserve for peak possible usage
     for (auto i = 0; i < rank; ++i) {
       if (!reduced[i])
-        prepare_reduce_metadata.output_dims.push_back(input_dims[i]);
+        prepare_reduce_metadata.squeezed_output_dims.push_back(input_dims[i]);
     }
   } else {
     // 'axes' is empty and keepdims is false => we reduce on all axes AND drop all dims,
-    // so the result is just a scalar, we keep 'output_dims' empty (i.e.) no-op
+    // so the result is just a scalar, we keep 'squeezed_output_dims' empty (i.e.) no-op
   }
 
   // CUDNN requires at least 3D input, so pad 1s if needed
   prepare_reduce_metadata.input_dims_cudnn = input_dims;
-  prepare_reduce_metadata.output_dims_cudnn = temp_output_dims;
+  prepare_reduce_metadata.output_dims_cudnn = prepare_reduce_metadata.output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
     prepare_reduce_metadata.input_dims_cudnn.insert(prepare_reduce_metadata.input_dims_cudnn.end(), pads.begin(), pads.end());
     prepare_reduce_metadata.output_dims_cudnn.insert(prepare_reduce_metadata.output_dims_cudnn.end(), pads.begin(), pads.end());
   }
 
-  prepare_reduce_metadata.output_count = TensorShape(temp_output_dims).Size();
+  prepare_reduce_metadata.output_count = TensorShape(prepare_reduce_metadata.output_dims).Size();
 
   if (prepare_reduce_metadata.rank == 0) {
     prepare_reduce_metadata.rank = 1;
@@ -590,7 +589,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                        axes_,
                                        prepare_reduce_metadata));
 
-  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.output_dims);
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
 
   return ReduceKernel<allow_multi_axes>::ComputeCore<T, ReduceTensorIndices>(*X, prepare_reduce_metadata, *Y, cudnn_reduce_op);
 }
@@ -608,7 +607,7 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
                                        axes_,
                                        prepare_reduce_metadata));
 
-  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.output_dims);
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
 
   int64_t input_count = prepare_reduce_metadata.input_count;
   int64_t output_count = prepare_reduce_metadata.output_count;
@@ -685,7 +684,7 @@ Status ReduceKernel<true>::ComputeImpl<int8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(O
                                        axes_,
                                        prepare_reduce_metadata));
 
-  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.output_dims);
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
 
   int64_t input_count = prepare_reduce_metadata.input_count;
   int64_t output_count = prepare_reduce_metadata.output_count;
@@ -764,7 +763,7 @@ Status ReduceKernel<true>::ComputeImpl<uint8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
                                        axes_,
                                        prepare_reduce_metadata));
 
-  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.output_dims);
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
 
   int64_t input_count = prepare_reduce_metadata.input_count;
   int64_t output_count = prepare_reduce_metadata.output_count;
