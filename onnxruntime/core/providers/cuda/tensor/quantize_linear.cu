@@ -35,7 +35,7 @@ __global__ void QuantizeLinearKernel(const InT* input, OutT* output, const InT* 
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       int value = round(input[id] / (*scale)) + (zero_point != nullptr ? *zero_point : 0);
-      output[id] = static_cast<int8_t>(max(std::numeric_limits<OutT>::min(), min(std::numeric_limits<OutT>::max(), value)));
+      output[id] = static_cast<OutT>(max(std::numeric_limits<OutT>::min(), min(std::numeric_limits<OutT>::max(), value)));
       id += NumThreadsPerBlock;
     }
   }
