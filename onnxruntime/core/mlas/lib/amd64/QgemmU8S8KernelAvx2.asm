@@ -62,6 +62,7 @@ GemmU8S8CopyPackBFrame STRUCT
         SavedXmm6 OWORD ?
         SavedXmm7 OWORD ?
         SavedXmm8 OWORD ?
+        SavedXmm9 OWORD ?
         Padding QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
@@ -75,6 +76,7 @@ GemmU8S8CopyPackBFrame STRUCT
         CountK QWORD ?
         ColumnSumVector QWORD ?
         offa QWORD ?
+        BTypeIsSigned QWORD ?
 
 GemmU8S8CopyPackBFrame ENDS
 
@@ -481,6 +483,9 @@ ExitRoutine:
 ;   offa - Supplies the zero point offset for the other source matrix of the
 ;       matrix multiplication.
 ;
+;   BTypeIsSigned - Supplies true if the source matrix is signed data, else
+;       false if the the source matrix is unsigned data.
+;
 ; Return Value:
 ;
 ;   None.
@@ -497,6 +502,7 @@ ExitRoutine:
         save_xmm128 xmm6,GemmU8S8CopyPackBFrame.SavedXmm6
         save_xmm128 xmm7,GemmU8S8CopyPackBFrame.SavedXmm7
         save_xmm128 xmm8,GemmU8S8CopyPackBFrame.SavedXmm8
+        save_xmm128 xmm9,GemmU8S8CopyPackBFrame.SavedXmm9
 
         END_PROLOGUE
 
@@ -509,6 +515,17 @@ ExitRoutine:
         vpsrlw  ymm8,ymm8,15                ; generate word vector [0x0001]
         vpsllw  ymm0,ymm8,8                 ; generate word vector [0x0100]
         vpor    ymm8,ymm8,ymm0              ; generate word vector [0x0101]
+
+;
+; Compute the bit flip vector to adjust input from U8 to S8.
+;
+
+        vpxor   xmm9,xmm9,xmm9              ; generate word vector [0x0000]
+        cmp     BYTE PTR GemmU8S8CopyPackBFrame.BTypeIsSigned[rsp],0
+        jnz     SkipUnsignedBitFlipVector
+        vpsllw  ymm9,ymm8,7                 ; generate word vector [0x8080]
+
+SkipUnsignedBitFlipVector:
 
 ;
 ; Process 16 columns of matrix B in a loop.
@@ -544,6 +561,8 @@ InterleaveRowDataN16:
         vpunpckhwd xmm3,xmm3,xmm5
         vinserti128 ymm4,ymm4,xmm6,1
         vinserti128 ymm2,ymm2,xmm3,1
+        vpxor   ymm4,ymm4,ymm9              ; optionally adjust unsigned data
+        vpxor   ymm2,ymm2,ymm9
         vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
         vmovdqu YMMWORD PTR [rcx+32],ymm2
         vpmaddubsw ymm4,ymm8,ymm4           ; horizontal byte+byte=word per row
@@ -562,9 +581,9 @@ ProcessRemainingRowsN16:
         add     rbx,4                       ; correct for over-subtract above
         jz      ReduceColumnSumVectorN16
         vmovdqu xmm2,XMMWORD PTR [rdx]
-        vpxor   xmm3,xmm3,xmm3
-        vpxor   xmm4,xmm4,xmm4
-        vpxor   xmm5,xmm5,xmm5
+        vmovaps xmm3,xmm9
+        vmovaps xmm4,xmm9
+        vmovaps xmm5,xmm9
         xor     ebx,ebx                     ; no more rows remaining
         test    r10b,2                      ; (CountK & 2) != 0?
         jz      InterleaveRowDataN16
@@ -596,6 +615,7 @@ ExitRoutine:
         movaps  xmm6,GemmU8S8CopyPackBFrame.SavedXmm6[rsp]
         movaps  xmm7,GemmU8S8CopyPackBFrame.SavedXmm7[rsp]
         movaps  xmm8,GemmU8S8CopyPackBFrame.SavedXmm8[rsp]
+        movaps  xmm9,GemmU8S8CopyPackBFrame.SavedXmm9[rsp]
         add     rsp,(GemmU8S8CopyPackBFrame.SavedRdi)
 
         BEGIN_EPILOGUE
@@ -613,8 +633,8 @@ ExitRoutine:
 ProcessColumnNUnaligned:
         vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
         vpxor   xmm1,xmm1,xmm1
-        vmovdqu YMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp],ymm0
-        vmovdqu YMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp+32],ymm0
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp],ymm9
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp+32],ymm9
         sub     r10,4
         jb      ProcessRemainingRowsNUnaligned
 
@@ -690,6 +710,8 @@ ProcessPaddedMatrixBData:
         vpunpckhwd xmm3,xmm3,xmm5
         vinserti128 ymm4,ymm4,xmm6,1
         vinserti128 ymm2,ymm2,xmm3,1
+        vpxor   ymm4,ymm4,ymm9              ; optionally adjust unsigned data
+        vpxor   ymm2,ymm2,ymm9
         vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
         vmovdqu YMMWORD PTR [rcx+32],ymm2
         vpmaddubsw ymm4,ymm8,ymm4           ; horizontal byte+byte=word per row
@@ -711,9 +733,8 @@ ProcessRemainingRowsNUnaligned:
 
 .errnz  GemmU8S8CopyPackBFrame.PaddedMatrixBData
         mov     rbp,rsp                     ; GemmU8S8CopyPackBFrame.PaddedMatrixBData
-        vpxor   xmm6,xmm6,xmm6
-        vmovdqu YMMWORD PTR [rbp],ymm6
-        vmovdqu YMMWORD PTR [rbp+32],ymm6
+        vmovdqu YMMWORD PTR [rbp],ymm9
+        vmovdqu YMMWORD PTR [rbp+32],ymm9
 
 CopyUnalignedRowLoop:
         lea     rdi,[rbp+16]                ; advance next padded buffer by 16 bytes

@@ -19,7 +19,7 @@
 
         .xlist
 INCLUDE mlasi.inc
-INCLUDE QgemmU8U8KernelAvx512Common.inc
+INCLUDE QgemmU8X8KernelAvx512Common.inc
         .list
 
 ;
@@ -115,6 +115,51 @@ ENDIF
         EmitIfCount2GE RowCount, 6, ColumnCount, 48, <MultiplyAccumulateCell zmm31,zmm3,zmm0>
         EmitIfCount2GE RowCount, 6, ColumnCount, 32, <MultiplyAccumulateCell zmm25,zmm3,zmm1>
         EmitIfCount2GE RowCount, 6, ColumnCount, 16, <MultiplyAccumulateCell zmm19,zmm3,zmm2>
+
+        ENDM
+
+;
+; Macro Description:
+;
+;   This macro generates code to execute the block compute macro multiple
+;   times and advancing the matrix A and matrix B data pointers.
+;
+; Arguments:
+;
+;   ColumnCount - Supplies the number of columns to produce.
+;
+;   RowCount - Supplies the number of rows to produce.
+;
+; Implicit Arguments:
+;
+;   rbx - Supplies the address into the matrix A data plus 3 rows.
+;
+;   rcx - Supplies the address into the matrix A data.
+;
+;   rdx - Supplies the address into the matrix B data.
+;
+;   r9 - Supplies the length in bytes of a row from matrix A.
+;
+;   r14 - Supplies the stride in bytes of between packed blocks of matrix B.
+;
+;   zmm14-zmm31 - Supplies the block accumulators.
+;
+
+ComputeBlockLoop MACRO ColumnCount, RowCount
+
+        LOCAL   ComputeBlockBy1Loop
+
+        mov     rsi,r9                      ; reload row length remaining
+
+ComputeBlockBy1Loop:
+        ComputeBlock ColumnCount, RowCount, 0, 0
+        add     rcx,4                       ; advance matrix A by 1 pair
+IF RowCount GT 3
+        add     rbx,4                       ; advance matrix A plus 3 rows by 1 pair
+ENDIF
+        add     rdx,32                      ; advance matrix B
+        sub     rsi,4
+        jnz     ComputeBlockBy1Loop
 
         ENDM
 
