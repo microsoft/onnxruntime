@@ -73,6 +73,23 @@ def generate_repo_url(list, repo_url, commit_id):
 def generate_dependencies(list, package_name, version):
     if (package_name != 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
+
+        # Support .Net Core
+        list.append('<group targetFramework="NETCOREAPP">')
+        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
+        list.append('</group>')
+        # Support .Net Standard
+        list.append('<group targetFramework="NETSTANDARD">')
+        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
+        list.append('</group>')
+        # Support .Net Framework
+        list.append('<group targetFramework="NETFRAMEWORK">')
+        list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
+        list.append('</group>')
+
+        list.append('</dependencies>')
+    else:
+        list.append('<dependencies>')
         # Support .Net Core
         list.append('<group targetFramework="NETCOREAPP">')
         list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
@@ -87,7 +104,6 @@ def generate_dependencies(list, package_name, version):
         list.append('</group>')
 
         list.append('</dependencies>')
-
 
 def get_env_var(key):
     return os.environ.get(key)
@@ -181,6 +197,13 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
                           '" target="lib\\uap10.0\\Microsoft.AI.MachineLearning.winmd" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                                                            'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll') +
+                          '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                                                            'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb') +
+                          '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
+
 
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb

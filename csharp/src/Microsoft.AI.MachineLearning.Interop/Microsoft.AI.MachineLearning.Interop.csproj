@@ -3,14 +3,19 @@
   <PropertyGroup>
     <ProjectName>Microsoft.AI.MachineLearning.Interop</ProjectName>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform>AnyCPU</Platform>
-    <OutputPath>bin\$(Platform)\$(Configuration)\</OutputPath>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    
+    <Platform>AnyCPU</Platform>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+ 
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\..\..\build\Windows</OnnxRuntimeBuildDirectory>
+    <BuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</BuildOutputDir>
+    <WindowsAIInteropOutputDir>$(BuildOutputDir)\Microsoft.AI.MachineLearning.Interop</WindowsAIInteropOutputDir>
+    <OutputPath>$(WindowsAIInteropOutputDir)</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="0.1.0-prerelease.200512.7" targetFramework="net46" />
     <PackageReference Include="Microsoft.Windows.SDK.NET" Version="10.0.18362.3-preview" />
   </ItemGroup>
 
@@ -26,16 +31,14 @@
     <ItemGroup>
       <WindowsAIsWinMDs Include="$(OnnxRuntimeBuildDirectoryAbs)\$(Configuration)\Microsoft.AI.MachineLearning.winmd" />
     </ItemGroup>
+
     <PropertyGroup>
-      <CsWinRTExe>$(OnnxRuntimeBuildDirectoryAbs)\packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\cswinrt.exe</CsWinRTExe>
-      <CsWinRTCommand>$(CsWinrtExe) -verbose -in 10.0.18362.0 -in @(WindowsAIsWinMDs->'"%(FullPath)"', ' ') -out "$(ProjectDir)Generated Files" -include Microsoft.AI.MachineLearning</CsWinRTCommand>
+      <CsWinRTCommand>$(CsWinRTPath)cswinrt.exe -verbose -in local -in @(WindowsAIsWinMDs->'"%(FullPath)"', ' ') -out "$(ProjectDir)Generated Files" -include Microsoft.AI.MachineLearning</CsWinRTCommand>
     </PropertyGroup>
 
+    <Message Text="Generating $(ProjectName) CS projection sources with command:"/>
     <Message Text="$(CsWinRTCommand)"/>
-
     <Exec Command="$(CsWinRTCommand)" />
   </Target>
 
 </Project>
-
-<!-- msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform=x64 -restore -->
