@@ -36,13 +36,9 @@ def dump_environment():
         logger.info("no environment variable of OMP_WAIT_POLICY")
 
 
-def setup_environment(use_openmp=False):
+def setup_environment():
     # ATTENTION: these environment variables must be set before importing onnxruntime.
-    if use_openmp:
-        os.environ["OMP_NUM_THREADS"] = str(psutil.cpu_count(logical=True))
-    else:
-        os.environ["OMP_NUM_THREADS"] = '1'
-
+    os.environ["OMP_NUM_THREADS"] = str(psutil.cpu_count(logical=True))
     os.environ["OMP_WAIT_POLICY"] = 'ACTIVE'
     dump_environment()
 
@@ -56,7 +52,7 @@ def pytorch_inference(model, input_ids, past=None, total_runs=100):
             latency.append(time.time() - start)
 
     average_latency = sum(latency) * 1000 / len(latency)
-    logger.info("PyTorch Inference time = {} ms".format(format(average_latency, '.2f')))
+    logger.debug("PyTorch Inference time = {} ms".format(format(average_latency, '.2f')))
     return outputs, average_latency
 
 
@@ -75,7 +71,7 @@ def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100):
         latency.append(time.time() - start)
 
     average_latency = sum(latency) * 1000 / len(latency)
-    logger.info("OnnxRuntime Inference time = {} ms".format(format(average_latency, '.2f')))
+    logger.debug("OnnxRuntime Inference time = {} ms".format(format(average_latency, '.2f')))
 
     return ort_outputs, average_latency
 
@@ -84,47 +80,55 @@ def inference(model, ort_session, input_ids, past=None, total_runs=100, verify_o
     outputs, torch_latency = pytorch_inference(model, input_ids, past, total_runs)
     ort_outputs, ort_latency = onnxruntime_inference(ort_session, input_ids, past, total_runs)
     if verify_outputs:
-        # verify results
-        is_close = numpy.allclose(ort_outputs[0], outputs[0].cpu(), rtol=1e-05, atol=1e-04)
-        logger.info(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
 
+        is_close = numpy.allclose(ort_outputs[0], outputs[0].cpu(), rtol=1e-05, atol=1e-04)
+        logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
+
+        is_all_close = is_close
         for layer in range(model.config.n_layer):
             is_close = numpy.allclose(ort_outputs[1 + layer], outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04)
-            logger.info(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
+            logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
+            is_all_close = is_all_close and is_close
+
+        if not is_all_close:
+            logger.warning(f'PyTorch and OnnxRuntime results are not all close.')
+
     return torch_latency, ort_latency
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model_type',
+    parser.add_argument('-m',
+                        '--model_type',
                         required=True,
                         type=str,
                         choices=list(MODEL_CLASSES.keys()),
-                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+                        help='Model type selected in the list: ' + ', '.join(MODEL_CLASSES.keys()))
 
-    parser.add_argument("-c",
-                        "--cache_dir",
+    parser.add_argument('-c',
+                        '--cache_dir',
                         required=False,
                         type=str,
-                        default="./cache_models",
-                        help="Directory to cache pre-trained models")
+                        default='./cache_models',
+                        help='Directory to cache pre-trained models')
 
-    parser.add_argument("--onnx_dir",
+    parser.add_argument('--onnx_dir',
                         required=False,
                         type=str,
-                        default="./onnx_models",
-                        help="Directory to store onnx models")
+                        default='./onnx_models',
+                        help='Directory to store onnx models')
 
     parser.add_argument('--total_runs', required=False, type=int, help="total runs", default=100)
 
     parser.add_argument('--optimizer', required=False, action='store_true')
     parser.set_defaults(optimizer=False)
 
-    parser.add_argument('--use_openmp', required=False, action='store_true')
-    parser.set_defaults(use_openmp=False)
-
     parser.add_argument('--use_gpu', required=False, action='store_true')
     parser.set_defaults(use_gpu=False)
+
+    parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1])
+
+    parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[8, 16, 32, 64, 128, 256])
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -151,38 +155,18 @@ def setup_logger(verbose=True):
 
     logger.setLevel(logging_level)
 
-
-def main():
-    args = parse_arguments()
-    setup_logger(args.verbose)
-    dump_environment()
-
-    cache_dir = args.cache_dir
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
-
-    output_dir = args.onnx_dir
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    use_torchscript = False
-    (model_class, tokenizer_class, model_name) = MODEL_CLASSES[args.model_type]
-    config = AutoConfig.from_pretrained(model_name, torchscript=use_torchscript, cache_dir=cache_dir)
-    model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-    tokenizer = tokenizer_class.from_pretrained(model_name, cache_dir=cache_dir)
-
-    device = torch.device("cuda:0" if args.use_gpu else "cpu")
+def export_onnx(model, config, tokenizer, device, output_dir):
     model.to(device)
 
     inputs = tokenizer.encode_plus("Here is an example input for GPT2 model",
                                    add_special_tokens=True,
                                    return_tensors='pt')
     input_ids = inputs['input_ids'].to(device)
-    print("input_ids", input_ids)
+    logger.debug(f"input_ids={input_ids}")
     outputs = model(input_ids=input_ids, past=None)
     assert len(outputs) == 2
-    print("output 0 shape", outputs[0].shape)
-    print("outputs[1][0] shape", outputs[1][0].shape)
+    logger.debug(f"output 0 shape={outputs[0].shape}")
+    logger.debug(f"outputs[1][0] shape={outputs[1][0].shape}")
 
     num_layer = model.config.n_layer
     present_names = [f'present_{i}' for i in range(num_layer)]
@@ -207,10 +191,10 @@ def main():
     dummy_past = [torch.zeros(list(outputs[1][0].shape), dtype=torch.float32, device=device) for _ in range(num_layer)]
     for name in past_names:
         dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len'}
-    print(f"vocab_size:{model.config.vocab_size}")
+    logger.debug(f"vocab_size:{model.config.vocab_size}")
 
     dummy_input_ids = torch.randint(low=0, high=model.config.vocab_size - 1, size=(1, 1), dtype=torch.int64, device=device)
-    print("dummy_input_ids", dummy_input_ids)
+    logger.debug(f"dummy_input_ids={dummy_input_ids}")
     export_inputs = (dummy_input_ids, tuple(dummy_past))
 
 
@@ -220,11 +204,10 @@ def main():
     input_ids = dummy_input_ids
     past = dummy_past
 
-    #if use_torchscript:
-    #    model = torch.jit.trace(model, (input_ids, past))
-    outputs, latency = pytorch_inference(model, input_ids, past, total_runs=args.total_runs)
+    with torch.no_grad():
+        outputs = model(input_ids=input_ids, past=past)
 
-    print("present_0 shape", outputs[1][0].shape)
+    logger.debug(f"present_0 shape={outputs[1][0].shape}")
 
     torch.onnx.export(model,
                       args=export_inputs,
@@ -236,16 +219,41 @@ def main():
                       opset_version=11,
                       do_constant_folding=True,
                       verbose=False)
+    return export_model_path
+
+def main():
+    args = parse_arguments()
+    setup_logger(args.verbose)
+    dump_environment()
+
+    cache_dir = args.cache_dir
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    output_dir = args.onnx_dir
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    use_torchscript = False
+    (model_class, tokenizer_class, model_name) = MODEL_CLASSES[args.model_type]
+    config = AutoConfig.from_pretrained(model_name, torchscript=use_torchscript, cache_dir=cache_dir)
+    model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+    tokenizer = tokenizer_class.from_pretrained(model_name, cache_dir=cache_dir)
+    #if use_torchscript:
+    #    model = torch.jit.trace(model, (input_ids, past))
+
+    device = torch.device("cuda:0" if args.use_gpu else "cpu")
+    export_model_path = export_onnx(model, config, tokenizer, device, output_dir)
 
     # setup environment variables before importing onnxruntime.
-    setup_environment(args.use_openmp)
+    setup_environment()
     import onnxruntime
 
-    onnx_model_path = export_model_path
-
-    if args.optimizer:
+    if not args.optimizer:
+        onnx_model_path = export_model_path
+    else:
         from optimizer import optimize_model
-        m = optimize_model(onnx_model_path,
+        m = optimize_model(export_model_path,
                            model_type='gpt2',
                            num_heads=config.num_attention_heads,
                            hidden_size=config.hidden_size,
@@ -260,21 +268,19 @@ def main():
             "Please install onnxruntime-gpu package to test GPU inference.")
 
     sess_options = onnxruntime.SessionOptions()
-
-    if args.use_openmp:
-        sess_options.intra_op_num_threads = 1
-    else:
-        sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
+    sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
     logger.info(f"session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
 
     logger.info(f"Start inferencing onnx model: {onnx_model_path}")
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options)
 
-    for sequence_length in (8, 16, 32, 64, 128, 256, 512):
-        past_shape = [2, 1, config.num_attention_heads, sequence_length, int(config.hidden_size / config.num_attention_heads)]
-        dummy_past = [torch.rand(past_shape, dtype=torch.float32, device=device) for _ in range(num_layer)]
-        torch_latency, ort_latency = inference(model, session, input_ids, dummy_past)
-        logger.info(f"sequence_length={sequence_length}, torch_latency={torch_latency}, ort_latency={ort_latency}")
+    for batch_size in args.batch_sizes:
+        for sequence_length in args.sequence_lengths:
+            past_shape = [2, batch_size, config.num_attention_heads, sequence_length, int(config.hidden_size / config.num_attention_heads)]
+            dummy_past = [torch.rand(past_shape, dtype=torch.float32, device=device) for _ in range(config.n_layer)]
+            dummy_input_ids = torch.randint(low=0, high=model.config.vocab_size - 1, size=(batch_size, 1), dtype=torch.int64, device=device)
+            torch_latency, ort_latency = inference(model, session, dummy_input_ids, dummy_past)
+            logger.info(f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={torch_latency}, ort_latency={ort_latency}")
 
 if __name__ == '__main__':
     main()
