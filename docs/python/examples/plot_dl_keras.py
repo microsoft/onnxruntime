@@ -20,8 +20,12 @@ but then only *onnxruntime* is required
 to compute the predictions.
 """
 import os
+from distutils.version import StrictVersion
 if not os.path.exists('dense121.onnx'):
-    from keras.applications.densenet import DenseNet121
+    if StrictVersion(tensorflow.__version__.split('-')[0]) < StrictVersion('2.0.0'):
+        from keras.applications.densenet import DenseNet121 
+    else:
+        from tensorflow.keras.applications.densenet import DenseNet121
     model = DenseNet121(include_top=True, weights='imagenet')
 
     from keras2onnx import convert_keras
