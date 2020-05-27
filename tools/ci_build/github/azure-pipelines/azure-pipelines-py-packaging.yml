@@ -178,10 +178,17 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+     python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6 scipy
 
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
+
+  - powershell: |
+     $env:Path += ";C:\vcpkg\installed\x64-windows\tools\protobuf"
+     Set-Location (Join-Path -Path C:\vcpkg\buildtrees\protobuf\src -ChildPath (Get-ChildItem -Path C:\vcpkg\buildtrees\protobuf\src | Select-Object -First 1))
+     cd python
+     python -m pip install .
+    displayName: 'Install Protobuf python package from source'
 
   - powershell: |
      $Env:USE_MSVC_STATIC_RUNTIME=1
@@ -253,7 +260,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6
+       python -m pip install -q pyopenssl setuptools wheel numpy==1.16.6 scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
