@@ -177,11 +177,18 @@ class BertOnnxModel(OnnxModel):
         return
 
     def clean_graph(self):
-        input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
         nodes_to_add = []
         nodes_to_remove = []
         for node in self.nodes():
+            # Before:
+            #  input_ids --> Shape --> Gather(indices=0) --> Unsqueeze ------+
+            #          |                                                     | 
+            #          |                                                     v
+            #          +----> Shape --> Gather(indices=1) --> Unsqueeze--->  Concat --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
+            # After:
+            #  input_ids --> Shape                                                  --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
+            # TODO: merge ConstantOfShape -->Cast to ConstantOfShape (need update the data type of value)
             if node.op_type == 'EmbedLayerNormalization' or node.op_type == 'ReduceSum':
                 i = 1 if node.op_type == 'EmbedLayerNormalization' else 0
                 parent_nodes = self.match_parent_path(
@@ -191,8 +198,13 @@ class BertOnnxModel(OnnxModel):
                     cast, constantOfShape, concat, unsqueeze, gather, shape = parent_nodes
                     if shape.input[0] == self.graph().input[0].name:
                         constantOfShape.input[0] = shape.output[0]
+                        output_name_to_node = self.output_name_to_node()
 
             if node.op_type == 'Attention':
+                # Before:
+                #   input_ids --> Shape -->ConstantOfShape -->Cast --> ReduceSum --> Attention
+                # After:
+                #   remove this path, and remove the optional mask_index input of Attention node.
                 parent_nodes = self.match_parent_path(node, ['ReduceSum', 'Cast', 'ConstantOfShape', 'Shape'],
                                                       [3, 0, 0, 0], output_name_to_node)
                 if parent_nodes is not None:
