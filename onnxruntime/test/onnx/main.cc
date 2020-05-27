@@ -369,14 +369,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-	  if (enable_armnn) {
+    if (enable_armnn) {
 #ifdef USE_ARMNN
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ArmNN is not supported in this build\n");
       return -1;
 #endif
-	  }
+    }
     if (enable_migraphx) {
 #ifdef USE_MIGRAPHX
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(sf, device_id));
