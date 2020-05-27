@@ -148,9 +148,6 @@ stages:
 
         - template: set-py-packaging-variables-step.yml
 
-        - script: |
-            echo "NIGHTLY_BUILD: '$NIGHTLY_BUILD'"
-
         - task: CmdLine@2
           inputs:
             script: |
@@ -167,8 +164,6 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              set -x
-              env
               sudo --preserve-env docker run \
                 --gpus all \
                 --rm \
