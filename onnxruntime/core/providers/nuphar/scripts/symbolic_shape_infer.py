@@ -85,6 +85,7 @@ class SymbolicShapeInference:
             'CumSum'                : self._pass_on_shape_and_type,
             'Div'                   : self._infer_binary_ops,
             'Expand'                : self._infer_Expand,
+            'Equal'                 : self._infer_binary_ops,
             'Gather'                : self._infer_Gather,
             'GatherElements'        : self._infer_GatherElements,
             'GatherND'              : self._infer_GatherND,
@@ -116,6 +117,7 @@ class SymbolicShapeInference:
             'Tile'                  : self._infer_Tile,
             'TopK'                  : self._infer_TopK,
             'Unsqueeze'             : self._infer_Unsqueeze,
+            'Where'                 : self._infer_Where,
             'ZipMap'                : self._infer_ZipMap}
         self.run_ = True
         self.suggested_merge_ = {}
@@ -558,7 +560,8 @@ class SymbolicShapeInference:
                  'Max' : lambda l: l[1] if is_literal(l[0]) and int(l[0]) < -self.int_max_ else (l[0] if is_literal(l[1]) and int(l[1]) < -self.int_max_ else sympy.Max(l[0], l[1])),
                  'Min' : lambda l: l[1] if is_literal(l[0]) and int(l[0]) >  self.int_max_ else (l[0] if is_literal(l[1]) and int(l[1]) >  self.int_max_ else sympy.Min(l[0], l[1])),
                  'Mul' : lambda l: l[0] * l[1],
-                 'Sub' : lambda l: l[0] - l[1]}
+                 'Sub' : lambda l: l[0] - l[1],
+                 'Equal' : lambda l : l[0] == l[1]}
         assert node.op_type in funcs
         self._compute_on_sympy_data(node, funcs[node.op_type])
 
@@ -638,6 +641,9 @@ class SymbolicShapeInference:
             if type(sympy_shape) != list:
                 sympy_shape = [sympy_shape]
             self._update_computed_dims(sympy_shape)
+            # update sympy data if output type is int, and shape is known
+            if vi.type.tensor_type.elem_type == onnx.TensorProto.INT64 and all([is_literal(x) for x in sympy_shape]):
+                self.sympy_data_[node.output[0]] = np.ones([int(x) for x in sympy_shape], dtype=np.int64) * numpy_helper.to_array(get_attribute(node, 'value', 0))
         else:
             # create new dynamic shape
             sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node,0), node)
@@ -1080,6 +1086,9 @@ class SymbolicShapeInference:
         for i_o in range(len(node.output)):
             vi = self.known_vi_[node.output[i_o]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[i_o], vi.type.tensor_type.elem_type, new_shape))
+
+    def _infer_Where(self, node):
+        self._compute_on_sympy_data(node, lambda l: l[1] if l[0] else l[2])
 
     def _infer_Unsqueeze(self, node):
         self._pass_on_sympy_data(node)
