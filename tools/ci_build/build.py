@@ -1181,6 +1181,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
         # Temporarily disable optimizers because some
         # of them are failing
         # cmd = ["-o", "0"]
+        cmd = []
         if provider:
             cmd += ["-e", provider]
         if num_parallel_tests != 0:
