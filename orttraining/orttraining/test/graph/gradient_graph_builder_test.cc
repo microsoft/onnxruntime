@@ -997,11 +997,129 @@ class PipelineBatchPlanner {
   }
 };
 
+void RetrieveEventOperators(
+  Graph& graph, 
+  Node** forward_wait_before_recv,
+  Node** forward_wait_after_recv,
+  Node** forward_record_before_send,
+  Node** forward_record_after_send,
+  Node** backward_wait_before_recv,
+  Node** backward_wait_after_recv,
+  Node** backward_record_before_send,
+  Node** backward_record_after_send) {
+  // Initialize retrieved nodes.
+  // Non-existing nodes may hold NULL forever.
+  // Existing nodes may get valid pointers below.
+  *forward_wait_before_recv = nullptr;
+  *forward_wait_after_recv = nullptr;
+  *forward_record_before_send = nullptr;
+  *forward_record_after_send = nullptr;
+  *backward_wait_before_recv = nullptr;
+  *backward_wait_after_recv = nullptr;
+  *backward_record_before_send = nullptr;
+  *backward_record_after_send = nullptr;
+
+  // Declare container for WaitEvent's in topological order.
+  std::vector<Node*> waits;
+  // Declare container for RecordEvent's in topological order.
+  std::vector<Node*> records;
+
+  // Find out WaitEvent's and RecordEvent's.
+  GraphViewer graph_viewer(graph);
+  for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
+    Node* node = graph.GetNode(node_idx);
+    if (node->OpType() == "WaitEvent") {
+      waits.push_back(node);
+    } else if (node->OpType() == "RecordEvent") {
+      records.push_back(node);
+    }
+  }
+
+  if (waits.size() == size_t(4)) {
+    // Each of first stage and middle stages has 4 WaitEvent's.
+    *forward_wait_before_recv = waits[0];
+    *forward_wait_after_recv = waits[1];
+    *backward_wait_before_recv = waits[2];
+    *backward_wait_after_recv = waits[3];
+  } else if (waits.size() == size_t(2)) {
+    // Last stage has 2 WaitEvent's.
+    *forward_wait_before_recv = waits[0];
+    *forward_wait_after_recv = waits[1];
+  } else {
+    ORT_THROW("Wrong number of WaitEvent operators: ", waits.size(), "Expected value is either 2 or 4.");
+  }
+
+  if (records.size() == size_t(4)) {
+    // Each of first stage and middle stages has 4 RecordEvent's.
+    *forward_record_before_send = records[0];
+    *forward_record_after_send = records[1];
+    *backward_record_before_send = records[2];
+    *backward_record_after_send = records[3];
+  } else if (waits.size() == size_t(2)) {
+    // Last stage has 2 RecordEvent's.
+    *backward_record_before_send = records[0];
+    *backward_record_after_send = records[1];
+  } else {
+    ORT_THROW("Wrong number of RecordEvent operators: ", waits.size(), ". Expected value is either 2 or 4.");
+  }
+}
+
+void RetrieveSendRecvOperators(
+  Graph& graph, 
+  Node** forward_recv,
+  Node** forward_send,
+  Node** backward_recv,
+  Node** backward_send) {
+  // Initialize retrieved nodes.
+  // Non-existing nodes may hold NULL forever.
+  // Existing nodes may get valid pointers below.
+  *forward_recv = nullptr;
+  *forward_send = nullptr;
+  *backward_recv = nullptr;
+  *backward_send = nullptr;
+
+  auto is_backward = [](Node& node) {
+    return (node.Description() == "Backward pass");
+  };
+
+  // Search for Send's and Recv's by assuming that
+  // there are only one Send and one Recv in forward/backward.
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Send") {
+      if (is_backward(node)) {
+        // backward_send can only be assigned one valid pointer.
+        // If it is assigned more than once, it means we have multiple
+        // Send in backward pass and therefore our assumption doesn't hold. 
+        // This check ensure that only we only update *backward_send when
+        // its value is NULL and guards our one-Recv assumption. 
+        ASSERT_TRUE(!(*backward_send));
+        *backward_send = &node;
+      } else {
+        // Guard the uniqueness of Send in the forward pass by throwing
+        // when *forward_send already carries a valid pointer.
+        ASSERT_TRUE(!(*forward_send));
+        *forward_send = &node;
+      }
+    } else if (node.OpType() == "Recv") {
+      if (is_backward(node)) {
+        // Guard the uniqueness of Recv in the backward pass by throwing
+        // when *backward_recv already carries a valid pointer.
+        ASSERT_TRUE(!(*backward_recv));
+        *backward_recv = &node;
+      } else {
+        // Guard the uniqueness of Recv in the forwaard pass by throwing
+        // when *forward_recv already carries a valid pointer.
+        *forward_recv = &node;
+      }
+    }
+  }
+}
+
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   PathString filename_base = ORT_TSTR("testdata/test_training_model_");
 
-  auto load_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
+  auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
 
     TrainingSession::TrainingConfiguration::PipelineConfiguration pipe_config{};
@@ -1011,73 +1129,91 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     ASSERT_STATUS_OK(BuildBackPropGraph(input_file, config, backprop_model_file));
 
     std::shared_ptr<Model> model;
-    ASSERT_TRUE(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+    ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
 
     Graph& graph = model->MainGraph();
-    auto is_backward = [](Node& node) {
-      return (node.Description() == "Backward pass");
-    };
-    // check for wait/record node
-    Node* wait_fw{nullptr};
-    Node* wait_bw{nullptr};
-    Node* record_fw{nullptr};
-    Node* record_bw{nullptr};
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "WaitEvent") {
-        if (is_backward(node)) {
-          wait_bw = &node;
-        } else {
-          wait_fw = &node;
-        }
-      } else if (node.OpType() == "RecordEvent") {
-        if (is_backward(node)) {
-          record_bw = &node;
-        } else {
-          record_fw = &node;
-        }
-      }
-    }
-    // every partition should have wait forward and record backward
-    ASSERT_TRUE(wait_fw && record_bw);
+
+    // Declare forward event nodes.
+    // The nodes are declared according to their topological order.
+    Node* forward_wait_before_recv{nullptr};
+    Node* forward_wait_after_recv{nullptr};
+    Node* forward_record_before_send{nullptr};
+    Node* forward_record_after_send{nullptr};
+
+    // Declare backward event nodes.
+    // The nodes are declared according to their topological order.
+    Node* backward_wait_before_recv{nullptr};
+    Node* backward_wait_after_recv{nullptr};
+    Node* backward_record_before_send{nullptr};
+    Node* backward_record_after_send{nullptr};
+
+    // Find event nodes.
+    RetrieveEventOperators(
+      graph,
+      &forward_wait_before_recv,
+      &forward_wait_after_recv,
+      &forward_record_before_send,
+      &forward_record_after_send,
+      &backward_wait_before_recv,
+      &backward_wait_after_recv,
+      &backward_record_before_send,
+      &backward_record_after_send);
+
+    // Check event nodes.
     if (stageIdx == 2) {
-      // the last partition can perform back prop right away. It won't have record
-      // forward and wait backward
-      ASSERT_TRUE(!record_fw && !wait_bw);
+      ASSERT_TRUE(forward_wait_before_recv);
+      ASSERT_TRUE(forward_wait_after_recv);
+
+      // Last pipeline stage can perform backward right after its forward.
+      // It won't have event operators to divide forward from backward.
+      ASSERT_TRUE(!forward_record_before_send);
+      ASSERT_TRUE(!forward_record_after_send);
+      ASSERT_TRUE(!backward_wait_before_recv);
+      ASSERT_TRUE(!backward_wait_after_recv);
+
+      ASSERT_TRUE(backward_record_before_send);
+      ASSERT_TRUE(backward_record_after_send);
     } else {
-      ASSERT_TRUE(record_fw && wait_bw);
+      // Beginning of forward.
+      ASSERT_TRUE(forward_wait_before_recv);
+      ASSERT_TRUE(forward_wait_after_recv);
+
+      // End of forward.
+      ASSERT_TRUE(forward_record_before_send);
+      ASSERT_TRUE(forward_record_after_send);
+
+      // Beginning of backward.
+      ASSERT_TRUE(backward_wait_before_recv);
+      ASSERT_TRUE(backward_wait_after_recv);
+
+      // End of backward.
+      ASSERT_TRUE(backward_record_before_send);
+      ASSERT_TRUE(backward_record_after_send);
     }
 
-    // check for send/recv node
-    Node* send_fw{nullptr};
-    Node* send_bw{nullptr};
-    Node* recv_fw{nullptr};
-    Node* recv_bw{nullptr};
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType() == "Send") {
-        if (is_backward(node)) {
-          send_bw = &node;
-        } else {
-          send_fw = &node;
-        }
-      } else if (node.OpType() == "Recv") {
-        if (is_backward(node)) {
-          recv_bw = &node;
-        } else {
-          recv_fw = &node;
-        }
-      }
-    }
-    // except the last partion, each partition should have send forward and recv backward
+    Node* forward_send{nullptr};
+    Node* forward_recv{nullptr};
+    Node* backward_recv{nullptr};
+    Node* backward_send{nullptr};
+
+    RetrieveSendRecvOperators(
+      graph, 
+      &forward_recv,
+      &forward_send,
+      &backward_recv,
+      &backward_send);
+
+    // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
-      ASSERT_TRUE(send_fw && recv_bw);
+      ASSERT_TRUE(forward_send && backward_recv);
     } else {
-      ASSERT_TRUE(!send_fw && !recv_bw);
+      ASSERT_TRUE(!forward_send && !backward_recv);
     }
-    // except the first partion, each partition should have recv forward and send backward
+    // Except the first partion, each partition should have recv forward and send backward.
     if (stageIdx == 1 || stageIdx == 2) {
-      ASSERT_TRUE(recv_fw && send_bw);
+      ASSERT_TRUE(forward_recv && backward_send);
     } else {
-      ASSERT_TRUE(!recv_fw && !send_bw);
+      ASSERT_TRUE(!forward_recv && !backward_send);
     }
 
     auto mp = model->ToProto();
@@ -1094,7 +1230,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 #endif
     PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
     PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
-    load_gradient_graph(i, input_file, output_file);
+    load_and_check_gradient_graph(i, input_file, output_file);
   }
 }
 

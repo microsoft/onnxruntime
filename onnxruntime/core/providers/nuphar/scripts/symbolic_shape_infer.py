@@ -230,12 +230,16 @@ class SymbolicShapeInference:
             if self.auto_merge_:
                 assert len(dims) == 2 # only allow symbol->int merge in binary ops for now
                 is_int = [is_literal(d) for d in dims]
-                assert sum(is_int) == 1
-                int_dim = is_int.index(1)
-                if self.verbose_ > 0:
-                    print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
-                self._check_merged_dims(dims, allow_broadcast=False)
-                return dims[int_dim]
+                if sum(is_int) == 1:
+                  int_dim = is_int.index(1)
+                  if self.verbose_ > 0:
+                      print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
+                  self._check_merged_dims(dims, allow_broadcast=False)
+                  return dims[int_dim]
+                else:
+                  if self.verbose_ > 0:
+                      print('dim {} has been mergd with dim {}'.format(dims[0], dims[1]))
+                  return dims[0]
             else:
                 return None
         if all([d == dims[0] for d in dims]):
@@ -645,12 +649,10 @@ class SymbolicShapeInference:
     def _infer_Expand(self, node):
         expand_to_shape = self._try_get_value(node, 1)
         if expand_to_shape is not None:
-            sympy_shape = self._get_sympy_shape(node, 0)
-            new_sympy_shape = self._broadcast_shapes(sympy_shape, expand_to_shape)
-
-            # new_shape's dim can come from 'Expand' computation
-            self._update_computed_dims(new_sympy_shape)
-            new_shape = get_shape_from_sympy_shape(new_sympy_shape)
+            # new_shape's dim can come from shape value
+            self._update_computed_dims(expand_to_shape)
+            shape = self._get_shape(node, 0)
+            new_shape = self._broadcast_shapes(shape, get_shape_from_sympy_shape(expand_to_shape))
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, new_shape))
 
@@ -780,13 +782,13 @@ class SymbolicShapeInference:
             rank = len(sympy_shape)
             if pads is not None:
                 assert len(pads) == 2*rank
-                new_shape = [d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])]
-                self._update_computed_dims(new_shape)
+                new_sympy_shape = [d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])]
+                self._update_computed_dims(new_sympy_shape)
             else:
                 # dynamic pads, create new symbolic dimensions
-                new_shape = self._new_symbolic_shape(rank, node)
+                new_sympy_shape = self._new_symbolic_shape(rank, node)
             output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_shape)))
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_Pool(self, node):
         sympy_shape = self._compute_conv_pool_shape(node)
@@ -804,12 +806,12 @@ class SymbolicShapeInference:
             start = as_scalar(input_data[0])
             limit = as_scalar(input_data[1])
             delta = as_scalar(input_data[2])
-            new_shape = [sympy.Max(sympy.ceiling((limit - start)/delta), 0)]
+            new_sympy_shape = [sympy.Max(sympy.ceiling((limit - start)/delta), 0)]
         else:
             new_dim = self._new_symbolic_dim_from_output(node)
-            new_shape = [self.symbolic_dims_[new_dim]]
-        self._update_computed_dims(new_shape)
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, get_shape_from_sympy_shape(new_shape)))
+            new_sympy_shape = [self.symbolic_dims_[new_dim]]
+        self._update_computed_dims(new_sympy_shape)
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_ReduceProd(self, node):
         axes = get_attribute(node, 'axes')
@@ -1042,15 +1044,15 @@ class SymbolicShapeInference:
     def _infer_Tile(self, node):
         repeats_value = self._get_value(node, 1)
         input_sympy_shape = self._get_sympy_shape(node, 0)
-        new_shape = []
+        new_sympy_shape = []
         for i,d in enumerate(input_sympy_shape):
             new_dim = d * repeats_value[i]
-            new_shape.append(new_dim)
-        self._update_computed_dims(new_shape)
+            new_sympy_shape.append(new_dim)
+        self._update_computed_dims(new_sympy_shape)
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
                                                   vi.type.tensor_type.elem_type,
-                                                  get_shape_from_sympy_shape(new_shape)))
+                                                  get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_TopK(self, node):
         rank = self._get_shape_rank(node, 0)
