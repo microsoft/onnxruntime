@@ -979,6 +979,15 @@ set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of
 include(wil.cmake)
 
 if (onnxruntime_USE_WINML)
+  if (NOT onnxruntime_USE_DML)
+    # Restore nuget packages anyway for winml builds so that custom op code path can reference includes
+    add_custom_command(
+      OUTPUT ${DML_PACKAGE_DIR}/bin/x64/DirectML.lib ${DML_PACKAGE_DIR}/bin/x86/DirectML.lib
+      DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
+      COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
+      VERBATIM)
+  endif()
+
   # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
   # CPU only WINML
   if (NOT onnxruntime_BUILD_SHARED_LIB)
