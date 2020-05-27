@@ -182,18 +182,25 @@ def main():
     outputs = model(input_ids=input_ids, past=None)
     assert len(outputs) == 2
     print("output 0 shape", outputs[0].shape)
-    print("past state shape", outputs[1][0].shape)
+    print("outputs[1][0] shape", outputs[1][0].shape)
 
     num_layer = model.config.n_layer
     present_names = [f'present_{i}' for i in range(num_layer)]
     output_names = ["last_state"] + present_names
 
     input_names = ['input_ids']
-    # input_ids has only one word for model with past state.
-    dynamic_axes = {'input_ids': {0: 'batch_size'}, 'last_state': {0: 'batch_size', 1: 'seq_len'}}
+
+    # input_ids has only one word for model with past state. 
+    # Shape of input tensors:
+    #    input_ids: (batch_size, 1)
+    #    past_{i}:  (2, batch_size, num_heads, seq_len, hidden_size/num_heads)
+    # Shape of output tensors:
+    #    last_state: (batch_size, seq_len + 1, hidden_size)
+    #    present_{i}:  (2, batch_size, num_heads, seq_len + 1, hidden_size/num_heads)
+    dynamic_axes = {'input_ids': {0: 'batch_size'}, 'last_state': {0: 'batch_size', 1: 'seq_len_plus_1'}}
 
     for name in present_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len'}
+        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len_plus_1'}
 
     past_names = [f'past_{i}' for i in range(num_layer)]
     input_names = ['input_ids'] + past_names
@@ -215,7 +222,9 @@ def main():
 
     #if use_torchscript:
     #    model = torch.jit.trace(model, (input_ids, past))
-    outputs = pytorch_inference(model, input_ids, past, total_runs=args.total_runs)
+    outputs, latency = pytorch_inference(model, input_ids, past, total_runs=args.total_runs)
+
+    print("present_0 shape", outputs[1][0].shape)
 
     torch.onnx.export(model,
                       args=export_inputs,
