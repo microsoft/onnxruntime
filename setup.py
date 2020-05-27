@@ -32,7 +32,6 @@ if '--nightly_build' in sys.argv:
 for arg in sys.argv[1:]:
     if arg.startswith("--wheel_name_suffix="):
         wheel_name_suffix = arg[len("--wheel_name_suffix="):]
-        nightly_build = True
 
         sys.argv.remove(arg)
 
@@ -40,19 +39,11 @@ for arg in sys.argv[1:]:
 
 # The following arguments are mutually exclusive
 if '--use_tensorrt' in sys.argv:
-    package_name = 'onnxruntime-gpu-tensorrt'
+    package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
     sys.argv.remove('--use_tensorrt')
-    if '--nightly_build' in sys.argv:
-        package_name = 'ort-trt-nightly'
-        nightly_build = True
-        sys.argv.remove('--nightly_build')
 elif '--use_cuda' in sys.argv:
-    package_name = 'onnxruntime-gpu'
+    package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     sys.argv.remove('--use_cuda')
-    if '--nightly_build' in sys.argv:
-        package_name = 'ort-gpu-nightly'
-        nightly_build = True
-        sys.argv.remove('--nightly_build')
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
