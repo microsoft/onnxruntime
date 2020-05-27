@@ -168,7 +168,7 @@ stages:
           inputs:
             script: |
               set -x
-              echo "NIGHTLY_BUILD: $'NIGHTLY_BUILD'"
+              env
               sudo docker run \
                 --gpus all \
                 --rm \
