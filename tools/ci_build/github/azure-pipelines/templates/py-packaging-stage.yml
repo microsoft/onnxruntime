@@ -148,6 +148,9 @@ stages:
 
         - template: set-py-packaging-variables-step.yml
 
+        - script: |
+            echo "NIGHTLY_BUILD: '$NIGHTLY_BUILD'"
+
         - task: CmdLine@2
           inputs:
             script: |
