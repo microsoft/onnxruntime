@@ -167,6 +167,8 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
+              set -x
+              echo "NIGHTLY_BUILD: $'NIGHTLY_BUILD'"
               sudo docker run \
                 --gpus all \
                 --rm \
@@ -188,8 +190,6 @@ stages:
                   --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
                   ${{ variables.actual_extra_build_py_parameters }}
             workingDirectory: $(Build.SourcesDirectory)
-            env:
-              NIGHTLY_BUILD: $[variables.NIGHTLY_BUILD]
 
         - task: CopyFiles@2
           displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
