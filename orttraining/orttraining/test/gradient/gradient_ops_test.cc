@@ -1492,7 +1492,11 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
                                                   true, false, true, false});
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
+  } else {
+    test.AddMissingOptionalInput<bool>();
   }
+
+  test.AddInput("training_mode", {}, {true});
 
   test.AddOutput<float>("dx", x_shape.GetDims(), dx_data);
 
@@ -1525,6 +1529,7 @@ TEST(GradientCheckerTest, DISABLED_Dropout) {
 }
 
 TEST(GradientCheckerTest, DISABLED_DropoutGrad) {
+
   {
     //Ratio 0
     TensorShape x_shape({8, 2});
