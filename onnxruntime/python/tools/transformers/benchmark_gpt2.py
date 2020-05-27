@@ -118,17 +118,28 @@ def parse_arguments():
                         default='./onnx_models',
                         help='Directory to store onnx models')
 
-    parser.add_argument('--total_runs', required=False, type=int, help="total runs", default=100)
+    parser.add_argument('-t',
+                        '--test_times',
+                        required=False,
+                        default=100,
+                        type=int,
+                        help='Number of repeat times to get average inference latency.')
 
-    parser.add_argument('--optimizer', required=False, action='store_true')
-    parser.set_defaults(optimizer=False)
+    parser.add_argument('-v', '--validate_onnx', required=False, action='store_true', help='Validate ONNX model')
+
+    parser.add_argument('-o',
+                        '--optimize_onnx',
+                        required=False,
+                        action='store_true',
+                        help='Use optimizer.py to optimize onnx model')
+    parser.set_defaults(optimize_onnx=False)
 
     parser.add_argument('--use_gpu', required=False, action='store_true')
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1])
+    parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1])
 
-    parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[8, 16, 32, 64, 128, 256])
+    parser.add_argument('-s', '--sequence_lengths', nargs='+', type=int, default=[8, 16, 32, 64, 128, 256])
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -147,6 +158,7 @@ def setup_logger(verbose=True):
     else:
         log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
         logging_level = logging.INFO
+        logging.getLogger("transformers").setLevel(logging.ERROR)
     log_handler.setLevel(logging_level)
 
     # Avoid duplicated handlers when runing this script in multiple cells of Jupyter Notebook.
@@ -249,7 +261,7 @@ def main():
     setup_environment()
     import onnxruntime
 
-    if not args.optimizer:
+    if not args.optimize_onnx:
         onnx_model_path = export_model_path
     else:
         from optimizer import optimize_model
@@ -269,7 +281,7 @@ def main():
 
     sess_options = onnxruntime.SessionOptions()
     sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
-    logger.info(f"session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+    logger.info(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
 
     logger.info(f"Start inferencing onnx model: {onnx_model_path}")
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options)
@@ -279,7 +291,7 @@ def main():
             past_shape = [2, batch_size, config.num_attention_heads, sequence_length, int(config.hidden_size / config.num_attention_heads)]
             dummy_past = [torch.rand(past_shape, dtype=torch.float32, device=device) for _ in range(config.n_layer)]
             dummy_input_ids = torch.randint(low=0, high=model.config.vocab_size - 1, size=(batch_size, 1), dtype=torch.int64, device=device)
-            torch_latency, ort_latency = inference(model, session, dummy_input_ids, dummy_past)
+            torch_latency, ort_latency = inference(model, session, dummy_input_ids, dummy_past, args.test_times, verify_outputs=args.validate_onnx)
             logger.info(f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={torch_latency}, ort_latency={ort_latency}")
 
 if __name__ == '__main__':
