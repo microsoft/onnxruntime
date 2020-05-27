@@ -3,79 +3,57 @@
 
 #include "quantize_linear.cuh"
 
+#include <limits>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void QuantizeLinearKernel(const half* input, int8_t* output, const half* scale, const int8_t* zero_point, CUDA_LONG N) {
+template <typename T>
+struct Round;
+
+template <>
+struct Round<float> {
+  __device__ __forceinline__ int operator()(float v) const {
+    return __float2int_rn(v);
+  }
+};
+
+template <>
+struct Round<half> {
+  __device__ __forceinline__ int operator()(half v) const {
+    return __half2int_rn(v);
+  }
+};
+
+template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
+__global__ void QuantizeLinearKernel(const InT* input, OutT* output, const InT* scale, const OutT* zero_point, CUDA_LONG N, Round<InT> round) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      int value = __half2int_rn(input[id] / (*scale)) + *zero_point;
-      output[id] = static_cast<int8_t>(max(-128, min(127, value)));
+      int value = round(input[id] / (*scale)) + (zero_point != nullptr ? *zero_point : 0);
+      output[id] = static_cast<int8_t>(max(std::numeric_limits<OutT>::min(), min(std::numeric_limits<OutT>::max(), value)));
       id += NumThreadsPerBlock;
     }
   }
 }
 
-template <int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void QuantizeLinearKernel(const float* input, int8_t* output, const float* scale, const int8_t* zero_point, CUDA_LONG N) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      int value = __float2int_rn(input[id] / (*scale)) + *zero_point;
-      output[id] = static_cast<int8_t>(max(-128, min(127, value)));
-      id += NumThreadsPerBlock;
-    }
-  }
-}
-
-template <int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void QuantizeLinearKernel(const float* input, uint8_t* output, const float* scale, const uint8_t* zero_point, CUDA_LONG N) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      int value = __float2int_rn(input[id] / (*scale)) + *zero_point;
-      output[id] = static_cast<uint8_t>(max(0, min(255, value)));
-      id += NumThreadsPerBlock;
-    }
-  }
-}
-
-template <int NumThreadsPerBlock, int NumElementsPerThread>
-__global__ void QuantizeLinearKernel(const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, CUDA_LONG N) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; i++) {
-    if (id < N) {
-      int value = __half2int_rn(input[id] / (*scale)) + *zero_point;
-      output[id] = static_cast<uint8_t>(max(0, min(255, value)));
-      id += NumThreadsPerBlock;
-    }
-  }
-}
-
-template <class T, class U>
-Status CudaQuantizeLinear(const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element) {
+template <class OutT, class InT>
+Status CudaQuantizeLinear(const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element) {
   if (num_of_element <= 0)
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  QuantizeLinearKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  QuantizeLinearKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, OutT, InT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       input,
       output,
       scale,
       zero_point,
-      num_of_element);
+      num_of_element,
+      Round<InT>());
   return Status::OK();
 }
 
@@ -86,7 +64,7 @@ __global__ void DequantizeLinearKernel(const T* input, U* output, const U* scale
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output[id] = static_cast<U>((input[id] - *zero_point)) * (*scale);
+      output[id] = static_cast<U>(input[id] - (zero_point != nullptr ? *zero_point : 0)) * (*scale);
       id += NumThreadsPerBlock;
     }
   }
