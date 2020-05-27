@@ -13,6 +13,7 @@ std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_are
 std::unique_ptr<IExecutionProvider> DefaultNGraphExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers = true);
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider();

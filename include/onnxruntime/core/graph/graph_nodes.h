@@ -12,7 +12,7 @@ namespace onnxruntime {
 class Node;
 
 /**
-Class to filter out null entries from either a vector of unique_ptr<Node> or a vector of [const] Node* and 
+Class to filter out null entries from either a vector of unique_ptr<Node> or a vector of [const] Node* and
 provide an iterator interface that returns [const] Node& for the valid entries.
 */
 template <typename TNodesContainer>
@@ -29,6 +29,7 @@ class ValidNodes {
 
   using ConstNodeIterator = NodeIterator<typename TNodesContainer::const_iterator>;
   using MutableNodeIterator = NodeIterator<typename TNodesContainer::iterator>;
+  using ConstReverseNodeIterator = NodeIterator<typename TNodesContainer::const_reverse_iterator>;
 
   ConstNodeIterator cbegin() const noexcept {
     return {nodes_.cbegin(), nodes_.cend()};
@@ -46,6 +47,14 @@ class ValidNodes {
     return cend();
   }
 
+  ConstReverseNodeIterator rbegin() const noexcept {
+    return {nodes_.crbegin(), nodes_.crend()};
+  }
+
+  ConstReverseNodeIterator rend() const noexcept {
+    return {nodes_.crend(), nodes_.crend()};
+  }
+
   MutableNodeIterator begin() noexcept {
     return {nodes_.begin(), nodes_.end()};
   }
@@ -56,10 +65,10 @@ class ValidNodes {
 
   bool empty() const noexcept { return nodes_.empty(); }
 
-  /** 
+  /**
   @class NodeIterator
   Iterator to provide const and non-const access to valid Node instances in a Graph.
-  @remarks Skips invalid nodes. 
+  @remarks Skips invalid nodes.
   */
   template <typename TIterator>
   class NodeIterator {
@@ -130,7 +139,7 @@ class ValidNodes {
 };
 
 /**
-Class that provides iteration over all valid nodes in the Graph. 
+Class that provides iteration over all valid nodes in the Graph.
 */
 class GraphNodes : public ValidNodes<std::vector<std::unique_ptr<Node>>> {
  public:

@@ -45,6 +45,7 @@ Abstract:
         .equ    .LGemmU8S8CopyPackBFrame_SavedRbp, 8
         .equ    .LGemmU8S8CopyPackBFrame_ReturnAddress, 16
         .equ    .LGemmU8S8CopyPackBFrame_offa, 24
+        .equ    .LGemmU8S8CopyPackBFrame_BTypeIsSigned, 32
 
         .text
 
@@ -427,6 +428,9 @@ Arguments:
     offa - Supplies the zero point offset for the other source matrix of the
         matrix multiplication.
 
+    BTypeIsSigned - Supplies true if the source matrix is signed data, else
+        false if the the source matrix is unsigned data.
+
 Return Value:
 
     None.
@@ -446,6 +450,17 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         vpsrlw  ymm8,ymm8,15                # generate word vector [0x0001]
         vpsllw  ymm0,ymm8,8                 # generate word vector [0x0100]
         vpor    ymm8,ymm8,ymm0              # generate word vector [0x0101]
+
+//
+// Compute the bit flip vector to adjust input from U8 to S8.
+//
+
+        vpxor   xmm9,xmm9,xmm9              # generate word vector [0x0000]
+        cmp     BYTE PTR .LGemmU8S8CopyPackBFrame_BTypeIsSigned[rsp],0
+        jnz     .LCopyPackB.SkipUnsignedBitFlipVector
+        vpsllw  ymm9,ymm8,7                 # generate word vector [0x8080]
+
+.LCopyPackB.SkipUnsignedBitFlipVector:
 
 //
 // Process 16 columns of matrix B in a loop.
@@ -481,6 +496,8 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         vpunpckhwd xmm3,xmm3,xmm5
         vinserti128 ymm4,ymm4,xmm6,1
         vinserti128 ymm2,ymm2,xmm3,1
+        vpxor   ymm4,ymm4,ymm9              # optionally adjust unsigned data
+        vpxor   ymm2,ymm2,ymm9
         vmovdqu YMMWORD PTR [rdi],ymm4      # store interleaved rows
         vmovdqu YMMWORD PTR [rdi+32],ymm2
         vpmaddubsw ymm4,ymm8,ymm4           # horizontal byte+byte=word per row
@@ -499,9 +516,9 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         add     rbx,4                       # correct for over-subtract above
         jz      .LCopyPackB.ReduceColumnSumVectorN16
         vmovdqu xmm2,XMMWORD PTR [rdx]
-        vpxor   xmm3,xmm3,xmm3
-        vpxor   xmm4,xmm4,xmm4
-        vpxor   xmm5,xmm5,xmm5
+        vmovaps xmm3,xmm9
+        vmovaps xmm4,xmm9
+        vmovaps xmm5,xmm9
         xor     ebx,ebx                     # no more rows remaining
         test    r8b,2                       # (CountK & 2) != 0?
         jz      .LCopyPackB.InterleaveRowDataN16
@@ -542,8 +559,8 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
 .LCopyPackB.ProcessColumnNUnaligned:
         vpxor   xmm0,xmm0,xmm0              # clear column accumulators
         vpxor   xmm1,xmm1,xmm1
-        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackBFrame_PaddedMatrixBData[rsp],ymm0
-        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackBFrame_PaddedMatrixBData[rsp+32],ymm0
+        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackBFrame_PaddedMatrixBData[rsp],ymm9
+        vmovdqu YMMWORD PTR .LGemmU8S8CopyPackBFrame_PaddedMatrixBData[rsp+32],ymm9
         sub     r8,4
         jb      .LCopyPackB.ProcessRemainingRowsNUnaligned
 
@@ -618,6 +635,8 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
         vpunpckhwd xmm3,xmm3,xmm5
         vinserti128 ymm4,ymm4,xmm6,1
         vinserti128 ymm2,ymm2,xmm3,1
+        vpxor   ymm4,ymm4,ymm9              # optionally adjust unsigned data
+        vpxor   ymm2,ymm2,ymm9
         vmovdqu YMMWORD PTR [rdi],ymm4      # store interleaved rows
         vmovdqu YMMWORD PTR [rdi+32],ymm2
         vpmaddubsw ymm4,ymm8,ymm4           # horizontal byte+byte=word per row
@@ -638,9 +657,8 @@ C_UNDERSCORE(MlasGemmU8S8CopyPackBAvx2):
 //
 
         lea     rbp,.LGemmU8S8CopyPackBFrame_PaddedMatrixBData[rsp]
-        vpxor   xmm6,xmm6,xmm6
-        vmovdqu YMMWORD PTR [rbp],ymm6
-        vmovdqu YMMWORD PTR [rbp+32],ymm6
+        vmovdqu YMMWORD PTR [rbp],ymm9
+        vmovdqu YMMWORD PTR [rbp+32],ymm9
 
 .LCopyPackB.CopyUnalignedRowLoop:
         lea     r11,[rbp+16]                # advance next padded buffer by 16 bytes

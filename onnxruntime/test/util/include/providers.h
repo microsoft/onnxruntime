@@ -34,3 +34,7 @@
 #ifdef USE_ARMNN
 #include "core/providers/armnn/armnn_provider_factory.h"
 #endif
+#ifdef USE_MIGRAPHX
+#include "core/providers/migraphx/migraphx_provider_factory.h"
+#endif
+
