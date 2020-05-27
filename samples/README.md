@@ -7,7 +7,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C#](#C)
 * [C/C++](#CC)
 * [Java](#Java)
-* [Node.js](./nodejs)
+* [Node.js](#Nodejs)
 ***
  
 ## Python
@@ -57,3 +57,27 @@ For a list of available dockerfiles and published images to help with getting st
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)
 * [MNIST inference](../java/src/test/java/sample/ScoreMNIST.java)
+
+## Node.js
+This section contains several samples that demonstrate how to use onnxruntime Node.js binding.
+
+### Samples
+
+* [Basic Usage](./nodejs/01_basic-usage/) - a demonstration of basic usage of ONNX Runtime Node.js binding.
+
+* [Create Tensor](./nodejs/02_create-tensor/) - a demonstration of basic usage of creating tensors.
+
+<!--
+* [Create Tensor (Advanced)](./nodejs/03_create-tensor-advanced/) - a demonstration of advanced usage of creating tensors.
+-->
+
+* [Create InferenceSession](./nodejs/04_create-inference-session/) - shows how to create `InferenceSession` in different ways.
+
+### Usage
+
+In each sample's implementation subdirectory, run
+
+```
+npm install
+node ./
+```
