@@ -907,9 +907,9 @@ public class InferenceTest {
         // So we look it up as a classpath resource and resolve it to a real path
         customLibraryName = getResourcePath("/custom_op_library.dll").toString();
       } else if (osName.contains("mac")) {
-        customLibraryName = "libcustom_op_library.dylib";
+        customLibraryName = getResourcePath("/libcustom_op_library.dylib");
       } else if (osName.contains("linux")) {
-        customLibraryName = "./libcustom_op_library.so";
+        customLibraryName = getResourcePath("/libcustom_op_library.so");
       } else {
         fail("Unknown os/platform '" + osName + "'");
       }
