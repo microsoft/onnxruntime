@@ -18,6 +18,9 @@ jobs:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
         submodules: ${{ parameters.SubmoduleCheckoutMode }}
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '12.x'
     - script: |
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
         java --version
