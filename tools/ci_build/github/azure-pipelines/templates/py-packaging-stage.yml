@@ -102,7 +102,7 @@ stages:
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
                 --volume /data/models:/build/models:ro \
-                -e NIGHTLY_BUILD=1 \
+                -e NIGHTLY_BUILD \
                 -e BUILD_BUILDNUMBER \
                 ${{ variables.docker_image_prefix }}-manylinux-$(python.version) \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
@@ -171,7 +171,7 @@ stages:
                 --volume $(Build.BinariesDirectory):/build \
                 --volume /data/models:/build/models:ro \
                 -e NVIDIA_VISIBLE_DEVICES=all \
-                -e NIGHTLY_BUILD=1 \
+                -e NIGHTLY_BUILD \
                 -e BUILD_BUILDNUMBER \
                 ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
                 $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
