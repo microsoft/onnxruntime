@@ -39,7 +39,7 @@ class Test_PostPasses(unittest.TestCase):
 
     def count_all_nodes(self, model):
         return len(model.graph.node)
-    
+
     def count_nodes(self, model, node_type):
         count = 0
         for node in model.graph.node:
@@ -88,7 +88,6 @@ class Test_PostPasses(unittest.TestCase):
         input_desc = IODescription('input', [], "float32")
         output0_desc = IODescription('output0', [], "float32")
         output1_desc = IODescription('output1', [20, 5, 10, 10], "float32")
-        output2_desc = IODescription('output2', [20, 5, 10, 10], "float32")
         model_desc = ModelDescription([input_desc], [output0_desc, output1_desc])
 
         learning_rate = torch.tensor([1.0000000e+00]).to(device)
@@ -98,7 +97,7 @@ class Test_PostPasses(unittest.TestCase):
 
         count_layer_norm = self.count_nodes(onnx_model, "LayerNormalization")
         count_nodes = self.count_all_nodes(onnx_model)
-       
+
         assert count_layer_norm == 1
         assert count_nodes == 3
 
@@ -133,7 +132,7 @@ class Test_PostPasses(unittest.TestCase):
 
         onnx_model = self.get_onnx_model(model, model_desc, input_args, device)
 
-        # check that expand output has shape 
+        # check that expand output has shape
         expand_nodes = self.find_expand_nodes(onnx_model, "Expand")
         assert len(expand_nodes) == 1
 
@@ -146,7 +145,7 @@ class Test_PostPasses(unittest.TestCase):
 
         model_tester = BertModelTest.BertModelTester(self)
         config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels = model_tester.prepare_config_and_inputs()
-        
+
         model = BertForPreTraining(config=config)
         model.eval()
 

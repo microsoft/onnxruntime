@@ -324,17 +324,20 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
+    other_export_options['training'] = True
 
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
+    # This option was added after 1.6 release.
+    if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
+        other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       training=torch.onnx.TrainingMode.TRAINING,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
@@ -523,7 +526,8 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True, _extra_postprocess=None):
+                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
+                 _enable_internal_postprocess=True, _extra_postprocess=None):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.

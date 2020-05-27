@@ -8,21 +8,6 @@ import struct
 from onnx import helper
 from onnx import numpy_helper
 
-# Transpose PostProcess
-
-def find_input_as_initializer(model, arg):
-    for initializer in model.graph.initializer:
-        if initializer.name == arg:
-            return initializer
-    return None
-
-def replace_input_arg(model, arg, new_arg):
-    for node in model.graph.node:
-        i = 0
-        while i < len(node.input):
-            if node.input[i] == arg:
-                node.input[i] = new_arg
-            i += 1
 
 def run_postprocess(model):
     # this post pass is not required for pytorch > 1.6
@@ -48,64 +33,6 @@ def find_output_node(model, arg):
                 result.append(node)
     return result[0] if len(result) == 1 else result
 
-def get_node_index(model, node):
-    i = 0
-    while i < len(model.graph.node):
-        if model.graph.node[i] == node:
-            break;
-        i += 1
-    return i if i < len(model.graph.node) else None;
-
-def find_weight_index(model, name):
-    index = 0
-    for w in model.graph.initializer:
-        if w.name == name:
-            return index
-        index += 1
-    return None
-
-def fix_transpose(model):
-    transpose = []
-    for node in model.graph.node:
-        if node.op_type == 'Transpose':
-            weight = find_input_as_initializer(model, node.input[0])
-            if weight is not None:
-                result = []
-                for n in model.graph.node:
-                    for input in n.input:
-                        if input == weight.name:
-                            result.append(n)
-                if len(result) > 1:
-                    continue
-                perm = node.attribute[0]
-                assert perm.name == 'perm'
-                perm = perm.ints
-                if len(perm) == 2 and perm[0] == 1 and perm[1] == 0: ##
-                    weight_array = numpy_helper.to_array(weight)
-                    if len(weight_array.shape) == 2: ##
-                        transpose.append((get_node_index(model, node), weight))
-
-    for t in transpose:
-        node = model.graph.node[t[0]]
-        weight = numpy_helper.to_array(t[1])
-        weight = weight.transpose(perm)
-        new_weight = numpy_helper.from_array(weight, "%s_transposed" % t[1].name)
-        model.graph.initializer.extend([new_weight])
-        replace_input_arg(model, node.output[0], new_weight.name)
-
-    transpose.sort(reverse=True)
-    for t in transpose:
-        del model.graph.node[t[0]]
-
-    old_ws = []
-    for t in transpose:
-        out_node = find_output_node(model, t[1].name) 
-        if out_node is None or len(out_node) == 0: ##
-            old_ws.append(find_weight_index(model, t[1].name))
-    old_ws.sort(reverse=True)
-    for w_i in old_ws:
-        del model.graph.initializer[w_i]
-    return model
 
 # Expand Shape PostProcess
 
@@ -126,7 +53,7 @@ def fix_expand_shape(model):
 
 
 # LayerNorm PostProcess
- 
+
 def find_nodes(graph, op_type):
     nodes = []
     for node in graph.node:
@@ -226,7 +153,7 @@ def layer_norm_transform(model):
             remove_nodes.append(optional_add)
             bias = optional_add.input[1]
             layer_norm_input.append(bias)
-        
+
         if optional_add is not None:
             layer_norm_output.append(optional_add.output[0])
         elif optional_mul is not None:
@@ -261,7 +188,7 @@ def layer_norm_transform(model):
                     is_orphan = False
             if is_orphan:
                 remove_nodes.append(constant)
-    
+
     all_nodes = []
     for node in graph.node:
         if node not in remove_nodes:
