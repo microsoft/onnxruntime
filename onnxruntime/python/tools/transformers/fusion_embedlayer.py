@@ -128,6 +128,7 @@ class FusionEmbedLayerNoMask(Fusion):
                                       ] if self.model.find_graph_input(segment_ids) else [input_ids]
 
         # Cast input_ids and segment_ids to int32.
+        input_ids_cast_node = None
         if self.model.find_graph_input(input_ids):
             casted, input_ids = self.utils.cast_graph_input_to_int32(input_ids)
         else:
@@ -138,9 +139,13 @@ class FusionEmbedLayerNoMask(Fusion):
         else:
             segment_ids, segment_ids_cast_node = self.utils.cast_input_to_int32(segment_ids)
 
-            segment_id_path = self.model.match_parent_path(
-                segment_ids_cast_node, ['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape', 'Cast'],
-                [0, 0, 1, 0, 0, 0])
+            # Cast might be removed by OnnxRuntime.
+            _, segment_id_path, _ = self.model.match_parent_paths(
+                segment_ids_cast_node, 
+                [(['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape', 'Cast'], [0, 0, 1, 0, 0, 0]),
+                 (['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [0, 0, 1, 0, 0])],
+                output_name_to_node)
+
             if segment_id_path and input_ids_cast_node and input_ids_cast_node.input[0] == segment_id_path[-1].input[0]:
                 logger.debug("Simplify semgent id path...")
                 self.model.add_node(

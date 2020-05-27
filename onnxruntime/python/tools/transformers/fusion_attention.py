@@ -154,13 +154,13 @@ class FusionAttention(Fusion):
         if children_types.count('MatMul') != 3:
             return
 
-        (add_qkv, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+        (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
 
         v_nodes = self.model.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
-        (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+        (_, _, add_v, matmul_v) = v_nodes
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, 0])
         if qk_nodes is None:
@@ -168,13 +168,13 @@ class FusionAttention(Fusion):
             if qk_nodes is None:
                 logger.debug("fuse_attention: failed to match qk path")
                 return
-        (softmax_qk, add_qk, div_qk, matmul_qk) = qk_nodes
+        (_, add_qk, _, matmul_qk) = qk_nodes
 
         q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
         if q_nodes is None:
             logger.debug("fuse_attention: failed to match q path")
             return
-        (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+        (_, _, add_q, matmul_q) = q_nodes
 
         k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
         if k_nodes is None:
@@ -183,19 +183,21 @@ class FusionAttention(Fusion):
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
-            (transpose_k, transpose_k_2, reshape_k, add_k, matmul_k) = k_nodes
-        else:
-            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
+        add_k = k_nodes[-2]
+        matmul_k = k_nodes[-1]
 
-        mask_nodes = self.model.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'],
-                                                  [1, 0, 1, 0, 0])
+        # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
+        _, mask_nodes, _ = self.model.match_parent_paths(
+            add_qk,
+            [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0]),
+             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0])],
+            output_name_to_node)
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
-        (mul_mask, sub_mask, cast_mask, unsqueeze_mask, unsqueeze_mask_0) = mask_nodes
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
-            mask_index = self.attention_mask.process_mask(unsqueeze_mask_0.input[0])
+            mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
                                                   root_input, reshape_qkv.output[0])
@@ -209,4 +211,8 @@ class FusionAttention(Fusion):
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
             self.nodes_to_remove.extend(v_nodes)
-            self.nodes_to_remove.extend(mask_nodes)
+
+            # Use prune graph to remove mask nodes since they are shared by all attention nodes.
+            #self.nodes_to_remove.extend(mask_nodes)
+            self.prune_graph = True
+            

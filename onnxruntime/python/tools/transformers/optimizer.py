@@ -224,8 +224,13 @@ def optimize_model(input,
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
-    if run_onnxruntime and opt_level > 0:
+
+    if opt_level > 1: # Optimization specified for an execution provider.
         input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
+    elif run_onnxruntime:
+        # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
+        # CPU provider is used here so that there is no extra node for GPU memory copy.
+        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=1)
 
     model = load_model(input_model_path, format=None, load_external_data=True)
 
