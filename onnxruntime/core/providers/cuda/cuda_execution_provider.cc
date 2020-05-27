@@ -56,10 +56,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
-
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
+  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
@@ -68,51 +69,24 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   allocator_ = CreateAllocator(default_memory_info, device_id);
 }
 
-cublasHandle_t CUDAExecutionProvider::PerThreadContext::CublasHandle() {
-  if (!cublas_handle_) {
-    CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  }
-  return cublas_handle_;
-}
-
-cudnnHandle_t CUDAExecutionProvider::PerThreadContext::CudnnHandle() {
-  if (!cudnn_handle_) {
-    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  }
-  return cudnn_handle_;
-}
-
-curandGenerator_t CUDAExecutionProvider::PerThreadContext::CurandGenerator() {
-  if (!curand_generator_) {
-    CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
-  }
-  return curand_generator_;
-}
-
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    if (cublas_handle_) {
-      CUBLAS_CALL(cublasDestroy(cublas_handle_));
-    }
+    CUBLAS_CALL(cublasDestroy(cublas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
 
   try {
-    if (cudnn_handle_) {
-      CUDNN_CALL(cudnnDestroy(cudnn_handle_));
-    }
+    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
 
   try {
-    if (curand_generator_) {
-      CURAND_CALL(curandDestroyGenerator(curand_generator_));
-    }
+    CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "curandDestroyGenerator threw:" << ex.what();
   }
@@ -167,53 +141,85 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
   auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    if (v.recorded)
-      CUDA_CALL_THROW(cudaEventSynchronize(e));
-    for (auto p : v.cpu_ptrs) {
-      cpu_alloc->Free(p);
+  {
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    auto it = deferred_release_cpu_ptr_.begin();
+    while (it != deferred_release_cpu_ptr_.end()) {
+      auto& e = it->first;
+      auto& v = it->second;
+      if (v.recorded)
+        CUDA_CALL_THROW(cudaEventSynchronize(e));
+      for (auto p : v.cpu_ptrs) {
+        cpu_alloc->Free(p);
+      }
+      CUDA_CALL_THROW(cudaEventDestroy(e));
+      it = deferred_release_cpu_ptr_.erase(it);
     }
-    CUDA_CALL_THROW(cudaEventDestroy(e));
-    it = deferred_release_cpu_ptr_.erase(it);
+  }
+
+  // clean up thread local context caches
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+      const auto cache = cache_weak.lock();
+      if (!cache) continue;
+      ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+    }
   }
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
-  if (per_thread_context_map_ == nullptr) {
-    per_thread_context_map_ = onnxruntime::make_unique<PerThreadContextMap>();
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
   }
 
-  auto* p = per_thread_context_map_.get();
-  if (p->count(this) == 0) {
-    std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    std::shared_ptr<PerThreadContext> ptc;
-    if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
     } else {
-      ptc = retired_context_pool_.back();
-      retired_context_pool_.pop_back();
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
     }
-    p->insert(std::make_pair(this, ptc));
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
   }
-  return *(p->at(this));
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
 }
 
-void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
-  ORT_ENFORCE(per_thread_context_map_ != nullptr);
-  auto iter_ctx = per_thread_context_map_->find(this);
-  ORT_ENFORCE(iter_ctx != per_thread_context_map_->end());
+void CUDAExecutionProvider::ReleasePerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
 
-  std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-  retired_context_pool_.push_back(iter_ctx->second);
-  per_thread_context_map_->erase(iter_ctx);
-  // Release TLS if empty to avoid memory leak report
-  if (per_thread_context_map_->empty()) {
-    per_thread_context_map_.reset(nullptr);
+  auto cached_context_it = per_thread_context_cache->find(this);
+  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
+  auto cached_context = cached_context_it->second.lock();
+  ORT_ENFORCE(cached_context);
+
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    context_state_.active_contexts.erase(cached_context);
+    context_state_.retired_context_pool.push_back(cached_context);
   }
+
+  per_thread_context_cache->erase(cached_context_it);
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -279,7 +285,7 @@ Status CUDAExecutionProvider::OnRunEnd() {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
-  ReleasePerThreadStuffs();
+  ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
   return Status::OK();
