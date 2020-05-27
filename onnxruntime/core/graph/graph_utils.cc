@@ -4,6 +4,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
+#include <queue>
 
 namespace onnxruntime {
 
@@ -744,5 +745,41 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
   return true;
 }
 
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
+  std::queue<const Node*> q;
+  std::vector<NodeIndex> nodes_to_remove;
+  q.push(&start_node);
+  // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output. 
+  while (q.size() != 0) {
+    const Node& cur_node = *(q.front());
+    q.pop();
+    // Each eligible node in the subgraph must have less than one output edge and no output should be 
+    // the graph output
+    if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
+      continue;
+    }
+    nodes_to_remove.push_back(cur_node.Index());
+    // push the parents of current node to the queue. 
+    for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
+      const std::string& input_name = GetNodeInputName(cur_node, i);
+      if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
+        // skip initializers and graph inputs
+        continue;
+      }
+      q.push(GetInputNode(cur_node, i));
+    }
+  }
+  if (nodes_to_remove.size() <= 0) {
+    // Nothing to remove
+    return false;
+  }
+  // Remove nodes that are not used anymore.
+  for (const auto& node_index : nodes_to_remove) {
+    Node* node = graph.GetNode(node_index);
+    RemoveNodeOutputEdges(graph, *node);  
+    graph.RemoveNode(node->Index());
+  }
+  return true;
+}
 }  // namespace graph_utils
 }  // namespace onnxruntime

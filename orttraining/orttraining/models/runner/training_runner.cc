@@ -5,12 +5,16 @@
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <thread>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+#include "core/profile/context.h"
+#endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
@@ -613,14 +617,21 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                      VectorString& fetch_names,
                                      std::vector<MLValue>& feeds,
                                      std::vector<MLValue>& fetches) {
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+  // Store the tag for the thread which runs session_.Run(...).
+  // It will be used to name range in Nvidia's visual profiler.
+  auto& profile_context = profile::Context::GetInstance();
+  profile_context.SetThreadTag(
+      std::this_thread::get_id(), std::to_string(step_));
+#endif
   // Sync launch of session. This model-update session runs on the main thread, so
   // no new async session will be launched until this model-update session is done.
   // This prevents the new sessions from using not-updated model.
   ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                    feed_names,
-                                    feeds,
-                                    fetch_names,
-                                    &fetches));
+                                   feed_names,
+                                   feeds,
+                                   fetch_names,
+                                   &fetches));
 
   if (loss_scaler_) {
     auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
@@ -680,7 +691,16 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 
   // Async launch of a session.
   pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-    const size_t worker_id) {
+      const size_t worker_id, const size_t step) {
+#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+    // Store the tag for the thread which runs session_.Run(...).
+    // It will be used to name range in Nvidia's visual profiler.
+    auto& profile_context = profile::Context::GetInstance();
+    profile_context.SetThreadTag(
+      std::this_thread::get_id(), std::to_string(step));
+#endif
+    // Dummy use of step to avoid warning when the code above is disabled. 
+    ORT_ENFORCE(step + 1 > 0);
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
     ORT_ENFORCE(session_.Run(
@@ -689,7 +709,7 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches)) == Status::OK());
-  }, worker_id);
+  }, worker_id, step_);
 
   // Add one after process one batch.
   ++step_;
