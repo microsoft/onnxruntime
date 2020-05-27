@@ -863,7 +863,8 @@ TEST(RNNTest, RNN_with_invalid_activation_load_failure) {
   std::vector<float> Y_data({0.F});
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "RNN op: Invalid activation attribute - Invalid_activation", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "RNN op: Invalid activation attribute - Invalid_activation",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test
