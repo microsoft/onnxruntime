@@ -12,7 +12,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
 #include "core/profile/context.h"
 #endif
 #include "core/session/environment.h"
@@ -618,7 +618,7 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                      VectorString& fetch_names,
                                      std::vector<MLValue>& feeds,
                                      std::vector<MLValue>& fetches) {
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   // Store the tag for the thread which runs session_.Run(...).
   // It will be used to name range in Nvidia's visual profiler.
   auto& profile_context = profile::Context::GetInstance();
@@ -693,7 +693,7 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   // Async launch of a session.
   pipeline_worker_pool_.workers[worker_id] = std::thread([&](
       const size_t worker_id, const size_t step) {
-#if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
     auto& profile_context = profile::Context::GetInstance();
