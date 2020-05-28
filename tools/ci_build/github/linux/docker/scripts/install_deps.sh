@@ -112,13 +112,10 @@ elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
       ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-<<<<<<< HEAD
-=======
 
       # patch pytorch onnx export opset version 10 to export nll_loss
       PATH_TO_SYMBOLIC10=$(${PYTHON_EXE} -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "onnx/"))')
       cp "${SCRIPT_DIR}/pyt_patch/symbolic_opset10.py" "${PATH_TO_SYMBOLIC10}"
->>>>>>> 024b92a... Use path relative to script location to refer to symbolic_opset10.py from install_deps.sh. (#3975)
     fi
     if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
       ${PYTHON_EXE} -m pip install transformers
