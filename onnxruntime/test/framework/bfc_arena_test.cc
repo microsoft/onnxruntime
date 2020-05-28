@@ -166,7 +166,11 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
       FAIL() << "Allocation should have thrown";
     } catch (const OnnxRuntimeException& ex) {
       EXPECT_THAT(ex.what(),
+#ifdef GTEST_USES_POSIX_RE
+                  testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
+#else
                   testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
+#endif
     } catch (...) {
       FAIL() << "Allocation should have thrown OnnxRuntimeException";
     }
