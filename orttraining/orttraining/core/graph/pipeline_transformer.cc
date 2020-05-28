@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/pipeline_transformer.h"
+#include <queue>
 
 using namespace onnxruntime::common;
 
@@ -22,21 +23,22 @@ bool IsBackward(Node& node) {
   return (node.Description() == "Backward pass");
 }
 
-NodeArg& CreateInt64NodeArg(Graph& graph, const std::string& name) {
+NodeArg& CreateTypedNodeArg(Graph& graph, onnx::TensorProto_DataType type, const std::string& name) {
   ONNX_NAMESPACE::TypeProto type_proto;
-  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  type_proto.mutable_tensor_type()->set_elem_type(type);
   auto actual_name = graph.GenerateNodeArgName(name);
   auto& node_arg = graph.GetOrCreateNodeArg(actual_name, &type_proto);
   return node_arg;
 }
 
-void AddInputEvent(Graph& graph,
-                   const std::string& event_name,
-                   std::vector<NodeArg*>& input_args,
-                   std::vector<std::string>& new_input_names) {
-  auto& event_id = CreateInt64NodeArg(graph, event_name);
-  new_input_names.push_back(event_id.Name());
-  input_args.push_back(&event_id);
+void AddNewNodeArg(Graph& graph,
+                   const std::string& op_name,
+                   onnx::TensorProto_DataType type,
+                   std::vector<NodeArg*>& new_node_args,
+                   std::vector<std::string>& new_names) {
+  auto& new_node_arg = CreateTypedNodeArg(graph, type, op_name);
+  new_names.push_back(new_node_arg.Name());
+  new_node_args.push_back(&new_node_arg);
 }
 
 // gradient graph can contain some dangling leaf nodes. Add them all to WaitEvent
@@ -112,7 +114,7 @@ Node& CreateBottleneckNode(Graph& graph,
     nullptr /* assume all bottleneck node have no attributes */,
     kMSDomain);
 }
-  
+
 Node* AddBackwardRecord(Graph& graph,
                         Node* backward_send,
                         std::vector<std::string>& new_input_names,
@@ -120,7 +122,8 @@ Node* AddBackwardRecord(Graph& graph,
                         std::string &event_id_tensor_name,
                         std::string &output_tensor_name) {
   std::vector<NodeArg*> input_args;
-  AddInputEvent(graph, "backward_recorded_event_id", input_args, new_input_names);
+  AddNewNodeArg(graph, "backward_recorded_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                input_args, new_input_names);
   std::vector<NodeArg*> output_args{};
 
   if (backward_send) {
@@ -175,10 +178,11 @@ Node* AddForwardWait(Graph& graph,
 
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
-  AddInputEvent(graph, "forward_waited_event_id", input_args, new_input_names);
+  AddNewNodeArg(graph, "forward_waited_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                input_args, new_input_names);
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
 
-  if (graph_inputs.size() == 0){
+  if (graph_inputs.size() == 0) {
     ORT_THROW("Graph ", graph.Name(), " doesn't have any inputs.");
   }
 
@@ -237,7 +241,8 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
   {
     std::vector<NodeArg*> input_args;
     std::vector<NodeArg*> output_args;
-    AddInputEvent(graph, "forward_recorded_event_id", input_args, new_input_names);
+    AddNewNodeArg(graph, "forward_recorded_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                  input_args, new_input_names);
 
     // Add send forward op's output as record op's input and output
     for (auto& output : forward_send->MutableOutputDefs()) {
@@ -258,7 +263,8 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
   {
     std::vector<NodeArg*> input_args;
     std::vector<NodeArg*> output_args;
-    AddInputEvent(graph, "backward_waited_event_id", input_args, new_input_names);
+    AddNewNodeArg(graph, "backward_waited_event_id", ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                  input_args, new_input_names);
 
     input_args.insert(std::end(input_args),
                       std::begin(record_node->MutableOutputDefs()),
@@ -287,7 +293,6 @@ void ReplaceNodeArgs(std::vector<Node*>& nodes,
   ORT_ENFORCE(node_args.size() == new_node_args.size());
   for (size_t i = 0; i < node_args.size(); ++i) {
     // Iteration for node_args[i] and new_node_args[i].
-
     ORT_ENFORCE(node_args[i]->Name() != new_node_args[i]->Name());
     ORT_ENFORCE(node_args[i]->Type() == new_node_args[i]->Type());
 
@@ -331,10 +336,10 @@ std::string AddEventBeforeNode(
   std::vector<Node*> nodes = {node};
 
   // Replace node_args[i] with new_node_args[i] in nodes.
-  ReplaceNodeArgs(nodes, node_args, new_node_args); 
+  ReplaceNodeArgs(nodes, node_args, new_node_args);
 
   // Create node_arg for event ID.
-  auto event_node_arg = &CreateInt64NodeArg(graph, event_id_name);
+  auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name);
 
   // Create node which produces new_node_args from event ID and node_args.
   CreateBottleneckNode(graph,
@@ -372,11 +377,11 @@ std::string AddEventAfterNode(
     std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(
       node_args[i]->Name());
     // Replace node_args[i] with new_node_args[i] in nodes.
-    ReplaceNodeArgs(consumer_nodes, {node_args[i]}, {new_node_args[i]}); 
+    ReplaceNodeArgs(consumer_nodes, {node_args[i]}, {new_node_args[i]});
   }
 
   // Create node_arg for event ID.
-  auto event_node_arg = &CreateInt64NodeArg(graph, event_id_name);
+  auto event_node_arg = &CreateTypedNodeArg(graph, ONNX_NAMESPACE::TensorProto_DataType_INT64, event_id_name);
 
   // Create node which produces new_node_args from event ID and node_args.
   CreateBottleneckNode(graph,
@@ -395,10 +400,10 @@ Status AddForwardWaitAfterRecv(
     Node* comm_node,
     std::vector<std::string>& new_input_names,
     std::string& event_name) {
-  event_name = AddEventAfterNode( 
+  event_name = AddEventAfterNode(
     graph, comm_node,
     "WaitEvent", "forward_wait_after_recv",
-    "forward_wait_after_recv_event_id"); 
+    "forward_wait_after_recv_event_id");
   if (event_name.empty()) {
     return Status::OK();
   } else {
@@ -456,6 +461,37 @@ Status AddBackwardRecordBeforeSend(
     new_input_names.push_back(event_name);
     return Status::OK();
   }
+}
+
+Status SetInputsOutputsAndResolve(Graph& graph,
+                                  const std::vector<std::string>& new_input_names,
+                                  const std::vector<std::string>& new_output_names) {
+  auto fill_node_args = [&](const Graph& graph,
+                            const std::vector<const NodeArg*>& existed_node_args,
+                            const std::vector<std::string>& new_node_arg_names,
+                            std::vector<const NodeArg*>& merged_node_args) {
+    merged_node_args.insert(merged_node_args.end(), existed_node_args.begin(), existed_node_args.end());
+    for (auto& name : new_node_arg_names) {
+      merged_node_args.push_back(graph.GetNodeArg(name));
+    }
+  };
+
+  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
+  std::vector<const NodeArg*> inputs_args_sets;
+  inputs_args_sets.reserve(graph_inputs.size() + new_input_names.size());
+  fill_node_args(graph, graph_inputs, new_input_names, inputs_args_sets);
+
+  const std::vector<const NodeArg*>& graph_outputs = graph.GetOutputs();
+  std::vector<const NodeArg*> outputs_args_sets;
+  outputs_args_sets.reserve(graph_outputs.size() + new_output_names.size());
+  fill_node_args(graph, graph_outputs, new_output_names, outputs_args_sets);
+
+  graph.SetInputs(inputs_args_sets);
+  graph.SetOutputs(outputs_args_sets);
+  graph.SetGraphResolveNeeded();
+  graph.SetGraphProtoSyncNeeded();
+
+  return graph.Resolve();
 }
 
 // This function inserts WaitEvent's and RecordEvent's to the input graph for
@@ -570,7 +606,7 @@ Status TransformGraphForPipeline(
     backward_waited_event_name,
     forward_record_output_name,
     backward_wait_output_name));
-  
+
   // Different stages have different patterns of Send & Recv.
   // For different patterns, we add different WaitEvent and Record.
   //
@@ -691,32 +727,356 @@ Status TransformGraphForPipeline(
     ));
   }
 
-  auto fill_node_args = [&](const Graph& graph,
-                            const std::vector<const NodeArg*>& existed_node_args,
-                            std::vector<std::string>& new_node_arg_names,
-                            std::vector<const NodeArg*>& merged_node_args) {
-    merged_node_args.insert(merged_node_args.end(), existed_node_args.begin(), existed_node_args.end());
-    for (auto& name : new_node_arg_names) {
-      merged_node_args.push_back(graph.GetNodeArg(name));
+  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, new_input_names, new_output_names));
+  return Status::OK();
+}
+
+// This function is used when you want to create a scalar constant in a graph.
+// It may create a NodeArg so that other Node can references its value.
+// It also cerates an initializer to store its value.
+template <typename T>
+void AddNewScalarNodeArgAndInitializer(Graph& graph,
+                                 const std::string& op_name,
+                                 onnx::TensorProto_DataType type,
+                                 T data,
+                                 std::vector<NodeArg*>& new_node_args,
+                                 std::vector<std::string>& new_names) {
+  AddNewNodeArg(graph, op_name, type, new_node_args, new_names);
+
+  ONNX_NAMESPACE::TensorProto proto_data;
+  proto_data.set_name(new_names.back());
+  proto_data.set_data_type(type);
+
+  switch (type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      proto_data.add_int32_data(static_cast<int32_t>(data));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      proto_data.add_int64_data(static_cast<int64_t>(data));
+      break;
+    default:
+      ORT_THROW("pipeline partition unsupported 'type' value: ", type);
+  }
+  graph.AddInitializedTensor(proto_data);
+}
+
+// split the graph into disconnected subgraph based on provided CutInfo
+common::Status SplitGraph(Graph& graph,
+                          std::vector<TrainingSession::TrainingConfiguration::CutInfo> split_edge_groups,
+                          std::vector<Node*>& send_nodes,
+                          std::vector<Node*>& recv_nodes) {
+  std::vector<std::string> new_input_names;
+  std::vector<std::string> new_output_names;
+
+  // updated_node_args keeps track of the mapping between the original node_arg and its corresponding updated
+  // node_arg after send and recv node is added. As multiple partitions can happen, and a single node_arg
+  // can belong to different partition, updated_node_args always keeps track of the latest updated node_arg.
+  // Below is one example of how this works using update_node_args:
+  //    there are three edges in graph, specified as nodeA->nodeB, nodeA->nodeC, and nodeA->nodeD.
+  //    those edges all share the same node_arg.
+  //    but nodeA, nodeB belong to parition0, nodeC belongs to parition1, and nodeD belongs to parition2.
+  //    This means we need to cut edge nodeA->nodeC for the first partition and nodeA->nodeD for the second partition.
+  //
+  //    During the first cut, we identify the edge nodeA->nodeC, for this edge, based on the origional node_arg,
+  //    we create a new node_arg, called updated_node_arg. The inserted send node will take the original node_arg
+  //    as input and the inserted recv node will take the updated_node_arg as the output.
+  //    And we update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg
+  //
+  //    Now during the second cut, we need to cut the edge nodeA->nodeD. Noted that as the cut is performed in sequential,
+  //    the second cut is performed based on the graph modified after the first cut. This means, the input node_arg for
+  //    nodeD shouldn't come from nodeA anymore, as nodeA now residents in partition0, which is a disconnected partition.
+  //    Instead, the input node_arg of nodeD should come from the updated version: updated_node_arg from partition1.
+  //    By using the updated_node_args map, we can retrieve updated_node_arg from original_node_arg, and use that as the
+  //    newly inserted send's input. Also, to keep this on going for any following cut, we create an updated_node_arg_v2,
+  //    and update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg_v2
+  std::map<NodeArg*, NodeArg*> updated_node_args;
+  for (size_t index = 0; index < split_edge_groups.size(); ++index) {
+    // each entry in split_edge_groups represents a partition cut. Each cut can contain the split of
+    // several edges.
+    auto& edgeIds = split_edge_groups[index];
+
+    // for each cut, record the inserted input/output args.
+    std::vector<NodeArg*> send_input_args;
+    std::vector<NodeArg*> send_output_args;
+    std::vector<NodeArg*> recv_input_args;
+    std::vector<NodeArg*> recv_output_args;
+
+    auto cut_index_str = std::to_string(index);
+    // add input node_arg and initializer for send/recv
+    AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                      "send_input_signal" + cut_index_str,
+                                      ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                      true, /* initializer data */
+                                      send_input_args,
+                                      new_input_names);
+    AddNewScalarNodeArgAndInitializer<bool>(graph,
+                                      "recv_input_signal" + cut_index_str,
+                                      ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                                      true, /* initializer data */
+                                      recv_input_args,
+                                      new_input_names);
+
+    AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                      "send_dst_rank" + cut_index_str,
+                                      ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                      index + 1, /* initializer data */
+                                      send_input_args,
+                                      new_input_names);
+    AddNewScalarNodeArgAndInitializer<size_t>(graph,
+                                      "recv_src_rank" + cut_index_str,
+                                      ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                                      index, /* initializer data */
+                                      recv_input_args,
+                                      new_input_names);
+    // add output node_arg for send/recv
+    AddNewNodeArg(graph, "send_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                  send_output_args, new_output_names);
+    AddNewNodeArg(graph, "receive_output_signal" + cut_index_str, ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+                  recv_output_args, new_output_names);
+
+    // add attribute data for send/recv
+    ONNX_NAMESPACE::AttributeProto tag;
+    tag.set_name("tag");
+    tag.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+    // currently hard-coded all tag to be 0. May need to change when multiple GPU stream is used.
+    tag.set_i(static_cast<int64_t>(0));
+
+    ONNX_NAMESPACE::AttributeProto element_types;
+    element_types.set_name("element_types");
+    element_types.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+
+    // for each edge in this group, perform edge cut
+    for (auto& id : edgeIds) {
+      // find node whose output contains id.node_arg_name
+      auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
+      if (!producer_node) {
+        ORT_THROW("Cannot find producer node of node_arg with name: ", id.node_arg_name, ". Wrong cutting infomation.");
+      }
+
+      // once we find out the producer node for id.node_arg_name, find which output index that leads
+      // to id.node_arg_name
+      int upstream_nodes_output_index{-1};
+      producer_node->ForEachWithIndex(
+          producer_node->OutputDefs(),
+          [&](const NodeArg& def, size_t index) {
+            if (def.Name() == id.node_arg_name) {
+              upstream_nodes_output_index = static_cast<int>(index);
+            }
+            return Status::OK();
+          });
+
+      if (upstream_nodes_output_index < 0) {
+        ORT_THROW("Node with name: ", producer_node->Name(),
+                  " doesn't have an output node_arg with name ", id.node_arg_name);
+      }
+
+      size_t idx = static_cast<size_t>(upstream_nodes_output_index);
+
+      // original node_arg pointer from the origin graph. This serves as the key in the
+      // updated_node_arg map and any reference for original node_arg name
+      auto* original_node_arg = producer_node->MutableOutputDefs()[idx];
+
+      // updated node_arg pointer from previous partition. This is the new arg_node the
+      // current inserted send node will take as input node_arg.
+      auto updated_node_arg = producer_node->MutableOutputDefs()[idx];
+      auto exiting_updated_node_arg = updated_node_args.find(original_node_arg);
+      if (exiting_updated_node_arg != updated_node_args.end()) {
+        updated_node_arg = exiting_updated_node_arg->second;
+      }
+
+      send_input_args.push_back(updated_node_arg);
+
+      auto dtype = original_node_arg->TypeAsProto()->tensor_type().elem_type();
+      switch (dtype) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+          element_types.add_ints(static_cast<int64_t>(1));
+          break;
+        default:
+          // Assume all tensors are of type float.
+          // TODO: update if graph supports other data type.
+          ORT_THROW("pipeline partition unsupported 'type' value: ", dtype);
+      }
+
+      auto& new_receive_output = CreateNodeArg(graph, updated_node_arg);
+      const auto old_shape = *(updated_node_arg->Shape());
+      new_receive_output.SetShape(old_shape);
+      recv_output_args.push_back(&new_receive_output);
+
+      // add value info for this newly added receive_output, for shape propagation
+      // when training this partition.
+      graph.AddValueInfo(&new_receive_output);
+
+      // update updated_node_args with the newly created node_arg
+      updated_node_args[original_node_arg] = &new_receive_output;
+
+      // deal with shape inference for newly added edge
+      auto& output_edge_name = original_node_arg->Name();
+
+      // deal with updating the consumer's input node_args
+      std::vector<Node*> consumer_nodes;
+      if (id.consumer_nodes.has_value()) {
+        for(auto& consumer_node_id : id.consumer_nodes.value()){
+          consumer_nodes.push_back(graph.GetMutableProducerNode(consumer_node_id));
+        }
+      } else {
+        consumer_nodes = graph.GetMutableConsumerNodes(output_edge_name);
+      }
+
+      for (auto consumer_node : consumer_nodes) {
+        for (auto& input : consumer_node->MutableInputDefs()) {
+          if (input->Name() == output_edge_name) {
+            input = &new_receive_output;
+            break;
+          }
+        }
+      }
     }
-  };
+    const int num_attributes = 2;  // two attributes: tag and element_types
+    NodeAttributes attributes;
+    attributes.reserve(num_attributes);
+    attributes[tag.name()] = tag;
+    attributes[element_types.name()] = element_types;
 
-  const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
-  std::vector<const NodeArg*> inputs_args_sets;
-  inputs_args_sets.reserve(graph_inputs.size() + new_input_names.size());
-  fill_node_args(graph, graph_inputs, new_input_names, inputs_args_sets);
+    auto& send_node = graph.AddNode(graph.GenerateNodeName("Send"),
+                                    "Send",
+                                    "",
+                                    send_input_args,
+                                    send_output_args, /* output */
+                                    &attributes,      /* attribute */
+                                    kMSDomain);
 
-  const std::vector<const NodeArg*>& graph_outputs = graph.GetOutputs();
-  std::vector<const NodeArg*> outputs_args_sets;
-  outputs_args_sets.reserve(graph_outputs.size() + new_output_names.size());
-  fill_node_args(graph, graph_outputs, new_output_names, outputs_args_sets);
+    send_nodes.push_back(&send_node);
 
-  graph.SetInputs(inputs_args_sets);
-  graph.SetOutputs(outputs_args_sets);
+    auto& recv_node = graph.AddNode(graph.GenerateNodeName("Recv"),
+                                    "Recv",
+                                    "",
+                                    recv_input_args,
+                                    recv_output_args, /* output */
+                                    &attributes,      /* attribute */
+                                    kMSDomain);
+    recv_nodes.push_back(&recv_node);
+  }
+
+  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, new_input_names, new_output_names));
+  return Status::OK();
+}
+
+Status FindAllConnectedNodes(Graph& graph,
+                             const Node* node,
+                             std::vector<const Node*>& connected_nodes,
+                             std::set<const NodeArg*>& connected_inputs,
+                             std::set<const NodeArg*>& connected_outputs) {
+  ORT_THROW_IF_ERROR(node->ForEachWithIndex(
+      node->InputDefs(),
+      [&](const NodeArg& node_arg, size_t /*index*/) {
+        if (graph.IsInputsIncludingInitializers(&node_arg)) {
+          connected_inputs.insert(&node_arg);
+        } else {
+          const Node* producer_node = graph.GetProducerNode(node_arg.Name());
+          if (producer_node == nullptr) {
+            // got nullptr as producer node. This could be because the input is a constant op which will be optimized
+            // away. Print out this information and continue.
+            LOGS_DEFAULT(WARNING) << "Cannot find producer node for node_arg: " << node_arg.Name() << ". Skipping this node.";
+          } else {
+            connected_nodes.push_back(producer_node);
+          }
+        }
+        return Status::OK();
+      }));
+
+  ORT_THROW_IF_ERROR(node->ForEachWithIndex(
+      node->OutputDefs(),
+      [&](const NodeArg& node_arg, size_t /*index*/) {
+        if (!graph.IsOutput(&node_arg)) {
+          std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
+          connected_nodes.insert(std::end(connected_nodes), consumer_nodes.begin(), consumer_nodes.end());
+
+        } else {
+          connected_outputs.insert(&node_arg);
+        }
+        return Status::OK();
+      }));
+  return Status::OK();
+}
+
+// traverse the graph from start_node to get the set of nodes contains in this disconnected subgraph
+common::Status GenerateSubgraph(Graph& graph, const Node* start_node) {
+  std::queue<const Node*> node_queue;
+  node_queue.push(start_node);
+
+  std::set<const Node*> visited_nodes;
+  std::set<const NodeArg*> visited_inputs;
+  std::set<const NodeArg*> visited_outputs;
+
+  // BFS graph traverse
+  while (!node_queue.empty()) {
+    auto node = node_queue.front();
+    node_queue.pop();
+    if (visited_nodes.count(node) == 0) {
+      visited_nodes.insert(node);
+      std::vector<const Node*> connected_nodes;
+      ORT_THROW_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
+
+      for (auto n : connected_nodes) {
+        ORT_ENFORCE(n!=nullptr, "Found nullptr in searching for connected nodes");
+        node_queue.push(n);
+      }
+    }
+  }
+  std::set<NodeIndex> visited_node_index;
+  for (auto n : visited_nodes) {
+    visited_node_index.insert(n->Index());
+  }
+
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  // reverse iterate the nodes in tolopogical order, and delete those not visited
+  for (auto it = node_topology_list.rbegin(); it != node_topology_list.rend(); it++){
+    if (visited_node_index.count(*it)==0){
+      graph.RemoveNode(*it);
+    }
+  }
+
+  // update the grah with only visited inputs and outputs
+  graph.SetInputs({visited_inputs.begin(), visited_inputs.end()});
+  graph.SetOutputs({visited_outputs.begin(), visited_outputs.end()});
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
 
   return graph.Resolve();
+}
+
+Status ApplyPipelinePartitionToMainGraph(
+    Graph& graph,
+    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
+    size_t pipeline_stage_id,
+    size_t num_pipeline_stage) {
+  size_t split_count = cut_info.size();
+
+  if (num_pipeline_stage != split_count + 1) {
+    ORT_THROW("Wrong pipeline partition cutting info. Total pipeline stage number is ",
+              num_pipeline_stage,
+              ", cut info length is: ",
+              split_count);
+  }
+
+  std::vector<Node *> send_nodes, recv_nodes;
+  send_nodes.reserve(split_count);
+  recv_nodes.reserve(split_count);
+  ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
+
+  if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
+    ORT_THROW("Split error: not all cut has Send and Recv inserted. Send node count: ",
+    send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
+  }
+
+  if (pipeline_stage_id < split_count) {
+    ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, send_nodes[pipeline_stage_id]));
+  } else {
+    ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, recv_nodes.back()));
+  }
+  return Status::OK();
 }
 
 }  // namespace training
