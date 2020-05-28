@@ -136,7 +136,7 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_Scalar) {
 }
 
 // quantize with scalar data
-TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_With_Zero_Point) {
+TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
