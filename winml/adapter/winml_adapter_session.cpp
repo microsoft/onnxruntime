@@ -16,9 +16,9 @@
 #include "winml_adapter_model.h"
 #include "core/framework/utils.h"
 
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 #include "abi_custom_registry_impl.h"
-#ifdef USE_DML
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
 #endif USE_DML
 
@@ -162,6 +162,7 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterGraphTransformers, _In_ OrtSession* s
 inline std::list<std::shared_ptr<onnxruntime::CustomRegistry>>
 GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
   if (registry != nullptr) {
+#ifdef USE_DML
     // Down-cast to the concrete type.
     // The only supported input is the AbiCustomRegistry type.
     // Other implementations of IMLOperatorRegistry are forbidden.
@@ -170,6 +171,7 @@ GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
 
     // Get the ORT registry
     return abi_custom_registry->GetRegistries();
+#endif  // USE_DML
   }
   return {};
 }
@@ -190,8 +192,10 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* sess
 
 ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry) {
   API_IMPL_BEGIN
+#ifdef USE_DML
   auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
   *registry = impl.Detach();
+#endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }

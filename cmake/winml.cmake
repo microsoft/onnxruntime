@@ -172,12 +172,12 @@ list(APPEND winml_lib_api_ort_files
   ${winml_lib_api_ort_dir}/pch.h
     )
 
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   list(APPEND winml_lib_api_ort_files
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
     ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
     )
-#endif()
+endif()
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
@@ -221,9 +221,9 @@ add_dependencies(winml_lib_ort winml_api_native)
 add_dependencies(winml_lib_ort winml_api_native_internal)
 
 # Link libraries
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_ort)
-#endif()
+endif()
 target_link_libraries(winml_lib_ort PRIVATE wil)
 target_link_libraries(winml_lib_ort INTERFACE winml_lib_api)
 target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
@@ -245,12 +245,12 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/winml_adapter_session.cpp
     )
 
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   list(APPEND winml_adapter_files
     ${winml_adapter_dir}/abi_custom_registry_impl.cpp
     ${winml_adapter_dir}/abi_custom_registry_impl.h
     )
-#endif()
+endif()
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -277,9 +277,9 @@ set_target_properties(winml_adapter
 
 # Link libraries
 target_link_libraries(winml_adapter PRIVATE wil)
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
-#endif()
+endif()
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml winml_adapter)
@@ -359,9 +359,9 @@ target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 wil winml_lib_com
 
 get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
 
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_image)
-#endif(onnxruntime_USE_DML)
+endif(onnxruntime_USE_DML)
 
 
 ###########################
@@ -464,9 +464,9 @@ add_dependencies(winml_lib_api winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_api PRIVATE wil winml_lib_telemetry)
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api)
-#endif(onnxruntime_USE_DML)
+endif(onnxruntime_USE_DML)
 
 ###########################
 # Add winml_lib_common
@@ -519,9 +519,9 @@ target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(winml_lib_common PRIVATE ${winml_lib_common_dir}/inc)
 target_precompiled_header(winml_lib_common inc/pch.h)
 
-#if (onnxruntime_USE_DML)
+if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_common)
-#endif()
+endif()
 
 ###########################
 # Add winml_dll
