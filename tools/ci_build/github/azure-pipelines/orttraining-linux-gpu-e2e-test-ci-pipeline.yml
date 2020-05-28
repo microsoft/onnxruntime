@@ -20,7 +20,7 @@ jobs:
         -x " \
           --config RelWithDebInfo \
           --enable_training \
-          --update --build
+          --update --build \
           "
     displayName: 'Build'
 
@@ -36,6 +36,7 @@ jobs:
             --binary_dir /build/RelWithDebInfo \
             --model_root /training_e2e_test_data/models
     displayName: 'Run batch size test'
+    condition: succeededOrFailed() # ensure all tests are run
 
   - script: |
       docker run \
@@ -50,5 +51,6 @@ jobs:
             --model_root /training_e2e_test_data/models \
             --training_data_root /training_e2e_test_data/data
     displayName: 'Run convergence test'
+    condition: succeededOrFailed() # ensure all tests are run
 
   - template: templates/clean-agent-build-directory-step.yml
