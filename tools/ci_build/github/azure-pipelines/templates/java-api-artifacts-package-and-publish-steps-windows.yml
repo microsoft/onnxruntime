@@ -9,6 +9,8 @@ steps:
     - task: CmdLine@2
       inputs:
         script: |
+          echo "Java version"
+          java --version
           set NATIVE_FOLDER=$(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\ai\onnxruntime\native\win-x64
           mkdir %NATIVE_FOLDER%
           echo "Directories created"
