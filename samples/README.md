@@ -59,16 +59,24 @@ For a list of available dockerfiles and published images to help with getting st
 * [MNIST inference](../java/src/test/java/sample/ScoreMNIST.java)
 
 ## Node.js
-* [Basic Usage](./nodejs/01_basic-usage)
-* [Create Tensor](./nodejs/01_basic-usage)
-* [Create InferenceSession](./nodejs/01_basic-usage)
-<!--
-### [03 Create Tensor (Advanced)](./03_create-tensor-advanced/README.md)
+This section contains several samples that demonstrate how to use onnxruntime Node.js binding.
 
-This example is a demonstration of advanced usage of creating tensors.
+### Samples
+
+* [Basic Usage](./nodejs/01_basic-usage/) - a demonstration of basic usage of ONNX Runtime Node.js binding.
+
+* [Create Tensor](./nodejs/02_create-tensor/) - a demonstration of basic usage of creating tensors.
+
+<!--
+* [Create Tensor (Advanced)](./nodejs/03_create-tensor-advanced/) - a demonstration of advanced usage of creating tensors.
 -->
 
-In each example's implementation subdirectory, run
+* [Create InferenceSession](./nodejs/04_create-inference-session/) - shows how to create `InferenceSession` in different ways.
+
+### Usage
+
+In each sample's implementation subdirectory, run
+
 ```
 npm install
 node ./

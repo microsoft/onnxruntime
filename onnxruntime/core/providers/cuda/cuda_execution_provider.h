@@ -2,15 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "cuda_pch.h"
-#include "core/platform/ort_mutex.h"
+
+#include <set>
+#include <vector>
+
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/execution_provider.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/framework/bfc_arena.h"
-#include "shared_inc/cuda_utils.h"
-#include <deque>
+#include "core/framework/execution_provider.h"
+#include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_pch.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 
@@ -96,11 +99,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy);
     ~PerThreadContext();
 
-    cublasHandle_t CublasHandle();
+    cublasHandle_t CublasHandle() const {
+      return cublas_handle_;
+    }
 
-    cudnnHandle_t CudnnHandle();
+    cudnnHandle_t CudnnHandle() const {
+      return cudnn_handle_;
+    }
 
-    curandGenerator_t CurandGenerator();
+    curandGenerator_t CurandGenerator() const {
+      return curand_generator_;
+    }
 
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
@@ -149,16 +158,34 @@ class CUDAExecutionProvider : public IExecutionProvider {
     AllocatorPtr allocator_;
   };
 
-  // thread local context during execution
-  using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::shared_ptr<PerThreadContext>>;
-  static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_map_;
+  using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
+  // thread local PerThreadContext cache
+  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
+    thread_local const auto per_thread_context_cache = std::make_shared<PerThreadContextMap>();
+    return per_thread_context_cache;
+  }
 
-  // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> retired_context_pool_;
-  mutable OrtMutex context_pool_mutex_;
+  struct PerThreadContextState {
+    // contexts that are currently active
+    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
+    // contexts available for reuse
+    std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
+    // weak references to thread local caches from which this CUDAExecutionProvider instance's entry should be removed
+    // upon destruction
+    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+        caches_to_update_on_destruction;
+    // synchronizes access to PerThreadContextState members
+    OrtMutex mutex;
+  };
+
+  // The execution provider maintains the PerThreadContexts in this structure.
+  // Synchronization is required to update the contained structures.
+  // On the other hand, access to an individual PerThreadContext is assumed to be from a single thread at a time,
+  // so synchronization is not required for that.
+  mutable PerThreadContextState context_state_;
 
   PerThreadContext& GetPerThreadContext() const;
-  void ReleasePerThreadStuffs() const;
+  void ReleasePerThreadContext() const;
 };
 
 }  // namespace onnxruntime

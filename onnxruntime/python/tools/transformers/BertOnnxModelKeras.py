@@ -11,12 +11,10 @@ import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from BertOnnxModelTF import BertOnnxModelTF
-
 logger = logging.getLogger(__name__)
 
 
 class BertOnnxModelKeras(BertOnnxModelTF):
-
     def __init(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
 
@@ -137,10 +135,17 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             is_same_root, reshape_nodes = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent,
                                                                      output_name_to_node)
             if is_same_root:
-                mask_index = self.process_mask(mask_nodes[-1].input[0])
+                mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
-                self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                           parent.output[0], reshape_qkv.output[0])
+                attention_node = self.attention_fusion.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v,
+                                                                             add_q, add_k, add_v, parent.output[0],
+                                                                             reshape_qkv.output[0])
+                if attention_node is None:
+                    continue
+
+                self.add_node(attention_node)
+                attention_count += 1
+
                 nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
                 nodes_to_remove.extend(qk_nodes)
                 nodes_to_remove.extend(q_nodes)
@@ -148,7 +153,6 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 nodes_to_remove.extend(v_nodes)
                 nodes_to_remove.extend(mask_nodes)
                 nodes_to_remove.extend(reshape_nodes)
-                attention_count += 1
                 nodes_to_remove.append(extra_reshape_0)
                 self.replace_node_input(add, extra_reshape_0.output[0], matmul.output[0])
             else:
@@ -281,7 +285,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                     continue
                 sub_node, cast_node, slice_node, unsqueeze_node = mask_path
 
-                mask_input_name = next(iter(self.mask_indice))
+                mask_input_name = self.attention_mask.get_first_mask()
                 if unsqueeze_node.input[0] != mask_input_name:
                     print("Cast input {} is not mask input{}".format(unsqueeze_node.input[0], mask_input_name))
                     continue
@@ -374,90 +378,3 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         logger.info(f"Remove {reshape_removed} Reshape nodes.")
 
         self.prune_graph()
-
-    """
-     Fuse Gelu with Erf into one node:
-                   +------------------------------------------+
-                   |                                          |
-                   |                                          v
-                [root] --> Div -----> Erf  --> Add --> Mul -->Mul
-                          (B=1.4142...)       (A=1)   (A=0.5)
-
-     Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
-    """
-
-    def fuse_gelu_with_elf(self):
-        input_name_to_nodes = self.input_name_to_nodes()
-        output_name_to_node = self.output_name_to_node()
-
-        nodes_to_remove = []
-        nodes_to_add = []
-
-        for node in self.get_nodes_by_op_type('Erf'):
-            erf_node = node
-
-            if erf_node.output[0] not in input_name_to_nodes:
-                continue
-            children = input_name_to_nodes[erf_node.output[0]]
-            if len(children) != 1 or children[0].op_type != 'Add':
-                continue
-            add_after_erf = children[0]
-
-            if not self.has_constant_input(add_after_erf, 1):
-                continue
-
-            if add_after_erf.output[0] not in input_name_to_nodes:
-                continue
-            children = input_name_to_nodes[add_after_erf.output[0]]
-            if len(children) != 1 or children[0].op_type != 'Mul':
-                continue
-            mul_after_erf = children[0]
-
-            if not self.has_constant_input(mul_after_erf, 0.5):
-                continue
-
-            if mul_after_erf.output[0] not in input_name_to_nodes:
-                continue
-            children = input_name_to_nodes[mul_after_erf.output[0]]
-            if len(children) != 1 or children[0].op_type != 'Mul':
-                continue
-            mul = children[0]
-
-            div = self.match_parent(erf_node, 'Div', 0, output_name_to_node)
-            if div is None:
-                continue
-
-            sqrt_node = None
-            if self.find_constant_input(div, 1.4142, delta=0.001) != 1:
-                sqrt_node = self.match_parent(div, 'Sqrt', 1, output_name_to_node)
-                if sqrt_node is None:
-                    continue
-                if not self.has_constant_input(sqrt_node, 2.0):
-                    continue
-
-            root_node = self.get_parent(div, 0, output_name_to_node)
-            if root_node is None:
-                continue
-
-            if root_node.output[0] not in mul.input:
-                continue
-
-            subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul]
-            if sqrt_node:
-                subgraph_nodes.append(sqrt_node)
-
-            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul.output[0]], input_name_to_nodes,
-                                              output_name_to_node):
-                continue
-
-            nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node('Gelu', inputs=[root_node.output[0]], outputs=[mul.output[0]])
-            gelu_node.domain = "com.microsoft"
-            nodes_to_add.append(gelu_node)
-
-        self.remove_nodes(nodes_to_remove)
-        self.add_nodes(nodes_to_add)
-        if len(nodes_to_add) > 0:
-            logger.info(f"Fused Gelu count:{len(nodes_to_add)}")
-        else:
-            super().fuse_gelu_with_elf()
