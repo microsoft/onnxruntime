@@ -27,6 +27,8 @@ static float RoundHalfToEven(float input) {
   return result;
 }
 
+static const size_t PARALLEL_CRITIA = 40960;
+
 // formula is Y = X / Scale + ZeroPoint
 template <typename T>
 Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -69,6 +71,16 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   // quantize the data
   auto* output = y.template MutableData<T>();
+
+// Add _DEBUG check because unit test data set is small. With it, unit test will:
+// 1. check single thread in non Debug build
+// 2. check multi-thread in DEBUG build
+#ifndef _DEBUG
+  if (num_of_elements < PARALLEL_CRITIA) {
+    MlasQuantizeLinear(x_data, output, num_of_elements, scale, zero_point);
+    return Status::OK();
+  }
+#endif
 
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
   concurrency::ThreadPool::TryParallelFor(tp,
