@@ -1001,6 +1001,11 @@ if (onnxruntime_BUILD_JAVA)
   include(onnxruntime_java.cmake)
 endif()
 
+if (onnxruntime_BUILD_NODEJS)
+  message(STATUS "Node.js Build is enabled")
+  include(onnxruntime_nodejs.cmake)
+endif()
+
 # some of the tests rely on the shared libs to be
 # built; hence the ordering
 if (onnxruntime_BUILD_UNIT_TESTS)

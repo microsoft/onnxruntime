@@ -525,6 +525,11 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
+  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+  }
+
   /** Gets the Graph inputs that are initializers
   These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
@@ -536,6 +541,10 @@ class Graph {
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
+
+  bool IsOutput(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
+  }
 
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
@@ -556,6 +565,8 @@ class Graph {
   These are the values that are neither Graph inputs nor outputs.
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+
+  void AddValueInfo(const NodeArg* new_value_info);
 
   /** Gets the Node with the specified node index.
   @returns Node instance if found. nullptr if node_index is invalid or node has been freed.
