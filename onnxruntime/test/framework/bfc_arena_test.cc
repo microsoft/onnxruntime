@@ -165,10 +165,11 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
       a.Alloc(sizeof(float) * (1 << 20));
       FAIL() << "Allocation should have thrown";
     } catch (const OnnxRuntimeException& ex) {
-      EXPECT_THAT(ex.what(),
 #ifdef GTEST_USES_POSIX_RE
+      EXPECT_THAT(ex.what(),
                   testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
 #else
+      EXPECT_THAT(ex.what(),
                   testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
 #endif
     } catch (...) {
