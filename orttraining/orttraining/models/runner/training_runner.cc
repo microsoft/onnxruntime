@@ -401,7 +401,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventId(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardWaitedEventId(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -414,7 +418,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_waited_event_after_recv_name);
     OrtValue event_id;
-    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventIdAfterRecv(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardWaitedEventIdAfterRecv(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -427,7 +435,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_recorded_event_before_send_name);
     OrtValue event_id;
-    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventIdBeforeSend(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardRecordedEventIdBeforeSend(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -440,7 +452,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
-    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventId(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetForwardRecordedEventId(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -453,7 +469,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
-    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardWaitedEventId(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -466,7 +486,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_waited_event_after_recv_name);
     OrtValue event_id;
-    const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventIdAfterRecv(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    const int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardWaitedEventIdAfterRecv(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -479,7 +503,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_recorded_event_before_send_name);
     OrtValue event_id;
-    int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventIdBeforeSend(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardRecordedEventIdBeforeSend(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -492,7 +520,11 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
     ORT_ENFORCE(params_.pipeline_parallel_size > 1);
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
-    int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(pipeline_context_.pipeline_stage_id, static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
+    int64_t id =
+        (mode == EvaluateStep) ? -1
+                               : pipeline_schedule_.GetBackwardRecordedEventId(
+                                     pipeline_context_.pipeline_stage_id,
+                                     static_cast<int>(step_) % pipeline_context_.num_pipeline_batches);
     TrainingUtil::CreateCpuMLScalar(
         id,
         &event_id,
@@ -972,7 +1004,8 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
 
   // write to a file - the next task in CI will pick up all files with the same prefix
   const PathString perf_metrics_path =
-      params_.perf_output_dir + GetPathSep<PathChar>() + ORT_TSTR("onnxruntime_perf_metrics_") + ToPathString(display_name) + ORT_TSTR(".json");
+      params_.perf_output_dir + GetPathSep<PathChar>() + ORT_TSTR("onnxruntime_perf_metrics_") +
+      ToPathString(display_name) + ORT_TSTR(".json");
 
   std::ofstream perf_metrics_stream;
   perf_metrics_stream.open(perf_metrics_path, std::ios::out | std::ios::trunc);
