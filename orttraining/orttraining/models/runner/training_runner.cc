@@ -640,9 +640,9 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     auto& profile_context = profile::Context::GetInstance();
     profile_context.SetThreadTag(
       std::this_thread::get_id(), std::to_string(step));
+#else
+    ORT_UNUSED_PARAMETER(step);
 #endif
-    // Dummy use of step to avoid warning when the code above is disabled. 
-    ORT_ENFORCE(step + 1 > 0);
     status = session_.Run(
       RunOptions(),
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -651,14 +651,14 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches));
   }, worker_id, step_);
 
-  // Wait all workers to finish this around of pipeline parallism. 
+  // Wait all workers to finish this round of pipeline parallelism. 
   // The last batch in a pipeline collects gradient and update the model.
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
 
   // If the updating thread fails, we return with its error status.
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_THROW_IF_ERROR(status);
 
   // Copy back from thread-specific buffer to main thread's memory.
   fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
@@ -726,9 +726,9 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     auto& profile_context = profile::Context::GetInstance();
     profile_context.SetThreadTag(
       std::this_thread::get_id(), std::to_string(step));
+#else
+    ORT_UNUSED_PARAMETER(step);
 #endif
-    // Dummy use of step to avoid warning when the code above is disabled. 
-    ORT_ENFORCE(step + 1 > 0);
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
     auto status = session_.Run(
@@ -737,7 +737,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    ORT_THROW_IF_ERROR(status);
   }, worker_id, step_);
 
   // Add one after process one batch.
