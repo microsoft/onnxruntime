@@ -1096,28 +1096,42 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
                                 fetch_names,
                                 fetches);
 
-    // Always use the first thread to evaluate.
-    const size_t worker_id = 0;
-    // Wait for the previous work to finish its job.
-    // Its resource cannot be overrided when it's still working.
-    pipeline_worker_pool_.Join(worker_id);
-    // Declare Run(...)'s status in thread.
     auto status = Status::OK();
-    // Launch Run(...).
-    pipeline_worker_pool_.workers[worker_id] = std::thread([&]() {
-      RunOptions run_options;
-      run_options.only_execute_path_to_fetches = true;
-      status = session.Run(
-        run_options,
-        feed_names,
-        feeds,
-        fetch_names,
-        &fetches);
-    });
-    // Wait Run(...) to finish.
-    pipeline_worker_pool_.Join(worker_id);
+    if (params_.pipeline_parallel_size == 1) {
+      // When there is no pipeline, we always use the first thread
+      // to launch session_.Run(...) to avoid multiple activation allocations. 
 
-    ORT_RETURN_IF_ERROR(status);
+      // Always use the first thread to evaluate.
+      const size_t worker_id = 0;
+      // Wait for the previous work to finish its job.
+      // Its resource cannot be overrided when it's still working.
+      pipeline_worker_pool_.Join(worker_id);
+      // Declare Run(...)'s status in thread.
+      // Launch Run(...).
+      pipeline_worker_pool_.workers[worker_id] = std::thread([&]() {
+        RunOptions run_options;
+        run_options.only_execute_path_to_fetches = true;
+        status = session.Run(
+          run_options,
+          feed_names,
+          feeds,
+          fetch_names,
+          &fetches);
+      });
+      // Wait Run(...) to finish.
+      pipeline_worker_pool_.Join(worker_id);
+    } else {
+      // Training threads are fully used by pipeline stages.
+      // Pipeline cannot reuse training threads to do evaluation.
+      // Otherwise, deadlock may happens.
+      ORT_RETURN_IF_ERROR(status);
+          ORT_RETURN_IF_ERROR(session.Run(run_options,
+          feed_names,
+          feeds,
+          fetch_names,
+          &fetches));
+    }
+
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
