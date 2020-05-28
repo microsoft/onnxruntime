@@ -64,12 +64,12 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  nnapi::ModelBuilder builder(model_proto, nnapi_);
+  nnapi::ModelBuilder builder(model_proto);
   const auto supported_nodes_vector = builder.GetSupportedNodes();
   LOGS_DEFAULT(INFO) << "Support vector size is " << supported_nodes_vector.size();
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  if (1)
+  if (0)
     return result;
 
   // Find inputs, initializers and outputs for each supported subgraph
@@ -189,8 +189,69 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
 common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
-  (void)fused_nodes;
-  (void)node_compute_funcs;
+  for (const auto* fused_node : fused_nodes) {
+    // Reconstruct graph proto from fused node's function body
+    const auto* func_body = fused_node->GetFunctionBody();
+    if (!func_body) {
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
+    }
+    const Graph& graph_body = func_body->Body();
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
+                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+    nnapi::ModelBuilder builder(model_proto);
+    auto nnapi_model = builder.Compile();
+    nnapi_models_.emplace(fused_node->Name(), std::move(nnapi_model));
+
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
+      *state = nnapi_models_[context->node_name].get();
+      return 0;
+    };
+
+    compute_info.release_state_func = [](FunctionState state) {
+      // the `state` is a dnn::model managed by unique_ptr
+      ORT_UNUSED_PARAMETER(state);
+    };
+
+    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+      (void)state;
+      (void)api;
+      (void)context;
+      Ort::CustomOpApi ort{*api};
+      nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
+      const size_t num_inputs = ort.KernelContext_GetInputCount(context);
+      const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
+      ORT_ENFORCE(model->GetInputs().size() <= num_inputs, "Inconsistent input sizes");
+      ORT_ENFORCE(model->GetOutputs().size() == num_outputs, "Inconsistent output sizes");
+      LOGS_DEFAULT(INFO) << "Input size is " << model->GetInputs().size();
+      LOGS_DEFAULT(INFO) << "Output size is " << model->GetOutputs().size();
+
+      for (size_t i = 0; i < num_outputs; i++) {
+        const auto output_name = model->GetOutputs()[i];
+        const auto output_shape = model->GetShape(output_name);
+        std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
+        auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
+        model->SetOutputBuffer(i, ort.GetTensorMutableData<float>(output_tensor));
+      }
+
+      std::vector<float*> inputs;
+      for (size_t i = 0; i < model->GetInputs().size(); i++) {
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+        float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+        inputs.push_back(input);
+      }
+
+      model->Predict(inputs);
+      return Status::OK();
+    };
+
+    node_compute_funcs.push_back(compute_info);
+  }
   return Status::OK();
 }
 }  // namespace onnxruntime

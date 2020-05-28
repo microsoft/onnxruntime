@@ -1,7 +1,14 @@
 #include "Shaper.h"
+#include <numeric>
 
 using std::string;
 using std::vector;
+
+template <typename T>
+T Product(const std::vector<T>& v) {
+  return static_cast<T>(
+      accumulate(v.begin(), v.end(), 1, std::multiplies<T>()));
+}
 
 Shaper::len_t Shaper::total(const Shape& shape) {
   return Product(shape);
@@ -37,7 +44,8 @@ void Shaper::Conv(const std::string& input, const std::string& weight,
                   int32_t padding_top, int32_t padding_bottom, int32_t stride_x,
                   int32_t stride_y, const bool nchw, const int32_t dilation_x,
                   const int32_t dilation_y, const std::string& output) {
-  DNN_ASSERT_EQ(nchw, false);
+  // DNN_ASSERT_EQ(nchw, false);
+  (void)nchw;
   Conv(input, stride_x, stride_y, dilation_x, dilation_y, padding_left,
        padding_right, padding_top, padding_bottom, weight, output);
 }
@@ -231,11 +239,21 @@ void Shaper::FC(const std::string& input_name, const std::string& weight_name,
 void Shaper::Eltwise(const std::string& input1_name,
                      const std::string& input2_name,
                      const std::string& output_name) {
-  auto shape1 = shape_map_.at(input1_name);
-  auto shape2 = shape_map_.at(input2_name);
-  // TODO: broadcasting
-  auto output_shape = shape1.size() >= shape2.size() ? shape1 : shape2;
-  shape_map_[output_name] = output_shape;
+  auto& shape1 = shape_map_.at(input1_name);
+  auto& shape2 = shape_map_.at(input2_name);
+
+  // broadcasting support
+  bool shape1IsBigger = shape1.size() >= shape2.size();
+  auto max_shape = shape1IsBigger ? shape1 : shape2;
+  auto min_shape = shape1IsBigger ? shape2 : shape1;
+  for (int i = (int)max_shape.size() - 1, j = (int)min_shape.size() - 1;
+       i >= 0 && j >= 0;
+       i--, j--) {
+    if (max_shape[i] < min_shape[j])
+      max_shape[i] = min_shape[j];
+  }
+
+  shape_map_[output_name] = max_shape;
 }
 
 void Shaper::Eltwise(const std::string& input1_name,
@@ -293,9 +311,9 @@ void Shaper::Clear() {
   shape_map_.clear();
 }
 
-std::ostream& operator<<(std::ostream& os, const Shaper& shaper) {
-  for (const auto& p : shaper.shape_map_) {
-    os << (p.first + ": ") << p.second << std::endl;
-  }
-  return os;
-}
+// std::ostream& operator<<(std::ostream& os, const Shaper& shaper) {
+//   for (const auto& p : shaper.shape_map_) {
+//     os << (p.first + ": ") << p.second << std::endl;
+//   }
+//   return os;
+// }

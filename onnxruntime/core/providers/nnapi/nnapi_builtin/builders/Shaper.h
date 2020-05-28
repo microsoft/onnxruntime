@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <map>
 
 class Shaper {
  public:
@@ -86,7 +87,7 @@ class Shaper {
   inline const Shape& operator[](const std::string& key) {
     return shape_map_.at(key);
   }
-  friend std::ostream& operator<<(std::ostream& os, const Shaper& shaper);
+  //   friend std::ostream& operator<<(std::ostream& os, const Shaper& shaper);
 
  private:
   std::map<std::string, Shape> shape_map_;

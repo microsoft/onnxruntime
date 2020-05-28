@@ -5,7 +5,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/graph/onnx_protobuf.h"
-#include "model.h"
+#include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
 namespace onnxruntime {
