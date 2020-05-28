@@ -23,7 +23,7 @@
     <Folder Include="Generated Files\" />
   </ItemGroup>
 
-  <Target Name="GenerateProjection" BeforeTargets="DispatchToInnerBuilds;Build">
+  <Target Name="GenerateProjection" BeforeTargets="DispatchToInnerBuilds;Build;CoreCompile">
     <ConvertToAbsolutePath Paths="$(OnnxRuntimeBuildDirectory)">
       <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeBuildDirectoryAbs"/>
     </ConvertToAbsolutePath>
