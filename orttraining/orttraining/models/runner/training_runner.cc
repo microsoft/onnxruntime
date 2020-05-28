@@ -344,13 +344,13 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
 }
 
 // Prepare feeds for a call to one session run.
-void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
-                                              IDataLoader& training_data_loader,
-                                              DataSet& training_data,
-                                              LearningRateScheduler* lr_scheduler,
-                                              const size_t batch_index,
-                                              std::vector<std::string>& feed_names,
-                                              std::vector<MLValue>& feeds) {
+Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
+                                                IDataLoader& training_data_loader,
+                                                DataSet& training_data,
+                                                LearningRateScheduler* lr_scheduler,
+                                                const size_t batch_index,
+                                                std::vector<std::string>& feed_names,
+                                                std::vector<MLValue>& feeds) {
   // Initialize outputs of this function.
   feed_names = std::vector<std::string>();
   feeds = std::vector<MLValue>();
@@ -398,7 +398,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of the first waited event in forward pass.
   if (!pipeline_context_.forward_waited_event_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.forward_waited_event_name);
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventId(
@@ -413,7 +413,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of the second waited event in forward pass.
   if (!pipeline_context_.forward_waited_event_after_recv_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.forward_waited_event_after_recv_name);
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardWaitedEventIdAfterRecv(
@@ -428,7 +428,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of first recorded event in forward pass.
   if (!pipeline_context_.forward_recorded_event_before_send_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.forward_recorded_event_before_send_name);
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventIdBeforeSend(
@@ -443,7 +443,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of second recorded event in forward pass.
   if (!pipeline_context_.forward_recorded_event_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.forward_recorded_event_name);
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetForwardRecordedEventId(
@@ -458,7 +458,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of first waited event in backward pass.
   if (!pipeline_context_.backward_waited_event_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.backward_waited_event_name);
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventId(
@@ -473,7 +473,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of second waited event in backward pass.
   if (!pipeline_context_.backward_waited_event_after_recv_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.backward_waited_event_after_recv_name);
     OrtValue event_id;
     const int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardWaitedEventIdAfterRecv(
@@ -488,7 +488,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of first recorded event in backward pass.
   if (!pipeline_context_.backward_recorded_event_before_send_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.backward_recorded_event_before_send_name);
     OrtValue event_id;
     int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventIdBeforeSend(
@@ -503,7 +503,7 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
   // Create feed of second recorded event in backward pass.
   if (!pipeline_context_.backward_recorded_event_name.empty()) {
-    ORT_ENFORCE(params_.pipeline_parallel_size > 1);
+    ORT_RETURN_IF(params_.pipeline_parallel_size <= 1, "Internal event name should be empty if there is no pipeline.");
     feed_names.push_back(pipeline_context_.backward_recorded_event_name);
     OrtValue event_id;
     int64_t id = (mode == EvaluateStep) ? -1 : pipeline_schedule_.GetBackwardRecordedEventId(
@@ -515,6 +515,8 @@ void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
       input_allocator_);
     feeds.push_back(event_id);
   }
+
+  return Status::OK();
 }
 
 Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
@@ -612,10 +614,10 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
 }
 
 // Launch synced session.Run on the main thread.
-Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
-                                     VectorString& fetch_names,
-                                     std::vector<MLValue>& feeds,
-                                     std::vector<MLValue>& fetches) {
+void TrainingRunner::RunWithUpdate(VectorString& feed_names,
+                                   VectorString& fetch_names,
+                                   std::vector<MLValue>& feeds,
+                                   std::vector<MLValue>& fetches) {
   // Cyclically pick up a worker ID.
   const size_t worker_id = step_ % params_.pipeline_parallel_size;
 
@@ -656,7 +658,7 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
   pipeline_worker_pool_.JoinAll();
 
   // If the updating thread fails, we return with its error status.
-  ORT_RETURN_IF_ERROR(status);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
   // Copy back from thread-specific buffer to main thread's memory.
   fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
@@ -694,8 +696,6 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
   ++step_;
   // Add one after update the model once.
   ++weight_update_step_count_;
-
-  return Status::OK();
 }
 
 // Launch async session.Run on non-main thread.
@@ -731,12 +731,13 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     ORT_ENFORCE(step + 1 > 0);
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
-    ORT_THROW_IF_ERROR(session_.Run(
+    auto status = session_.Run(
       run_options,
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-      &(pipeline_worker_pool_.worker_states[worker_id].fetches)));
+      &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }, worker_id, step_);
 
   // Add one after process one batch.
@@ -816,8 +817,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             PrepareFetchNamesAndFetches(ModelUpdateStep,
                                         fetch_names,
                                         fetches));
-          ORT_RETURN_IF_ERROR(
-            RunWithUpdate(feed_names, fetch_names, feeds, fetches));
+          RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
           PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                   training_data_loader,
