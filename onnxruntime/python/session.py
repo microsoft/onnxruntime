@@ -206,6 +206,12 @@ class IOBinding:
                                                 device_id),
                                     element_type, shape, buffer_ptr)
 
+    def bind_output_name(self, name):
+        self._iobinding.bind_output_name(name)
+
+    def get_outputs(self):
+        return self._iobinding.get_outputs()
+
     def clear_binding_inputs(self):
         self._iobinding.clear_binding_inputs()
 

@@ -166,7 +166,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
 
   if (numpy_type != NPY_OBJECT) {
     //if it is not cpu tensor, need to copy to host
-    if (rtensor.Location().device.Type() != OrtDevice::CPU) {
+    if ((rtensor.Location().device.Type() != OrtDevice::CPU)) {
       if (!data_transfer_manager)
         throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
       static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
@@ -206,7 +206,7 @@ void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj);
+    GetPyObjFromTensor(rtensor, obj, nullptr);
     py_list.append(obj);
   }
   pyobjs.push_back(py_list);
@@ -613,13 +613,32 @@ void addObjectMethods(py::module& m, Environment& env) {
                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
-          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+      })
+      .def("bind_output_name", [](SessionIOBinding* io_binding, const std::string& name) -> void {
+        OrtValue mlvalue;
+        auto status = io_binding->Get()->BindOutput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
       .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearInputs();
       })
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
+      })
+      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
+        const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
+        std::vector<py::object> rfetch;
+        rfetch.reserve(outputs.size());
+        for (auto _ : outputs) {
+          if (_.IsTensor()) {
+            AddTensorAsPyObj(_, rfetch);
+          } else {
+            AddNonTensorAsPyObj(_, rfetch);
+          }
+        }
+        return rfetch;
       });
 
   py::class_<SessionOptions>
