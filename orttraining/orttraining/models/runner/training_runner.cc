@@ -1096,8 +1096,8 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
                                 fetch_names,
                                 fetches);
 
-    auto status = Status::OK();
     if (params_.pipeline_parallel_size == 1) {
+      auto status = Status::OK();
       // When there is no pipeline, we always use the first thread
       // to launch session_.Run(...) to avoid multiple activation allocations. 
 
@@ -1120,16 +1120,16 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
       });
       // Wait Run(...) to finish.
       pipeline_worker_pool_.Join(worker_id);
+      ORT_RETURN_IF_ERROR(status);
     } else {
       // Training threads are fully used by pipeline stages.
       // Pipeline cannot reuse training threads to do evaluation.
       // Otherwise, deadlock may happens.
-      ORT_RETURN_IF_ERROR(status);
-          ORT_RETURN_IF_ERROR(session.Run(run_options,
-          feed_names,
-          feeds,
-          fetch_names,
-          &fetches));
+      ORT_RETURN_IF_ERROR(session.Run(run_options,
+        feed_names,
+        feeds,
+        fetch_names,
+        &fetches));
     }
 
 
