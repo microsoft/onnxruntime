@@ -24,6 +24,7 @@ MODEL_CLASSES = {
     "distilgpt2": (GPT2LMHeadModel, GPT2Tokenizer, "distilgpt2"),
 }
 
+
 def dump_environment():
     if "OMP_NUM_THREADS" in os.environ:
         logger.info("OMP_NUM_THREADS={}".format(os.environ["OMP_NUM_THREADS"]))
@@ -94,6 +95,7 @@ def inference(model, ort_session, input_ids, past=None, total_runs=100, verify_o
             logger.warning(f'PyTorch and OnnxRuntime results are not all close.')
 
     return torch_latency, ort_latency
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -167,6 +169,7 @@ def setup_logger(verbose=True):
 
     logger.setLevel(logging_level)
 
+
 def export_onnx(model, config, tokenizer, device, output_dir):
     model.to(device)
 
@@ -186,7 +189,7 @@ def export_onnx(model, config, tokenizer, device, output_dir):
 
     input_names = ['input_ids']
 
-    # input_ids has only one word for model with past state. 
+    # input_ids has only one word for model with past state.
     # Shape of input tensors:
     #    input_ids: (batch_size, 1)
     #    past_{i}:  (2, batch_size, num_heads, seq_len, hidden_size/num_heads)
@@ -205,19 +208,19 @@ def export_onnx(model, config, tokenizer, device, output_dir):
         dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len'}
     logger.debug(f"vocab_size:{model.config.vocab_size}")
 
-    dummy_input_ids = torch.randint(low=0, high=model.config.vocab_size - 1, size=(1, 1), dtype=torch.int64, device=device)
+    dummy_input_ids = torch.randint(low=0,
+                                    high=model.config.vocab_size - 1,
+                                    size=(1, 1),
+                                    dtype=torch.int64,
+                                    device=device)
     logger.debug(f"dummy_input_ids={dummy_input_ids}")
     export_inputs = (dummy_input_ids, tuple(dummy_past))
-
 
     export_model_path = os.path.join(output_dir, 'gpt2_past.onnx')
 
     # Let's run performance test on PyTorch before updating environment variable.
-    input_ids = dummy_input_ids
-    past = dummy_past
-
     with torch.no_grad():
-        outputs = model(input_ids=input_ids, past=past)
+        outputs = model(input_ids=dummy_input_ids, past=dummy_past)
 
     logger.debug(f"present_0 shape={outputs[1][0].shape}")
 
@@ -232,6 +235,7 @@ def export_onnx(model, config, tokenizer, device, output_dir):
                       do_constant_folding=True,
                       verbose=False)
     return export_model_path
+
 
 def main():
     args = parse_arguments()
@@ -276,8 +280,7 @@ def main():
         m.save_model_to_file(onnx_model_path)
 
     if args.use_gpu and 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
-        logger.warning(
-            "Please install onnxruntime-gpu package to test GPU inference.")
+        logger.warning("Please install onnxruntime-gpu package to test GPU inference.")
 
     sess_options = onnxruntime.SessionOptions()
     sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
@@ -288,11 +291,26 @@ def main():
 
     for batch_size in args.batch_sizes:
         for sequence_length in args.sequence_lengths:
-            past_shape = [2, batch_size, config.num_attention_heads, sequence_length, int(config.hidden_size / config.num_attention_heads)]
+            past_shape = [
+                2, batch_size, config.num_attention_heads, sequence_length,
+                int(config.hidden_size / config.num_attention_heads)
+            ]
             dummy_past = [torch.rand(past_shape, dtype=torch.float32, device=device) for _ in range(config.n_layer)]
-            dummy_input_ids = torch.randint(low=0, high=model.config.vocab_size - 1, size=(batch_size, 1), dtype=torch.int64, device=device)
-            torch_latency, ort_latency = inference(model, session, dummy_input_ids, dummy_past, args.test_times, verify_outputs=args.validate_onnx)
-            logger.info(f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={torch_latency}, ort_latency={ort_latency}")
+            dummy_input_ids = torch.randint(low=0,
+                                            high=model.config.vocab_size - 1,
+                                            size=(batch_size, 1),
+                                            dtype=torch.int64,
+                                            device=device)
+            torch_latency, ort_latency = inference(model,
+                                                   session,
+                                                   dummy_input_ids,
+                                                   dummy_past,
+                                                   args.test_times,
+                                                   verify_outputs=args.validate_onnx)
+            logger.info(
+                f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={torch_latency}, ort_latency={ort_latency}"
+            )
+
 
 if __name__ == '__main__':
     main()
