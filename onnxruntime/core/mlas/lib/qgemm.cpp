@@ -18,20 +18,14 @@ Abstract:
 #include "mlasi.h"
 
 //
-// Define the default strides to step through slices of the input matrices.
-//
-
-#define MLAS_GEMM_X8X8_STRIDEM              24
-#define MLAS_GEMM_X8X8_STRIDEN              256
-#define MLAS_GEMM_X8X8_STRIDEK              128
-
-//
 // Define the parameters to execute segments of a QGEMM operation on worker
 // threads.
 //
 
-struct MLAS_GEMM_X8X8_WORK_BLOCK {
-    PMLAS_GEMM_X8X8_OPERATION GemmX8X8Operation;
+struct MLAS_GEMM_U8X8_WORK_BLOCK
+{
+    int32_t ThreadCountM;
+    int32_t ThreadCountN;
     size_t M;
     size_t N;
     size_t K;
@@ -41,587 +35,23 @@ struct MLAS_GEMM_X8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
-    int32_t ThreadCountM;
-    int32_t ThreadCountN;
-    size_t StrideM;
-    size_t StrideN;
     int16_t offa;
     int16_t offb;
+    bool BTypeIsSigned;
 };
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
 //
-// Stores a vector to transpose a 4x4 byte vector using vpshufb.
+// Define the default strides to step through slices of the input matrices.
 //
 
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint8_t MlasTranspose4x4BytesAvx[16], 16) =
-    { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
-
-//
-// U8S8 implementation using SSE2 intrinsics.
-//
+#define MLAS_GEMM_U8X8_STRIDEM_SSE          12
+#define MLAS_GEMM_U8X8_STRIDEN_SSE          128
+#define MLAS_GEMM_U8X8_STRIDEK_SSE          128
 
 void
-MLASCALL
-MlasGemmU8S8CopyPackASse(
-    uint8_t* D,
-    const uint8_t* A,
-    size_t lda,
-    size_t CountM,
-    size_t CountK,
-    int32_t* RowSumVector,
-    int16_t offb
-    )
-/*++
-
-Routine Description:
-
-    This routine copies elements from the source matrix to the destination
-    packed buffer.
-
-Arguments:
-
-    D - Supplies the address of the destination packed buffer.
-
-    A - Supplies the address of the source matrix.
-
-    lda - Supplies the number of elements per row of the source matrix.
-
-    CountM - Supplies the number of rows of the source matrix to copy.
-
-    CountK - Supplies the number of columns of the source matrix to copy.
-
-    RowSumVector - Supplies the address of the buffer to receive the sums of
-        the elements from each of the rows. Each sum has also been multiplied
-        by the zero point offset.
-
-    offb - Supplies the zero point offset for the other source matrix of the
-        matrix multiplication.
-
-Return Value:
-
-    None.
-
---*/
-{
-    const __m128i ZeroVector = _mm_setzero_si128();
-    const __m128i OffsetBroadcast = _mm_set1_epi16(offb);
-    uint8_t PaddedMatrixAData[8] = { 0 };
-
-    //
-    // Process a single row of matrix A in a loop.
-    //
-
-    while (CountM > 0) {
-
-        const uint8_t* a = A;
-        size_t k = CountK;
-        __m128i RowSum = ZeroVector;
-
-        //
-        // Copy the source bytes to the packed buffer.
-        //
-        // The packed buffer has the same data ordering as the source bytes,
-        // but CountK is aligned up to a multiple of 4 to maintain 32-bit
-        // alignment. All extra bytes are zero-padded.
-        //
-        // These values are also zero-extended and accumulated into an
-        // intermediate per-row accumulator. CountK cannot be greater than 128
-        // to avoid overflowing these signed 16-bit accumulators.
-        //
-
-        while (k >= 8) {
-
-            __m128i Bytes = _mm_loadl_epi64((__m128i*)&a[0]);
-            _mm_storel_epi64((__m128i*)&D[0], Bytes);
-
-            RowSum = _mm_add_epi16(RowSum, _mm_unpacklo_epi8(Bytes, ZeroVector));
-
-            D += 8;
-            a += 8;
-            k -= 8;
-        }
-
-        if (k > 0) {
-
-            //
-            // Copy the remaining bytes to the zero padded stack buffer.
-            //
-
-            uint8_t* padded = PaddedMatrixAData;
-            uint8_t* padded_end = padded + k;
-
-            do {
-                padded[0] = a[0];
-                padded++;
-                a++;
-            } while (padded < padded_end);
-
-            __m128i Bytes = _mm_loadl_epi64((__m128i*)PaddedMatrixAData);
-            _mm_storel_epi64((__m128i*)&D[0], Bytes);
-
-            RowSum = _mm_add_epi16(RowSum, _mm_unpacklo_epi8(Bytes, ZeroVector));
-
-            //
-            // Copy quads of 8-bit values from the vector to the packed
-            // buffer and rotate the vector for the next iteration.
-            //
-
-            for (size_t quads = (k + 3) / 4; quads > 0; quads--) {
-                *((int32_t*)D) = _mm_cvtsi128_si32(Bytes);
-                D += 4;
-                Bytes = _mm_shuffle_epi32(Bytes, _MM_SHUFFLE(0, 3, 2, 1));
-            }
-        }
-
-        //
-        // Reduce the sum for the single row of output and multiply by the
-        // zero point offset of the other source matrix.
-        //
-
-        RowSum = _mm_madd_epi16(RowSum, OffsetBroadcast);
-        RowSum = _mm_add_epi32(RowSum, _mm_shuffle_epi32(RowSum, _MM_SHUFFLE(3, 2, 3, 2)));
-        RowSum = _mm_add_epi32(RowSum, _mm_shuffle_epi32(RowSum, _MM_SHUFFLE(0, 1, 0, 1)));
-
-        *RowSumVector++ = _mm_cvtsi128_si32(RowSum);
-
-        A += lda;
-        CountM -= 1;
-    }
-}
-
-void
-MLASCALL
-MlasGemmU8S8CopyPackBSse(
-    int8_t* D,
-    const int8_t* B,
-    size_t ldb,
-    size_t CountN,
-    size_t CountK,
-    int32_t* ColumnSumVector,
-    int16_t offa
-    )
-/*++
-
-Routine Description:
-
-    This routine copies elements from the source matrix to the destination
-    packed buffer.
-
-Arguments:
-
-    D - Supplies the address of the destination packed buffer.
-
-    B - Supplies the address of the source matrix.
-
-    ldb - Supplies the number of elements per row of the source matrix.
-
-    CountN - Supplies the number of columns of the source matrix to copy.
-
-    CountK - Supplies the number of rows of the source matrix to copy.
-
-    ColumnSumVector - Supplies the address of the buffer to receive the sums of
-        the elements from each of the columns. Each sum has also been multiplied
-        by the zero point offset.
-
-    offa - Supplies the zero point offset for the other source matrix of the
-        matrix multiplication.
-
-Return Value:
-
-    None.
-
---*/
-{
-    const __m128i ZeroVector = _mm_setzero_si128();
-    const __m128i OffsetBroadcast = _mm_set1_epi16(offa);
-    int8_t PaddedMatrixBData[16] = { 0 };
-
-    //
-    // Process 8 columns of matrix B in a loop.
-    //
-
-    while (CountN >= 8) {
-
-        const int8_t* b = B;
-        size_t k = CountK;
-        __m128i ColumnSum0 = ZeroVector;
-        __m128i ColumnSum1 = ZeroVector;
-
-        //
-        // Interleave 2 rows of matrix B and write to the packed buffer.
-        //
-        // These values are also sign-extended and accumulated into an
-        // intermediate per-column accumulator. CountK cannot be greater than
-        // 128 to avoid overflowing these signed 16-bit accumulators.
-        //
-
-        while (k >= 2) {
-
-            __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&b[0]);
-            __m128i BytesRow1 = _mm_loadl_epi64((__m128i*)&b[ldb]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, BytesRow1);
-
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            __m128i WordsLow = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, WordsLow);
-            __m128i WordsHigh = _mm_srai_epi16(_mm_unpackhi_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, WordsHigh);
-
-            b += ldb * 2;
-            D += 16;
-            k -= 2;
-        }
-
-        if (k > 0) {
-
-            //
-            // Process the remaining row of matrix B.
-            //
-
-            __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&b[0]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, ZeroVector);
-
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            __m128i WordsLow = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, WordsLow);
-            __m128i WordsHigh = _mm_srai_epi16(_mm_unpackhi_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, WordsHigh);
-
-            D += 16;
-        }
-
-        //
-        // The number of rows written to the packed buffer should be a multiple
-        // of 4. Zero pad the packed buffer if the block is not complete.
-        //
-
-        if (((CountK - 1) & 2) == 0) {
-
-            _mm_storeu_si128((__m128i*)&D[0], ZeroVector);
-
-            D += 16;
-        }
-
-        ColumnSum0 = _mm_madd_epi16(ColumnSum0, OffsetBroadcast);
-        ColumnSum1 = _mm_madd_epi16(ColumnSum1, OffsetBroadcast);
-
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSum0);
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSum1);
-
-        ColumnSumVector += 8;
-
-        B += 8;
-        CountN -= 8;
-    }
-
-    //
-    // Process the remaining columns of matrix B.
-    //
-
-    if (CountN > 0) {
-
-        const int8_t* b = B;
-        size_t k = CountK;
-        __m128i ColumnSum0 = ZeroVector;
-        __m128i ColumnSum1 = ZeroVector;
-
-        //
-        // Interleave 2 rows of matrix B and write to the packed buffer.
-        //
-        // These values are also sign-extended and accumulated into an
-        // intermediate per-column accumulator. CountK cannot be greater than
-        // 128 to avoid overflowing these signed 16-bit accumulators.
-        //
-
-        while (k >= 2) {
-
-            //
-            // Copy the remaining columns to the zero padded stack buffer.
-            //
-
-            const int8_t* bcopy = b;
-            int8_t* padded = PaddedMatrixBData;
-            int8_t* padded_end = padded + CountN;
-
-            do {
-                padded[0] = bcopy[0];
-                padded[8] = bcopy[ldb];
-                padded++;
-                bcopy++;
-            } while (padded < padded_end);
-
-            __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[0]);
-            __m128i BytesRow1 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[8]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, BytesRow1);
-
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            __m128i WordsLow = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, WordsLow);
-            __m128i WordsHigh = _mm_srai_epi16(_mm_unpackhi_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, WordsHigh);
-
-            b += ldb * 2;
-            D += 16;
-            k -= 2;
-        }
-
-        if (k > 0) {
-
-            //
-            // Copy the remaining columns to the zero padded stack buffer.
-            //
-
-            const int8_t* bcopy = b;
-            int8_t* padded = PaddedMatrixBData;
-            int8_t* padded_end = padded + CountN;
-
-            do {
-                padded[0] = bcopy[0];
-                padded++;
-                bcopy++;
-            } while (padded < padded_end);
-
-            __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[0]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, ZeroVector);
-
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            __m128i WordsLow = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, WordsLow);
-            __m128i WordsHigh = _mm_srai_epi16(_mm_unpackhi_epi8(ZeroVector, BytesInterleaved), 8);
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, WordsHigh);
-
-            D += 16;
-        }
-
-        //
-        // The number of rows written to the packed buffer should be a multiple
-        // of 4. Zero pad the packed buffer if the block is not complete.
-        //
-
-        if (((CountK - 1) & 2) == 0) {
-
-            _mm_storeu_si128((__m128i*)&D[0], ZeroVector);
-
-            D += 16;
-        }
-
-        ColumnSum0 = _mm_madd_epi16(ColumnSum0, OffsetBroadcast);
-        ColumnSum1 = _mm_madd_epi16(ColumnSum1, OffsetBroadcast);
-
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSum0);
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSum1);
-    }
-}
-
-size_t
-MLASCALL
-MlasGemmU8S8KernelSse(
-    const uint8_t* A,
-    const int8_t* B,
-    int32_t* C,
-    size_t PairCountK,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc,
-    const int32_t* RowSumVector,
-    const int32_t* ColumnSumVector,
-    int32_t DepthValue,
-    bool ZeroMode
-    )
-/*++
-
-Routine Description:
-
-    This routine is an inner kernel to compute matrix multiplication for a
-    set of rows.
-
-Arguments:
-
-    A - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8S8CopyPackASse.
-
-    B - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8S8CopyPackBSse.
-
-    C - Supplies the address of matrix C.
-
-    PairCountK - Supplies the number of paired columns from matrix A and the
-        number of paired rows from matrix B to iterate over.
-
-    CountM - Supplies the maximum number of rows that can be processed for
-        matrix A and matrix C. The actual number of rows handled for this
-        invocation depends on the kernel implementation.
-
-    CountN - Supplies the number of columns from matrix B and matrix C to iterate
-        over.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    RowSumVector - Supplies the sum of each row from matrix A multiplied by the
-        zero point offset of matrix B. These values are accumulated into every
-        row of matrix C.
-
-    ColumnSumVector - Supplies the sum of each column from matrix B multiplied
-        by the zero point offset of matrix A. These values are accumulated into
-        every column of matrix C.
-
-    DepthValue - Supplies the value CountK multiplied by the zero point offset
-        of matrixA multplied by the zero point offset of matrix B. This value is
-        accumulated into every element of matrix C.
-
-    ZeroMode - Supplies true if the output matrix must be zero initialized,
-        else false if the output matrix is accumulated into.
-
-Return Value:
-
-    Returns the number of rows handled.
-
---*/
-{
-    const __m128i ZeroVector = _mm_setzero_si128();
-
-    MLAS_UNREFERENCED_PARAMETER(CountM);
-    MLAS_UNREFERENCED_PARAMETER(ldc);
-
-    while (CountN > 0) {
-
-        //
-        // Initialize the accumulators with the sum of the global depth value
-        // constant, the column sums, and the row sums.
-        //
-
-        __m128i Accumulator0 = _mm_set1_epi32(DepthValue);
-        Accumulator0 = _mm_add_epi32(Accumulator0, _mm_set1_epi32(RowSumVector[0]));
-        __m128i Accumulator1 = Accumulator0;
-        Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadu_si128((__m128i*)&ColumnSumVector[0]));
-        Accumulator1 = _mm_add_epi32(Accumulator1, _mm_loadu_si128((__m128i*)&ColumnSumVector[4]));
-        ColumnSumVector += 8;
-
-        //
-        // Broadcast each pair of 16-bit values from the matrix A and multiply
-        // with the zero-extended pair of 16-bit values from matrix B, and add
-        // the 32-bit intermediate into the accumulator registers.
-        //
-
-        const uint8_t* a = A;
-        size_t k = PairCountK;
-
-        while (k > 0) {
-
-            __m128i AElements = _mm_unpacklo_epi8(_mm_cvtsi32_si128(*((int32_t*)a)), ZeroVector);
-
-            __m128i BElements;
-            __m128i Intermediate0;
-            __m128i Intermediate1;
-
-            BElements = _mm_loadu_si128((__m128i*)&B[0]);
-            Intermediate0 = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, BElements), 8);
-            Intermediate1 = _mm_srai_epi16(_mm_unpackhi_epi8(ZeroVector, BElements), 8);
-
-            __m128i AElements0 = _mm_shuffle_epi32(AElements, _MM_SHUFFLE(0, 0, 0, 0));
-
-            Intermediate0 = _mm_madd_epi16(Intermediate0, AElements0);
-            Intermediate1 = _mm_madd_epi16(Intermediate1, AElements0);
-
-            Accumulator0 = _mm_add_epi32(Accumulator0, Intermediate0);
-            Accumulator1 = _mm_add_epi32(Accumulator1, Intermediate1);
-
-            BElements = _mm_loadu_si128((__m128i*)&B[16]);
-            Intermediate0 = _mm_srai_epi16(_mm_unpacklo_epi8(ZeroVector, BElements), 8);
-            Intermediate1 = _mm_srai_epi16(_mm_unpackhi_epi8(ZeroVector, BElements), 8);
-
-            __m128i AElements1 = _mm_shuffle_epi32(AElements, _MM_SHUFFLE(1, 1, 1, 1));
-
-            Intermediate0 = _mm_madd_epi16(Intermediate0, AElements1);
-            Intermediate1 = _mm_madd_epi16(Intermediate1, AElements1);
-
-            Accumulator0 = _mm_add_epi32(Accumulator0, Intermediate0);
-            Accumulator1 = _mm_add_epi32(Accumulator1, Intermediate1);
-
-            a += 4;
-            B += 32;
-            k -= 1;
-        }
-
-        //
-        // Output the accumulator block after optionally accumulating the values
-        // from matrix C.
-        //
-
-        if (CountN >= 8) {
-
-            if (!ZeroMode) {
-                Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadu_si128((__m128i*)&C[0]));
-                Accumulator1 = _mm_add_epi32(Accumulator1, _mm_loadu_si128((__m128i*)&C[4]));
-            }
-
-            _mm_storeu_si128((__m128i*)&C[0], Accumulator0);
-            _mm_storeu_si128((__m128i*)&C[4], Accumulator1);
-
-            C += 8;
-            CountN -= 8;
-
-        } else {
-
-            //
-            // Output the remaining partial output block.
-            //
-
-            if ((CountN & 4) != 0) {
-
-                if (!ZeroMode) {
-                    Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadu_si128((__m128i*)&C[0]));
-                }
-
-                _mm_storeu_si128((__m128i*)&C[0], Accumulator0);
-                C += 4;
-
-                Accumulator0 = Accumulator1;
-            }
-
-            if ((CountN & 2) != 0) {
-
-                if (!ZeroMode) {
-                    Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadl_epi64((__m128i*)&C[0]));
-                }
-
-                _mm_storel_epi64((__m128i*)&C[0], Accumulator0);
-                C += 2;
-
-                Accumulator0 = _mm_shuffle_epi32(Accumulator0, _MM_SHUFFLE(1, 0, 3, 2));
-            }
-
-            if ((CountN & 1) != 0) {
-
-                int32_t AccumulatorValue = _mm_cvtsi128_si32(Accumulator0);
-
-                if (!ZeroMode) {
-                    AccumulatorValue += C[0];
-                }
-
-                C[0] = AccumulatorValue;
-            }
-
-            CountN = 0;
-        }
-    }
-
-    return 1;
-}
-
-//
-// U8U8 implementation using SSE2 intrinsics.
-//
-
-void
-MLASCALL
-MlasGemmU8U8CopyPackASse(
+MlasGemmU8X8CopyPackASse(
     int16_t* D,
     const uint8_t* A,
     size_t lda,
@@ -751,11 +181,43 @@ Return Value:
     }
 }
 
+template<typename BType>
 void
-MLASCALL
-MlasGemmU8U8CopyPackBSse(
-    uint8_t* D,
-    const uint8_t* B,
+MlasGemmU8X8CopyPackBProcessSse(
+    int16_t* D,
+    __m128i BytesRow0,
+    __m128i BytesRow1,
+    __m128i ZeroVector,
+    __m128i ColumnSums[2]
+    )
+{
+    __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, BytesRow1);
+    __m128i WordsInterleaved[2];
+
+    //
+    // Zero or sign extend the bytes to words.
+    //
+
+    if (std::is_same<BType, uint8_t>::value) {
+        WordsInterleaved[0] = _mm_unpacklo_epi8(BytesInterleaved, ZeroVector);
+        WordsInterleaved[1] = _mm_unpackhi_epi8(BytesInterleaved, ZeroVector);
+    } else {
+        WordsInterleaved[0] = _mm_srai_epi16(_mm_unpacklo_epi8(BytesInterleaved, BytesInterleaved), 8);
+        WordsInterleaved[1] = _mm_srai_epi16(_mm_unpackhi_epi8(BytesInterleaved, BytesInterleaved), 8);
+    }
+
+    ColumnSums[0] = _mm_add_epi16(ColumnSums[0], WordsInterleaved[0]);
+    ColumnSums[1] = _mm_add_epi16(ColumnSums[1], WordsInterleaved[1]);
+
+    _mm_storeu_si128((__m128i*)&D[0], WordsInterleaved[0]);
+    _mm_storeu_si128((__m128i*)&D[8], WordsInterleaved[1]);
+}
+
+template<typename BType>
+void
+MlasGemmU8X8CopyPackBSse(
+    int16_t* D,
+    const BType* B,
     size_t ldb,
     size_t CountN,
     size_t CountK,
@@ -796,7 +258,7 @@ Return Value:
 {
     const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i OffsetBroadcast = _mm_set1_epi16(offa);
-    uint8_t PaddedMatrixBData[16] = { 0 };
+    BType PaddedMatrixBData[16] = { 0 };
 
     //
     // Process 8 columns of matrix B in a loop.
@@ -804,13 +266,15 @@ Return Value:
 
     while (CountN >= 8) {
 
-        const uint8_t* b = B;
+        const BType* b = B;
         size_t k = CountK;
-        __m128i ColumnSum0 = ZeroVector;
-        __m128i ColumnSum1 = ZeroVector;
+        __m128i ColumnSums[2];
+
+        ColumnSums[0] = ZeroVector;
+        ColumnSums[1] = ZeroVector;
 
         //
-        // Interleave 2 rows of matrix B and write to the packed buffer.
+        // Interleave rows of matrix B and write to the packed buffer.
         //
         // These values are also zero-extended and accumulated into an
         // intermediate per-column accumulator. CountK cannot be greater than
@@ -821,12 +285,8 @@ Return Value:
 
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&b[0]);
             __m128i BytesRow1 = _mm_loadl_epi64((__m128i*)&b[ldb]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, BytesRow1);
 
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, _mm_unpacklo_epi8(BytesInterleaved, ZeroVector));
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, _mm_unpackhi_epi8(BytesInterleaved, ZeroVector));
+            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, BytesRow1, ZeroVector, ColumnSums);
 
             b += ldb * 2;
             D += 16;
@@ -835,26 +295,23 @@ Return Value:
 
         if (k > 0) {
 
-            //
-            // Process the remaining row of matrix B.
-            //
-
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&b[0]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, ZeroVector);
 
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, _mm_unpacklo_epi8(BytesInterleaved, ZeroVector));
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, _mm_unpackhi_epi8(BytesInterleaved, ZeroVector));
+            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, ZeroVector, ZeroVector, ColumnSums);
 
             D += 16;
         }
 
-        ColumnSum0 = _mm_madd_epi16(ColumnSum0, OffsetBroadcast);
-        ColumnSum1 = _mm_madd_epi16(ColumnSum1, OffsetBroadcast);
+        //
+        // Reduce the sum for the packed columns and multiply by the zero point
+        // offset of the other source matrix.
+        //
 
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSum0);
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSum1);
+        ColumnSums[0] = _mm_madd_epi16(ColumnSums[0], OffsetBroadcast);
+        ColumnSums[1] = _mm_madd_epi16(ColumnSums[1], OffsetBroadcast);
+
+        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSums[0]);
+        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSums[1]);
 
         ColumnSumVector += 8;
 
@@ -868,20 +325,23 @@ Return Value:
 
     if (CountN > 0) {
 
-        const uint8_t* b = B;
+        const BType* b = B;
         size_t k = CountK;
-        __m128i ColumnSum0 = ZeroVector;
-        __m128i ColumnSum1 = ZeroVector;
+        __m128i ColumnSums[2];
+
+        ColumnSums[0] = ZeroVector;
+        ColumnSums[1] = ZeroVector;
+
+        //
+        // Interleave rows of matrix B using an intermediate zero padded stack
+        // buffer and write to the packed buffer.
+        //
 
         while (k >= 2) {
 
-            //
-            // Copy the remaining columns to the zero padded stack buffer.
-            //
-
-            const uint8_t* bcopy = b;
-            uint8_t* padded = PaddedMatrixBData;
-            uint8_t* padded_end = padded + CountN;
+            const BType* bcopy = b;
+            BType* padded = PaddedMatrixBData;
+            BType* padded_end = padded + CountN;
 
             do {
                 padded[0] = bcopy[0];
@@ -892,12 +352,8 @@ Return Value:
 
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[0]);
             __m128i BytesRow1 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[8]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, BytesRow1);
 
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, _mm_unpacklo_epi8(BytesInterleaved, ZeroVector));
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, _mm_unpackhi_epi8(BytesInterleaved, ZeroVector));
+            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, BytesRow1, ZeroVector, ColumnSums);
 
             b += ldb * 2;
             D += 16;
@@ -906,13 +362,9 @@ Return Value:
 
         if (k > 0) {
 
-            //
-            // Copy the remaining columns to the zero padded stack buffer.
-            //
-
-            const uint8_t* bcopy = b;
-            uint8_t* padded = PaddedMatrixBData;
-            uint8_t* padded_end = padded + CountN;
+            const BType* bcopy = b;
+            BType* padded = PaddedMatrixBData;
+            BType* padded_end = padded + CountN;
 
             do {
                 padded[0] = bcopy[0];
@@ -921,12 +373,8 @@ Return Value:
             } while (padded < padded_end);
 
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[0]);
-            __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, ZeroVector);
 
-            _mm_storeu_si128((__m128i*)&D[0], BytesInterleaved);
-
-            ColumnSum0 = _mm_add_epi16(ColumnSum0, _mm_unpacklo_epi8(BytesInterleaved, ZeroVector));
-            ColumnSum1 = _mm_add_epi16(ColumnSum1, _mm_unpackhi_epi8(BytesInterleaved, ZeroVector));
+            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, ZeroVector, ZeroVector, ColumnSums);
         }
 
         //
@@ -934,24 +382,36 @@ Return Value:
         // offset of the other source matrix.
         //
 
-        ColumnSum0 = _mm_madd_epi16(ColumnSum0, OffsetBroadcast);
-        ColumnSum1 = _mm_madd_epi16(ColumnSum1, OffsetBroadcast);
+        ColumnSums[0] = _mm_madd_epi16(ColumnSums[0], OffsetBroadcast);
+        ColumnSums[1] = _mm_madd_epi16(ColumnSums[1], OffsetBroadcast);
 
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSum0);
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSum1);
+        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSums[0]);
+        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSums[1]);
     }
 }
 
-size_t
-MLASCALL
-MlasGemmU8U8KernelSse(
+MLAS_FORCEINLINE
+void
+MlasGemmU8X8MultiplyAccumulateRowSse(
+    __m128i ABroadcast,
+    const int16_t* B,
+    __m128i Accumulators[2]
+    )
+{
+    __m128i BElements0 = _mm_load_si128((__m128i*)&B[0]);
+    __m128i BElements1 = _mm_load_si128((__m128i*)&B[8]);
+
+    Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_madd_epi16(BElements0, ABroadcast));
+    Accumulators[1] = _mm_add_epi32(Accumulators[1], _mm_madd_epi16(BElements1, ABroadcast));
+}
+
+void
+MlasGemmU8X8KernelSse(
     const int16_t* A,
-    const uint8_t* B,
+    const int16_t* B,
     int32_t* C,
     size_t PairCountK,
-    size_t CountM,
     size_t CountN,
-    size_t ldc,
     const int32_t* RowSumVector,
     const int32_t* ColumnSumVector,
     int32_t DepthValue,
@@ -962,29 +422,23 @@ MlasGemmU8U8KernelSse(
 Routine Description:
 
     This routine is an inner kernel to compute matrix multiplication for a
-    set of rows.
+    single row.
 
 Arguments:
 
     A - Supplies the address of matrix A. The matrix data has been packed
-        using MlasGemmU8U8CopyPackASse.
+        using MlasGemmU8X8CopyPackASse.
 
     B - Supplies the address of matrix B. The matrix data has been packed
-        using MlasGemmU8U8CopyPackBSse.
+        using MlasGemmU8X8CopyPackBSse.
 
     C - Supplies the address of matrix C.
 
     PairCountK - Supplies the number of paired columns from matrix A and the
         number of paired rows from matrix B to iterate over.
 
-    CountM - Supplies the maximum number of rows that can be processed for
-        matrix A and matrix C. The actual number of rows handled for this
-        invocation depends on the kernel implementation.
-
     CountN - Supplies the number of columns from matrix B and matrix C to iterate
         over.
-
-    ldc - Supplies the first dimension of matrix C.
 
     RowSumVector - Supplies the sum of each row from matrix A multiplied by the
         zero point offset of matrix B. These values are accumulated into every
@@ -1003,51 +457,61 @@ Arguments:
 
 Return Value:
 
-    Returns the number of rows handled.
+    None.
 
 --*/
 {
-    const __m128i ZeroVector = _mm_setzero_si128();
-
-    MLAS_UNREFERENCED_PARAMETER(CountM);
-    MLAS_UNREFERENCED_PARAMETER(ldc);
-
     while (CountN > 0) {
+
+        __m128i Accumulators[2];
 
         //
         // Initialize the accumulators with the sum of the global depth value
         // constant, the column sums, and the row sums.
         //
 
-        __m128i Accumulator0 = _mm_set1_epi32(DepthValue);
-        Accumulator0 = _mm_add_epi32(Accumulator0, _mm_set1_epi32(RowSumVector[0]));
-        __m128i Accumulator1 = Accumulator0;
-        Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadu_si128((__m128i*)&ColumnSumVector[0]));
-        Accumulator1 = _mm_add_epi32(Accumulator1, _mm_loadu_si128((__m128i*)&ColumnSumVector[4]));
+        Accumulators[0] = _mm_set1_epi32(DepthValue);
+        Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_set1_epi32(RowSumVector[0]));
+        Accumulators[1] = Accumulators[0];
+        Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_loadu_si128((__m128i*)&ColumnSumVector[0]));
+        Accumulators[1] = _mm_add_epi32(Accumulators[1], _mm_loadu_si128((__m128i*)&ColumnSumVector[4]));
         ColumnSumVector += 8;
 
         //
         // Broadcast each pair of 16-bit values from the matrix A and multiply
-        // with the zero-extended pair of 16-bit values from matrix B, and add
-        // the 32-bit intermediate into the accumulator registers.
+        // with the pair of 16-bit values from matrix B, and add the 32-bit
+        // intermediate into the accumulator registers.
         //
 
         const int16_t* a = A;
         size_t k = PairCountK;
 
+        while (k >= 4) {
+
+            __m128i AElements = _mm_loadu_si128((__m128i*)a);
+            __m128i ABroadcast;
+
+            ABroadcast = _mm_shuffle_epi32(AElements, _MM_SHUFFLE(0, 0, 0, 0));
+            MlasGemmU8X8MultiplyAccumulateRowSse(ABroadcast, &B[0], Accumulators);
+
+            ABroadcast = _mm_shuffle_epi32(AElements, _MM_SHUFFLE(1, 1, 1, 1));
+            MlasGemmU8X8MultiplyAccumulateRowSse(ABroadcast, &B[16], Accumulators);
+
+            ABroadcast = _mm_shuffle_epi32(AElements, _MM_SHUFFLE(2, 2, 2, 2));
+            MlasGemmU8X8MultiplyAccumulateRowSse(ABroadcast, &B[32], Accumulators);
+
+            ABroadcast = _mm_shuffle_epi32(AElements, _MM_SHUFFLE(3, 3, 3, 3));
+            MlasGemmU8X8MultiplyAccumulateRowSse(ABroadcast, &B[48], Accumulators);
+
+            a += 4 * 2;
+            B += 4 * 16;
+            k -= 4;
+        }
+
         while (k > 0) {
 
-            __m128i AElements = _mm_set1_epi32(*((int32_t*)a));
-            __m128i BElements0 = _mm_loadu_si128((__m128i*)&B[0]);
-
-            __m128i Intermediate0 = _mm_unpacklo_epi8(BElements0, ZeroVector);
-            __m128i Intermediate1 = _mm_unpackhi_epi8(BElements0, ZeroVector);
-
-            Intermediate0 = _mm_madd_epi16(Intermediate0, AElements);
-            Intermediate1 = _mm_madd_epi16(Intermediate1, AElements);
-
-            Accumulator0 = _mm_add_epi32(Accumulator0, Intermediate0);
-            Accumulator1 = _mm_add_epi32(Accumulator1, Intermediate1);
+            __m128i ABroadcast = _mm_set1_epi32(*((int32_t*)a));
+            MlasGemmU8X8MultiplyAccumulateRowSse(ABroadcast, &B[0], Accumulators);
 
             a += 2;
             B += 16;
@@ -1062,12 +526,12 @@ Return Value:
         if (CountN >= 8) {
 
             if (!ZeroMode) {
-                Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadu_si128((__m128i*)&C[0]));
-                Accumulator1 = _mm_add_epi32(Accumulator1, _mm_loadu_si128((__m128i*)&C[4]));
+                Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_loadu_si128((__m128i*)&C[0]));
+                Accumulators[1] = _mm_add_epi32(Accumulators[1], _mm_loadu_si128((__m128i*)&C[4]));
             }
 
-            _mm_storeu_si128((__m128i*)&C[0], Accumulator0);
-            _mm_storeu_si128((__m128i*)&C[4], Accumulator1);
+            _mm_storeu_si128((__m128i*)&C[0], Accumulators[0]);
+            _mm_storeu_si128((__m128i*)&C[4], Accumulators[1]);
 
             C += 8;
             CountN -= 8;
@@ -1081,30 +545,30 @@ Return Value:
             if ((CountN & 4) != 0) {
 
                 if (!ZeroMode) {
-                    Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadu_si128((__m128i*)&C[0]));
+                    Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_loadu_si128((__m128i*)&C[0]));
                 }
 
-                _mm_storeu_si128((__m128i*)&C[0], Accumulator0);
+                _mm_storeu_si128((__m128i*)&C[0], Accumulators[0]);
                 C += 4;
 
-                Accumulator0 = Accumulator1;
+                Accumulators[0] = Accumulators[1];
             }
 
             if ((CountN & 2) != 0) {
 
                 if (!ZeroMode) {
-                    Accumulator0 = _mm_add_epi32(Accumulator0, _mm_loadl_epi64((__m128i*)&C[0]));
+                    Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_loadl_epi64((__m128i*)&C[0]));
                 }
 
-                _mm_storel_epi64((__m128i*)&C[0], Accumulator0);
+                _mm_storel_epi64((__m128i*)&C[0], Accumulators[0]);
                 C += 2;
 
-                Accumulator0 = _mm_shuffle_epi32(Accumulator0, _MM_SHUFFLE(1, 0, 3, 2));
+                Accumulators[0] = _mm_shuffle_epi32(Accumulators[0], _MM_SHUFFLE(3, 2, 3, 2));
             }
 
             if ((CountN & 1) != 0) {
 
-                int32_t AccumulatorValue = _mm_cvtsi128_si32(Accumulator0);
+                int32_t AccumulatorValue = _mm_cvtsi128_si32(Accumulators[0]);
 
                 if (!ZeroMode) {
                     AccumulatorValue += C[0];
@@ -1116,13 +580,12 @@ Return Value:
             CountN = 0;
         }
     }
-
-    return 1;
 }
 
 void
 MLASCALL
-MlasGemmU8S8Operation(
+MlasGemmU8X8OperationSse(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
     size_t M,
     size_t N,
     size_t K,
@@ -1143,6 +606,8 @@ Routine Description:
     operation (QGEMM).
 
 Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
 
     M - Supplies the number of rows of matrix A and matrix C.
 
@@ -1173,27 +638,15 @@ Return Value:
 
 --*/
 {
-    MLAS_DECLSPEC_ALIGN(uint8_t PanelA[MLAS_GEMM_X8X8_STRIDEM * MLAS_GEMM_X8X8_STRIDEK], 64);
-    MLAS_DECLSPEC_ALIGN(int8_t PanelB[MLAS_GEMM_X8X8_STRIDEN * MLAS_GEMM_X8X8_STRIDEK], 64);
+    MLAS_DECLSPEC_ALIGN(int16_t PanelA[MLAS_GEMM_U8X8_STRIDEM_SSE * MLAS_GEMM_U8X8_STRIDEK_SSE], 16);
+    MLAS_DECLSPEC_ALIGN(int16_t PanelB[MLAS_GEMM_U8X8_STRIDEN_SSE * MLAS_GEMM_U8X8_STRIDEK_SSE], 16);
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_X8X8_STRIDEM], 16);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_X8X8_STRIDEN], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_U8X8_STRIDEM_SSE], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_U8X8_STRIDEN_SSE], 16);
 
-    size_t StrideM = MLAS_GEMM_X8X8_STRIDEM;
-    size_t StrideN = MLAS_GEMM_X8X8_STRIDEN;
-    size_t StrideK = MLAS_GEMM_X8X8_STRIDEK;
-
-#if defined(MLAS_TARGET_AMD64)
-
-    if (M == 1 && offa == 0 && offb == 0) {
-
-        if (MlasPlatform.GemvU8S8Kernel != nullptr) {
-            MlasPlatform.GemvU8S8Kernel(A, (const int8_t*)B, C, K, N, ldb);
-            return;
-        }
-    }
-
-#endif
+    size_t StrideM = MLAS_GEMM_U8X8_STRIDEM_SSE;
+    size_t StrideN = MLAS_GEMM_U8X8_STRIDEN_SSE;
+    size_t StrideK = MLAS_GEMM_U8X8_STRIDEK_SSE;
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -1203,11 +656,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = StrideK;
-
-        if (CountK > (K - k)) {
-            CountK = K - k;
-        }
+        CountK = (std::min)(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -1217,45 +666,289 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = StrideN;
+            CountN = (std::min)(N - n, StrideN);
 
-            if (CountN > (N - n)) {
-                CountN = N - n;
+            //
+            // Copy a panel of matrix B to a local packed buffer.
+            //
+
+            const uint8_t* b = B + n + k * ldb;
+
+            if (WorkBlock->BTypeIsSigned) {
+                MlasGemmU8X8CopyPackBSse(PanelB, (const int8_t*)b, ldb, CountN,
+                    CountK, ColumnSumVector, -int16_t(offa));
+            } else {
+                MlasGemmU8X8CopyPackBSse(PanelB, (const uint8_t*)b, ldb, CountN,
+                    CountK, ColumnSumVector, -int16_t(offa));
             }
 
-            const int8_t* b = (const int8_t*)B + n + k * ldb;
+            //
+            // Step through each slice of matrix A along the M dimension.
+            //
 
-            MlasPlatform.GemmU8S8CopyPackBRoutine(PanelB, b, ldb, CountN,
-                CountK, ColumnSumVector, -int16_t(offa));
+            const int32_t DepthValue = int32_t(CountK) * offa * offb;
+            const size_t PairCountK = (CountK + 1) / 2;
 
+            int32_t* c = C + n;
             size_t CountM;
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = StrideM;
+                CountM = (std::min)(M - m, StrideM);
 
-                if (CountM > (M - m)) {
-                    CountM = M - m;
-                }
+                //
+                // Copy a panel of matrix A to a local packed buffer.
+                //
 
-                MlasPlatform.GemmU8S8CopyPackARoutine(PanelA, A + k + m * lda,
-                    lda, CountM, CountK, RowSumVector, -int16_t(offb));
+                MlasGemmU8X8CopyPackASse(PanelA, A + k + m * lda, lda, CountM,
+                    CountK, RowSumVector, -int16_t(offb));
 
-                uint8_t* pa = PanelA;
-                int32_t* c = C + n + m * ldc;
+                //
+                // Step through the rows of the local packed buffer.
+                //
 
+                int16_t* pa = PanelA;
                 int32_t* RowSums = RowSumVector;
-
                 size_t RowsRemaining = CountM;
-                size_t RowsHandled;
-
-                size_t QuadCountK = (CountK + 3) / 4;
 
                 while (RowsRemaining > 0) {
 
+                    MlasGemmU8X8KernelSse(pa, PanelB, c, PairCountK, CountN,
+                        RowSums, ColumnSumVector, DepthValue, k == 0);
+
+                    c += ldc;
+                    pa += 2 * PairCountK;
+                    RowSums += 1;
+                    RowsRemaining -= 1;
+                }
+            }
+        }
+    }
+}
+
+#endif
+
+#ifdef MLAS_TARGET_AMD64
+
+//
+// Define the default strides to step through slices of the input matrices.
+//
+
+#define MLAS_GEMM_U8X8_STRIDEM_AVX2                 24
+#define MLAS_GEMM_U8X8_STRIDEN_AVX2                 256
+#define MLAS_GEMM_U8X8_STRIDEK_AVX2                 128
+
+//
+// Stores a vector to transpose a 4x4 byte vector using vpshufb.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint8_t MlasTranspose4x4BytesAvx[16], 16) =
+    { 0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15 };
+
+//
+// Define the prototypes of the AVX2/AVX512 routines written in assembly.
+//
+
+extern "C" {
+
+    void
+    MLASCALL
+    MlasGemmU8S8CopyPackAAvx2(
+        uint8_t* D,
+        const uint8_t* A,
+        size_t lda,
+        size_t CountM,
+        size_t CountK,
+        int32_t* RowSumVector,
+        int32_t offb
+        );
+
+    void
+    MLASCALL
+    MlasGemmU8S8CopyPackBAvx2(
+        int8_t* D,
+        const int8_t* B,
+        size_t ldb,
+        size_t CountN,
+        size_t CountK,
+        int32_t* ColumnSumVector,
+        int32_t offa,
+        bool BTypeIsSigned
+        );
+
+    void
+    MLASCALL
+    MlasGemmU8U8CopyPackAAvx2(
+        int16_t* D,
+        const uint8_t* A,
+        size_t lda,
+        size_t CountM,
+        size_t CountK,
+        int32_t* RowSumVector,
+        int32_t offb
+        );
+
+    void
+    MLASCALL
+    MlasGemmU8U8CopyPackBAvx2(
+        uint8_t* D,
+        const uint8_t* B,
+        size_t ldb,
+        size_t CountN,
+        size_t CountK,
+        int32_t* ColumnSumVector,
+        int32_t offa
+        );
+}
+
+void
+MLASCALL
+MlasGemmU8S8OperationAvx2(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    int16_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
+    )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+    This implementation supports AVX2/AVX512 U8S8 and AVX512VNNI U8S8/U8U8.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    offa - Supplies the zero point offset of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    offb - Supplies the zero point offset of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_DECLSPEC_ALIGN(uint8_t PanelA[MLAS_GEMM_U8X8_STRIDEM_AVX2 * MLAS_GEMM_U8X8_STRIDEK_AVX2], 64);
+    MLAS_DECLSPEC_ALIGN(int8_t PanelB[MLAS_GEMM_U8X8_STRIDEN_AVX2 * MLAS_GEMM_U8X8_STRIDEK_AVX2], 64);
+
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_U8X8_STRIDEM_AVX2], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_U8X8_STRIDEN_AVX2], 16);
+
+    size_t StrideM = MLAS_GEMM_U8X8_STRIDEM_AVX2;
+    size_t StrideN = MLAS_GEMM_U8X8_STRIDEN_AVX2;
+    size_t StrideK = MLAS_GEMM_U8X8_STRIDEK_AVX2;
+
+    if (WorkBlock->BTypeIsSigned) {
+
+        if (M == 1 && offa == 0 && offb == 0) {
+
+            if (MlasPlatform.GemvU8S8Kernel != nullptr) {
+                MlasPlatform.GemvU8S8Kernel(A, (const int8_t*)B, C, K, N, ldb);
+                return;
+            }
+        }
+
+    } else {
+
+        offb = int8_t(offb ^ 0x80);
+    }
+
+    //
+    // Step through each slice of matrix B along the K dimension.
+    //
+
+    size_t CountK;
+
+    for (size_t k = 0; k < K; k += CountK) {
+
+        CountK = (std::min)(K - k, StrideK);
+
+        //
+        // Step through each slice of matrix B along the N dimension.
+        //
+
+        size_t CountN;
+
+        for (size_t n = 0; n < N; n += CountN) {
+
+            CountN = (std::min)(N - n, StrideN);
+
+            //
+            // Copy a panel of matrix B to a local packed buffer.
+            //
+
+            const int8_t* b = (const int8_t*)B + n + k * ldb;
+
+            MlasGemmU8S8CopyPackBAvx2(PanelB, b, ldb, CountN,
+                CountK, ColumnSumVector, -int16_t(offa), WorkBlock->BTypeIsSigned);
+
+            //
+            // Step through each slice of matrix A along the M dimension.
+            //
+
+            const int32_t DepthValue = int32_t(CountK) * offa * offb;
+            size_t QuadCountK = (CountK + 3) / 4;
+
+            int32_t* c = C + n;
+            size_t CountM;
+
+            for (size_t m = 0; m < M; m += CountM) {
+
+                CountM = (std::min)(M - m, StrideM);
+
+                //
+                // Copy a panel of matrix A to a local packed buffer.
+                //
+
+                MlasGemmU8S8CopyPackAAvx2(PanelA, A + k + m * lda,
+                    lda, CountM, CountK, RowSumVector, -int16_t(offb));
+
+                //
+                // Step through the rows of the local packed buffer.
+                //
+
+                uint8_t* pa = PanelA;
+                int32_t* RowSums = RowSumVector;
+                size_t RowsRemaining = CountM;
+
+                while (RowsRemaining > 0) {
+
+                    size_t RowsHandled;
+
                     RowsHandled = MlasPlatform.GemmU8S8Kernel(pa, PanelB, c,
                         QuadCountK, RowsRemaining, CountN, ldc, RowSums,
-                        ColumnSumVector, int32_t(CountK) * offa * offb, k == 0);
+                        ColumnSumVector, DepthValue, k == 0);
 
                     RowsRemaining -= RowsHandled;
                     c += ldc * RowsHandled;
@@ -1269,7 +962,8 @@ Return Value:
 
 void
 MLASCALL
-MlasGemmU8U8Operation(
+MlasGemmU8U8OperationAvx2(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
     size_t M,
     size_t N,
     size_t K,
@@ -1289,7 +983,11 @@ Routine Description:
     This module implements the quantized integer matrix/matrix multiply
     operation (QGEMM).
 
+    This implementation supports AVX2/AVX512 U8U8.
+
 Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
 
     M - Supplies the number of rows of matrix A and matrix C.
 
@@ -1320,15 +1018,17 @@ Return Value:
 
 --*/
 {
-    MLAS_DECLSPEC_ALIGN(int16_t PanelA[MLAS_GEMM_X8X8_STRIDEM * MLAS_GEMM_X8X8_STRIDEK], 64);
-    MLAS_DECLSPEC_ALIGN(uint8_t PanelB[MLAS_GEMM_X8X8_STRIDEN * MLAS_GEMM_X8X8_STRIDEK], 64);
+    MLAS_DECLSPEC_ALIGN(int16_t PanelA[MLAS_GEMM_U8X8_STRIDEM_AVX2 * MLAS_GEMM_U8X8_STRIDEK_AVX2], 64);
+    MLAS_DECLSPEC_ALIGN(uint8_t PanelB[MLAS_GEMM_U8X8_STRIDEN_AVX2 * MLAS_GEMM_U8X8_STRIDEK_AVX2], 64);
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_X8X8_STRIDEM], 16);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_X8X8_STRIDEN], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_U8X8_STRIDEM_AVX2], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_U8X8_STRIDEN_AVX2], 16);
 
-    size_t StrideM = MLAS_GEMM_X8X8_STRIDEM;
-    size_t StrideN = MLAS_GEMM_X8X8_STRIDEN;
-    size_t StrideK = MLAS_GEMM_X8X8_STRIDEK;
+    size_t StrideM = MLAS_GEMM_U8X8_STRIDEM_AVX2;
+    size_t StrideN = MLAS_GEMM_U8X8_STRIDEN_AVX2;
+    size_t StrideK = MLAS_GEMM_U8X8_STRIDEK_AVX2;
+
+    MLAS_UNREFERENCED_PARAMETER(WorkBlock);
 
     //
     // Step through each slice of matrix B along the K dimension.
@@ -1338,11 +1038,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = StrideK;
-
-        if (CountK > (K - k)) {
-            CountK = K - k;
-        }
+        CountK = (std::min)(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -1352,58 +1048,70 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = StrideN;
+            CountN = (std::min)(N - n, StrideN);
 
-            if (CountN > (N - n)) {
-                CountN = N - n;
-            }
+            //
+            // Copy a panel of matrix B to a local packed buffer.
+            //
 
             const uint8_t* b = (const uint8_t*)B + n + k * ldb;
 
-            MlasPlatform.GemmU8U8CopyPackBRoutine(PanelB, b, ldb, CountN,
-                CountK, ColumnSumVector, -int16_t(offa));
+            MlasGemmU8U8CopyPackBAvx2(PanelB, b, ldb, CountN, CountK, ColumnSumVector,
+                -int16_t(offa));
 
+            //
+            // Step through each slice of matrix A along the M dimension.
+            //
+
+            const int32_t DepthValue = int32_t(CountK) * offa * offb;
+            size_t PairCountK = (CountK + 1) / 2;
+
+            int32_t* c = C + n;
             size_t CountM;
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = StrideM;
+                CountM = (std::min)(M - m, StrideM);
 
-                if (CountM > (M - m)) {
-                    CountM = M - m;
-                }
+                //
+                // Copy a panel of matrix A to a local packed buffer.
+                //
 
-                MlasPlatform.GemmU8U8CopyPackARoutine(PanelA, A + k + m * lda,
-                    lda, CountM, CountK, RowSumVector, -int16_t(offb));
+                MlasGemmU8U8CopyPackAAvx2(PanelA, A + k + m * lda, lda, CountM,
+                    CountK, RowSumVector, -int16_t(offb));
+
+                //
+                // Step through the rows of the local packed buffer.
+                //
 
                 int16_t* pa = PanelA;
-                int32_t* c = C + n + m * ldc;
-
                 int32_t* RowSums = RowSumVector;
-
                 size_t RowsRemaining = CountM;
-                size_t RowsHandled;
-
-                size_t PairCountK = (CountK + 1) / 2;
 
                 while (RowsRemaining > 0) {
 
+                    size_t RowsHandled;
+
                     RowsHandled = MlasPlatform.GemmU8U8Kernel(pa, PanelB, c,
                         PairCountK, RowsRemaining, CountN, ldc, RowSums,
-                        ColumnSumVector, int32_t(CountK) * offa * offb, k == 0);
+                        ColumnSumVector, DepthValue, k == 0);
 
-                    RowsRemaining -= RowsHandled;
                     c += ldc * RowsHandled;
                     pa += 2 * PairCountK * RowsHandled;
                     RowSums += RowsHandled;
+                    RowsRemaining -= RowsHandled;
                 }
             }
         }
     }
 }
 
+#endif
+
+#ifdef MLAS_TARGET_AMD64_IX86
+
 void
-MlasGemmX8X8Threaded(
+MlasGemmU8X8Threaded(
     void* Context,
     int32_t ThreadId
     )
@@ -1426,7 +1134,7 @@ Return Value:
 
 --*/
 {
-    const auto* WorkBlock = (MLAS_GEMM_X8X8_WORK_BLOCK*)Context;
+    const auto* WorkBlock = (MLAS_GEMM_U8X8_WORK_BLOCK*)Context;
 
     const int32_t ThreadCountM = WorkBlock->ThreadCountM;
     const int32_t ThreadCountN = WorkBlock->ThreadCountN;
@@ -1476,13 +1184,25 @@ Return Value:
     const uint8_t* b = WorkBlock->B + n;
     int32_t* c = WorkBlock->C + n + m * ldc;
 
-    WorkBlock->GemmX8X8Operation(CountM, CountN, WorkBlock->K, a, lda,
+    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation;
+
+#if defined(MLAS_TARGET_AMD64)
+    if (WorkBlock->BTypeIsSigned) {
+        GemmU8X8Operation = MlasPlatform.GemmU8S8Operation;
+    } else {
+        GemmU8X8Operation = MlasPlatform.GemmU8U8Operation;
+    }
+#else
+    GemmU8X8Operation = MlasGemmU8X8OperationSse;
+#endif
+
+    GemmU8X8Operation(WorkBlock, CountM, CountN, WorkBlock->K, a, lda,
         WorkBlock->offa, b, ldb, WorkBlock->offb, c, ldc);
 }
 
 void
-MlasGemmX8X8Schedule(
-    MLAS_GEMM_X8X8_WORK_BLOCK* WorkBlock,
+MlasGemmU8X8Schedule(
+    MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
@@ -1559,21 +1279,22 @@ Return Value:
         WorkBlock->ThreadCountN = 1;
     }
 
-    MlasExecuteThreaded(MlasGemmX8X8Threaded, WorkBlock, TargetThreadCount, ThreadPool);
+    MlasExecuteThreaded(MlasGemmU8X8Threaded, WorkBlock, TargetThreadCount, ThreadPool);
 }
 
+template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const uint8_t* A,
+    const AType* A,
     size_t lda,
-    uint8_t offa,
-    const int8_t* B,
+    AType offa,
+    const BType* B,
     size_t ldb,
-    int8_t offb,
+    BType offb,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
@@ -1619,7 +1340,7 @@ Return Value:
 
 --*/
 {
-    MLAS_GEMM_X8X8_WORK_BLOCK WorkBlock;
+    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
 
     //
     // Capture the GEMM parameters to the work block.
@@ -1636,15 +1357,34 @@ Return Value:
     WorkBlock.ldc = ldc;
     WorkBlock.offa = int16_t(offa);
     WorkBlock.offb = int16_t(offb);
-    WorkBlock.GemmX8X8Operation = MlasGemmU8S8Operation;
+    WorkBlock.BTypeIsSigned = std::is_signed<BType>::value;
 
     //
     // Schedule the operation across a set of worker threads.
     //
 
-    MlasGemmX8X8Schedule(&WorkBlock, ThreadPool);
+    MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
 
+template
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const int8_t* B,
+    size_t ldb,
+    int8_t offb,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template
 void
 MLASCALL
 MlasGemm(
@@ -1660,72 +1400,6 @@ MlasGemm(
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This module implements the quantized integer matrix/matrix multiply
-    operation (QGEMM).
-
-Arguments:
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    offa - Supplies the zero point offset of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    offb - Supplies the zero point offset of matrix B.
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_GEMM_X8X8_WORK_BLOCK WorkBlock;
-
-    //
-    // Capture the GEMM parameters to the work block.
-    //
-
-    WorkBlock.M = M;
-    WorkBlock.N = N;
-    WorkBlock.K = K;
-    WorkBlock.A = A;
-    WorkBlock.lda = lda;
-    WorkBlock.B = B;
-    WorkBlock.ldb = ldb;
-    WorkBlock.C = C;
-    WorkBlock.ldc = ldc;
-    WorkBlock.offa = int16_t(offa);
-    WorkBlock.offb = int16_t(offb);
-    WorkBlock.GemmX8X8Operation = MlasGemmU8U8Operation;
-
-    //
-    // Schedule the operation across a set of worker threads.
-    //
-
-    MlasGemmX8X8Schedule(&WorkBlock, ThreadPool);
-}
+    );
 
 #endif

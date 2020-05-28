@@ -135,6 +135,28 @@ class TrainingSession : public InferenceSession {
     // If not provided, no optimizer is added.
     optional<OptimizerConfiguration> optimizer_config{};
 
+    // struct to describe a specific edge. An edge is not the same as a node_arg. Edge represents a connection between two operators.
+    // For example, an operator A's output tensor T is connecting to another operator B's input, then this constructs
+    // an edge from A to B. If A's output tensor T has multiple consumers, i.e. it's fed into multiple operators' inputs,
+    // there would be multiple edges, each from A, to a consumer operator.
+    // CutEdge information is used in pipeline online partition tool to identify which edge to cut to make the
+    // corresponding partition.
+    struct CutEdge {
+      std::string node_arg_name;
+      optional<std::vector<std::string>> consumer_nodes;
+
+      // If the edge is unique, i.e. only have one consumer node, or all the edges
+      // with the same node_arg_name needs to be cut, specify the node_arg_name
+      // suffices.
+      CutEdge(std::string edge) : node_arg_name(edge){};
+      // If the edges with same node_arg_name belongs to different cut, i.e. some of its
+      // consumer node belongs to one partition, and some belongs to another, specify
+      // the consumer node names which you want to perform the cut on.
+      CutEdge(std::string edge, std::vector<std::string> nodes) : node_arg_name(edge), consumer_nodes(nodes){};
+    };
+    // CutInfo is a group of CutEdges that describes a specific cut that composed of splitting those edges.
+    typedef std::vector<CutEdge> CutInfo;
+
     struct PipelineConfiguration {
       // If model partition happens outside ORT, this flag should be false.
       // Otherwise, use true to trigger ORT's pipeline partition.
@@ -142,7 +164,9 @@ class TrainingSession : public InferenceSession {
       // Tensors to fetch as specified by the user.
       // Each pipeline stage should pick up some strings from this field..
       std::vector<std::string> fetch_names;
-      // [TODO] Add cut information.
+      // cut_list contains the list of CutInfo to make the graph partitions.
+      // cut_list[i] contains the CutInfo to make the partition between stage i and stage i+1
+      std::vector<CutInfo> cut_list;
     };
 
     // If pipeline is enabled, this field's has_value() returns true.
@@ -329,7 +353,7 @@ class TrainingSession : public InferenceSession {
   // Insert operators for running pipeline and return event tensor names.
   // For an intermediate pipeline stage, its original computation is
   //
-  //  Recv --> Forward --> Send --> 
+  //  Recv --> Forward --> Send -->
   //  Recv --> Backward --> Send
   //
   // After this function, the resulted computation is
@@ -340,7 +364,7 @@ class TrainingSession : public InferenceSession {
   // As you can see, some event operators are inserted. For each event operator, its dependent
   // event tensor name is written to an input references, for example, "forward_waited_event_name".
   //
-  // This function assumes that 
+  // This function assumes that
   //  1. Only one Recv and only one Send present in forward pass.
   //  2. Only one Recv and only one Send present in backward pass.
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to

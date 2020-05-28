@@ -101,6 +101,8 @@ def parse_arguments():
 
     # Training options
     parser.add_argument(
+        "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
+    parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
         "--enable_training_e2e_tests", action="store_true",
@@ -163,6 +165,11 @@ def parse_arguments():
     # Java bindings
     parser.add_argument(
         "--build_java", action='store_true', help="Build Java bindings.")
+
+    # Node.js binding
+    parser.add_argument(
+        "--build_nodejs", action='store_true',
+        help="Build Node.js binding and NPM package.")
 
     # Build a shared lib
     parser.add_argument(
@@ -282,6 +289,10 @@ def parse_arguments():
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")
+    parser.add_argument(
+        "--use_migraphx", action='store_true', help="Build with MIGraphX")
+    parser.add_argument(
+        "--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument(
         "--use_full_protobuf", action='store_true',
         help="Use the full protobuf library")
@@ -507,7 +518,7 @@ def setup_test_data(build_dir, configs):
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
-                        cudnn_home, tensorrt_home, path_to_protoc_exe, configs,
+                        cudnn_home, tensorrt_home, migraphx_home, path_to_protoc_exe, configs,
                         cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -541,6 +552,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
+        "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + (
             "ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + (
@@ -580,6 +592,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
             tensorrt_home if args.use_tensorrt else ""),
+        # set vars for migraphx
+        "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
+        "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for
         # ARM/ARM64 (no native compilation supported through this
         # script).
@@ -608,6 +623,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
         # Training related flags
+        "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
+            "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + (
@@ -990,6 +1007,23 @@ def setup_tensorrt_vars(args):
     return tensorrt_home
 
 
+def setup_migraphx_vars(args):
+
+    migraphx_home = None
+
+    if (args.use_migraphx):
+        print("migraphx_home = {}".format(args.migraphx_home))
+        migraphx_home = args.migraphx_home or os.getenv("MIGRAPHX_HOME") or None
+
+        migraphx_home_not_valid = (migraphx_home and not os.path.exists(migraphx_home))
+
+        if (migraphx_home_not_valid):
+            raise BuildError("migraphx_home paths must be specified and valid.",
+                             "migraphx_home='{}' valid={}."
+                             .format(migraphx_home, migraphx_home_not_valid))
+    return migraphx_home or ''
+
+
 def setup_dml_build(args, cmake_path, build_dir, configs):
     if args.use_dml:
         for config in configs:
@@ -1017,6 +1051,13 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
+
+    # with orttraining_run_glue.py. 
+    # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES) for fine-tune tests.
+    # 2. need to run test separately (not to mix between fp16 and full precision runs. this need to be investigated).
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
@@ -1533,7 +1574,7 @@ def main():
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_java:
+    if args.build_csharp or args.build_java or args.build_nodejs:
         args.build_shared_lib = True
 
     # Disabling unit tests for VAD-F as FPGA only supports
@@ -1556,6 +1597,9 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
+
+    # if using migraphx, setup migraphx paths
+    migraphx_home = setup_migraphx_vars(args)
 
     os.makedirs(build_dir, exist_ok=True)
 
@@ -1641,7 +1685,7 @@ def main():
             setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
-            tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
+            tensorrt_home, migraphx_home, path_to_protoc_exe, configs, cmake_extra_defines,
             args, cmake_extra_args)
 
     if args.clean:

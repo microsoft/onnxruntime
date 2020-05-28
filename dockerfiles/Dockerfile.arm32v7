@@ -45,13 +45,13 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive 
 
 # Start the basic build
 WORKDIR /code/onnxruntime
-RUN ./build.sh ${BUILDARGS} --update --build
+RUN ./build.sh --use_openmp ${BUILDARGS} --update --build
 
 # Build Shared Library
-RUN ./build.sh ${BUILDARGS} --build_shared_lib
+RUN ./build.sh --use_openmp ${BUILDARGS} --build_shared_lib
 
 # Build Python Bindings and Wheel
-RUN ./build.sh ${BUILDARGS} --enable_pybind --build_wheel
+RUN ./build.sh --use_openmp ${BUILDARGS} --enable_pybind --build_wheel
 
 # Build Output
 RUN ls -l /code/onnxruntime/build/Linux/${BUILDTYPE}/*.so

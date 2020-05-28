@@ -20,6 +20,7 @@ class ReshapeFusion : public GraphTransformer {
 
 private:
   static bool Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger);
+  static bool Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, const Node& concat, int index, std::vector<int64_t> shape_value, const logging::Logger& looger);
 };
 
 }  // namespace onnxruntime
