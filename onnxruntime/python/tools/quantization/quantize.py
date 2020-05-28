@@ -306,9 +306,6 @@ class ONNXQuantizer:
             # if a list of ops to be quantized is provided then only quantize those ops
             if self.nodes_to_quantize is not None and node.name not in self.nodes_to_quantize:
                 new_list += self._handle_other_ops(node, new_list)
-            # only onnx domain ops can be quantized today
-            elif node.domain != "ai.onnx" and node.domain != '':
-                new_list += self._handle_other_ops(node, new_list)
             elif self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
                 new_list += self._handle_other_ops(node, new_list)
             else:
@@ -322,6 +319,8 @@ class ONNXQuantizer:
                     new_list += self._quantize_binary_math_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
+                elif node.op_type == 'Attention':
+                    new_list += self._quantize_attention(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -749,7 +748,7 @@ class ONNXQuantizer:
             return: List of new nodes created.
         '''
         nodes_using_weight = _find_nodes_using_initializer(self.model.graph, weight.initializer)
-        unsupported_nodes = [node for node in nodes_using_weight if node.op_type not in ["Conv", "MatMul", "Gather"]]
+        unsupported_nodes = [node for node in nodes_using_weight if node.op_type not in ["Conv", "MatMul", "Gather", "Attention"]]
 
         nodes_list = []
         dequantize_linear_name = weight.name + "_DequantizeLinear"
@@ -1345,7 +1344,36 @@ class ONNXQuantizer:
             return self._quantize_matmul_qlinear_ops(node, new_nodes_list)
 
         return [node]
+    def _quantize_attention(self, node, new_nodes_list):
+        '''
+            parameter node: Attention node.
+            parameter new_nodes_list: List of new nodes created before processing this node.
+            return: a list of nodes in topological order that represents quantized Attention node.
+        '''
+        assert (node.op_type == "Attention")
 
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [0, 1], new_nodes_list)
+
+        qattention_name = ""
+        if node.name != "":
+            qattention_name = node.name + "_quant"
+        
+        inputs = []
+        inputs.extend(quantized_input_names)
+        inputs.extend([node.input[2]])
+        inputs.extend(scale_names)
+        inputs.extend([node.input[3]])
+        inputs.extend(zero_point_names)
+
+        numOfHeads = 12
+        for attr in node.attribute:
+            if attr.name == "num_heads":
+                numOfHeads = onnx.helper.get_attribute_value(attr)
+        qattention_node = onnx.helper.make_node("QAttention", inputs, node.output, qattention_name, domain="com.microsoft", num_heads=numOfHeads)
+        nodes.append(qattention_node)
+
+        return nodes
 
 def check_opset_version(org_model, force_fusions):
     '''
