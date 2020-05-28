@@ -139,8 +139,6 @@ class ORTGlueTest(unittest.TestCase):
             else None
         )
 
-        print(data_args)
-        print(training_args.local_rank)
         eval_dataset = (
             GlueDataset(data_args, tokenizer=tokenizer, mode="dev")
             if training_args.do_eval

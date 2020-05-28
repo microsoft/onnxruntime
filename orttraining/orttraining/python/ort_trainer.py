@@ -208,23 +208,37 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
         return np.int16
 
-def wrap_for_input_match(model, input_names):
+def wrap_for_input_match(model, loss_fn, input_names):
     import inspect
     sig = inspect.signature(model.forward)
     ordered_list_keys = list(sig.parameters.keys())
+    if loss_fn:
+        sig_loss = inspect.signature(loss_fn)
+        if len(sig_loss.parameters) != 2:
+            warnings.warn("loss function should take two arguments - predict and label.")
+            model = model_loss_cls(model, loss_fn)
+        # label shall be the second input to loss_fn. 
+        ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
 
-    if len(ordered_list_keys) < len(input_names):
+    # name match is needed only when input_names are a subset
+    # of expected inputs (inputs to model and loss_fn combined).
+    if len(input_names) > len(ordered_list_keys):
         # this is likely the case where input arguments are packed.
-        # For example when model_loss_cls is used.
         # TODO: to unpack the input argument.
+        if loss_fn:
+            model = model_loss_cls(model, loss_fn)
         return model
-    elif len(ordered_list_keys) == len(input_names):
-        # in this case, we do not require name match. we will if train_step supports dictionary input
+    elif len(input_names) == len(ordered_list_keys):
+        # in this case, we do not require name match.
+        if loss_fn:
+            model = model_loss_cls(model, loss_fn)
         return model
 
     if not all(x in ordered_list_keys for x in input_names):
         # model desc has name(s) not matching the model signature. We cannot do anything in this case.
         # better to warning the user.
+        if loss_fn:
+            model = model_loss_cls(model, loss_fn)
         return model
 
     # if input_names match the first ordered_list_keys, there is not need for wrapping
@@ -235,12 +249,15 @@ def wrap_for_input_match(model, input_names):
             break
 
     if match:
+        if loss_fn:
+            model = model_loss_cls(model, loss_fn)
         return model
 
     class WrapModel(torch.nn.Module):
-        def __init__(self, model, input_names):
+        def __init__(self, model, loss_fn, input_names):
             super(WrapModel, self).__init__()
             self.model_ = model
+            self.loss_fn_ = loss_fn
             self.input_names_ = input_names
 
         def forward(self, *inputs):
@@ -254,9 +271,14 @@ def wrap_for_input_match(model, input_names):
                 if key in self.input_names_:
                     input_dict[key] = inputs[self.input_names_.index(key)]
 
-            return self.model_(**input_dict)
+            model_out = self.model_(**input_dict)
+            if self.loss_fn_:
+                label = inputs[-1]
+                preds = model_out
+                return self.loss_fn_(preds, label), preds
 
-    model = WrapModel(model, input_names)
+    model = WrapModel(model, loss_fn, input_names)
+
     return model
 
 def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
@@ -290,13 +312,10 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     else:
         raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
-    if loss_fn:
-        model = model_loss_cls(model, loss_fn)
-
     # pytorch onnx exporter/trace does not try to match argument names.
     # e.g. for models with optional inputs, it requires all inputs be present.
     # this is a problem because the model graph depends on inputs provided.
-    model = wrap_for_input_match(model, input_names)
+    model = wrap_for_input_match(model, loss_fn, input_names)
 
     model.eval()
     with torch.no_grad():

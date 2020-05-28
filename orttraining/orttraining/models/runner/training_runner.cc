@@ -619,11 +619,13 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                      std::vector<MLValue>& feeds,
                                      std::vector<MLValue>& fetches) {
 #if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
   // Store the tag for the thread which runs session_.Run(...).
   // It will be used to name range in Nvidia's visual profiler.
   auto& profile_context = profile::Context::GetInstance();
   profile_context.SetThreadTag(
       std::this_thread::get_id(), std::to_string(step_));
+#endif
 #endif
   // Sync launch of session. This model-update session runs on the main thread, so
   // no new async session will be launched until this model-update session is done.
@@ -694,11 +696,13 @@ Status TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   pipeline_worker_pool_.workers[worker_id] = std::thread([&](
       const size_t worker_id, const size_t step) {
 #if !defined(NDEBUG) && defined(USE_CUDA) && !defined(_WIN32)
+#ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
     auto& profile_context = profile::Context::GetInstance();
     profile_context.SetThreadTag(
       std::this_thread::get_id(), std::to_string(step));
+#endif
 #endif
     // Dummy use of step to avoid warning when the code above is disabled. 
     ORT_ENFORCE(step + 1 > 0);
