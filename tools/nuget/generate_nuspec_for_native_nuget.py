@@ -71,7 +71,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
-    if (package_name != 'Microsoft.AI.MachineLearning'):
+    if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
 
         # Support .Net Core
