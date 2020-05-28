@@ -42,7 +42,6 @@ SEQ_LEN = 7
 
 
 class TinyBertOnnxModel(OnnxModel):
-
     def __init__(self, model, verbose):
         super(TinyBertOnnxModel, self).__init__(model, verbose)
         self.resize_model()

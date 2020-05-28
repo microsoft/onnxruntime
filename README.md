@@ -50,7 +50,7 @@ To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/o
 * [Hardware accelerators](#supported-accelerators)
 * [Deploy ONNX Runtime inferencing](#deploying-onnx-runtime)
 * [Samples](./samples)
-* [High level architectural design](docs/HighLevelDesign.md)
+* [High level architectural design](docs/InferenceHighLevelDesign.md)
 * [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
 * [Extensibility: Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Extensibility: Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
