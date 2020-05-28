@@ -179,6 +179,8 @@ jobs:
 
 
 - job: Final_Jar_Testing_Windows
+  workspace:
+    clean: all
   pool: 'Win-GPU-2019'
   timeoutInMinutes: 60
   dependsOn:
@@ -213,6 +215,8 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
 - job: Final_Jar_Testing_Linux
+  workspace:
+    clean: all
   pool: 'Linux-GPU-CUDA10'
   timeoutInMinutes: 60
   dependsOn:
