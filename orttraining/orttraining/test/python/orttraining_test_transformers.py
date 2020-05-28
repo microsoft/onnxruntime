@@ -6,12 +6,14 @@ import unittest
 import shutil
 import pytest
 import os
-
+import random
+import numpy as np
 from transformers import (BertConfig, BertForPreTraining, BertModel)
 
 from orttraining_test_data_loader import ids_tensor, BatchArgsOption
 from orttraining_test_utils import run_test, get_lr
 
+import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler
 
 import torch
@@ -141,6 +143,13 @@ class BertModelTest(unittest.TestCase):
             return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
 
         def create_and_check_bert_for_pretraining(self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels):
+            seed = 42
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            onnxruntime.set_seed(seed)
+
             model = BertForPreTraining(config=config)
             model.eval()
             loss, prediction_scores, seq_relationship_score = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids,
