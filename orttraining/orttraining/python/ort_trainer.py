@@ -342,7 +342,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # onnx model initializer may contain non-trainable registered buffers that are not part
     # of pytorch model named parameteres.
-    assert set([n for n, t in model.model_.named_parameters()]).issubset(
+    named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
+    assert set([n for n, t in named_parameters]).issubset(
         set([n.name for n in onnx_model.graph.initializer])), \
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
