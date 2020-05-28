@@ -2337,6 +2337,13 @@ const std::vector<const NodeArg*>& Graph::GetValueInfo() const noexcept {
   return value_info_;
 }
 
+void Graph::AddValueInfo(const NodeArg* new_value_info){
+  for(const auto* info : value_info_){
+    ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
+  }
+  value_info_.push_back(new_value_info);
+}
+
 std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                             const ArgNameToTypeMap& name_to_type_map) {
   const auto name_to_type_map_end = name_to_type_map.end();

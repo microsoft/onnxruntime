@@ -251,11 +251,8 @@ static void CreateSessionWithCastToFloat16InModel()
     CreateSession(learningModel);
 }
 
-static void DISABLED_CreateSessionWithFloat16InitializersInModel()
+static void CreateSessionWithFloat16InitializersInModel()
 {
-    // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
-    // Model fails to resolve due to ORT using incorrect IR version within partition
-
     // load a model
     LearningModel learningModel = nullptr;
     WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
@@ -403,7 +400,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     EvaluateFeaturesAsync,
     EvaluationProperties,
     CreateSessionWithCastToFloat16InModel,
-    DISABLED_CreateSessionWithFloat16InitializersInModel,
+    CreateSessionWithFloat16InitializersInModel,
     EvaluateSessionAndCloseModel,
     CloseSession,
   };
@@ -413,7 +410,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
     api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
     api.CreateSessionWithCastToFloat16InModel = SkipTest;
-    api.DISABLED_CreateSessionWithFloat16InitializersInModel = SkipTest;
+    api.CreateSessionWithFloat16InitializersInModel = SkipTest;
     api.AdapterIdAndDevice = SkipTest;
   }
   if (RuntimeParameterExists(L"EdgeCore")) {

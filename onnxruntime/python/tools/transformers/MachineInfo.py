@@ -20,7 +20,6 @@ from py3nvml.py3nvml import nvmlInit, nvmlSystemGetDriverVersion, nvmlDeviceGetC
 
 class MachineInfo():
     """ Class encapsulating Machine Info logic. """
-
     def __init__(self, silent=False, logger=None):
         self.silent = silent
 
