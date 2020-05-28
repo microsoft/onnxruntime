@@ -186,13 +186,13 @@ class TrainingRunner {
 
  private:
   enum SessionMode: int {ModelUpdateStep, GradientAccumulateStep, EvaluateStep};
-  Status PrepareFeedNamesAndFeeds(const SessionMode mode,
-                                  IDataLoader& training_data_loader,
-                                  DataSet& training_data,
-                                  LearningRateScheduler* lr_scheduler,
-                                  const size_t batch_index,
-                                  std::vector<std::string>& feed_names,
-                                  std::vector<MLValue>& feeds);
+  void PrepareFeedNamesAndFeeds(const SessionMode mode,
+                                IDataLoader& training_data_loader,
+                                DataSet& training_data,
+                                LearningRateScheduler* lr_scheduler,
+                                const size_t batch_index,
+                                std::vector<std::string>& feed_names,
+                                std::vector<MLValue>& feeds);
   Status PrepareFetchNamesAndFetches(const SessionMode mode,
                                      std::vector<std::string>& fetch_names,
                                      std::vector<MLValue>& fetches);

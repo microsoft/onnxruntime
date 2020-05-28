@@ -344,13 +344,13 @@ Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_
 }
 
 // Prepare feeds for a call to one session run.
-Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
-                                                IDataLoader& training_data_loader,
-                                                DataSet& training_data,
-                                                LearningRateScheduler* lr_scheduler,
-                                                const size_t batch_index,
-                                                std::vector<std::string>& feed_names,
-                                                std::vector<MLValue>& feeds) {
+void TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
+                                              IDataLoader& training_data_loader,
+                                              DataSet& training_data,
+                                              LearningRateScheduler* lr_scheduler,
+                                              const size_t batch_index,
+                                              std::vector<std::string>& feed_names,
+                                              std::vector<MLValue>& feeds) {
   // Initialize outputs of this function.
   feed_names = std::vector<std::string>();
   feeds = std::vector<MLValue>();
@@ -515,8 +515,6 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
       input_allocator_);
     feeds.push_back(event_id);
   }
-
-  return Status::OK();
 }
 
 Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
@@ -787,10 +785,12 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                   batch,
                                   feed_names,
                                   feeds);
-          PrepareFetchNamesAndFetches(ModelUpdateStep,
-                                      fetch_names,
-                                      fetches);
-          RunWithUpdate(feed_names, fetch_names, feeds, fetches);
+          ORT_RETURN_IF_ERROR(
+            PrepareFetchNamesAndFetches(ModelUpdateStep,
+                                        fetch_names,
+                                        fetches));
+          ORT_RETURN_IF_ERROR(
+            RunWithUpdate(feed_names, fetch_names, feeds, fetches));
         } else {
           PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                   training_data_loader,
@@ -799,11 +799,13 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                   batch,
                                   feed_names,
                                   feeds);
-          PrepareFetchNamesAndFetches(GradientAccumulateStep,
-                                      fetch_names,
-                                      fetches);
-          RunWithoutUpdate(feed_names, fetch_names, feeds,
-                           gradient_accumulation_step_count);
+          ORT_RETURN_IF_ERROR(
+            PrepareFetchNamesAndFetches(GradientAccumulateStep,
+                                        fetch_names,
+                                        fetches));
+          ORT_RETURN_IF_ERROR(
+            RunWithoutUpdate(feed_names, fetch_names, feeds,
+                             gradient_accumulation_step_count));
 
         }
 
