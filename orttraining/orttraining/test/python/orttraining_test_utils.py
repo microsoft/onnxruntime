@@ -102,6 +102,8 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
                 kwargs[model.loss_scale_input_name] = loss_scale
             outputs = model(*args, **kwargs)
 
+        print(outputs[0])
+
     # eval
     model.eval()
     if batch_args_option == BatchArgsOption.List:

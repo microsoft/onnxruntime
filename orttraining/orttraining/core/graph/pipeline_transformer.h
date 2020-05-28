@@ -4,12 +4,14 @@
 #pragma once
 
 #include "core/graph/graph.h"
+#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace training {
 
 void GetPipelineSendOutput(const Graph& graph, std::string& loss_name);
-common::Status TransformGraphForPipeline(
+
+Status TransformGraphForPipeline(
     Graph& graph,
     std::string& forward_waited_event_name,
     std::string& forward_recorded_event_name,
@@ -24,5 +26,10 @@ common::Status TransformGraphForPipeline(
     std::string& backward_waited_event_after_recv_name,
     std::string& backward_recorded_event_before_send_name);
 
+Status ApplyPipelinePartitionToMainGraph(
+    Graph& graph,
+    const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_info,
+    size_t pipeline_stage_id,
+    size_t num_pipeline_stage);
 }  // namespace training
 }  // namespace onnxruntime
