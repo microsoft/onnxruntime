@@ -265,7 +265,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
             } catch (const OnnxRuntimeException& ex) {
               LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                  << location.ToString() << "failed. Error:" << ex.what();
+                                                  << location.ToString() << " failed. Error:" << ex.what();
             }
 
             if (buffer != nullptr) {
