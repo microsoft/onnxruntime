@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cpu/tensor/utils.h"
 #include "einsum_auxiliary_ops.h"
 
 namespace onnxruntime {
@@ -73,9 +74,56 @@ Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                                               true, input_shape_override);
 }
 
-// CUDA EP specific Diagonal helper(s)
-std::unique_ptr<Tensor> Diagonal(const Tensor& /*input*/, int64_t /*dim_1*/, int64_t /*dim_2*/, AllocatorPtr /*allocator*/) {
-  ORT_THROW(ONNXRUNTIME, NOT_IMPLEMENTED, "Cuda Diagonal not implemented");
+// CUDA EP specific Diagonal helper
+std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator) {
+  const auto& input_shape = input.Shape();
+  const auto& input_dims = input_shape.GetDims();
+  auto rank = static_cast<int64_t>(input_dims.size());
+
+  ORT_ENFORCE(rank >= 2 && dim_1 != dim_2 && input_dims[dim_1] == input_dims[dim_2],
+              "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input_shape);
+
+  int64_t first_dim = -1;   // first_dim holds the lesser of dim_1 and dim_2
+  int64_t second_dim = -1;  // second_dim holds the greater of dim_1 and dim_2
+  if (dim_1 < dim_2) {
+    first_dim = dim_1;
+    second_dim = dim_2;
+  } else {
+    first_dim = dim_2;
+    second_dim = dim_1;
+  }
+
+  // Make a copy - we are going to mutate the dims
+  std::vector<int64_t> output_dims = input_dims;
+
+  // Remove the dim value in `second_dim` -
+  // The diagonal values are stored along `first_dim`
+  output_dims.erase(output_dims.begin() + second_dim);
+
+  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+
+  TensorPitches input_strides(input.Shape().GetDims());
+  cuda::TArray<int64_t> gpu_input_strides(input_strides);
+
+  auto output_rank = output_dims.size();
+  cuda::TArray<cuda::fast_divmod> gpu_output_strides(static_cast<int32_t>(output_rank));
+  TensorPitches output_strides(output_dims);
+  for (auto i = 0; i < output_rank; i++) {
+    gpu_output_strides[i] = cuda::fast_divmod(static_cast<int>(output_strides[i]));
+  }
+
+  DiagonalImpl(
+      input.DataRaw(),
+      input.Shape().GetDims().size(),
+      first_dim,
+      second_dim,
+      gpu_input_strides,
+      output->MutableDataRaw(),
+      gpu_output_strides,
+      TensorShape(output_dims).Size(),
+      input.DataType()->Size());
+
+  return output;
 }
 
 }  // namespace CudaDeviceHelpers
@@ -94,6 +142,17 @@ template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(const Tensor&
                                                                    bool keep_dims, AllocatorPtr allocator,
                                                                    const TensorShape* input_shape_override,
                                                                    concurrency::ThreadPool* tp, void* cuda_ep);
+
+// double
+template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(const double* input_1_data, const double* input_2_data, double* output_data,
+                                                                 size_t left_stride, size_t right_stride, size_t output_stride,
+                                                                 size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                                                 void* cublas_handle);
+
+template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                                                    bool keep_dims, AllocatorPtr allocator,
+                                                                    const TensorShape* input_shape_override,
+                                                                    concurrency::ThreadPool* tp, void* cuda_ep);
 
 }  // namespace EinsumOp
 

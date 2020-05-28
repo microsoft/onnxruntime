@@ -10,6 +10,7 @@
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "einsum_auxiliary_ops_diagonal.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
 
