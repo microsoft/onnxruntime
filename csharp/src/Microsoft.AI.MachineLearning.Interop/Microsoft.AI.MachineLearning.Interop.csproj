@@ -39,6 +39,10 @@
     <Message Text="Generating $(ProjectName) CS projection sources with command:"/>
     <Message Text="$(CsWinRTCommand)"/>
     <Exec Command="$(CsWinRTCommand)" />
+    
+    <ItemGroup>
+      <Compile Include="$(ProjectDir)Generated Files/*.cs" Exclude="@(Compile)" />
+    </ItemGroup>
   </Target>
 
 </Project>
