@@ -31,15 +31,17 @@ using Transpose = std::function<Status(const std::vector<size_t>& permutation, c
 
 // MatMul op - Multiplies two inputs of shapes [num_batches, M, K] and [num_batches, K, N]
 template <typename T>
-using MatMul = std::function<void(const T* input_1_data, const T* input_2_data, T* output_data,
-                                  size_t left_stride, size_t right_stride, size_t output_stride,
-                                  size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-                                  void* cublas_handle)>;
+using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data, T* output_data,
+                                    size_t left_stride, size_t right_stride, size_t output_stride,
+                                    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+                                    void* cublas_handle)>;
 
 // ReduceSum op - Reduces along `reduce_axes`
+template <typename T>
 using ReduceSum = std::function<Tensor(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                                       AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                                       const TensorShape* input_shape_override)>;
+                                       bool keep_dims, AllocatorPtr allocator,
+                                       const TensorShape* input_shape_override,
+                                       concurrency::ThreadPool* tp, void* cuda_ep)>;
 
 // Diagonal op
 // Diagonal - A specialized implementation somewhat similar to Torch's Diagonal op
@@ -62,14 +64,18 @@ Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* cublas_handle);
 
 template <typename T>
-void MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
-            size_t left_stride, size_t right_stride, size_t output_stride,
-            size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-            void* cublas_handle);
+Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
+              size_t left_stride, size_t right_stride, size_t output_stride,
+              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+              void* cublas_handle);
+
+template <typename T>
+Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                 bool keep_dims, AllocatorPtr allocator,
+                 const TensorShape* input_shape_override,
+                 concurrency::ThreadPool* tp, void* cuda_ep);
 
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
-
-// For ReduceSum, we directly invoke the relevant static methods in the two classes -they don't need standalone wrappers as such
 
 }  // namespace CpuDeviceHelpers
 
@@ -93,7 +99,8 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>
 template <typename T>
 std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& input_shape_override,
                                   const std::vector<int64_t>& reduce_axes, AllocatorPtr allocator,
-                                  concurrency::ThreadPool* tp, const DeviceHelpers::ReduceSum& device_reduce_sum_func);
+                                  concurrency::ThreadPool* tp, void* cuda_ep,
+                                  const DeviceHelpers::ReduceSum<T>& device_reduce_sum_func);
 
 }  // namespace EinsumOp
 

@@ -213,18 +213,18 @@ class EinsumTypedComputeProcessor {
  public:
   explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
                                        EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                       void* cublas_handle)
+                                       void* cublas_handle, void* cuda_ep)
       : context_(context),
         allocator_(allocator),
         einsum_compute_preprocessor_(einsum_compute_preprocessor),
-        cublas_handle_(cublas_handle) {
-  }
+        cublas_handle_(cublas_handle),
+        cuda_ep_(cuda_ep) {}
 
   // Pass-in device specific functions
   // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
   void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                         const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
-                        const EinsumOp::DeviceHelpers::ReduceSum& device_reduce_sum_func,
+                        const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
                         const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func);
 
   Status Run();
@@ -236,11 +236,14 @@ class EinsumTypedComputeProcessor {
 
   EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
   EinsumOp::DeviceHelpers::MatMul<T> device_matmul_func_;
-  EinsumOp::DeviceHelpers::ReduceSum device_reduce_sum_func_;
+  EinsumOp::DeviceHelpers::ReduceSum<T> device_reduce_sum_func_;
   EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
 
   // CuBLAS handle to be used in case the processing is done on the CUDA EP
   void* cublas_handle_;
+
+  // CUDA EP - required by ReduceSum CUDA kernel
+  void* cuda_ep_;
 };
 
 }  // namespace onnxruntime

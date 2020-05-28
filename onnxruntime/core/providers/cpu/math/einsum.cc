@@ -54,40 +54,40 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
 
   // EinsumComputeProcessor section -
   if (inputs[0]->IsDataType<float>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, einsum_compute_preprocessor, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<float>,
-                                              onnxruntime::ReduceSum<float>::Impl,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<float>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int32_t>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context, allocator, einsum_compute_preprocessor, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<int32_t>,
-                                              onnxruntime::ReduceSum<int32_t>::Impl,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<int32_t>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
 
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<double>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, einsum_compute_preprocessor, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<double>,
-                                              onnxruntime::ReduceSum<double>::Impl,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<double>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int64_t>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context, allocator, einsum_compute_preprocessor, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::MatMul<int64_t>,
-                                              onnxruntime::ReduceSum<int64_t>::Impl,
+                                              EinsumOp::DeviceHelpers::CpuDeviceHelpers::ReduceSum<int64_t>,
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
 
     return einsum_compute_processor.Run();

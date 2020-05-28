@@ -107,9 +107,10 @@ static std::unique_ptr<Tensor> PairwiseOperandProcess(const Tensor& left,
                                                       bool is_final_pair, Tensor& final_output,
                                                       const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                                                       const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
-                                                      const EinsumOp::DeviceHelpers::ReduceSum& device_reduce_sum_func,
+                                                      const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
                                                       const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func,
-                                                      void* cublas_handle) {
+                                                      void* cublas_handle,
+                                                      void* cuda_ep) {
   // Use the provided dim overrides instead of the actual shapes of the operands
   ORT_ENFORCE(left.Shape().Size() == left_shape_override.Size(), "The override dims are not compatible with given tensor's shape");
   ORT_ENFORCE(right.Shape().Size() == right_shape_override.Size(), "The override dims are not compatible with given tensor's shape");
@@ -160,9 +161,9 @@ static std::unique_ptr<Tensor> PairwiseOperandProcess(const Tensor& left,
                     "Einsum op: Input dimensions must be equal along an axis to be reduced across all inputs");
         reduced_size *= left_dim;
       } else if (has_left_dim) {  // if it is only in one of left and right, we can reduce right away
-        current_left = ReduceSum<T>(left, left_dims, {i}, allocator, tp, device_reduce_sum_func);
+        current_left = ReduceSum<T>(left, left_dims, {i}, allocator, tp, cuda_ep, device_reduce_sum_func);
       } else if (has_right_dim) {
-        current_right = ReduceSum<T>(right, right_dims, {i}, allocator, tp, device_reduce_sum_func);
+        current_right = ReduceSum<T>(right, right_dims, {i}, allocator, tp, cuda_ep, device_reduce_sum_func);
       }
     } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
       // Both the left and right operands have non-trivial dimension value along this axis
@@ -762,7 +763,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
 template <typename T>
 void EinsumTypedComputeProcessor<T>::SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
                                                       const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
-                                                      const EinsumOp::DeviceHelpers::ReduceSum& device_reduce_sum_func,
+                                                      const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
                                                       const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func) {
   device_transpose_func_ = device_transpose_func;
   device_matmul_func_ = device_matmul_func;
@@ -811,7 +812,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     // Reduce the dims that are last seen in the first input alone
     if (reduced_dims.size() != 0) {
       result = EinsumOp::ReduceSum<T>(preprocessed_inputs[0] ? *preprocessed_inputs[0] : *raw_inputs[0],
-                                      homogenized_input_dims[0].GetDims(), reduced_dims, allocator_, tp, device_reduce_sum_func_);
+                                      homogenized_input_dims[0].GetDims(), reduced_dims, allocator_, tp, cuda_ep_, device_reduce_sum_func_);
     } else {
       // Check if there is a pre-processed version of this input
       // If so assign it to result
@@ -857,7 +858,8 @@ Status EinsumTypedComputeProcessor<T>::Run() {
                                                    reduced_dims, tp, allocator_,
                                                    einsum_compute_preprocessor_, is_final_pair, *output,
                                                    device_transpose_func_, device_matmul_func_,
-                                                   device_reduce_sum_func_, device_data_copy_func_, cublas_handle_);
+                                                   device_reduce_sum_func_, device_data_copy_func_, cublas_handle_,
+                                                   cuda_ep_);
     }
   }
 
