@@ -34,7 +34,7 @@ steps:
           jar cvf $(Build.BinariesDirectory)\${{parameters.artifactName}}\testing.jar .
           popd
           pushd $(Build.SourcesDirectory)\java\build\resources\test
-          rd /s /q ai
+          rd /s /q ai\onnxruntime\native
           jar uvf $(Build.BinariesDirectory)\${{parameters.artifactName}}\testing.jar .
           popd
           rd /s /q $(Build.BinariesDirectory)\${{parameters.artifactName}}\stage
