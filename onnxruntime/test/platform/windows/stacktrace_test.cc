@@ -28,9 +28,6 @@ TEST(StacktraceTests, BasicTests) {
     // this method name should be the first on the stack as we hide the calls to the infrastructure that
     // creates the stack trace
     EXPECT_THAT(result[0], HasSubstr("BasicTests"));
-  else
-    // check that we have
-    EXPECT_THAT(result[0], HasSubstr("Unknown symbol"));
 
   try {
     ORT_THROW("Testing");
