@@ -29,32 +29,30 @@ void QLinearBroadcastLoop(TBroadcaster<T, T>& bc, TBroadcastOutput<T>& output, I
 
 template <typename T, typename Input0Scalar, typename Input1Scalar, typename General>
 void QLinearBroadcastOneSpan(ThreadPool* tp, double unit_cost,
-                             gsl::span<T> output_span, gsl::span<const T> input0_span,  gsl::span<const T> input1_span,
+                             gsl::span<T> output_span, gsl::span<const T> input0_span, gsl::span<const T> input1_span,
                              Input0Scalar input0scalar, Input1Scalar input1scalar, General general,
                              float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
   if (input0_span.size() == 1) {
     ThreadPool::TryParallelFor(tp, output_span.size(), unit_cost,
-        [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-          size_t count = static_cast<size_t>(last - first);
-          input0scalar(output_span.subspan(first, count), *input0_span.data(), input1_span.subspan(first, count),
-                       A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
-    });
-  }
-  else if (input1_span.size() == 1) {
+                               [=](std::ptrdiff_t first, std::ptrdiff_t last) {
+                                 size_t count = static_cast<size_t>(last - first);
+                                 input0scalar(output_span.subspan(first, count), *input0_span.data(), input1_span.subspan(first, count),
+                                              A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
+                               });
+  } else if (input1_span.size() == 1) {
     ThreadPool::TryParallelFor(tp, output_span.size(), unit_cost,
-        [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-            size_t count = static_cast<size_t>(last - first);
-            input1scalar(output_span.subspan(first, count), input0_span.subspan(first, count), *input1_span.data(),
-                         A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
-    });
-  }
-  else {
+                               [=](std::ptrdiff_t first, std::ptrdiff_t last) {
+                                 size_t count = static_cast<size_t>(last - first);
+                                 input1scalar(output_span.subspan(first, count), input0_span.subspan(first, count), *input1_span.data(),
+                                              A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
+                               });
+  } else {
     ThreadPool::TryParallelFor(tp, output_span.size(), unit_cost,
-        [=](std::ptrdiff_t first, std::ptrdiff_t last) {
-            size_t count = static_cast<size_t>(last - first);
-            general(output_span.subspan(first, count), input0_span.subspan(first, count), input1_span.subspan(first, count),
-                    A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
-    });
+                               [=](std::ptrdiff_t first, std::ptrdiff_t last) {
+                                 size_t count = static_cast<size_t>(last - first);
+                                 general(output_span.subspan(first, count), input0_span.subspan(first, count), input1_span.subspan(first, count),
+                                         A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
+                               });
   }
 }
 
@@ -94,20 +92,19 @@ Status QLinearBroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, 
   int64_t output_len = output_tensor.Shape().Size();
 
   ThreadPool* tp = context.GetOperatorThreadPool();
-  if (output_len == static_cast<int64_t>(span_size)) { // Only one big span for all data, parallel inside it
+  if (output_len == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
     QLinearBroadcastOneSpan(tp, unit_cost, output.NextSpanOutput(), bc.NextSpan0(), bc.NextSpan1(),
                             input0scalar, input1scalar, general,
                             A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
-  }
-  else {
+  } else {
     ThreadPool::TryParallelFor(
         tp, output_len / span_size, unit_cost * span_size,
         [=, &bc, &output_tensor](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
-            TBroadcaster<T, T> span_bc(bc);
-            TBroadcastOutput<T> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
-            span_bc.AdvanceBy(first_span * span_size);
-            QLinearBroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general,
-                                 A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
+          TBroadcaster<T, T> span_bc(bc);
+          TBroadcastOutput<T> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
+          span_bc.AdvanceBy(first_span * span_size);
+          QLinearBroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general,
+                               A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
         });
   }
   return Status::OK();
@@ -128,7 +125,6 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
         MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
                        &input1, B_scale, B_zero_point,
                        C_scale, C_zero_point, output.data(), output.size(), 1);
-
       },
       [](gsl::span<T> output, gsl::span<const T> input0, gsl::span<const T> input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
