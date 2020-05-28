@@ -575,7 +575,7 @@ TEST(Loop, InfiniteLoopTermination) {
 }
 
 // Add basic test to trigger types override logic in Graph::InferAndVerifySubgraphTypes as well as
-// type/shape inferencing for subgraph to flow the type/shape info through 
+// type/shape inferencing for subgraph to flow the type/shape info through
 // subgraph.PerformTypeAndShapeInferencing(options).
 // In this test, main graph has original input/expected output defined as "double" where the subgraph as "float".
 // Expectation is types should get propagated properly in subgraph and yield correct output
@@ -822,6 +822,37 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
 
   // Disable TensorRT on unsupported data type BOOL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(Loop, BugFixIssue4031_implicit_input_handling) {
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Level2;  // we need constant folding to run
+  InferenceSession session_object{so, GetEnvironment()};
+  static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/ort_github_issue_4031.onnx");
+
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  onnxruntime::RunOptions run_options;
+  run_options.run_tag = "BugFixIssue4031_implicit_input_handling";
+
+  // prepare inputs
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, {123.f},
+                       &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("state_var_in", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names{"state_var_out"};
+  std::vector<OrtValue> fetches;
+
+  // Now run
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  const auto& output = fetches[0].Get<Tensor>();
+  ASSERT_TRUE(output.Shape().Size() == 1);
+  ASSERT_TRUE(output.Data<float>()[0] == 125.f);
 }
 
 #ifdef USE_CUDA
