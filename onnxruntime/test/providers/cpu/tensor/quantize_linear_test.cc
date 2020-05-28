@@ -141,7 +141,7 @@ TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_With_Zero_Point) {
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddOutput<uint8_t>("y", {}, {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 }  // namespace test
