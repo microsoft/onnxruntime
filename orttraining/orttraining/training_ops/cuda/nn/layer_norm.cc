@@ -35,18 +35,19 @@ Status LayerNormGrad<T, U>::ComputeInternal(OpKernelContext* p_op_kernel_context
   typedef typename ToCudaType<U>::MappedType CudaU;
   // Inputs
   const Tensor* Y_grad = p_op_kernel_context->Input<Tensor>(0);
-  const Tensor* X = p_op_kernel_context->Input<Tensor>(1);
+  const Tensor* Y = p_op_kernel_context->Input<Tensor>(1);
   const Tensor* scale = p_op_kernel_context->Input<Tensor>(2);
-  const Tensor* mean = p_op_kernel_context->Input<Tensor>(3);
+  const Tensor* bias = p_op_kernel_context->Input<Tensor>(3);
   const Tensor* inv_std_var = p_op_kernel_context->Input<Tensor>(4);
 
   auto Y_grad_data = reinterpret_cast<const CudaT*>(Y_grad->template Data<T>());
-  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+  auto Y_data = reinterpret_cast<const CudaT*>(Y->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto mean_data = reinterpret_cast<const CudaU*>(mean->template Data<U>());
+  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
   auto inv_std_var_data = reinterpret_cast<const CudaU*>(inv_std_var->template Data<U>());
 
-  const TensorShape& x_shape = X->Shape();
+  const TensorShape& y_shape = Y->Shape();
+  const TensorShape& x_shape = y_shape;
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
   auto n1 = x_shape.SizeToDimension(axis);
   auto n2 = x_shape.SizeFromDimension(axis);
@@ -65,8 +66,20 @@ Status LayerNormGrad<T, U>::ComputeInternal(OpKernelContext* p_op_kernel_context
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2);
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2);
 
-  HostLayerNormGradient(GetDeviceProp(), Y_grad_data, mean_data, inv_std_var_data, X_data, n1, n2, scale_data, X_grad_data, scale_grad_data, bias_grad_data,
-                        part_grad_gamma.get(), part_grad_beta.get(), part_size);
+  (void)bias_data;
+  (void)inv_std_var_data;
+  (void)n1;
+  (void)n2;
+  (void)Y_grad_data;
+  (void)Y_data;
+  (void)X_grad_data;
+  (void)scale_data;
+  (void)bias_data;
+  (void)scale_grad_data;
+  (void)bias_grad_data;
+
+  //HostLayerNormGradient(GetDeviceProp(), Y_grad_data, mean_data, inv_std_var_data, X_data, n1, n2, scale_data, X_grad_data, scale_grad_data, bias_grad_data,
+  //                      part_grad_gamma.get(), part_grad_beta.get(), part_size);
   return Status::OK();
 }
 
