@@ -124,7 +124,7 @@ GCC 4.x and below are not supported.
 |**C# and C packages**|--build_csharp||
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
-|**Node.js**|--build_nodejs|Implies `--build_shared_lib`<br>`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
+|**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
 

@@ -166,6 +166,11 @@ def parse_arguments():
     parser.add_argument(
         "--build_java", action='store_true', help="Build Java bindings.")
 
+    # Node.js binding
+    parser.add_argument(
+        "--build_nodejs", action='store_true',
+        help="Build Node.js binding and NPM package.")
+
     # Build a shared lib
     parser.add_argument(
         "--build_shared_lib", action='store_true',
@@ -547,6 +552,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
+        "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + (
             "ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + (
@@ -1045,6 +1051,13 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
+
+    # with orttraining_run_glue.py. 
+    # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES) for fine-tune tests.
+    # 2. need to run test separately (not to mix between fp16 and full precision runs. this need to be investigated).
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
@@ -1561,7 +1574,7 @@ def main():
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_java:
+    if args.build_csharp or args.build_java or args.build_nodejs:
         args.build_shared_lib = True
 
     # Disabling unit tests for VAD-F as FPGA only supports
