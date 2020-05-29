@@ -745,38 +745,38 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 #else
     ORT_UNUSED_PARAMETER(step);
 #endif
-    RunOptions run_options;	    // Dummy use of step to avoid warning when the code above is disabled. 
-    run_options.only_execute_path_to_fetches = true;	    ORT_ENFORCE(step + 1 > 0);
-    auto status = session_.Run(	
-      run_options,	
-      pipeline_worker_pool_.worker_states[worker_id].feed_names,	
-      pipeline_worker_pool_.worker_states[worker_id].feeds,	
-      pipeline_worker_pool_.worker_states[worker_id].fetch_names,	
-      &(pipeline_worker_pool_.worker_states[worker_id].fetches));	
-    ORT_THROW_IF_ERROR(status);	
-  }, worker_id, step_);	
+    RunOptions run_options;
+    run_options.only_execute_path_to_fetches = true;
+    auto status = session_.Run(
+      run_options,
+      pipeline_worker_pool_.worker_states[worker_id].feed_names,
+      pipeline_worker_pool_.worker_states[worker_id].feeds,
+      pipeline_worker_pool_.worker_states[worker_id].fetch_names,
+      &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+    ORT_THROW_IF_ERROR(status);
+  }, worker_id, step_);
 
-  // Add one after process one batch.	
-  ++step_;	
-  // Add one after comuting one forward-backward path without applying optimizer.	
-  ++gradient_accumulation_step_count;	
-}	
+  // Add one after process one batch.
+  ++step_;
+  // Add one after comuting one forward-backward path without applying optimizer.
+  ++gradient_accumulation_step_count;
+}
 
-Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,	
-                                    const MapStringToString& mapped_dimensions) {	
-  const bool enable_checkpoint_saving =	
-      params_.mpi_context.world_rank == 0 &&	
-      checkpoint_registry_ && params_.checkpoint_period > 0;	
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
+                                    const MapStringToString& mapped_dimensions) {
+  const bool enable_checkpoint_saving =
+      params_.mpi_context.world_rank == 0 &&
+      checkpoint_registry_ && params_.checkpoint_period > 0;
 
-  std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;	
-  if (!params_.perf_output_dir.empty()) {	
-    cpu_usage_calculator = perftest::utils::CreateICPUUsage();	
-  }	
+  std::unique_ptr<perftest::utils::ICPUUsage> cpu_usage_calculator;
+  if (!params_.perf_output_dir.empty()) {
+    cpu_usage_calculator = perftest::utils::CreateICPUUsage();
+  }
 
-  if (test_data_loader) {	
-    ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));	
-  }	
-  ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));	
+  if (test_data_loader) {
+    ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
+  }
+  ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));
 
   const size_t num_shards_to_visit = training_data_loader.NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
