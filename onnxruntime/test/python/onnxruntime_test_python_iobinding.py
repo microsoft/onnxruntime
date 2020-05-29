@@ -43,12 +43,12 @@ class TestIOBinding(unittest.TestCase):
                           dynamic_axes={"input":{0:"batch_size"}, "output":{0:"batch_size"}})
         
         session = onnxruntime.InferenceSession('model.onnx')
+
         io_binding = session.io_binding()
         io_binding.bind_input('input', x.device.type, 0, np.float32, list(x.size()), x.data_ptr())
         io_binding.bind_output_name('output')
         session.run_with_iobinding(io_binding)
         ort_output = io_binding.get_outputs()[0]
-        print("onnx_output=", ort_output.shape)
     
         self.assertTrue(np.array_equal(torch_output, ort_output))
     
