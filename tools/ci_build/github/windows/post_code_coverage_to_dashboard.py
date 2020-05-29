@@ -16,9 +16,11 @@ import os
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="ONNXRuntime test coverge report uploader for dashboard")
+    parser = argparse.ArgumentParser(
+        description="ONNXRuntime test coverge report uploader for dashboard")
     parser.add_argument("--report_url", help="URL to the LLVM json report")
-    parser.add_argument("--report_file", help="Path to the local cobertura XML report")
+    parser.add_argument(
+        "--report_file", help="Path to the local cobertura XML report")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
     return parser.parse_args()
 
@@ -28,10 +30,10 @@ def parse_xml_report(report_file):
     with open(report_file) as json_file:
         data = json.load(json_file)
 
-    l = data['data'][0]['totals']['lines']
-    result['coverage'] = float(l['percent']/100.0)
-    result['lines_covered'] = int(l['covered'])
-    result['lines_valid'] = int(l['count'])
+    linestat = data['data'][0]['totals']['lines']
+    result['coverage'] = float(linestat['percent']/100.0)
+    result['lines_covered'] = int(linestat['covered'])
+    result['lines_valid'] = int(linestat['count'])
     return result
 
 
