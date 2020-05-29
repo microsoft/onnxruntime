@@ -235,6 +235,10 @@ def parse_arguments():
                         default=128,
                         help="maximum sequence length of input")
 
+    parser.add_argument('--input_ids_name', required=False, type=str, default=None, help="input name for input ids")
+    parser.add_argument('--segment_ids_name', required=False, type=str, default=None, help="input name for segment ids")
+    parser.add_argument('--input_mask_name', required=False, type=str, default=None, help="input name for attention mask")
+
     parser.add_argument('--samples', required=False, type=int, default=1, help="number of test cases to be generated")
 
     parser.add_argument('--seed', required=False, type=int, default=3, help="random seed")
@@ -246,8 +250,9 @@ def parse_arguments():
     return args
 
 
-def create_test_data(model, output_dir, batch_size, sequence_length, test_cases, seed, verbose):
-    input_ids, segment_ids, input_mask = get_bert_inputs(model)
+def create_test_data(model, output_dir, batch_size, sequence_length, test_cases, seed, verbose, input_ids_name,
+                     segment_ids_name, input_mask_name):
+    input_ids, segment_ids, input_mask = get_bert_inputs(model, input_ids_name, segment_ids_name, input_mask_name)
 
     all_inputs = generate_test_data(batch_size,
                                     sequence_length,
@@ -280,7 +285,7 @@ def main():
         print("Directory existed. test data files will be overwritten.")
 
     create_test_data(args.model, output_dir, args.batch_size, args.sequence_length, args.samples, args.seed,
-                     args.verbose)
+                     args.verbose, args.input_ids_name, args.segment_ids_name, args.input_mask_name)
 
     print("Test data is saved to directory:", output_dir)
 
