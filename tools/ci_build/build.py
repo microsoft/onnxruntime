@@ -1036,11 +1036,13 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
-    # with orttraining_run_glue.py. 
+    # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES) for fine-tune tests.
     # 2. need to run test separately (not to mix between fp16 and full precision runs. this need to be investigated).
-    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
-    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
+                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
+                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
