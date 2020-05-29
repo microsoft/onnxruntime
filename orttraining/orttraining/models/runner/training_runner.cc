@@ -923,14 +923,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ++epoch;
   }
 
-  double e2e_throughput{0};
-  if (end_to_end_perf_start_step < params_.num_train_steps) {
+  const double e2e_throughput = [&]() {
+    if (end_to_end_perf_start_step >= params_.num_train_steps) return 0.0;
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration_seconds = end - end_to_end_start;
     const double total_e2e_time = duration_seconds.count();
     const size_t end_to_end_step_count = params_.num_train_steps - std::max(step_start, end_to_end_perf_start_step);
-    e2e_throughput = params_.batch_size * end_to_end_step_count / total_e2e_time;
-  }
+    return params_.batch_size * end_to_end_step_count / total_e2e_time;
+  }();
 
   const size_t number_of_batches = step_ - step_start;
   const size_t weight_update_steps = weight_update_step_count_ - weight_update_step_count_start;
