@@ -98,7 +98,7 @@ public class App {
 		// field name -> json value
 		Map<String, Object> field_mapping = new LinkedHashMap();
 		Set<String> update_on_duplicate_fields =
-			new LinkedHashSet<> (Arrays.asList("AvgTimePerBatch", "Throughput", "StabilizedThroughput", "TotalTime", "AvgCPU", "Memory"));
+			new LinkedHashSet<> (Arrays.asList("AvgTimePerBatch", "Throughput", "StabilizedThroughput", "EndToEndThroughput","TotalTime", "AvgCPU", "Memory"));
 
 		field_mapping.put("BatchId", batch_id);
 		field_mapping.put("CommitId", commit_id.substring(0, 8));
