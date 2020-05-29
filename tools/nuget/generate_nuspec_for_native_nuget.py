@@ -273,17 +273,17 @@ def generate_files(list, args):
     # Process props and targets files
     if is_windowsai_package:
         # Process props file
-        windowsai_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+        windowsai_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
                                        'Microsoft.AI.MachineLearning.props')
-        files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\win" />')
         # Process targets files
-        windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+        windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
                                          'Microsoft.AI.MachineLearning.targets')
-        files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\win" />')
         # Process rules files
-        windowsai_rules = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime',
+        windowsai_rules = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
                                        'Microsoft.AI.MachineLearning.Rules.Project.xml')
-        files_list.append('<file src=' + '"' + windowsai_rules + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_rules + '" target="build\\win" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file
