@@ -743,7 +743,8 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
-  // only test and save trained model on device #0
+  // TensorBoard operator SummaryMerge in the graph will require some computation after NcclAllReduce.
+  // So running this only on rank 0 to prevent allreduce from hanging.
   if (params_for_phase.mpi_context.world_rank == 0) {
     ORT_RETURN_IF_ERROR(runner->EndTraining(nullptr));
   }
