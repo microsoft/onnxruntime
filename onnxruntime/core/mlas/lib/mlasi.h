@@ -22,6 +22,7 @@ Abstract:
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <type_traits>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -246,31 +247,22 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 
 typedef
 void
-(MLASCALL MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE)(
-    uint8_t* D,
+(MLASCALL MLAS_GEMM_U8X8_OPERATION)(
+    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    size_t M,
+    size_t N,
+    size_t K,
     const uint8_t* A,
     size_t lda,
-    size_t CountM,
-    size_t CountK,
-    int32_t* RowSumVector,
-    int16_t offb
-    );
-
-typedef MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8S8_COPY_PACKA_ROUTINE;
-
-typedef
-void
-(MLASCALL MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE)(
-    int8_t* D,
-    const int8_t* B,
+    int16_t offa,
+    const uint8_t* B,
     size_t ldb,
-    size_t CountN,
-    size_t CountK,
-    int32_t* ColumnSumVector,
-    int16_t offa
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
     );
 
-typedef MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8S8_COPY_PACKB_ROUTINE;
+typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
 
 typedef
 size_t
@@ -304,34 +296,6 @@ size_t
 typedef MLAS_GEMV_U8S8_KERNEL* PMLAS_GEMV_U8S8_KERNEL;
 
 typedef
-void
-(MLASCALL MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE)(
-    int16_t* D,
-    const uint8_t* A,
-    size_t lda,
-    size_t CountM,
-    size_t CountK,
-    int32_t* RowSumVector,
-    int16_t offb
-    );
-
-typedef MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE;
-
-typedef
-void
-(MLASCALL MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE)(
-    uint8_t* D,
-    const uint8_t* B,
-    size_t ldb,
-    size_t CountN,
-    size_t CountK,
-    int32_t* ColumnSumVector,
-    int16_t offa
-    );
-
-typedef MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE* PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE;
-
-typedef
 size_t
 (MLASCALL MLAS_GEMM_U8U8_KERNEL)(
     const int16_t* A,
@@ -348,24 +312,6 @@ size_t
     );
 
 typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
-
-typedef
-void
-(MLASCALL MLAS_GEMM_X8X8_OPERATION)(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    int16_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    int16_t offb,
-    int32_t* C,
-    size_t ldc
-    );
-
-typedef MLAS_GEMM_X8X8_OPERATION* PMLAS_GEMM_X8X8_OPERATION;
 
 typedef
 void
@@ -540,26 +486,18 @@ extern "C" {
 #endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
-    MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackASse;
-    MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBSse;
-    MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelSse;
-    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackASse;
-    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBSse;
-    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelSse;
+    MLAS_GEMM_U8X8_OPERATION MlasGemmU8X8OperationSse;
+    MLAS_GEMM_U8X8_OPERATION MlasGemmU8S8OperationAvx2;
+    MLAS_GEMM_U8X8_OPERATION MlasGemmU8U8OperationAvx2;
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_GEMM_U8S8_COPY_PACKA_ROUTINE MlasGemmU8S8CopyPackAAvx2;
-    MLAS_GEMM_U8S8_COPY_PACKB_ROUTINE MlasGemmU8S8CopyPackBAvx2;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Core;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Core;
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx512Vnni;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
-    MLAS_GEMM_U8U8_COPY_PACKA_ROUTINE MlasGemmU8U8CopyPackAAvx2;
-    MLAS_GEMM_U8U8_COPY_PACKB_ROUTINE MlasGemmU8U8CopyPackBAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
-    MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Vnni;
 #endif
 #endif
 
@@ -682,12 +620,8 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
     PMLAS_GEMM_FLOAT_KERNEL GemmFloatKernel;
-    PMLAS_GEMM_U8S8_COPY_PACKA_ROUTINE GemmU8S8CopyPackARoutine;
-    PMLAS_GEMM_U8S8_COPY_PACKB_ROUTINE GemmU8S8CopyPackBRoutine;
-    PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
-    PMLAS_GEMM_U8U8_COPY_PACKA_ROUTINE GemmU8U8CopyPackARoutine;
-    PMLAS_GEMM_U8U8_COPY_PACKB_ROUTINE GemmU8U8CopyPackBRoutine;
-    PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
+    PMLAS_GEMM_U8X8_OPERATION GemmU8S8Operation;
+    PMLAS_GEMM_U8X8_OPERATION GemmU8U8Operation;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -695,7 +629,9 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_GEMM_DOUBLE_KERNEL GemmDoubleKernel;
+    PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
     PMLAS_GEMV_U8S8_KERNEL GemvU8S8Kernel;
+    PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
     PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL ConvDepthwiseFloatKernel;
@@ -831,6 +767,9 @@ typedef __m128i MLAS_INT32X4;
 typedef __vector float MLAS_FLOAT32X4;
 typedef __vector int MLAS_INT32X4;
 typedef __vector unsigned MLAS_UINT32X4;
+#else
+typedef float MLAS_FLOAT32X4 __attribute__ ((vector_size(16)));
+typedef int32_t MLAS_INT32X4 __attribute__ ((vector_size(16)));
 #endif
 
 MLAS_FORCEINLINE
@@ -937,19 +876,8 @@ MlasStoreAlignedFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
     MLAS_UNREFERENCED_PARAMETER(Buffer);
     MLAS_UNREFERENCED_PARAMETER(Vector);
     vec_st(Vector, 0, Buffer);
-#endif
-}
-
-MLAS_FORCEINLINE
-void
-MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
-{
-#if defined(MLAS_NEON_INTRINSICS)
-    vst1_f32(Buffer, vget_low_f32(Vector));
-#elif defined(MLAS_SSE2_INTRINSICS)
-    _mm_storel_pi((__m64*)Buffer, Vector);
-#elif defined(MLAS_VSX_INTRINSICS)
-    *((int64_t*)Buffer) = ((__vector int64_t)Vector)[0];
+#else
+    MlasStoreFloat32x4(Buffer, Vector);
 #endif
 }
 
@@ -966,6 +894,22 @@ MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
     _mm_store_ss(Buffer, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Lane, Lane, Lane, Lane)));
 #else
     *Buffer = Vector[Lane];
+#endif
+}
+
+MLAS_FORCEINLINE
+void
+MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    vst1_f32(Buffer, vget_low_f32(Vector));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    _mm_storel_pi((__m64*)Buffer, Vector);
+#elif defined(MLAS_VSX_INTRINSICS)
+    *((int64_t*)Buffer) = ((__vector int64_t)Vector)[0];
+#else
+    MlasStoreLaneFloat32x4<0>(&Buffer[0], Vector);
+    MlasStoreLaneFloat32x4<1>(&Buffer[1], Vector);
 #endif
 }
 
@@ -1100,8 +1044,10 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vmaxq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
-#else
+#elif defined(MLAS_VSX_INTRINSICS)
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+#else
+#error Unsupported architecture.
 #endif
 }
 
@@ -1113,8 +1059,10 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vminq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
-#else
+#elif defined(MLAS_VSX_INTRINSICS)
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+#else
+#error Unsupported architecture.
 #endif
 }
 
@@ -1298,10 +1246,8 @@ MlasShiftLeftInt32x4(MLAS_INT32X4 Vector)
     return vshlq_n_s32(Vector, ShiftCount);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_slli_epi32(Vector, ShiftCount);
-#elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sl(Vector, MLAS_UINT32X4(MlasBroadcastInt32x4(ShiftCount)));
 #else
-#error Unsupported architecture.
+    return Vector << ShiftCount;
 #endif
 }
 

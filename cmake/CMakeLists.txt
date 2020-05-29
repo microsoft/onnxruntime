@@ -85,6 +85,7 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
+option(onnxruntime_USE_MIGRAPHX "Build with AMDMIGraphX support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
@@ -855,6 +856,14 @@ if (onnxruntime_USE_TENSORRT)
   endif()
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  if (WIN32)
+    message(FATAL_ERROR "MIGraphX does not support build in Windows!")
+  endif()
+  set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
+  add_definitions(-DUSE_MIGRAPHX=1)
+endif()
+
 if (onnxruntime_USE_TVM)
   if (WIN32 AND MSVC)
     # wd4100: identifier' : unreferenced formal parameter
@@ -991,6 +1000,11 @@ endif()
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
   include(onnxruntime_java.cmake)
+endif()
+
+if (onnxruntime_BUILD_NODEJS)
+  message(STATUS "Node.js Build is enabled")
+  include(onnxruntime_nodejs.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be

@@ -106,8 +106,8 @@ Implicit Arguments:
 .endif
         ComputeBlockLoop \ColumnCount\(), \RowCount\()
 .if \RowCount\() > 3
-        lea     rbx,[rdx+rax*2]             # compute matrix C plus 3 rows
-        add     rbx,rax
+        lea     rbx,[rax*2+rax]
+        add     rbx,rdx                     # compute matrix C plus 3 rows
 .endif
 
         .endm

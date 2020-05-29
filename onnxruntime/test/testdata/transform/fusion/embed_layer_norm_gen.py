@@ -4,7 +4,7 @@ from onnx import TensorProto
 from enum import Enum
 
 
-def GenerateModel3(model_name):
+def GenerateModel3(model_name, has_cast):
     nodes = [  # LayerNorm subgraph
         helper.make_node("Shape", ["input_ids"], ["shape1_out"], "shape1"),
         helper.make_node("Gather", ["shape1_out", "indices_0"], ["gather0_out"], "gather0"),
@@ -14,7 +14,8 @@ def GenerateModel3(model_name):
         helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Concat", ["unsqueeze0_out", "unsqueeze1_out"], ["concat_out"], "concat", axis=0),
         helper.make_node("Cast", ["gather1_out"], ["cast_out"], "cast", to=7),
-        helper.make_node("Range", ["start_0", "cast_out", "delta_1"], ["range_out"], "range"),
+        helper.make_node("Range", ["start_0", "cast_out" if has_cast else "gather1_out", "delta_1"], ["range_out"],
+                         "range"),
         helper.make_node("Unsqueeze", ["range_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
         helper.make_node("Expand", ["unsqueeze2_out", "concat_out"], ["expand_out"], "expand"),
         helper.make_node("Gather", ["pos_embed", "expand_out"], ["pos_gather_out"], "pos_gather"),
@@ -36,6 +37,9 @@ def GenerateModel3(model_name):
         helper.make_node("Add", ["matmul_out", "add_bias"], ["add_out"], "add"),
         helper.make_node("Add", ["add_out", "layernorm_out"], ["add2_out"], "add2")
     ]
+
+    if not has_cast:
+        del nodes[7:8]
 
     # hidden_size=4, num_heads=2, max_seq_length=3
     initializers = [  # initializers
@@ -140,5 +144,6 @@ def GenerateModel5(model_name):
     onnx.save(model, model_name)
 
 
-#GenerateModel3('embed_layer_norm_format3.onnx')
+GenerateModel3('embed_layer_norm_format3.onnx', True)
+GenerateModel3('embed_layer_norm_format3_no_cast.onnx', False)
 GenerateModel5('embed_layer_norm_format5.onnx')

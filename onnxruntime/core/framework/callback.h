@@ -19,16 +19,16 @@ void OrtRunCallback(OrtCallback* f) noexcept;
  * Useful for something like a std::unique_ptr<> deleter.
  */
 struct OrtCallbackInvoker {
-  OrtCallbackInvoker()
+  OrtCallbackInvoker() noexcept
       : callback{nullptr, nullptr} {}
 
-  OrtCallbackInvoker(OrtCallback callback_to_invoke)
+  OrtCallbackInvoker(OrtCallback callback_to_invoke) noexcept
       : callback(callback_to_invoke) {}
 
   OrtCallback callback;
 
   template <typename T>
-  void operator()(T) {
+  void operator()(T) noexcept {
     if (callback.f) {
       callback.f(callback.param);
     }
@@ -40,16 +40,16 @@ struct OrtCallbackInvoker {
  */
 class ScopedOrtCallbackInvoker {
  public:
-  explicit ScopedOrtCallbackInvoker(OrtCallback callback)
+  explicit ScopedOrtCallbackInvoker(OrtCallback callback) noexcept
       : callback_(callback) {}
 
-  ScopedOrtCallbackInvoker(ScopedOrtCallbackInvoker&& other)
+  ScopedOrtCallbackInvoker(ScopedOrtCallbackInvoker&& other) noexcept
       : callback_(other.callback_) {
     other.callback_.f = nullptr;
     other.callback_.param = nullptr;
   }
 
-  ScopedOrtCallbackInvoker& operator=(ScopedOrtCallbackInvoker&& other) {
+  ScopedOrtCallbackInvoker& operator=(ScopedOrtCallbackInvoker&& other) noexcept {
     if (callback_.f) {
       callback_.f(callback_.param);
     }
@@ -61,7 +61,7 @@ class ScopedOrtCallbackInvoker {
     return *this;
   }
 
-  ~ScopedOrtCallbackInvoker() {
+  ~ScopedOrtCallbackInvoker() noexcept {
     if (callback_.f) {
       callback_.f(callback_.param);
     }

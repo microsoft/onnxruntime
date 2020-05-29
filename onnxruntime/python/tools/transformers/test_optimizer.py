@@ -20,27 +20,23 @@ from optimizer import optimize_model, optimize_by_onnxruntime
 from OnnxModel import OnnxModel
 
 BERT_TEST_MODELS = {
-    "bert_pytorch_0":
-        'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
-    "bert_pytorch_1":
-        'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
+    "bert_pytorch_0": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
+    "bert_pytorch_1": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
     "bert_squad_pytorch1.4_opset10_fp32":
-        'test_data\\bert_squad_pytorch1.4_opset10_fp32\\BertForQuestionAnswering.onnx',
-    "bert_keras_0":
-        'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx',
-    "bert_keras_squad":
-        'test_data\\bert_squad_tensorflow2.1_keras2onnx_opset11\\TFBertForQuestionAnswering.onnx',
-    "gpt2":
-        'test_data\\gpt2_pytorch1.4_opset11_no_past\\GPT2Model.onnx'
+    'test_data\\bert_squad_pytorch1.4_opset10_fp32\\BertForQuestionAnswering.onnx',
+    "bert_keras_0": 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx',
+    "bert_keras_squad": 'test_data\\bert_squad_tensorflow2.1_keras2onnx_opset11\\TFBertForQuestionAnswering.onnx',
+    "gpt2": 'test_data\\gpt2_pytorch1.4_opset11_no_past\\GPT2Model.onnx'
 }
 
 
 class TestBertOptimization(unittest.TestCase):
-
-    def verify_node_count(self, bert_model, expected_node_count):
+    def verify_node_count(self, bert_model, expected_node_count, test_name):
         for op_type, count in expected_node_count.items():
             if len(bert_model.get_nodes_by_op_type(op_type)) != count:
-                print("{}:{} expected={}".format(op_type, len(bert_model.get_nodes_by_op_type(op_type)), count))
+                print(f"Counters is not expected in test: {test_name}")
+                for op, counter in expected_node_count.items():
+                    print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     def test_pytorch_model_0_cpu_onnxruntime(self):
@@ -60,7 +56,7 @@ class TestBertOptimization(unittest.TestCase):
             'FastGelu': 0,
             'BiasGelu': 12
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_0_cpu_onnxruntime')
 
     def test_pytorch_model_0_gpu_onnxruntime(self):
         if 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
@@ -83,7 +79,7 @@ class TestBertOptimization(unittest.TestCase):
             'FastGelu': 12,
             'BiasGelu': 0
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_0_gpu_onnxruntime')
 
     def test_pytorch_model_1_cpu_onnxruntime(self):
         input = BERT_TEST_MODELS['bert_pytorch_1']
@@ -103,7 +99,7 @@ class TestBertOptimization(unittest.TestCase):
             'FastGelu': 0,
             'BiasGelu': 12
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_1_cpu_onnxruntime')
 
     def test_pytorch_model_1_gpu_onnxruntime(self):
         if 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
@@ -127,7 +123,7 @@ class TestBertOptimization(unittest.TestCase):
             'FastGelu': 12,
             'BiasGelu': 0
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_1_gpu_onnxruntime')
 
     def test_pytorch_model_0(self):
         input = BERT_TEST_MODELS['bert_pytorch_0']
@@ -141,11 +137,12 @@ class TestBertOptimization(unittest.TestCase):
             'FastGelu': 0,
             'BiasGelu': 12
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_0')
 
     def test_pytorch_model_2(self):
         input = BERT_TEST_MODELS['bert_squad_pytorch1.4_opset10_fp32']
         bert_model = optimize_model(input, 'bert', num_heads=2, hidden_size=8)
+        print("fused_operator_statistics for test_pytorch_model_2", bert_model.get_fused_operator_statistics())
         self.assertTrue(bert_model.is_fully_optimized())
 
     def test_keras_model_1(self):
@@ -162,12 +159,14 @@ class TestBertOptimization(unittest.TestCase):
             'Gelu': 0,
             'FastGelu': 0
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_keras_model_1')
 
     def test_keras_squad_model(self):
         input = BERT_TEST_MODELS['bert_keras_squad']
 
         bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
+
+        print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
 
         self.assertTrue(bert_model.is_fully_optimized())
 
@@ -184,7 +183,7 @@ class TestBertOptimization(unittest.TestCase):
             'LayerNormalization': 25,
             'SkipLayerNormalization': 0
         }
-        self.verify_node_count(bert_model, expected_node_count)
+        self.verify_node_count(bert_model, expected_node_count, 'test_gpt2')
 
 
 if __name__ == '__main__':

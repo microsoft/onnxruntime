@@ -13,7 +13,7 @@ struct ScenarioTestsApi
     VoidTest Scenario8SetDeviceSampleDefault;
     VoidTest Scenario8SetDeviceSampleCPU;
     VoidTest Scenario17DevDiagnostics;
-    VoidTest DISABLED_Scenario22ImageBindingAsCPUTensor;
+    VoidTest Scenario22ImageBindingAsCPUTensor;
     VoidTest QuantizedModels;
     VoidTest EncryptedStream;
     VoidTest Scenario3SoftwareBitmapInputBinding;
@@ -23,19 +23,19 @@ struct ScenarioTestsApi
     VoidTest Scenario8SetDeviceSampleMaxPerf;
     VoidTest Scenario8SetDeviceSampleMyCameraDevice;
     VoidTest Scenario8SetDeviceSampleCustomCommandQueue;
-    VoidTest DISABLED_Scenario9LoadBindEvalInputTensorGPU;
+    VoidTest Scenario9LoadBindEvalInputTensorGPU;
     VoidTest Scenario13SingleModelOnCPUandGPU;
     VoidTest Scenario11FreeDimensionsTensor;
     VoidTest Scenario11FreeDimensionsImage;
     VoidTest Scenario14RunModelSwapchain;
     VoidTest Scenario20aLoadBindEvalCustomOperatorCPU;
     VoidTest Scenario20bLoadBindEvalReplacementCustomOperatorCPU;
-    VoidTest DISABLED_Scenario21RunModel2ChainZ;
-    VoidTest DISABLED_Scenario22ImageBindingAsGPUTensor;
+    VoidTest Scenario21RunModel2ChainZ;
+    VoidTest Scenario22ImageBindingAsGPUTensor;
     VoidTest MsftQuantizedModels;
-    VoidTest DISABLED_SyncVsAsync;
-    VoidTest DISABLED_CustomCommandQueueWithFence;
-    VoidTest DISABLED_ReuseVideoFrame;
+    VoidTest SyncVsAsync;
+    VoidTest CustomCommandQueueWithFence;
+    VoidTest ReuseVideoFrame;
     VoidTest DeviceLostRecovery;
     VoidTest Scenario8SetDeviceSampleD3D11Device;
     VoidTest D2DInterop;
@@ -53,7 +53,7 @@ WINML_TEST(ScenarioCppWinrtTests, Scenario7EvalWithNoBind)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleDefault)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleCPU)
 WINML_TEST(ScenarioCppWinrtTests, Scenario17DevDiagnostics)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_Scenario22ImageBindingAsCPUTensor)
+WINML_TEST(ScenarioCppWinrtTests, Scenario22ImageBindingAsCPUTensor)
 WINML_TEST(ScenarioCppWinrtTests, QuantizedModels)
 WINML_TEST(ScenarioCppWinrtTests, EncryptedStream)
 WINML_TEST(ScenarioCppWinrtTests, Scenario3SoftwareBitmapInputBinding)
@@ -62,19 +62,19 @@ WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleDefaultDirectX)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleMinPower)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleMaxPerf)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleCustomCommandQueue)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_Scenario9LoadBindEvalInputTensorGPU)
+WINML_TEST(ScenarioCppWinrtTests, Scenario9LoadBindEvalInputTensorGPU)
 WINML_TEST(ScenarioCppWinrtTests, Scenario13SingleModelOnCPUandGPU)
 WINML_TEST(ScenarioCppWinrtTests, Scenario11FreeDimensionsTensor)
 WINML_TEST(ScenarioCppWinrtTests, Scenario11FreeDimensionsImage)
 WINML_TEST(ScenarioCppWinrtTests, Scenario14RunModelSwapchain)
 WINML_TEST(ScenarioCppWinrtTests, Scenario20aLoadBindEvalCustomOperatorCPU)
 WINML_TEST(ScenarioCppWinrtTests, Scenario20bLoadBindEvalReplacementCustomOperatorCPU)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_Scenario21RunModel2ChainZ)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_Scenario22ImageBindingAsGPUTensor)
+WINML_TEST(ScenarioCppWinrtTests, Scenario21RunModel2ChainZ)
+WINML_TEST(ScenarioCppWinrtTests, Scenario22ImageBindingAsGPUTensor)
 WINML_TEST(ScenarioCppWinrtTests, MsftQuantizedModels)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_SyncVsAsync)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_CustomCommandQueueWithFence)
-WINML_TEST(ScenarioCppWinrtTests, DISABLED_ReuseVideoFrame)
+WINML_TEST(ScenarioCppWinrtTests, SyncVsAsync)
+WINML_TEST(ScenarioCppWinrtTests, CustomCommandQueueWithFence)
+WINML_TEST(ScenarioCppWinrtTests, ReuseVideoFrame)
 WINML_TEST(ScenarioCppWinrtTests, DeviceLostRecovery)
 WINML_TEST(ScenarioCppWinrtTests, Scenario8SetDeviceSampleD3D11Device)
 WINML_TEST(ScenarioCppWinrtTests, D2DInterop)
