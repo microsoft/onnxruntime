@@ -15,7 +15,9 @@ namespace nnapi {
 Model::Model() : nnapi_(NnApiImplementation()) {}
 
 Model::~Model() {
-  nnapi_->ANeuralNetworksExecution_free(execution_);
+  if (execution_)
+    nnapi_->ANeuralNetworksExecution_free(execution_);
+
   nnapi_->ANeuralNetworksCompilation_free(compilation_);
   nnapi_->ANeuralNetworksModel_free(model_);
 }
@@ -80,13 +82,13 @@ void Model::SetOutputBuffer(const int32_t index, void* buffer,
 
 void Model::PredictAfterSetInputBuffer() {
   ANeuralNetworksEvent* event = nullptr;
+
   THROW_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
   THROW_ON_ERROR(nnapi_->ANeuralNetworksEvent_wait(event));
 
   nnapi_->ANeuralNetworksEvent_free(event);
-  nnapi_->ANeuralNetworksExecution_free(execution_);
-  prepared_for_exe_ = false;
+  ResetExecution();
 }
 
 void Model::PrepareForExecution() {
@@ -97,6 +99,12 @@ void Model::PrepareForExecution() {
   THROW_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &execution_));
   prepared_for_exe_ = true;
+}
+
+void Model::ResetExecution() {
+  nnapi_->ANeuralNetworksExecution_free(execution_);
+  execution_ = nullptr;
+  prepared_for_exe_ = false;
 }
 
 template <typename T>

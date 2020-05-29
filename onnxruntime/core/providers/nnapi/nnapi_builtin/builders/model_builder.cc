@@ -123,8 +123,7 @@ void ModelBuilder::clearData() {
 }
 
 void ModelBuilder::addInitializers() {
-  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
-    const auto& tensor = model_proto_.graph().initializer(i);
+  for (const auto& tensor : model_proto_.graph().initializer()) {
     const auto& name = tensor.name();
     Shape shape;
     for (auto dim : tensor.dims()) {
@@ -196,12 +195,10 @@ static size_t getPaddedByteSize(size_t size) {
 
 void ModelBuilder::copyInitializersData() {
   // First pass to get all the stats of the initializers
-  // <index, size, paddedsize>
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers;
   initializers.reserve(model_proto_.graph().initializer_size());
   size_t sizeAll = 0;
-  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
-    const auto& tensor = model_proto_.graph().initializer(i);
+  for (const auto& tensor : model_proto_.graph().initializer()) {
     const auto& name = tensor.name();
     const auto& type(operand_types_.at(name));
     const Index index = operand_indexes_.at(name);
@@ -211,9 +208,10 @@ void ModelBuilder::copyInitializersData() {
     initializers.push_back(std::make_tuple(index, size, paddedSize));
   }
 
-  nnapi_model_->mem_initializers.reset(
-      new NNMemory(nnapi_, "mem_initializers", sizeAll));
+  nnapi_model_->mem_initializers =
+      std::make_unique<NNMemory>(nnapi_, "mem_initializers", sizeAll);
 
+  // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
   for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
     const auto& tensor = model_proto_.graph().initializer(i);
@@ -310,8 +308,7 @@ void ModelBuilder::RegisterOperand(const std::string& name,
 }
 
 void ModelBuilder::addOperations() {
-  for (int i = 0; i < model_proto_.graph().node_size(); i++) {
-    const auto& node = model_proto_.graph().node(i);
+  for (const auto& node : model_proto_.graph().node()) {
     const auto& op = node.op_type();
 
     // process skips (already used as activation)
@@ -330,8 +327,7 @@ void ModelBuilder::addOperations() {
                                sizeof(fuse_code)));  // fusecode
       shaper_.Eltwise(input1, input2, output);
       const OperandType output_operand_type = {operand_types_.at(input1).type, shaper_[output]};
-      auto output_idx = AddOperation(ANEURALNETWORKS_ADD, input_indices, {output_operand_type})[0];
-      RegisterOperand(output, output_idx, output_operand_type);
+      AddOperation(ANEURALNETWORKS_ADD, input_indices, {output}, {output_operand_type});
       //   AddLayerAdd(input1, input2, output);
     } else {
       throw std::invalid_argument("Unsupported operator " + op);
@@ -339,22 +335,23 @@ void ModelBuilder::addOperations() {
   }
 }
 
-ModelBuilder::IndexSeq ModelBuilder::AddOperation(
-    int op, IndexSeq input_indexes,
-    std::vector<android::nn::wrapper::OperandType> types) {
-  IndexSeq output_indexes;
+void ModelBuilder::AddOperation(int op, IndexSeq input_indices,
+                                std::vector<std::string> output_names,
+                                std::vector<android::nn::wrapper::OperandType> types) {
+  IndexSeq output_indices;
   for (const auto& type : types) {
     auto index = AddNewOperand(type);
-    output_indexes.push_back(index);
+    output_indices.push_back(index);
   }
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_addOperation(
-          nnapi_model_->model_, op, input_indexes.size(), &input_indexes[0],
-          output_indexes.size(), &output_indexes[0]),
+          nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
+          output_indices.size(), &output_indices[0]),
       "op = " + std::to_string(op));
 
-  return output_indexes;
+  for (size_t i = 0; i < types.size(); i++)
+    RegisterOperand(output_names[i], output_indices[i], types[i]);
 }
 
 std::unique_ptr<Model> ModelBuilder::Compile() {

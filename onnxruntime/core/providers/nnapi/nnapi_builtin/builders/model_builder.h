@@ -53,9 +53,11 @@ class ModelBuilder {
 
   uint32_t SetOperandFromScalar(android::nn::wrapper::Type type, void* value, size_t size);
   uint32_t AddNewOperand(const android::nn::wrapper::OperandType& type);
-  void RegisterOperand(const std::string& name, Index index, const android::nn::wrapper::OperandType& operand_type);
+  void RegisterOperand(const std::string& name,
+                       Index index, const android::nn::wrapper::OperandType& operand_type);
 
-  IndexSeq AddOperation(int op, IndexSeq input_indexes, std::vector<android::nn::wrapper::OperandType> types);
+  void AddOperation(int op, IndexSeq input_indices, std::vector<std::string> output_names,
+                    std::vector<android::nn::wrapper::OperandType> types);
 };
 
 }  // namespace nnapi

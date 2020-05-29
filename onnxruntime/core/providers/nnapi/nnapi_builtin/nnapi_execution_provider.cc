@@ -226,6 +226,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
       ORT_ENFORCE(model->GetInputs().size() <= num_inputs, "Inconsistent input sizes");
       ORT_ENFORCE(model->GetOutputs().size() == num_outputs, "Inconsistent output sizes");
+
+      // Remove
       LOGS_DEFAULT(INFO) << "Input size is " << model->GetInputs().size();
       LOGS_DEFAULT(INFO) << "Output size is " << model->GetOutputs().size();
 
@@ -241,13 +243,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
         float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
-        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+        inputs.push_back(input);
 
         // Remove
         LOGS_DEFAULT(INFO) << "i is " << i << " input[0] is " << input[0];
-
-        inputs.push_back(input);
       }
 
       model->Predict(inputs);

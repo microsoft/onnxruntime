@@ -79,6 +79,7 @@ class Model {
   void SetInputBuffer(const int32_t index, const void* buffer,
                       const size_t elemsize);
   void PrepareForExecution();
+  void ResetExecution();
   void PredictAfterSetInputBuffer();
   bool prepared_for_exe_ = false;
 };
