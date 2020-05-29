@@ -36,7 +36,6 @@ RUN apt update && \
     cp onnxruntime/docs/Privacy.md /code/Privacy.md && \
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \
-    sed -i "s/sudo//" onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
     pip install azure-iothub-device-client azure-iothub-service-client azure-iot-provisioning-device-client && \
