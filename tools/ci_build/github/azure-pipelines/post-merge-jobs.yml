@@ -1,5 +1,5 @@
 jobs:
-- job: conv
+- job: CodeCoverage
   workspace:
     clean: all
   timeoutInMinutes:  120

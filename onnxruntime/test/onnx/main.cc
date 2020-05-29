@@ -223,11 +223,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   }
 
   // set log level based on number of verbosity options
-  if (verbosity_option_count == 1) {
-    logging_level = ORT_LOGGING_LEVEL_WARNING;
-  } else if (verbosity_option_count > 1) {
-    logging_level = ORT_LOGGING_LEVEL_INFO;
-  }
+  logging_level =
+      static_cast<OrtLoggingLevel>(static_cast<int>(ORT_LOGGING_LEVEL_ERROR) -
+                                   std::min<int>(verbosity_option_count, static_cast<int>(ORT_LOGGING_LEVEL_ERROR)));
 
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
