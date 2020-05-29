@@ -14,13 +14,18 @@ jobs:
           sudo apt-get install -y python3-pip
           sudo python3 -m pip install mysql-connector-python
           ln -s /data/models .
+          #Build onnxruntime and run the instrumented program(unitests)
           LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests
+
           cd Debug
+          ./onnxruntime_mlas_test
+          #Run the model tests(It will take long because it is in debug mode)
           LLVM_PROFILE_FILE="testrunner.profraw" ./onnx_test_runner -j 1 -c 2 /data/models
-          llvm-profdata merge -sparse  -o ort.profdata *.profraw
+          #Merge the mulitple prof data into a single indexed profile data file
+          llvm-profdata merge -sparse -o ort.profdata *.profraw
+          #Create coverage report, output the result to 'report.json'
           llvm-cov export -summary-only -instr-profile=ort.profdata onnx_test_runner -object onnxruntime_test_all  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
         workingDirectory: $(Build.BinariesDirectory)
-
 
     - task: CmdLine@2
       displayName: 'Post code coverage data to the Dashboard'

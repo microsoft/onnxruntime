@@ -60,7 +60,7 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
   - script: |
-     mklink /D /J models C:\local\models     
+     mklink /D /J models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
 

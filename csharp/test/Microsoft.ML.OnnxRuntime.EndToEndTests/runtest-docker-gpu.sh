@@ -20,8 +20,8 @@ OldDir=$(pwd)
 
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
 
-sudo --preserve-env docker build -t onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 --build-arg OS_VERSION=16.04 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}  -f Dockerfile.ubuntu_gpu .
-sudo --preserve-env docker rm -f "onnxruntime-gpu-container" || true
+sudo docker build -t onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 --build-arg OS_VERSION=16.04 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}  -f Dockerfile.ubuntu_gpu .
+sudo docker rm -f "onnxruntime-gpu-container" || true
 
 
 sudo --preserve-env docker run -h $HOSTNAME \
