@@ -575,7 +575,7 @@ TEST(Loop, InfiniteLoopTermination) {
 }
 
 // Add basic test to trigger types override logic in Graph::InferAndVerifySubgraphTypes as well as
-// type/shape inferencing for subgraph to flow the type/shape info through 
+// type/shape inferencing for subgraph to flow the type/shape info through
 // subgraph.PerformTypeAndShapeInferencing(options).
 // In this test, main graph has original input/expected output defined as "double" where the subgraph as "float".
 // Expectation is types should get propagated properly in subgraph and yield correct output
@@ -819,6 +819,111 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
   // 'Loop' to be used without variadic inputs
 
   test.AddOutput<float>("loop_scan_out", {1}, {1.0f});
+
+  // Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test a combination of things:
+// Subgraph input for loop state var has no type and is not used in the Loop subgraph (used in nested If subgraph)
+// Loop subgraph calls an If where the loop state var is an implicit input so it has no shape due to a loop state
+// var being able to change shape on each iteration.
+TEST(Loop, PassThroughSubgraphInputNoTypeOrShape) {
+  // both subgraphs of the If just pass through an outer scope value
+  auto create_if_subgraph = [](bool is_then) {
+    Model model("if_branch_subgraph", true, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    auto& outer_scope_0 = graph.GetOrCreateNodeArg("loop_state_var", nullptr);
+    graph.AddOuterScopeNodeArg("loop_state_var");
+
+    TypeProto float_tensor;
+    float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+    auto& if_out = graph.GetOrCreateNodeArg(is_then ? "if_then_out" : "if_else_out", &float_tensor);
+    graph.AddNode("if_out", "Identity", "pass through", {&outer_scope_0}, {&if_out});
+
+    auto status = graph.Resolve();
+    // Resolve will have actually errored out as we don't have type info for the input. That's valid for a subgraph
+    // but not for a main graph but the Resolve doesn't know that it's handling a subgraph. We could add a way to
+    // tell it but generally it's only our unit tests creating a graph this way.
+    // The GraphProto will still be correct.
+    EXPECT_NE(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  auto create_subgraph = [&create_if_subgraph]() {
+    Model model("loop_subgraph", true, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /*  Inputs: iter_num, cond_in, loop carried state variables.
+
+         iter_num_in    cond_in     [loop_state_var]
+           (unused)        |               |
+                       [Identity]         [If]   (both branches in If return loop_state_var via Identity node)
+                           |               |
+                        cond_out     loop_var_0_out
+    */
+
+    // graph inputs types.
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    auto& loop_state_var = graph.GetOrCreateNodeArg("loop_state_var", nullptr);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& loop_var_0_out = graph.GetOrCreateNodeArg("loop_var_0_out", nullptr);
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    // loop_state_var -> If(cond_in) -> loop_var_0_out
+    {
+      inputs = {&cond_in};
+      outputs = {&loop_var_0_out};
+
+      auto& node = graph.AddNode("loop_var_out", "If", "If with loop_state_var as implicit_input", inputs, outputs);
+      node.AddAttribute("then_branch", create_if_subgraph(true));
+      node.AddAttribute("else_branch", create_if_subgraph(false));
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in, &loop_state_var});
+    graph.SetOutputs({&cond_out, &loop_var_0_out});
+
+    auto status = graph.Resolve();
+    // same reason this will fail as in create_if_subgraph - still creates a valid subgraph GraphProto
+    EXPECT_NE(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {1});
+  test.AddInput<bool>("cond", {1}, {true});
+  test.AddInput<float>("initial_value", {1}, {123.f});
+
+  test.AddOutput<float>("loop_var_0_final", {1}, {123.f});
 
   // Disable TensorRT on unsupported data type BOOL
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
