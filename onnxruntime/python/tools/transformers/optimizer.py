@@ -30,7 +30,7 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
+from onnx import ModelProto, TensorProto, numpy_helper, load_model
 from BertOnnxModel import BertOnnxModel, BertOptimizationOptions
 from BertOnnxModelTF import BertOnnxModelTF
 from BertOnnxModelKeras import BertOnnxModelKeras
@@ -224,12 +224,15 @@ def optimize_model(input,
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
-    if run_onnxruntime and opt_level > 0:
-        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
 
-    model = ModelProto()
-    with open(input_model_path, "rb") as f:
-        model.ParseFromString(f.read())
+    if opt_level > 1: # Optimization specified for an execution provider.
+        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
+    elif run_onnxruntime:
+        # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
+        # CPU provider is used here so that there is no extra node for GPU memory copy.
+        input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=False, opt_level=1)
+
+    model = load_model(input_model_path, format=None, load_external_data=True)
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
@@ -261,8 +264,14 @@ def main():
 
     optimization_options = get_optimization_options(args)
 
-    bert_model = optimize_model(args.input, args.model_type, args.num_heads, args.hidden_size, opt_level=args.opt_level,
-                                optimization_options=optimization_options, use_gpu=args.use_gpu, only_onnxruntime=args.only_onnxruntime)
+    bert_model = optimize_model(args.input,
+                                args.model_type,
+                                args.num_heads,
+                                args.hidden_size,
+                                opt_level=args.opt_level,
+                                optimization_options=optimization_options,
+                                use_gpu=args.use_gpu,
+                                only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
         bert_model.convert_model_float32_to_float16()
