@@ -743,9 +743,9 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->ResetLossScaler());
   }
 
-  // TensorBoard operator SummaryMerge in the graph will require some computation after NcclAllReduce.
-  // So running this only on rank 0 to prevent allreduce from hanging.
   if (params_for_phase.mpi_context.world_rank == 0) {
+    // Pass in empty dataloader to disable evaluation in EndTraining
+    // to avoid a redundant synchronization caused by Tensorboard's SummaryMerge Op.
     ORT_RETURN_IF_ERROR(runner->EndTraining(nullptr));
   }
 
