@@ -1047,8 +1047,30 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
+def run_training_python_frontend_tests(cwd):
+    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+    run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
+    run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_list_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_dict_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_grad_accumulation_list_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_grad_accumulation_dict_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_grad_accumulation_list_and_dict_input'], cwd=cwd)
 
-def run_training_python_frontend_e2e_tests(args, cwd):
+def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
@@ -1065,11 +1087,9 @@ def run_training_python_frontend_e2e_tests(args, cwd):
         [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
-    run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
-
-    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
-
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
+
+    run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
@@ -1080,8 +1100,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
 
         if args.enable_training and args.use_cuda and args.enable_training_python_frontend_e2e_tests:
             # run frontend tests for orttraining-linux-gpu-frontend_test-ci-pipeline.
-            # this is not a PR merge test so skip other tests.
-            run_training_python_frontend_e2e_tests(args, cwd=cwd)
+            # this is not a PR merge test so skip other non-frontend tests.
+            run_training_python_frontend_e2e_tests(cwd=cwd)
+            run_training_python_frontend_tests(cwd=cwd)
             continue
 
         android_x86_64 = args.android_abi == 'x86_64'
@@ -1158,12 +1179,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
 
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
-                run_subprocess(
-                    [sys.executable, 'onnxruntime_test_ort_trainer.py'],
-                    cwd=cwd, dll_path=dll_path)
-                run_subprocess(
-                    [sys.executable, 'onnxruntime_test_training_unit_tests.py'],
-                    cwd=cwd, dll_path=dll_path)
+                run_training_python_frontend_tests(cwd=cwd)
 
             try:
                 import onnx  # noqa

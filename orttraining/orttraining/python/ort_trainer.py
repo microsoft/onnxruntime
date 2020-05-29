@@ -111,19 +111,6 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     return torch_outputs
 
 
-class model_loss_cls(torch.nn.Module):
-    def __init__(self, model, loss_fn):
-        super(model_loss_cls, self).__init__()
-        self.model_ = model
-        self.loss_fn_ = loss_fn
-
-    def forward(self, *inputs):
-        # here we assume input can be unpacked into input and label
-        input, label = inputs[:-1], inputs[-1]
-        preds = self.model_(*input)
-        return self.loss_fn_(preds, label), preds
-
-
 def FuseSofmaxNLLToSoftmaxCE(onnx_model):
     nll_count = 0
     while True:
@@ -215,33 +202,39 @@ def wrap_for_input_match(model, loss_fn, input_names):
     if loss_fn:
         sig_loss = inspect.signature(loss_fn)
         if len(sig_loss.parameters) != 2:
-            warnings.warn("loss function should take two arguments - predict and label.")
-            model = model_loss_cls(model, loss_fn)
+            raise RuntimeError("loss function should take two arguments - predict and label.")
+
         # label shall be the second input to loss_fn. 
         ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
+
+    class model_loss_cls(torch.nn.Module):
+        def __init__(self, model, loss_fn):
+            super(model_loss_cls, self).__init__()
+            self.model_ = model
+            self.loss_fn_ = loss_fn
+
+        def forward(self, *inputs):
+            # here we assume input can be unpacked into input and label
+            input, label = inputs[:-1], inputs[-1]
+            preds = self.model_(*input)
+            return self.loss_fn_(preds, label), preds
 
     # name match is needed only when input_names are a subset
     # of expected inputs (inputs to model and loss_fn combined).
     if len(input_names) > len(ordered_list_keys):
         # this is likely the case where input arguments are packed.
         # TODO: to unpack the input argument.
-        if loss_fn:
-            model = model_loss_cls(model, loss_fn)
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
     elif len(input_names) == len(ordered_list_keys):
         # in this case, we do not require name match.
-        if loss_fn:
-            model = model_loss_cls(model, loss_fn)
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
 
     if not all(x in ordered_list_keys for x in input_names):
         # model desc has name(s) not matching the model signature. We cannot do anything in this case.
         # better to warning the user.
-        if loss_fn:
-            model = model_loss_cls(model, loss_fn)
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
 
-    # if input_names match the first ordered_list_keys, there is not need for wrapping
+    # if input_names match ordered_list_keys, there is not need for wrapping
     match = True
     for i, input_name in enumerate(input_names):
         if input_name != ordered_list_keys[i]:
@@ -249,9 +242,7 @@ def wrap_for_input_match(model, loss_fn, input_names):
             break
 
     if match:
-        if loss_fn:
-            model = model_loss_cls(model, loss_fn)
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
 
     class WrapModel(torch.nn.Module):
         def __init__(self, model, loss_fn, input_names):
@@ -272,10 +263,12 @@ def wrap_for_input_match(model, loss_fn, input_names):
                     input_dict[key] = inputs[self.input_names_.index(key)]
 
             model_out = self.model_(**input_dict)
-            if self.loss_fn_:
-                label = inputs[-1]
-                preds = model_out
-                return self.loss_fn_(preds, label), preds
+            if self.loss_fn_ is None:
+                return model_out
+
+            label = inputs[-1]
+            preds = model_out
+            return self.loss_fn_(preds, label), preds
 
     model = WrapModel(model, loss_fn, input_names)
 
