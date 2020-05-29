@@ -2,6 +2,8 @@
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License
 
+#ifdef RELU_ARMNN
+
 #pragma once
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/activation/activations.h"
@@ -18,9 +20,9 @@ namespace armnn_ep {
 typedef std::map<OpKernel*, armnn::NetworkId>::iterator ReluLayersIterator;
 
 template <typename T>
-class Relu : public onnxruntime::Relu<T> {
+class Relu : public OpKernel {
  public:
-  explicit Relu(const OpKernelInfo& info) : onnxruntime::Relu<T>(info) {
+  explicit Relu(const OpKernelInfo& info) : OpKernel(info) {
   	provider_ = (const_cast<ArmNNExecutionProvider*>(
         dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
   }
@@ -46,3 +48,5 @@ class Relu : public onnxruntime::Relu<T> {
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime
+
+#endif

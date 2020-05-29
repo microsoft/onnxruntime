@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
-#include "contrib_ops/cpu_contrib_kernels.h"
+#include "contrib_ops/cpu/cpu_contrib_kernels.h"
 #include "armnn_fwd.h"
 
 namespace onnxruntime {
@@ -18,7 +18,9 @@ constexpr const char* ArmNN_CPU = "ArmNNCpu";
 namespace armnn_ep {
 
 // Forward declarations of op kernels
+#ifdef RELU_ARMNN
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 6, Relu);
+#endif
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 1, 10, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 11, Conv);
 
@@ -37,7 +39,9 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain
 
 static void RegisterArmNNKernels(KernelRegistry& kernel_registry) {
 
+#ifdef RELU_ARMNN
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 6, Relu)>());
+#endif
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 1, 10, Conv)>());
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 11, Conv)>());
 

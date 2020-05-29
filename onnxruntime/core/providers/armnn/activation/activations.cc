@@ -2,6 +2,8 @@
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License
 
+#ifdef RELU_ARMNN
+
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
@@ -19,7 +21,6 @@ thread_local std::map<OpKernel*, armnn::NetworkId> Relu<T>::reluLayers;
 template <typename T>
 armnn::IRuntimePtr Relu<T>::run = Relu<T>::initRuntime();
 
-#ifdef RELU_ARMNN
 template <typename T>
 Status Relu<T>::Compute(OpKernelContext* context) const {
 
@@ -61,7 +62,7 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Relu::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
-      return onnxruntime::Relu<T>::Compute(context);
+      ORT_NOT_IMPLEMENTED("Something went wrong when creating the layer");
     }
 
     // Load graph into runtime
@@ -84,14 +85,6 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
-#else
-template <typename T>
-Status Relu<T>::Compute(OpKernelContext* context) const {
-
-  Status s = onnxruntime::Relu<T>::Compute(context);
-  return s;
-}
-#endif
 
 ONNX_OPERATOR_KERNEL_EX(
     Relu,
@@ -103,3 +96,5 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace armnn_ep
 }  // namespace onnxruntime
+
+#endif
