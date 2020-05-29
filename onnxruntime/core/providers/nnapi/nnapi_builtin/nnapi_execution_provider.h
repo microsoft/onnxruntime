@@ -6,7 +6,6 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
 namespace onnxruntime {
 class NnapiExecutionProvider : public IExecutionProvider {
@@ -22,8 +21,5 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
  private:
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
-  const NnApi* nnapi_{nullptr};
-
-  //std::vector<std::vector<int>> GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 };
 }  // namespace onnxruntime

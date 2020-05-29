@@ -7,10 +7,29 @@
 struct ANeuralNetworksModel;
 struct ANeuralNetworksCompilation;
 struct ANeuralNetworksExecution;
+struct ANeuralNetworksMemory;
 struct NnApi;
 
 namespace onnxruntime {
 namespace nnapi {
+
+// Manage NNAPI shared memory handle
+class NNMemory {
+ public:
+  NNMemory(const NnApi* nnapi, const char* name, size_t size);
+  ~NNMemory();
+
+  ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
+  uint8_t* get_data_ptr() { return data_ptr_; }
+
+ private:
+  // NnApi instance to use. Not owned by this object.
+  const NnApi* nnapi_{nullptr};
+  int fd_{0};
+  size_t byte_size_{0};
+  uint8_t* data_ptr_{nullptr};
+  ANeuralNetworksMemory* nn_memory_handle_{nullptr};
+};
 
 class Model {
   friend class ModelBuilder;
@@ -39,10 +58,13 @@ class Model {
   void Predict(const std::vector<float*>& inputs);
 
  private:
+  const NnApi* nnapi_{nullptr};
+
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
   ANeuralNetworksExecution* execution_{nullptr};
-  const NnApi* nnapi_{nullptr};
+
+  std::unique_ptr<NNMemory> mem_initializers;
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

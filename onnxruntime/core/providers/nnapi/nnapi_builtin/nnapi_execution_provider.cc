@@ -14,7 +14,7 @@ namespace onnxruntime {
 constexpr const char* NNAPI = "Nnapi";
 
 NnapiExecutionProvider::NnapiExecutionProvider()
-    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider}, nnapi_(NnApiImplementation()) {
+    : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
                                               [](int) { return onnxruntime::make_unique<CPUAllocator>(
                                                             onnxruntime::make_unique<OrtMemoryInfo>(NNAPI,
@@ -177,7 +177,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       meta_def->outputs.push_back(output.second->Name());
     }
 
-    meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+    // meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     meta_def->since_version = 1;
     sub_graph->SetMetaDef(meta_def);
 
@@ -203,9 +203,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-    nnapi::ModelBuilder builder(model_proto);
-    auto nnapi_model = builder.Compile();
-    nnapi_models_.emplace(fused_node->Name(), std::move(nnapi_model));
+    {
+      nnapi::ModelBuilder builder(model_proto);
+      nnapi_models_.emplace(fused_node->Name(), builder.Compile());
+    }
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
@@ -219,9 +220,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     };
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      (void)state;
-      (void)api;
-      (void)context;
       Ort::CustomOpApi ort{*api};
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
@@ -243,10 +241,27 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
         float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
+        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+        // Remove
+        LOGS_DEFAULT(INFO) << "i is " << i << " input[0] is " << input[0];
+
         inputs.push_back(input);
       }
 
       model->Predict(inputs);
+
+      // Remove
+      for (size_t i = 0; i < num_outputs; i++) {
+        const auto output_name = model->GetOutputs()[i];
+        const auto output_shape = model->GetShape(output_name);
+        std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
+        auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
+        float* output = const_cast<float*>(ort.GetTensorData<float>(output_tensor));
+        LOGS_DEFAULT(INFO) << "i is " << i << " output[0] is hahaha " << output[0];
+      }
+
       return Status::OK();
     };
 

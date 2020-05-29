@@ -5,15 +5,19 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 
+// Android only?
+#include <sys/mman.h>
+#include <unistd.h>
+
 namespace onnxruntime {
 namespace nnapi {
 
 Model::Model() : nnapi_(NnApiImplementation()) {}
 
 Model::~Model() {
-  nnapi_->ANeuralNetworksModel_free(model_);
-  nnapi_->ANeuralNetworksCompilation_free(compilation_);
   nnapi_->ANeuralNetworksExecution_free(execution_);
+  nnapi_->ANeuralNetworksCompilation_free(compilation_);
+  nnapi_->ANeuralNetworksModel_free(model_);
 }
 
 Shaper::Shape Model::GetShape(const std::string& name) {
@@ -136,6 +140,31 @@ void Model::Predict(const std::vector<float*>& inputs) {
     SetInputBuffer(i, inputs[i]);
   }
   PredictAfterSetInputBuffer();
+}
+
+NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
+  LOGI("NNMemory ctor name %s size %zu", name, size);
+
+  if (name && size > 0) {
+    nnapi_ = nnapi;
+    byte_size_ = size;
+    fd_ = nnapi_->ASharedMemory_create(name, size);
+    data_ptr_ = reinterpret_cast<uint8_t*>(
+        mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
+    THROW_ON_ERROR(nnapi_->ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
+                                                              fd_, 0, &nn_memory_handle_));
+  }
+}
+
+NNMemory::~NNMemory() {
+  if (nn_memory_handle_) {
+    nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
+  }
+  if (data_ptr_) {
+    munmap(data_ptr_, byte_size_);
+  }
+
+  if (fd_ > 0) close(fd_);
 }
 
 }  // namespace nnapi

@@ -4,6 +4,7 @@
 #include "model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
+#include <onnx/shape_inference/implementation.h>
 
 namespace onnxruntime {
 namespace nnapi {
@@ -15,7 +16,6 @@ ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
 
 std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
     const ONNX_NAMESPACE::NodeProto& node) {
-  (void)node;
   int32_t android_sdk_ver = nnapi_ ? nnapi_->android_sdk_version : 0;
 
 #ifdef __ANDROID__
@@ -63,7 +63,7 @@ bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
 }
 
 std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
-  // ONNX_NAMESPACE::shape_inference::InferShapes(model_proto_);
+  ONNX_NAMESPACE::shape_inference::InferShapes(model_proto_);
 
   std::vector<std::vector<int>> supported_node_vecs;
   std::vector<int> supported_node_vec;
@@ -88,28 +88,21 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   return supported_node_vecs;
 }
 
-#define DEFINE_OPERAND_FROM_SCALAR(scalar_type, op_type)                   \
-  ModelBuilder::Index ModelBuilder::OperandFromScalar(scalar_type value) { \
-    const auto index = AddNewOperand({Type::op_type});                     \
-    THROW_ON_ERROR_WITH_NOTE(                                              \
-        nnapi_->ANeuralNetworksModel_setOperandValue(                      \
-            nnapi_model_->model_, index, &value, sizeof(value)),           \
-        "value: " + std::to_string(value));                                \
-    return index;                                                          \
-  }  // namespace nnapi
-
-DEFINE_OPERAND_FROM_SCALAR(bool, BOOL);
-DEFINE_OPERAND_FROM_SCALAR(uint32_t, UINT32);
-DEFINE_OPERAND_FROM_SCALAR(int32_t, INT32);
-DEFINE_OPERAND_FROM_SCALAR(float, FLOAT32);
-
-#undef DEFINE_OPERAND_FROM_SCALAR
+// Scalar operand is copied into the model, no need to persist
+ModelBuilder::Index ModelBuilder::SetOperandFromScalar(Type type, void* value, size_t size) {
+  auto index = AddNewOperand({type});
+  THROW_ON_ERROR(
+      nnapi_->ANeuralNetworksModel_setOperandValue(
+          nnapi_model_->model_, index, value, size));
+  return index;
+}
 
 void ModelBuilder::prepare() {
   clearData();
   nnapi_model_ = std::unique_ptr<Model>(new Model());
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
   addInitializers();
+  copyInitializersData();
   registerModelInputs();
   addOperations();
   registerModelOutputs();
@@ -117,19 +110,141 @@ void ModelBuilder::prepare() {
 
 void ModelBuilder::clearData() {
   shaper_.Clear();
+
   operand_indexes_.clear();
+  operand_types_.clear();
+
   operands_.clear();
+
   input_index_vec_.clear();
   output_index_vec_.clear();
 
   next_index_ = 0;
 }
 
-void ModelBuilder::addInitializers() {}
+void ModelBuilder::addInitializers() {
+  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
+    const auto& tensor = model_proto_.graph().initializer(i);
+    const auto& name = tensor.name();
+    Shape shape;
+    for (auto dim : tensor.dims()) {
+      shape.push_back(static_cast<uint32_t>(dim));
+    }
+
+    shaper_.AddShape(name, shape);
+
+    Type type = Type::TENSOR_FLOAT32;
+    switch (tensor.data_type()) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        if (shape.empty())  // scalar
+          type = Type::FLOAT32;
+        break;
+      default:
+        // TODO: support other type
+        throw std::invalid_argument(
+            "The initializer of graph doesn't have valid type: " + name);
+    }
+
+    auto index = AddNewOperand({type, shape});
+    RegisterOperand(name, index, {type, shape});
+  }
+}
+
+static size_t GetBytesNumFromOperandType(const OperandType& operand_type) {
+  size_t element_size;
+  switch (operand_type.type) {
+    case Type::TENSOR_BOOL8:
+      element_size = 1;
+      break;
+    case Type::TENSOR_FLOAT16:
+      element_size = 2;
+      break;
+    case Type::TENSOR_FLOAT32:
+    case Type::FLOAT32:
+      element_size = 4;
+      break;
+    case Type::TENSOR_INT32:
+      element_size = 4;
+      break;
+    case Type::TENSOR_QUANT8_SYMM_PER_CHANNEL:
+      element_size = 1;
+      break;
+    case Type::TENSOR_QUANT8_ASYMM:
+      element_size = 1;
+      break;
+    case Type::TENSOR_QUANT16_SYMM:
+      element_size = 2;
+      break;
+    case Type::TENSOR_QUANT16_ASYMM:
+      element_size = 2;
+      break;
+    default:
+      throw std::invalid_argument("Wrong type: " +
+                                  typeToStr(operand_type.type));
+  }
+  return Product(operand_type.dimensions) * element_size;
+}
+
+constexpr size_t kDefaultByteAlignmentForNNAPI = 16;
+
+static size_t getPaddedByteSize(size_t size) {
+  if (size_t r = size % kDefaultByteAlignmentForNNAPI)
+    return size + kDefaultByteAlignmentForNNAPI - r;
+  else
+    return size;
+}
+
+void ModelBuilder::copyInitializersData() {
+  // First pass to get all the stats of the initializers
+  // <index, size, paddedsize>
+  std::vector<std::tuple<uint32_t, size_t, size_t>> initializers;
+  initializers.reserve(model_proto_.graph().initializer_size());
+  size_t sizeAll = 0;
+  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
+    const auto& tensor = model_proto_.graph().initializer(i);
+    const auto& name = tensor.name();
+    const auto& type(operand_types_.at(name));
+    const Index index = operand_indexes_.at(name);
+    const size_t size = GetBytesNumFromOperandType(type);
+    const size_t paddedSize = getPaddedByteSize(size);
+    sizeAll += paddedSize;
+    initializers.push_back(std::make_tuple(index, size, paddedSize));
+  }
+
+  nnapi_model_->mem_initializers.reset(
+      new NNMemory(nnapi_, "mem_initializers", sizeAll));
+
+  size_t offset = 0;
+  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
+    const auto& tensor = model_proto_.graph().initializer(i);
+    Index index;
+    size_t size, paddedSize;
+    std::tie(index, size, paddedSize) = initializers[i];
+    const char* src = nullptr;
+    if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      src = tensor.float_data().empty()
+                ? tensor.raw_data().data()
+                : reinterpret_cast<const char*>(tensor.float_data().data());
+    } else {
+      throw std::invalid_argument(
+          "The initializer of graph doesn't have valid type: " + tensor.name());
+    }
+
+    uint8_t* dest = nnapi_model_->mem_initializers->get_data_ptr() + offset;
+    memcpy(dest, src, size);
+    THROW_ON_ERROR(
+        nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
+            nnapi_model_->model_, index,
+            nnapi_model_->mem_initializers->get_handle(),
+            offset, size));
+    offset += paddedSize;
+  }
+}
 
 void ModelBuilder::registerModelInputs() {
   for (const auto& input : model_proto_.graph().input()) {
-    if (operands_.find(input.name()) != operands_.end())
+    const std::string& name(input.name());
+    if (operands_.find(name) != operands_.end())
       continue;
 
     Shaper::Shape shape;
@@ -143,38 +258,40 @@ void ModelBuilder::registerModelInputs() {
       }
     }
 
-    shaper_.AddShape(input.name(), shape);
+    shaper_.AddShape(name, shape);
 
     Type type = Type::TENSOR_FLOAT32;
     if (input.type().tensor_type().has_elem_type()) {
       switch (input.type().tensor_type().elem_type()) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          type = Type::TENSOR_FLOAT32;
+          if (shape.empty())  // scalar
+            type = Type::FLOAT32;
           break;
         default:
           // TODO: support other type
           throw std::invalid_argument(
-              "The input of graph doesn't have valid type");
+              "The input of graph doesn't have valid type: " + name);
       }
     }
 
     auto index = AddNewOperand({type, shape});
-    RegisterOperand(input.name(), index, {type, shape});
+    RegisterOperand(name, index, {type, shape});
 
     input_index_vec_.push_back(index);
-    nnapi_model_->AddInput(input.name(), shape);
+    nnapi_model_->AddInput(name, shape);
   }
 }
 
 void ModelBuilder::registerModelOutputs() {
   for (const auto& output : model_proto_.graph().output()) {
-    if (operands_.find(output.name()) == operands_.end()) {
+    const std::string& name(output.name());
+    if (operands_.find(name) == operands_.end()) {
       throw std::invalid_argument(
-          "The output of graph is not registered" + output.name());
+          "The output of graph is not registered" + name);
     }
 
-    output_index_vec_.push_back(operand_indexes_[output.name()]);
-    nnapi_model_->AddOutput(output.name(), shaper_[output.name()]);
+    output_index_vec_.push_back(operand_indexes_[name]);
+    nnapi_model_->AddOutput(name, shaper_[name]);
   }
 }
 
@@ -204,9 +321,13 @@ void ModelBuilder::addOperations() {
       const auto output = node.output(0);
 
       std::vector<uint32_t> input_indices;
-      input_indices.push_back(operand_indexes_.at(input1));                    // input 1
-      input_indices.push_back(operand_indexes_.at(input2));                    // input 2
-      input_indices.push_back(OperandFromScalar(ANEURALNETWORKS_FUSED_NONE));  // fusecode
+      input_indices.push_back(operand_indexes_.at(input1));  // input 1
+      input_indices.push_back(operand_indexes_.at(input2));  // input 2
+      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      input_indices.push_back(
+          SetOperandFromScalar(Type::INT32,
+                               static_cast<void*>(&fuse_code),
+                               sizeof(fuse_code)));  // fusecode
       shaper_.Eltwise(input1, input2, output);
       const OperandType output_operand_type = {operand_types_.at(input1).type, shaper_[output]};
       auto output_idx = AddOperation(ANEURALNETWORKS_ADD, input_indices, {output_operand_type})[0];
@@ -238,6 +359,7 @@ ModelBuilder::IndexSeq ModelBuilder::AddOperation(
 
 std::unique_ptr<Model> ModelBuilder::Compile() {
   prepare();
+
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
           nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),

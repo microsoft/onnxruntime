@@ -6,6 +6,8 @@
 #include <android/log.h>
 #include <string>
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+#include <numeric>
+#include <vector>
 
 #define LOG_TAG "ORT NNAPI"
 
@@ -58,4 +60,10 @@ inline std::string GetErrorCause(int errorCode) {
     default:
       return "Unknown error code";
   }
+}
+
+template <typename T>
+T Product(const std::vector<T>& v) {
+  return static_cast<T>(
+      accumulate(v.begin(), v.end(), 1, std::multiplies<T>()));
 }

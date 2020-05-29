@@ -1,14 +1,8 @@
+#include "helper.h"
 #include "Shaper.h"
-#include <numeric>
 
 using std::string;
 using std::vector;
-
-template <typename T>
-T Product(const std::vector<T>& v) {
-  return static_cast<T>(
-      accumulate(v.begin(), v.end(), 1, std::multiplies<T>()));
-}
 
 Shaper::len_t Shaper::total(const Shape& shape) {
   return Product(shape);
