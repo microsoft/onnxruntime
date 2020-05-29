@@ -18,7 +18,7 @@ Many users can benefit from ONNX Runtime, including those looking to:
 
 [ONNX Runtime inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
 
-[ONNX Runtime training](./orttraining) feature was introduced in May 2020 in preview. This feaures supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
+[ONNX Runtime training](./orttraining) feature was introduced in May 2020 in preview. This feature supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
 
 
 ***
