@@ -208,8 +208,8 @@ void NodeArg::ClearShape() {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types,
-                                           const logging::Logger& logger) {
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict,
+                                           bool override_types, const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -784,9 +784,17 @@ Graph::Graph(const Model& owning_model,
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
   for (auto& graph_input : graph_proto_->input()) {
-    if (utils::HasName(graph_input) && utils::HasType(graph_input)) {
-      name_to_type_map[graph_input.name()] = graph_input.type();
-      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+    if (utils::HasName(graph_input)) {
+      if (utils::HasType(graph_input)) {
+        name_to_type_map[graph_input.name()] = graph_input.type();
+        GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+      } else {
+        // subgraph inputs can have type inferred later. need to create a NodeArg in case this input is only used in
+        // a nested subgraph (a NodeArg won't be added by AddNode for the nodes in this subgraph)
+        if (IsSubgraph()) {
+          GetOrCreateNodeArg(graph_input.name(), nullptr);
+        }
+      }
     }
   }
 
@@ -813,7 +821,7 @@ Graph::Graph(const Model& owning_model,
       } else {
         LOGS(logger_, WARNING) << "Initializer " << tensor.name()
                                << " appears in graph inputs and will not be treated as constant value/weight. "
-                               << "This may fail some of the graph optimizations, like const folding. "
+                               << "This may prevent some of the graph optimizations, like const folding. "
                                << "Move it out of graph inputs if there is no need to override it, "
                                << "by either re-generating the model with latest exporter/converter "
                                << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
@@ -880,7 +888,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& graph_input : graph_proto_->input()) {
     auto& name = graph_input.name();
     const auto* node_arg = GetNodeArg(name);
-    ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer.");
+    ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer. Missing:", name);
     graph_inputs.insert({name, node_arg});
     graph_inputs_including_initializers_.push_back(node_arg);
     if (graph_initializers.end() == graph_initializers.find(name)) {

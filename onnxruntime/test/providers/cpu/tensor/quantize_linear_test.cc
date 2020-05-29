@@ -61,7 +61,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_Without_Zero_Point) {
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", {}, {200.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 // quantize with scalar zero point and scale
@@ -136,12 +136,12 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_Scalar) {
 }
 
 // quantize with scalar data
-TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_With_Zero_Point) {
+TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddOutput<uint8_t>("y", {}, {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
 }
 
 }  // namespace test
