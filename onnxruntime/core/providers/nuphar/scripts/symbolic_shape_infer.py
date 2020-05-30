@@ -1246,8 +1246,9 @@ class SymbolicShapeInference:
     @staticmethod
     def infer_shapes(input_model, output_model, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
         in_mp = onnx.load(input_model)
-        if get_opset(in_mp) < 7:
-            print('Only support models of opset 7 and above.')
+        onnx_opset = get_opset(in_mp)
+        if not onnx_opset or onnx_opset < 7:
+            print('Only support models of onnx opset 7 and above.')
             return
         symbolic_shape_inference = SymbolicShapeInference(int_max, auto_merge, guess_output_rank, verbose)
         all_shapes_inferred = False
