@@ -172,7 +172,8 @@ Status TrainingRunner::Initialize() {
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
-      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
+      //bugbug
+      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 15));
     } else {
       // use static loss_scale
       loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
@@ -640,6 +641,8 @@ Status TrainingRunner::RunWithUpdate(VectorString& feed_names,
       const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
       const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
       const bool is_all_finite = *(all_is_finite_t.template Data<bool>());
+      //bugbug
+      std::cout<<"Loss scale is :"<<loss_scaler_->GetLossScale()<<std::endl;
       loss_scaler_->UpdateLossScale(is_all_finite);
     }
   }

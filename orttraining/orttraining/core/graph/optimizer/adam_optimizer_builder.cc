@@ -46,6 +46,11 @@ Status AdamOptimizerBuilder::Build(
     // Return either the input gradient/weight/fp16-weight or updated gradient/weight/fp16-weight.
     ArgDef output_gradient_argdef = gradient_argdefs[i];
     ArgDef output_weight_argdef = weight_argdefs[i];
+
+    //bugbug
+    std::cout<<"output_gradient_argdef name: "<<output_gradient_argdef.name<<std::endl;
+    std::cout<<"output_weight_argdef name: "<<output_weight_argdef.name<<std::endl;
+
     if (opt_configs[i].fp16_weight_arg != nullptr)
       output_weight_argdef = ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto());
 

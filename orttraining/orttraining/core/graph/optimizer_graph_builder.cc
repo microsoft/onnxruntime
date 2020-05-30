@@ -123,7 +123,7 @@ Status OptimizerGraphBuilder::AddGradientScalingNodes(
                                       {pre_allreduce_scale, gradient_argdef},
                                       {scaled_gradient_argdef},
                                       {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
-                                      scaled_gradient_argdef.name)});
+                                      scaled_gradient_argdef.name + "_node")});
 
       gradient_argdef = scaled_gradient_argdef;
     }

@@ -528,7 +528,7 @@ void setup_training_params(BertParameters& params) {
 
   params.use_adasum = params.use_adasum && (params.data_parallel_size > 1);
   if (params.use_adasum)
-    std::cout << "Use Adsum for allreduce." << std::endl;
+    std::cout << "Use Adasum for allreduce." << std::endl;
 #endif
 
 #ifdef USE_CUDA
