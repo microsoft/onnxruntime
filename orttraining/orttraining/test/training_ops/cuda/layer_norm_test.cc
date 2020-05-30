@@ -43,26 +43,44 @@ static void TestLayerNormGrad(
   const auto Y_grad_data = random.Uniform<float>(n_x_m_dims, k_random_data_min, k_random_data_max);
   const auto X_data = random.Uniform<float>(n_x_m_dims, k_random_data_min, k_random_data_max);
   const auto scale_data = random.Uniform<float>(m_dims, k_random_data_min, k_random_data_max);
+  const auto bias_data = random.Uniform<float>(m_dims, k_random_data_min, k_random_data_max);
 
   // these inputs are dependent on X_data
   std::vector<float> mean_data(N);         // mean(X)
   std::vector<float> inv_std_var_data(N);  // 1 / sqrt(mean(X^2) - mean(X)^2 + epsilon)
+  std::vector<float> Y_data(N*M);
   {
     using ConstEigenArrayMap = Eigen::Map<const Eigen::ArrayXX<float>>;
-    using EigenRowVectorArrayMap = Eigen::Map<Eigen::Array<float, 1, Eigen::Dynamic>>;
+    using EigenArrayMap = Eigen::Map<Eigen::ArrayXX<float>>;
 
     ConstEigenArrayMap X{X_data.data(), M, N};
-    EigenRowVectorArrayMap mean{mean_data.data(), N};
-    EigenRowVectorArrayMap inv_std_var{inv_std_var_data.data(), N};
 
-    mean = X.colwise().mean();
-    inv_std_var = ((X.colwise().squaredNorm() / X.rows()) - mean.square() + k_epsilon_default).rsqrt();
+    for (int i = 0; i < N; ++i) {
+      mean_data[i] = X.col(i).mean();
+      inv_std_var_data[i] = X.col(i).square().mean() - mean_data[i] * mean_data[i];
+    }
+
+    // Compute Y = ((x - mean) * (inv_var) * scale + bias
+    EigenArrayMap Y(Y_data.data(), M, N);
+
+    using EigenVectorArrayMap = Eigen::Map<Eigen::Array<float, Eigen::Dynamic, 1>>;
+    using ConstEigenVectorArrayMap = Eigen::Map<const Eigen::Array<float, Eigen::Dynamic, 1>>;
+    ConstEigenVectorArrayMap mean(mean_data.data(), N);
+    EigenVectorArrayMap inv_std_var(inv_std_var_data.data(), N);
+    inv_std_var = (inv_std_var + k_epsilon_default).sqrt().inverse();
+
+    Y = (X.rowwise() - mean.transpose()).rowwise() * inv_std_var.transpose();
+
+    ConstEigenVectorArrayMap scale(scale_data.data(), M);
+    ConstEigenVectorArrayMap bias(bias_data.data(), M);
+    Y = (Y.colwise() * scale).colwise() + bias;
   }
 
   test.AddInput("Y_grad", n_x_m_dims, Y_grad_data);
-  test.AddInput("X", n_x_m_dims, X_data);
+  test.AddInput("Y", n_x_m_dims, Y_data);
   test.AddInput("scale", m_dims, scale_data, true);
-  test.AddInput("mean", n_dims, mean_data);
+  //test.AddInput("mean", n_dims, mean_data);
+  test.AddInput("bias", m_dims, bias_data);
   test.AddInput("inv_std_var", n_dims, inv_std_var_data);
 
   const auto X_grad_data = FillZeros<float>(n_x_m_dims);

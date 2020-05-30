@@ -58,7 +58,6 @@ Status LayerNormGrad<T>::Compute(OpKernelContext* op_kernel_context) const {
   ConstEigenArrayMap<T> Y_arr{Y->Data<T>(), M, N};
   ConstEigenVectorArrayMap<T> scale_vec{scale->Data<T>(), M};
   ConstEigenVectorArrayMap<T> bias_vec{bias->Data<T>(), M};
-  //ConstEigenVectorArrayMap<float> mean_vec{mean->Data<float>(), N};
   ConstEigenVectorArrayMap<float> inv_std_var_vec{inv_std_var->Data<float>(), N};
 
   EigenArrayMap<T> X_grad_arr{X_grad->MutableData<T>(), M, N};
@@ -75,7 +74,6 @@ Status LayerNormGrad<T>::Compute(OpKernelContext* op_kernel_context) const {
 
   // A, B, and C are M x N
   Array X_mean_difference_over_std_var = (Y_arr.colwise() - bias_vec).colwise() / scale_vec;
-  //    (X_arr.rowwise() - mean_vec.cast<T>().transpose()).rowwise() * inv_std_var_vec.cast<T>().transpose();
   Array A = Y_grad_arr * X_mean_difference_over_std_var;
   Array B = (Y_grad_arr.colwise() * scale_vec).rowwise() * inv_std_var_vec.cast<T>().transpose();
   Array C = B * X_mean_difference_over_std_var;
