@@ -144,9 +144,9 @@ ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _Inout_ OrtSessionOptions* op
 #ifdef _OPENMP
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(intra_op_num_threads);
-  LOGS_DEFAULT(WARNING) << "Since openmp is enabled in this build, this API cannot be used to configure"
-                           " intra op num threads. Please use the openmp environment variables to control"
-                           " the number of threads.";
+  std::cout << "WARNING: Since openmp is enabled in this build, this API cannot be used to configure"
+               " intra op num threads. Please use the openmp environment variables to control"
+               " the number of threads.";
 #else
   options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
 #endif
@@ -161,16 +161,14 @@ ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _Inout_ OrtSessionOptions* op
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
                     _In_ const char* dim_denotation, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
-      onnxruntime::FreeDimensionOverride{dim_denotation, onnxruntime::FreeDimensionOverrideType::Denotation, dim_value}
-  );
+      onnxruntime::FreeDimensionOverride{dim_denotation, onnxruntime::FreeDimensionOverrideType::Denotation, dim_value});
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* options,
                     _In_ const char* dim_name, _In_ int64_t dim_value) {
   options->value.free_dimension_overrides.push_back(
-      onnxruntime::FreeDimensionOverride{dim_name, onnxruntime::FreeDimensionOverrideType::Name, dim_value}
-  );
+      onnxruntime::FreeDimensionOverride{dim_name, onnxruntime::FreeDimensionOverrideType::Name, dim_value});
   return nullptr;
 }
 
