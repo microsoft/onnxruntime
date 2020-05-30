@@ -24,7 +24,7 @@ namespace cuda {
       LayerNorm<T, U>);
 
 REGISTER_KERNEL_TYPED(float, float)
-REGISTER_KERNEL_TYPED(double, float)
+REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
 
 template <typename T, typename U>
@@ -69,12 +69,12 @@ Status LayerNorm<T, U>::ComputeInternal(OpKernelContext* ctx) const {
       mean_inv_std_var_dim.emplace_back(1);
     }
   }
-  //Tensor* mean = ctx->Output(1, TensorShape(mean_inv_std_var_dim));
+  Tensor* mean = ctx->Output(1, TensorShape(mean_inv_std_var_dim));
   Tensor* var = ctx->Output(2, TensorShape(mean_inv_std_var_dim));
   CudaU* mean_data = nullptr;
-  // if (mean != nullptr) {
-  //   mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
-  // }
+  if (mean != nullptr) {
+    mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
+  }
 
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
