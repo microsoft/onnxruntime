@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "einsum.h"
-#include "einsum_utils.h"
 
 namespace onnxruntime {
 
@@ -40,10 +38,13 @@ Status Einsum::Compute(OpKernelContext* context) const {
                            "There was a problem acquiring temporary memory allocator in Einsum op");
   }
 
-  return DeviceCompute(context, inputs, allocator);
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+
+  return DeviceCompute(context, inputs, allocator, tp);
 }
 
-Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs, AllocatorPtr allocator) const {
+Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
+                             AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor(*einsum_equation_preprocessor_, inputs, allocator, nullptr);
   // Set device specific methods (CPU methods) to be used during pre-processing
@@ -54,7 +55,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
 
   // EinsumComputeProcessor section -
   if (inputs[0]->IsDataType<float>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, tp, einsum_compute_preprocessor,
+                                                                       nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
@@ -63,7 +65,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int32_t>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<int32_t>(context, allocator, tp, einsum_compute_preprocessor,
+                                                                         nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
@@ -73,7 +76,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
 
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<double>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, tp, einsum_compute_preprocessor,
+                                                                        nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,
@@ -82,7 +86,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                               EinsumOp::DeviceHelpers::CpuDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<int64_t>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context, allocator, einsum_compute_preprocessor, nullptr, nullptr);
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<int64_t>(context, allocator, tp, einsum_compute_preprocessor,
+                                                                         nullptr, nullptr);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose,

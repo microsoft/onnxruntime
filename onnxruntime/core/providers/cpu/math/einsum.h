@@ -5,14 +5,16 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "einsum_utils.h"
+#include "einsum_utils/einsum_compute_preprocessor.h"
+#include "einsum_utils/einsum_typed_compute_processor.h"
 
 namespace onnxruntime {
 
 class Einsum : public OpKernel {
  public:
   Einsum(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(), "Missing 'equation' attribute");
+    ORT_ENFORCE(info.GetAttr<std::string>("equation", &equation_).IsOK(),
+                "Missing 'equation' attribute");
     einsum_equation_preprocessor_ = onnxruntime::make_unique<EinsumEquationPreprocessor>(equation_);
   }
 
@@ -21,7 +23,7 @@ class Einsum : public OpKernel {
  protected:
   // Holds device specific (CPU / CUDA) compute logic
   virtual Status DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                               AllocatorPtr allocator) const;
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp) const;
 
   std::string equation_;
   std::unique_ptr<EinsumEquationPreprocessor> einsum_equation_preprocessor_;

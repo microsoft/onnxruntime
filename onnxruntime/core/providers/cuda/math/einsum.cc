@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "einsum.h"
-#include "einsum_auxiliary_ops.h"
 
 namespace onnxruntime {
 
@@ -24,7 +22,8 @@ Status Einsum::Compute(OpKernelContext* context) const {
   return onnxruntime::Einsum::Compute(context);
 }
 
-Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs, AllocatorPtr allocator) const {
+Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
+                             AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
   cublasHandle_t cublas_handle = cuda_ep_->PerThreadCublasHandle();
 
   // EinsumComputePreprocessor section -
@@ -38,7 +37,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
 
   // EinsumComputeProcessor section -
   if (inputs[0]->IsDataType<float>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, einsum_compute_preprocessor,
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, tp,
+                                                                       einsum_compute_preprocessor,
                                                                        cublas_handle, cuda_ep_);
 
     // Set device specific methods (CPU methods) to be used during processing
@@ -48,7 +48,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy);
     return einsum_compute_processor.Run();
   } else if (inputs[0]->IsDataType<double>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, einsum_compute_preprocessor,
+    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, tp,
+                                                                        einsum_compute_preprocessor,
                                                                         cublas_handle, cuda_ep_);
 
     // Set device specific methods (CPU methods) to be used during processing

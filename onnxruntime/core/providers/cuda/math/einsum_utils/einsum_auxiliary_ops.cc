@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/utils.h"
 #include "einsum_auxiliary_ops.h"
 
 namespace onnxruntime {

@@ -6,13 +6,13 @@
 
 #pragma once
 
-#include "core/providers/cpu/math/einsum_auxiliary_ops.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_auxiliary_ops.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include "einsum_auxiliary_ops_diagonal.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 

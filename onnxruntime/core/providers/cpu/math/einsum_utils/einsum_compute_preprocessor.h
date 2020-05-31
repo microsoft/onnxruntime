@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// This module hosts 3 abstractions -
+// This module hosts 2 abstractions -
 
 // 1) EinsumEquationPreprocessor -
 // Holds logic to statically pre-process the equation string (i.e.) without input shapes being known
@@ -10,8 +10,6 @@
 // 2) EinsumComputePreprocessor -
 // Holds logic to process the data from  EinsumEquationPreprocessor using known input shapes to parse data required
 // during Einsum Compute(). For example, mapping subscript labels to a dimension value, etc.
-
-// 3) EinsumTypedComputeProcessor - The core logic of the Einsum operator. Invoked from Einsum Compute().
 
 #pragma once
 
@@ -205,45 +203,6 @@ class EinsumComputePreprocessor final {
 
   // CuBLAS handle to be used in case the processing is done on the CUDA EP
   void* cublas_handle_;
-};
-
-// This method does the heavy-lifting compute portion of Einsum Compute()
-template <typename T>
-class EinsumTypedComputeProcessor {
- public:
-  explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
-                                       EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                       void* cublas_handle, void* cuda_ep)
-      : context_(context),
-        allocator_(allocator),
-        einsum_compute_preprocessor_(einsum_compute_preprocessor),
-        cublas_handle_(cublas_handle),
-        cuda_ep_(cuda_ep) {}
-
-  // Pass-in device specific functions
-  // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
-  void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Transpose& device_transpose_func,
-                        const EinsumOp::DeviceHelpers::MatMul<T>& device_matmul_func,
-                        const EinsumOp::DeviceHelpers::ReduceSum<T>& device_reduce_sum_func,
-                        const EinsumOp::DeviceHelpers::DataCopy& device_data_copy_func);
-
-  Status Run();
-
- private:
-  OpKernelContext* context_;
-  AllocatorPtr allocator_;
-  EinsumComputePreprocessor& einsum_compute_preprocessor_;
-
-  EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
-  EinsumOp::DeviceHelpers::MatMul<T> device_matmul_func_;
-  EinsumOp::DeviceHelpers::ReduceSum<T> device_reduce_sum_func_;
-  EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
-
-  // CuBLAS handle to be used in case the processing is done on the CUDA EP
-  void* cublas_handle_;
-
-  // CUDA EP - required by ReduceSum CUDA kernel
-  void* cuda_ep_;
 };
 
 }  // namespace onnxruntime
