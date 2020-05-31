@@ -97,6 +97,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
+#if USE_MIGRAPHX
+                opt.AppendExecutionProvider_MIGraphX(0);
+#endif
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi();
 #endif
@@ -289,6 +292,47 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     validateRunResultData(outputTensor);
                 }
             }
+        }
+
+        [Fact]
+        public void InferenceSessionManualDisposeAfterUse()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            // Set the graph optimization level for this session.
+            SessionOptions options = new SessionOptions();
+            options.ProfileOutputPathPrefix = "Ort_P_";
+            options.EnableProfiling = true;
+            var session = new InferenceSession(modelPath, options);
+
+
+            var inputMeta = session.InputMetadata;
+            var container = new List<NamedOnnxValue>();
+
+            float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+            foreach (var name in inputMeta.Keys)
+            {
+                Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                Assert.True(inputMeta[name].IsTensor);
+                var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+            }
+
+            // Run inference with named inputs and outputs created with in Run()
+            using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+            {
+                validateRunResults(results);
+            }
+
+            string profile_file = session.EndProfiling();
+
+            // Profile file should have the output path prefix in it
+            Assert.Contains("Ort_P_", profile_file);
+
+            // Should be able to dispose the session manually
+            session.Dispose();
+
         }
 
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
@@ -1572,6 +1616,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_TENSORRT
             ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
+#endif
+#if USE_MIGRAPHX
+            ,"OrtSessionOptionsAppendExecutionProvider_MIGraphX"
 #endif
 #if USE_NNAPI
             ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"
