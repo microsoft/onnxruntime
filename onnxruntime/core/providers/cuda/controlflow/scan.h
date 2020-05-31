@@ -23,7 +23,8 @@ class Scan final : public onnxruntime::Scan<OpSet> {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-  // We need to access to the CUDA EP instance to get the cublas handle which is needed in the CUDA Transpose kernel
+  // We need to access to the CUDA EP instance to get the cublas handle which is
+  // needed for the CUDA Transpose operation
   CUDAExecutionProvider* cuda_ep_;
 };
 }  // namespace cuda
