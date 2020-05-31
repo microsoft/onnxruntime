@@ -146,7 +146,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _Inout_ OrtSessionOptions* op
   ORT_UNUSED_PARAMETER(intra_op_num_threads);
   std::cout << "WARNING: Since openmp is enabled in this build, this API cannot be used to configure"
                " intra op num threads. Please use the openmp environment variables to control"
-               " the number of threads.";
+               " the number of threads.\n";
 #else
   options->value.intra_op_param.thread_pool_size = intra_op_num_threads;
 #endif
