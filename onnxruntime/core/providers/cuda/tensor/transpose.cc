@@ -101,30 +101,30 @@ Status Transpose::DoTranspose(const Transpose& kernel,
       if (permutations[1] == 2 && permutations[2] == 1 && permutations[3] == 3) {
         if (element_type == utils::GetONNXTensorElementDataType<float>()) {
           const auto* input_data = reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input.template Data<float>());
-          auto* output_data = reinterpret_cast<typename ToCudaType<float>::MappedType*>(output->template MutableData<float>());
+          auto* output_data = reinterpret_cast<typename ToCudaType<float>::MappedType*>(output.template MutableData<float>());
           BatchTranspose3DImpl(input_dims[0], input_dims[1], input_dims[2], input_dims[3], input_data, output_data, true);
         } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
           const auto* input_data = reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input.template Data<double>());
-          auto* output_data = reinterpret_cast<typename ToCudaType<double>::MappedType*>(output->template MutableData<double>());
+          auto* output_data = reinterpret_cast<typename ToCudaType<double>::MappedType*>(output.template MutableData<double>());
           BatchTranspose3DImpl(input_dims[0], input_dims[1], input_dims[2], input_dims[3], input_data, output_data, true);
         } else {
           const auto* input_data = reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input.template Data<MLFloat16>());
-          auto* output_data = reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output->template MutableData<MLFloat16>());
+          auto* output_data = reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output.template MutableData<MLFloat16>());
           BatchTranspose3DImpl(input_dims[0], input_dims[1], input_dims[2], input_dims[3], input_data, output_data, true);
         }
         return Status::OK();
       } else if (permutations[1] == 2 && permutations[2] == 3 && permutations[3] == 1) {
         if (element_type == utils::GetONNXTensorElementDataType<float>()) {
           const auto* input_data = reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input.template Data<float>());
-          auto* output_data = reinterpret_cast<typename ToCudaType<float>::MappedType*>(output->template MutableData<float>());
+          auto* output_data = reinterpret_cast<typename ToCudaType<float>::MappedType*>(output.template MutableData<float>());
           BatchTranspose3DImpl(input_dims[0], input_dims[1], input_dims[2], input_dims[3], input_data, output_data, false);
         } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
           const auto* input_data = reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input.template Data<double>());
-          auto* output_data = reinterpret_cast<typename ToCudaType<double>::MappedType*>(output->template MutableData<double>());
+          auto* output_data = reinterpret_cast<typename ToCudaType<double>::MappedType*>(output.template MutableData<double>());
           BatchTranspose3DImpl(input_dims[0], input_dims[1], input_dims[2], input_dims[3], input_data, output_data, false);
         } else {
           const auto* input_data = reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input.template Data<MLFloat16>());
-          auto* output_data = reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output->template MutableData<MLFloat16>());
+          auto* output_data = reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output.template MutableData<MLFloat16>());
           BatchTranspose3DImpl(input_dims[0], input_dims[1], input_dims[2], input_dims[3], input_data, output_data, false);
         }
         return Status::OK();
@@ -145,15 +145,15 @@ Status Transpose::DoTranspose(const Transpose& kernel,
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
         BatchTranspose2DImpl(N, H, W,
                              reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input.template Data<float>()),
-                             reinterpret_cast<typename ToCudaType<float>::MappedType*>(output->template MutableData<float>()));
+                             reinterpret_cast<typename ToCudaType<float>::MappedType*>(output.template MutableData<float>()));
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
         BatchTranspose2DImpl(N, H, W,
                              reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input.template Data<double>()),
-                             reinterpret_cast<typename ToCudaType<double>::MappedType*>(output->template MutableData<double>()));
+                             reinterpret_cast<typename ToCudaType<double>::MappedType*>(output.template MutableData<double>()));
       } else {
         BatchTranspose2DImpl(N, H, W,
                              reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input.template Data<MLFloat16>()),
-                             reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output->template MutableData<MLFloat16>()));
+                             reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output.template MutableData<MLFloat16>()));
       }
     }
   }
