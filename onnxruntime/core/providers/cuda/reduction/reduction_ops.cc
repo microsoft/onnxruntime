@@ -868,8 +868,8 @@ Tensor ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn
   status = ReduceComputeCore<T, ReduceTensorIndices>(cuda_ep, input, prepare_reduce_metadata, output, cudnn_reduce_op, axes,
                                                      calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
 
-  // TODO:
   if (!status.IsOK()) {
+    ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
   }
 
   return output;
