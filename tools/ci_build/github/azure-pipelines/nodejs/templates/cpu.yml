@@ -1,0 +1,19 @@
+parameters:
+  DoEsrp: 'false'
+  DoCompliance: 'false'
+
+jobs:
+- template: ../../templates/win-ci-2019.yml
+  parameters:
+    AgentPool : 'Win-CPU-2019'
+    ArtifactName: 'drop-nodejs'
+    JobName: 'Windows_CI_Dev'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildArch: 'x64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'x64'
+    DoDebugBuild: 'false'
+    DoNodejsPack : 'true'
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+

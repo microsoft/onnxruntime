@@ -6,6 +6,7 @@ parameters:
   DoNugetPack:  'false'
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
+  DoNodejsPack: 'false'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64' # Optional. Options: x86, x64
@@ -211,6 +212,34 @@ jobs:
           symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           searchPattern: '**/*.pdb'
           symbolServerType: teamServices
+
+    # Node.js Publish
+    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
+      - task: BatchScript@1
+        displayName: 'Setup VS2019 env vars'
+        inputs:
+          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: ${{ parameters.BuildArch }}
+          modifyEnvironment: true
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64'
+          DisplayName: 'ESRP - Sign Node.js binding binaries'
+          DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: '*.dll,*.node'
+
+      - script: |
+         npm pack
+         copy $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         copy $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\nodejs'
+        displayName: 'Create NPM Package'
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
     # Compliance tasks require logs from Debug Build
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
