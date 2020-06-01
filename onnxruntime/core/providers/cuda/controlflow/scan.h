@@ -7,7 +7,6 @@
 
 #include "core/common/common.h"
 #include "core/providers/cpu/controlflow/scan.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 
 namespace onnxruntime {
 class SessionState;
@@ -21,8 +20,6 @@ class Scan final : public onnxruntime::Scan<OpSet> {
   Scan(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
-
- private:
 };
 }  // namespace cuda
 }  // namespace onnxruntime
