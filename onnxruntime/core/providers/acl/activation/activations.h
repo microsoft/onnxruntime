@@ -3,15 +3,14 @@
 
 #pragma once
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/activation/activations.h"
 
 namespace onnxruntime {
 namespace acl {
 
 template <typename T>
-class Relu : public onnxruntime::Relu<T> {
+class Relu : public OpKernel {
  public:
-  explicit Relu(const OpKernelInfo& info) : onnxruntime::Relu<T>(info) {}
+  explicit Relu(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };

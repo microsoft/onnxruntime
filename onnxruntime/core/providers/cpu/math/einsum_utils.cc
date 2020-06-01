@@ -271,7 +271,7 @@ static std::unique_ptr<Tensor> PairwiseOperandProcess(const Tensor& left,
                       einsum_compute_preprocessor.GetOutputDims(), allocator);
   }
 
-  return std::move(output);
+  return output;
 }
 
 }  // namespace EinsumOp

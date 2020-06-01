@@ -141,6 +141,15 @@ Status TrainingSession::ConfigureForTraining(
     excluded_initializers.erase(weight_name_to_not_train);
   }
 
+  if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
+    // Apply online pipeline partition to graph obj. This needs to be done first before any graph
+    // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
+                                                          config.pipeline_config.value().cut_list,
+                                                          config.distributed_config.world_rank,
+                                                          config.distributed_config.world_size));
+  }
+
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
@@ -214,10 +223,14 @@ Status TrainingSession::ConfigureForTraining(
                                           pipeline_result.forward_recorded_event_name,
                                           pipeline_result.backward_waited_event_name,
                                           pipeline_result.backward_recorded_event_name,
-                                          pipeline_result.forward_waited_output_name,
-                                          pipeline_result.forward_recorded_output_name,
-                                          pipeline_result.backward_waited_output_name,
-                                          pipeline_result.backward_recorded_output_name));
+                                          pipeline_result.forward_wait_output_name,
+                                          pipeline_result.forward_record_output_name,
+                                          pipeline_result.backward_wait_output_name,
+                                          pipeline_result.backward_record_output_name,
+                                          pipeline_result.forward_waited_event_after_recv_name,
+                                          pipeline_result.forward_recorded_event_before_send_name,
+                                          pipeline_result.backward_waited_event_after_recv_name,
+                                          pipeline_result.backward_recorded_event_before_send_name));
     // The following loop is for not to fetch tensors not in this pipeline stage.
     for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
       auto name = config.pipeline_config.value().fetch_names[i];
@@ -229,7 +242,7 @@ Status TrainingSession::ConfigureForTraining(
       }
       pipeline_result.fetch_names.push_back(name);
     }
-    pipeline_result.pipeline_stage_id = config.distributed_config.world_rank / 
+    pipeline_result.pipeline_stage_id = config.distributed_config.world_rank /
       (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
     config_result.pipeline_config_result = pipeline_result;
   }
@@ -303,13 +316,19 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
         tensorboard_config.dump_convergence_metrics));
   }
-    
+
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
 
-  if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
+  // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
+  // store different model partition), and if model_with_training_graph_path is specified, save the model.
+  // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
+  // conflict. It is user's responsibility to make sure different rank is passed in with different
+  // model_with_training_graph_path value.
+  if ((IsRootNode(config) || config.pipeline_config.has_value())
+    && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
@@ -528,20 +547,28 @@ Status TrainingSession::InsertPipelineOps(
   std::string& forward_recorded_event_name,
   std::string& backward_waited_event_name,
   std::string& backward_recorded_event_name,
-  std::string& forward_waited_output_name,
-  std::string& forward_recorded_output_name,
-  std::string& backward_waited_output_name,
-  std::string& backward_recorded_output_name) {
+  std::string& forward_wait_output_name,
+  std::string& forward_record_output_name,
+  std::string& backward_wait_output_name,
+  std::string& backward_record_output_name,
+  std::string& forward_waited_event_after_recv_name,
+  std::string& forward_recorded_event_before_send_name,
+  std::string& backward_waited_event_after_recv_name,
+  std::string& backward_recorded_event_before_send_name) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
     model_->MainGraph(),
     forward_waited_event_name,
     forward_recorded_event_name,
     backward_waited_event_name,
     backward_recorded_event_name,
-    forward_waited_output_name,
-    forward_recorded_output_name,
-    backward_waited_output_name,
-    backward_recorded_output_name));
+    forward_wait_output_name,
+    forward_record_output_name,
+    backward_wait_output_name,
+    backward_record_output_name,
+    forward_waited_event_after_recv_name,
+    forward_recorded_event_before_send_name,
+    backward_waited_event_after_recv_name,
+    backward_recorded_event_before_send_name));
   return DoPostLoadProcessing(*model_);
 }
 
