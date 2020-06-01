@@ -11,6 +11,9 @@ namespace onnxruntime {
 
         // the model who's MainGraph holds the nodes for the kernels that we will execute
         std::unique_ptr<Model> model;
+
+        // providers for the session
+        std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
     };
 
     // An ExecutionFrame that only executes a single kernel
@@ -20,20 +23,16 @@ namespace onnxruntime {
         // the struct OrtExecutableKernelContext actually points to this class
         class Info {
         public:
-            Info(std::unique_ptr<OpKernel> kernel, const logging::Logger &logger)
+            Info(std::unique_ptr<OpKernel> kernel,
+                 const logging::Logger &logger, const std::unique_ptr<IExecutionProvider>& provider)
                     : kernel_(std::move(kernel)),
-                      logger_(&logger) {
+                      logger_(&logger),
+                      provider_(provider)
+            {
                 ORT_ENFORCE(kernel_, "kernel cannot be null");
+                ORT_ENFORCE(provider_, "provider cannot be null");
 
-                if (kernel_->KernelDef().Provider() == kCpuExecutionProvider) {
-                    provider_ = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-
-                    // as in OptimizerExectutionFrame
-                    allocator_ = provider_->GetAllocator(0, OrtMemTypeDefault);
-                } else {
-                    throw NotImplementedException(
-                            "Provider type (" + kernel_->KernelDef().Provider() + ") is not supported");
-                }
+                allocator_ = provider_->GetAllocator(provider_->GetDeviceId(), OrtMemTypeDefault);
 
                 auto &node = kernel_->Node();
 
@@ -111,7 +110,7 @@ namespace onnxruntime {
             std::vector<int> feed_mlvalue_idxs_;
             std::vector<OrtValue> feeds_;
 
-            std::unique_ptr<IExecutionProvider> provider_;
+            const std::unique_ptr<IExecutionProvider>& provider_;
             AllocatorPtr allocator_;
         };
 

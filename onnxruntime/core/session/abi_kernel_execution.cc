@@ -18,6 +18,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
+#include "abi_session_options_impl.h"
 
 using namespace onnxruntime;
 
@@ -37,6 +38,7 @@ ExecutableKernelContextImpl::CreateNodeOutputMLValueImpl(__attribute__((unused))
 
 
 ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
+                    _In_ const OrtSessionOptions* options,
                     _Outptr_ OrtKernelSession **session_) {
     API_IMPL_BEGIN
         ORT_ENFORCE(session_, "OrtKernelSession pointer must not be null");
@@ -44,6 +46,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
                                                                logging::LoggingManager::DefaultLogger());
 
         KernelSessionImpl *session = new KernelSessionImpl(std::move(model));
+
+        // initialize the providers
+        for(auto& factory : options->provider_factories) {
+            auto provider = factory->CreateProvider();
+            session->provider_list.push_back(std::move(provider));
+        }
+
         *session_ = reinterpret_cast<OrtKernelSession *>(session);
 
         return ToOrtStatus(Status::OK());
@@ -52,15 +61,19 @@ ORT_API_STATUS_IMPL(OrtApis::CreateKernelSession,
 
 ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernelContext,
                     _In_ OrtKernelSession *session_,
-                    OrtProviderType providerType,
+                    unsigned int provider_id,
                     _In_ const void *node_proto_, // pointer to a c++ NodeProto
                     _In_ const void *arg_to_type_map_, // pointer to a ArgToTypeMap (aka std::unordered_map<std::string, onnx::TypeProto>)
                     _Outptr_ OrtExecutableKernelContext **kernel_context_) {
     API_IMPL_BEGIN
 
-        ORT_ENFORCE(kernel_context_, "OrtExecutableKernelContext pointer must be non-null");
+        ORT_ENFORCE(kernel_context_, "OrtExecutableKernelContext pointer must be non-null.");
+        ORT_ENFORCE(session_, "OrtKernelSession pointer must be non-null.");
 
         KernelSessionImpl *session = reinterpret_cast<KernelSessionImpl *>(session_);
+        ORT_ENFORCE(provider_id < session->provider_list.size(),
+                "provider_id must be less than the provider list size (" + std::to_string(session->provider_list.size()) + ").");
+
         const ONNX_NAMESPACE::NodeProto *node_proto = static_cast<const ONNX_NAMESPACE::NodeProto *>(node_proto_);
         const ArgNameToTypeMap *arg_name_to_type_map = static_cast<const ArgNameToTypeMap *>(arg_to_type_map_);
 
@@ -72,20 +85,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernelContext,
             return ToOrtStatus(status);
         }
 
+
+        auto const& execution_provider = session->provider_list[provider_id];
+
         // set the execution provider
-        std::unique_ptr<IExecutionProvider> execution_provider;
-        switch (providerType) {
-            case ORT_PROVIDER_CPU:
-                node.SetExecutionProviderType(kCpuExecutionProvider);
-                execution_provider = make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-                break;
-            case ORT_PROVIDER_CUDA:
-                // TODO
-            default:
-                return ToOrtStatus(Status(ONNXRUNTIME,
-                                          INVALID_ARGUMENT,
-                                          "Unsupported provider type (" + std::to_string(providerType) + ")"));
-        }
+        node.SetExecutionProviderType(execution_provider->Type());
 
         // create the kernel
         std::shared_ptr<KernelRegistry> registry = execution_provider->GetKernelRegistry();
@@ -105,7 +109,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateExecutableKernelContext,
         // create the context info
         std::unique_ptr<ExecutableKernelContextImpl::Info> info = std::make_unique<ExecutableKernelContextImpl::Info>(
                 std::move(op_kernel),
-                logging::LoggingManager::DefaultLogger());
+                logging::LoggingManager::DefaultLogger(),
+                execution_provider);
 
 
         ExecutableKernelContextImpl *kernel_context = new ExecutableKernelContextImpl(std::move(info));

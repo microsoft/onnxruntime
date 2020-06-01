@@ -200,11 +200,11 @@ ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* o
 
 
 
-ORT_API_STATUS_IMPL(CreateKernelSession, OrtKernelSession** session);
+ORT_API_STATUS_IMPL(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
 
 ORT_API_STATUS_IMPL(CreateExecutableKernelContext,
                     _In_ OrtKernelSession* session,
-                    OrtProviderType providerType,
+                    unsigned int provider_id,
                     _In_ const void * node_proto,
                     _In_ const void* arg_to_type_map,
                     _Outptr_ OrtExecutableKernelContext** kernel);

@@ -206,13 +206,6 @@ typedef enum ExecutionMode {
   ORT_PARALLEL = 1,
 } ExecutionMode;
 
-// This is just easier for now, if this get's upstreamed we could just add the methods to the providers like it is with
-// the other sessions atm.
-typedef enum ProviderType {
-    ORT_PROVIDER_CPU,
-    ORT_PROVIDER_CUDA
-} OrtProviderType;
-
 struct OrtKernelInfo;
 typedef struct OrtKernelInfo OrtKernelInfo;
 struct OrtKernelContext;
@@ -829,12 +822,13 @@ struct OrtApi {
                   _In_ int64_t dim_value);
 
   // Create a session that can be used to execute single kernels
-  ORT_API2_STATUS(CreateKernelSession, OrtKernelSession** session);
+  // we don't actually read anything from OrtSessionOptions except for the provider factories.
+  ORT_API2_STATUS(CreateKernelSession, _In_ const OrtSessionOptions* options, OrtKernelSession** session);
 
   // Add an node_protobuf to the session for a session, get out an executable kernel context
   ORT_API2_STATUS(CreateExecutableKernelContext,
                   _In_ OrtKernelSession* session,
-                  OrtProviderType providerType,
+                  unsigned int provider_id,
                   _In_ const void* node_proto, // pointer to a c++ NodeProto
                   _In_ const void* arg_to_type_map, // pointer to a ArgToTypeMap (aka std::unordered_map<std::string, onnx::TypeProto>)
                   _Outptr_ OrtExecutableKernelContext** kernel);
