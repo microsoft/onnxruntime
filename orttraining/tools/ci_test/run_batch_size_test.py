@@ -3,36 +3,42 @@
 # Licensed under the MIT License.
 
 import argparse
+import collections
 import subprocess
 import sys
 import os
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Runs a BERT batch size test.")
-    parser.add_argument("--binary_dir", required=True,
-                        help="Path to the ORT binary directory.")
-    parser.add_argument("--model_root", required=True,
-                        help="Path to the model root directory.")
+    parser.add_argument("--binary_dir", required=True, help="Path to the ORT binary directory.")
+    parser.add_argument("--model_root", required=True, help="Path to the model root directory.")
     return parser.parse_args()
+
 
 def main():
     args = parse_args()
-    matrix = { # enable mixed-precision, sequence length, max batch size
-        "fp16-128": [True, 128, 66],
-        "fp16-512": [True, 512, 10],
-        "fp32-128": [False, 128, 33],
-        "fp32-512": [False, 512, 5]}
+
+    Config = collections.namedtuple("Config", ["enable_mixed_precision", "sequence_length", "max_batch_size"])
+    configs = [
+        Config(True, 128, 66),
+        Config(True, 512, 10),
+        Config(False, 128, 33),
+        Config(False, 512, 5),
+    ]
 
     # run BERT training
-    for m in matrix:
-        print("######## testing name - " + m + " ##############")
+    for config in configs:
+        print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
+                                                        config.sequence_length))
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name", os.path.join(
-                args.model_root, "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
-            "--train_batch_size", str(matrix[m][2]),
+                args.model_root,
+                "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
+            "--train_batch_size", str(config.max_batch_size),
             "--mode", "perf",
-            "--max_seq_length", str(matrix[m][1]),
+            "--max_seq_length", str(config.sequence_length),
             "--num_train_steps", "10",
             "--display_loss_steps", "5",
             "--optimizer", "adam",
@@ -48,12 +54,13 @@ def main():
             "--enable_grad_norm_clip=false",
         ]
 
-        if matrix[m][0]:
+        if config.enable_mixed_precision:
             cmds.append("--use_mixed_precision"),
 
-        subprocess.run(cmds, timeout = 60).check_returncode()
+        subprocess.run(cmds, timeout=60).check_returncode()
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

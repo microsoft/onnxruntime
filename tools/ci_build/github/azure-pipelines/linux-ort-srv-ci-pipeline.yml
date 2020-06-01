@@ -17,7 +17,7 @@ jobs:
     - task: CmdLine@2
       displayName: 'Build docker image'
       inputs:
-        script: sudo docker build --pull -t onnxruntime-server-ubuntu16.04 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=3.5 -f Dockerfile.ubuntu_server .         
+        script: sudo docker build --pull -t onnxruntime-server-ubuntu16.04 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=3.5 -f Dockerfile.ubuntu_server .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
     - task: CmdLine@2
@@ -39,7 +39,7 @@ jobs:
     - task: CmdLine@2
       displayName: 'Run docker image'
       inputs:
-        script: sudo docker run --rm --volume $(Build.SourcesDirectory)/server:/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro onnxruntime-server-ubuntu16.04 /bin/bash /onnxruntime_src/ci/run.sh        
+        script: sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory)/server:/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro onnxruntime-server-ubuntu16.04 /bin/bash /onnxruntime_src/ci/run.sh
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
     - template: templates/component-governance-component-detection-steps.yml
