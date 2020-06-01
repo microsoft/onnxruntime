@@ -108,6 +108,9 @@
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include <cuda.h>
+#include <cuda_runtime.h>
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
@@ -339,7 +342,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
-      cuda_device_id = 0;
       cuda_mem_limit = static_cast<size_t>(INT_MAX);
       arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
@@ -475,7 +477,26 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
-  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+  m.def("set_cuda_device_id", [](const int id) { 
+    
+    int num_devices = 0;
+    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+
+    if (0 == num_devices)
+    {
+        printf("your system does not have a CUDA capable device.\n");
+        return;
+    }
+
+    if (id < 0 || id >= num_devices)
+    {
+        printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", id, num_devices - 1);
+        return;
+    }
+
+    cuda_device_id = static_cast<OrtDevice::DeviceId>(id); 
+
+  });
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
