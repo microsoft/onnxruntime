@@ -7,6 +7,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/allocatormgr.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/env.h"
