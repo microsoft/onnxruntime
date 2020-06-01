@@ -184,7 +184,8 @@ def generate_files(list, args):
         # Add custom operator headers
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
-                                       'onnxruntime\\core\\providers\\dml\\dmlexecutionprovider\\inc\\mloperatorauthor.h') +
+                                       'onnxruntime\\core\\providers\\dml\\dmlexecutionprovider' +
+                                       '\\inc\\mloperatorauthor.h') +
                           '" target="build\\native\\include" />')
 
     # Process runtimes
