@@ -52,6 +52,7 @@ struct TrainingParameters {
   bool partition_optimizer = false;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
+  bool use_adasum = false;
 };
 
 struct TrainingConfigurationResult {
@@ -88,6 +89,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     parameters.local_size = mpi_context.local_size;
     parameters.local_rank = mpi_context.local_rank;
   }
+
+  config.
 #endif
 
   training::TrainingSession::TrainingConfiguration config{};
@@ -147,6 +150,11 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     config.optimizer_config = opt;
+  }
+
+  // TODO reduction types
+  if (parameters.use_adasum) {
+    config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
   }
 
   training::TrainingSession::TrainingConfigurationResult config_result{};

@@ -817,20 +817,20 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           stabilized_total_time += duration_seconds.count();
         }
 
-        printf("Stage %d, Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
-              pipeline_context_.pipeline_stage_id,
-              static_cast<int>(round_),
-              static_cast<int>(step_),
-              static_cast<int>(epoch),
-              static_cast<int>(batch),
-              static_cast<int>(batch_num_cur_shard),
-              static_cast<int>(shard_it + 1),
-              static_cast<int>(num_shards_to_visit),
-              duration_seconds.count() * 1000,
-              params_.batch_size * (step_ - step_start) / total_time);
-        printf("Training data range: [%d - %d)\n",
-              static_cast<int>(batch * params_.batch_size),
-              static_cast<int>((batch + 1) * params_.batch_size - 1));
+        // printf("Stage %d, Round %d, Step: %d, epoch: %d, batch: %d/%d, shard_iteration: %d/%d, time: %.2f ms, throughput: %.2f ex/sec \n",
+        //       pipeline_context_.pipeline_stage_id,
+        //       static_cast<int>(round_),
+        //       static_cast<int>(step_),
+        //       static_cast<int>(epoch),
+        //       static_cast<int>(batch),
+        //       static_cast<int>(batch_num_cur_shard),
+        //       static_cast<int>(shard_it + 1),
+        //       static_cast<int>(num_shards_to_visit),
+        //       duration_seconds.count() * 1000,
+        //       params_.batch_size * (step_ - step_start) / total_time);
+        // printf("Training data range: [%d - %d)\n",
+        //       static_cast<int>(batch * params_.batch_size),
+        //       static_cast<int>((batch + 1) * params_.batch_size - 1));
 
         if (test_data_loader &&
             params_.do_eval && step_ % params_.evaluation_period == 0) {
