@@ -1168,6 +1168,8 @@ MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #endif
 }
 
+#if !defined(MLAS_SSE2_INTRINSICS)
+
 template<unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
 MLAS_FORCEINLINE
 MLAS_FLOAT32X4
@@ -1175,6 +1177,8 @@ MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
 {
     return MlasShuffleFloat32x4<Index0, Index1, Index2, Index3>(Vector, Vector);
 }
+
+#endif
 
 #endif
 
