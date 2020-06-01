@@ -172,6 +172,8 @@ class TrainingSession : public InferenceSession {
     // If pipeline is enabled, this field's has_value() returns true.
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
+
+    bool optimize_gathernd{false};
   };
 
   /**
@@ -295,7 +297,7 @@ class TrainingSession : public InferenceSession {
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
   /** Override Run function in InferenceSession to inject some training-specific logics **/
-  using InferenceSession::Run; // For overload resolution.
+  using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
   common::Status Run(IOBinding& io_binding) override;

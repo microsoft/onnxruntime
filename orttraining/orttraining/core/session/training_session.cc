@@ -120,7 +120,7 @@ Status TrainingSession::ConfigureForTraining(
   TrainingConfigurationResult config_result{};
 
   ORT_ENFORCE(config.distributed_config.pipeline_parallel_size > 0,
-    "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
+              "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
 
   DistributedRunContext::CreateInstance({config.distributed_config.world_rank,
                                          config.distributed_config.world_size,
@@ -156,7 +156,7 @@ Status TrainingSession::ConfigureForTraining(
 
   std::string loss_name{};
   optional<std::string> loss_scale_input_name =
-        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
+      is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
@@ -171,6 +171,11 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(ConfigureLossFunction(
         config.loss_name, loss_function_info,
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+  }
+
+  if (config.optimize_gathernd) {
+    std::cout << "Enabling gathernd optimization.!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
+    ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
   }
 
   ORT_ENFORCE(
@@ -243,7 +248,7 @@ Status TrainingSession::ConfigureForTraining(
       pipeline_result.fetch_names.push_back(name);
     }
     pipeline_result.pipeline_stage_id = config.distributed_config.world_rank /
-      (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
+                                        (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
     config_result.pipeline_config_result = pipeline_result;
   }
 
@@ -251,14 +256,13 @@ Status TrainingSession::ConfigureForTraining(
   // TODO: this is a temp workaround for removing rank tensor before adding optimizer.
   // Re-visit after we port logic for model splitting and hence know the rank tensor name.
   for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
-      const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
-      ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
-      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        it = weights_to_train_.erase(it);
-      }
-      else{
-          ++it;
-      }
+    const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
+    ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
+    if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      it = weights_to_train_.erase(it);
+    } else {
+      ++it;
+    }
   }
 
   // add optimizer or gradient accumulation
@@ -327,8 +331,7 @@ Status TrainingSession::ConfigureForTraining(
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
   // conflict. It is user's responsibility to make sure different rank is passed in with different
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value())
-    && config.model_with_training_graph_path.has_value()) {
+  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
@@ -543,32 +546,32 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 }
 
 Status TrainingSession::InsertPipelineOps(
-  std::string& forward_waited_event_name,
-  std::string& forward_recorded_event_name,
-  std::string& backward_waited_event_name,
-  std::string& backward_recorded_event_name,
-  std::string& forward_wait_output_name,
-  std::string& forward_record_output_name,
-  std::string& backward_wait_output_name,
-  std::string& backward_record_output_name,
-  std::string& forward_waited_event_after_recv_name,
-  std::string& forward_recorded_event_before_send_name,
-  std::string& backward_waited_event_after_recv_name,
-  std::string& backward_recorded_event_before_send_name) {
+    std::string& forward_waited_event_name,
+    std::string& forward_recorded_event_name,
+    std::string& backward_waited_event_name,
+    std::string& backward_recorded_event_name,
+    std::string& forward_wait_output_name,
+    std::string& forward_record_output_name,
+    std::string& backward_wait_output_name,
+    std::string& backward_record_output_name,
+    std::string& forward_waited_event_after_recv_name,
+    std::string& forward_recorded_event_before_send_name,
+    std::string& backward_waited_event_after_recv_name,
+    std::string& backward_recorded_event_before_send_name) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
-    model_->MainGraph(),
-    forward_waited_event_name,
-    forward_recorded_event_name,
-    backward_waited_event_name,
-    backward_recorded_event_name,
-    forward_wait_output_name,
-    forward_record_output_name,
-    backward_wait_output_name,
-    backward_record_output_name,
-    forward_waited_event_after_recv_name,
-    forward_recorded_event_before_send_name,
-    backward_waited_event_after_recv_name,
-    backward_recorded_event_before_send_name));
+      model_->MainGraph(),
+      forward_waited_event_name,
+      forward_recorded_event_name,
+      backward_waited_event_name,
+      backward_recorded_event_name,
+      forward_wait_output_name,
+      forward_record_output_name,
+      backward_wait_output_name,
+      backward_record_output_name,
+      forward_waited_event_after_recv_name,
+      forward_recorded_event_before_send_name,
+      backward_waited_event_after_recv_name,
+      backward_recorded_event_before_send_name));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -787,8 +790,8 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       OrtValue feed_value;
       // We allocate on CPU first, copy will be taken care off downstream.
       auto cpu_allocator = session_state_->GetExecutionProviders()
-                           .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
+                               .Get(onnxruntime::kCpuExecutionProvider)
+                               ->GetAllocator(0, OrtMemTypeDefault);
       feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
@@ -818,11 +821,11 @@ Status TrainingSession::SetDropoutEvalFeedNames() {
 
   for (const auto& node : graph.Nodes()) {
     auto it = Dropout_Nodes.find(node.OpType());
-    if(it != Dropout_Nodes.cend()) {
+    if (it != Dropout_Nodes.cend()) {
       auto& ratio_name = node.InputDefs()[1]->Name();
       dropout_eval_feeds_.insert(ratio_name);
       ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-      "Input: " + ratio_name + " should not have any producer node.");
+                  "Input: " + ratio_name + " should not have any producer node.");
       defs.AddGraphInputs({ratio_name});
     }
   }
