@@ -148,8 +148,7 @@ class BertModelTest(unittest.TestCase):
             option_gradient_accumulation_steps,
             option_split_batch,
             option_use_internal_get_lr_this_step=[True],
-            option_use_internal_loss_scaler=[True],
-):
+            option_use_internal_loss_scaler=[True]):
             seed = 42
             random.seed(seed)
             np.random.seed(seed)
@@ -181,7 +180,7 @@ class BertModelTest(unittest.TestCase):
                             for use_internal_loss_scaler in option_use_internal_loss_scaler:
                                 for split_batch in option_split_batch:
                                     print("gradient_accumulation_steps:", gradient_accumulation_steps)
-                                    print("use_internal_loss_scaler:", use_internal_loss_scaler)
+                                    print("split_batch:", split_batch)
                                     loss_ort, prediction_scores_ort, seq_relationship_score_ort =\
                                         run_test(
                                             model, model_desc, self.device, args, gradient_accumulation_steps, fp16,
