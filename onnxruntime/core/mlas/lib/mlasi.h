@@ -1152,17 +1152,19 @@ MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector)
     return _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Index3, Index2, Index1, Index0));
 }
 
-#else
+#endif
+
+#if !defined(_MSC_VER)
 
 template<unsigned Index0, unsigned Index1, unsigned Index2, unsigned Index3>
 MLAS_FORCEINLINE
 MLAS_FLOAT32X4
 MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
-#if defined(__GNUC__)
-    return __builtin_shuffle(Vector1, Vector2, MLAS_INT32X4{Index0, Index1, Index2, Index3});
-#else
+#if defined(__clang__)
     return __builtin_shufflevector(Vector1, Vector2, Index0, Index1, Index2, Index3);
+#else
+    return __builtin_shuffle(Vector1, Vector2, MLAS_INT32X4{Index0, Index1, Index2, Index3});
 #endif
 }
 
@@ -1306,7 +1308,7 @@ MLAS_FLOAT32X4
 MlasGreaterThanFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
-    return vreinterpretq_f32_s32(vcgtq_f32(Vector1, Vector2));
+    return vreinterpretq_f32_u32(vcgtq_f32(Vector1, Vector2));
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_cmpgt_ps(Vector1, Vector2);
 #else
