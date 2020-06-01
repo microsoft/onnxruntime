@@ -87,13 +87,20 @@
 #define BACKEND_NUPHAR ""
 #endif
 
+#if USE_VITISAI
+#define BACKEND_VITISAI "-VITISAI"
+#include "core/providers/vitisai/vitisai_execution_provider.h"
+#else
+#define BACKEND_VITISAI ""
+#endif
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_OPENVINO BACKEND_MIGRAPHX
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -122,6 +129,9 @@ std::string openvino_device;
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 std::string nuphar_settings;
 #endif
+#ifdef USE_VITISAI
+#include "core/providers/vitisai/vitisai_provider_factory.h"
+#endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
@@ -134,6 +144,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
+
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -273,9 +285,9 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kMIGraphXExecutionProvider, kCudaExecutionProvider, 
-                                                   kDnnlExecutionProvider, kNGraphExecutionProvider, kOpenVINOExecutionProvider, 
-                                                   kNupharExecutionProvider, kCpuExecutionProvider};
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
+                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
+                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider};
   return all_providers;
 }
 
@@ -302,6 +314,9 @@ const std::vector<std::string>& GetAvailableProviders() {
 #endif
 #ifdef USE_NUPHAR
     available_providers.push_back(kNupharExecutionProvider);
+#endif
+#ifdef USE_VITISAI
+    available_providers.push_back(kVitisAIExecutionProvider);
 #endif
     return available_providers;
   };
@@ -345,6 +360,10 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #if USE_NUPHAR
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
       nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
+#endif
+    } else if (type == kVitisAIExecutionProvider) {
+#if USE_VITISAI
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
 #endif
     } else {
       // unknown provider
@@ -436,6 +455,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 #ifdef USE_MIGRAPHX
             onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
+#endif
+#ifdef USE_VITISAI
+            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
         };
 

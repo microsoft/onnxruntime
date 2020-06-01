@@ -8,9 +8,12 @@ from onnx import helper
 import torch
 import torch.nn
 import torch.onnx
-import onnxruntime as ort
 from distutils.version import LooseVersion
+import warnings
+
+import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
+import onnxruntime.capi.pt_patch
 
 DEFAULT_OPSET_VERSION = 10
 
@@ -21,12 +24,10 @@ class IODescription():
         self.dtype_ = dtype
         self.num_classes_ = num_classes
 
-
 class ModelDescription():
     def __init__(self, inputs, outputs):
         self.inputs_ = inputs
         self.outputs_ = outputs
-
 
 def resolve_symbolic_dimensions(inputs, input_descs, output_descs):
     import copy
@@ -326,11 +327,29 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        do_constant_folding=False,
                        **other_export_options)
 
-    model = onnx.load_model_from_string(f.getvalue())
+    onnx_model = onnx.load_model_from_string(f.getvalue())
 
-    model = FuseSofmaxNLLToSoftmaxCE(model)
+    # Remove 'model_.' prefix introduced by model wrapper for initializers.
+    replace_name_dict = {}
+    for n in onnx_model.graph.initializer:
+        if n.name.startswith('model_.'):
+            replace_name_dict[n.name] = n.name[len('model_.'):]
+            n.name = replace_name_dict[n.name]
+    for n in onnx_model.graph.node:
+        for i, name in enumerate(n.input):
+            if name in replace_name_dict:
+                n.input[i] = replace_name_dict[name]
 
-    return model
+    # onnx model initializer may contain non-trainable registered buffers that are not part
+    # of pytorch model named parameteres.
+    assert set([n for n, t in model.model_.named_parameters()]).issubset(
+        set([n.name for n in onnx_model.graph.initializer])), \
+        "Initializer names do not match between PyTorch model and ONNX model, " \
+        "please report a bug to ONNX Runtime."
+
+    onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
+
+    return onnx_model
 
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
@@ -361,6 +380,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     torch_params = {}
     optimizer_attributes_map = {}
     optimizer_int_attributes_map = {}
+
+    unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
+    if unused_frozen_weights:
+        raise RuntimeError("{} in frozen_weights not found in model weights.".format(unused_frozen_weights))
+
     weights_to_train = set()
     for initializer in model.graph.initializer:
         if initializer.name in frozen_weights:
@@ -487,34 +511,70 @@ class ORTTrainer():
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION):
         super(ORTTrainer, self).__init__()
         """
-        Initializes ORTTrainer.
+        Initialize ORTTrainer.
 
-        Params:
-            model: either:
-                - a PyTorch model: if 'loss_fn' is not provided, the 'model's first output must be the loss.
-                    if 'loss_fn' is provided, 'model' and 'loss_fn' are combined as described in 'loss_fn:'
-                - an ONNX model: the 'model's first output must be the loss.
-            loss_fn: a PyTorch loss function. It takes two inputs [prediction, label] and ouput a loss tensor.
-                If provided, 'loss_fn' is combined with the PyTorch 'model' to form a Combined PyTorch model.
-                Inputs to the Combined PyTorch model are concatination of the 'model's input and 'loss_fn's label input.
-                Outputs of the Combined PyTorch model are concatination of 'loss_fn's loss output and 'model's outputs.
-            model_desc: model input and output description. it is used to specify input/output shapes, types, and names.
-                'model_desc' must be consistent with the training model.
-            training_optimizer_name: one of: 'SGDOptimizer', 'AdamOptimizer', 'LambOptimizer'.
-            map_optimizer_attributes: for optimizers with weight dependent parameters,
-                'map_optimizer_attributes' maps weight name to a set of optimization parameters.
-            learning_rate_description: in form of IODescription(Learning_Rate_Name, [1,], torch.float32).
-                Because learning_rate is an input to the training model, Learning_Rate_Name shall be set so that
-                there is no name conflict within the above model.
-            device: cuda device to store tensors
-            gradient_accumulation_steps: number of training steps to accumulate gradients before averaging and applying them (default is 1)
-            postprocess_model: a callable to postprocess the ONNX model that is converted from PyTorch (default is None)
-            world_rank: rank id used for distributed training (default is 0)
-            world_size: number of ranks participating in distributed training (default is 1)
-            use_mixed_precision: flag to enable mixed precision (aka fp16) (default is False)
-            allreduce_post_accumulation: controls whether overlaping gradient computation with allreduce (default is False)
-            partition_optimizer: controls whether to partition the optimizer state (default is False)
+        Args:
+
+            model: one of
+               - a PyTorch model (class that inherits from torch.nn.Module)
+               - a combined PyTorch model and loss function.
+                  Inputs to this combined PyTorch model are a concatenation of the
+                  model's input and the loss function's label input.
+                  Outputs are a concatenation of the loss function's output and the
+                  model's output.
+               - a combined ONNX model and loss function.
+            loss_fn: one of
+               - a PyTorch loss function if 'model' is a PyTorch model. A loss
+                 function takes two inputs (prediction, label) and outputs a loss
+                 tensor.
+               - None if model is already combined with a loss function.
+            model_desc: Specify input/output shapes, types, and names.
+               Must be consistent with the training model.
+            training_optimizer_name: one of
+               - 'SGDOptimizer'
+               - 'AdamOptimizer'
+               - 'LambOptimizer'
+            map_optimizer_attributes: for optimizers with weight-dependent
+               parameters. A callable that maps weight name to a set of optimization
+               parameters.
+               Defaults to None.
+            learning_rate_description: the name, shape and type of the learning
+               rate in form of IODescription(Learning_Rate_Name, [1,], torch.float32).
+               Because learning_rate is an input to the training model,
+               Learning_Rate_Name must be specified so that there is no name conflict
+               within the model.
+            device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>').
+            gradient_accumulation_steps: number of training steps to accumulate
+               gradients before averaging and applying them.
+               Defaults to 1.
+            postprocess_model: a callable to postprocess the ONNX model that is
+               converted from PyTorch.
+               Defaults to None.
+            world_rank: rank id used for distributed training.
+               Defaults to 0.
+            world_size: number of ranks participating in distributed training.
+               Defaults to 1.
+            use_mixed_precision: flag to enable mixed precision (aka fp16).
+               Defaults to False.
+            allreduce_post_accumulation: controls whether overlaping gradient
+               computation is applied with allreduce.
+               Defaults to False.
+            global_step: training step that is used as input to 'get_lr_this_step'.
+               Defaults to 0.
+            get_lr_this_step: functor used as learning rate scheduler.
+               It uses 'global_step' as input.
+               Defaults to None.
+            loss_scaler: updates loss scale automatically when 'use_mixed_precision'
+               is specified.
+               Defaults to None.
+            partition_optimizer: controls whether to partition the optimizer state.
+               Defaults to False.
+            enable_grad_norm_clip: enables gradient norm clipping.
+               Defaults to True.
+            frozen_weights: list of model parameters to be frozen (not trained).
+               Defaults to [].
         """
+        warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
 
         self.torch_model_ = None
@@ -639,15 +699,36 @@ class ORTTrainer():
     def eval(self):
         self.is_train = False
 
+    def _update_onnx_model_initializers(self, state_tensors):
+        # replace the initializers with new value
+        new_weights = []
+        replace_indices = []
+        for i, w in enumerate(self.onnx_model_.graph.initializer):
+            if w.name in state_tensors:
+                new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
+                replace_indices.append(i)
+        replace_indices.sort(reverse=True)
+        for w_i in replace_indices:
+            del self.onnx_model_.graph.initializer[w_i]
+        self.onnx_model_.graph.initializer.extend(new_weights)
+
     def state_dict(self):
         if not self.session:
             warnings.warn("ONNXRuntime training session is not initialized yet. "
                           "Please run train_step or eval_step at least once before calling state_dict().")
             return {}
+
+        # extract trained weights
         session_state = self.session.get_state()
         torch_state = {}
         for name in session_state:
             torch_state[name] = torch.from_numpy(session_state[name])
+
+        # extract untrained weights and buffer
+        for n in self.onnx_model_.graph.initializer:
+            if n.name not in torch_state:
+                torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
+
         return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
@@ -659,10 +740,21 @@ class ORTTrainer():
             self.strict_ = strict
             return
 
-        session_state = {}
+        # update onnx model from loaded state dict
+        cur_initializers_names = [n.name for n in self.onnx_model_.graph.initializer]
+        new_initializers = {}
+
         for name in state_dict:
-            session_state[name] = state_dict[name].numpy()
-        self.session.load_state(session_state, strict)
+            if name in cur_initializers_names:
+                new_initializers[name] = state_dict[name].numpy()
+            elif strict:
+                raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+
+        self._update_onnx_model_initializers(new_initializers)
+
+        # create new session based on updated onnx model
+        self.state_dict_ = None
+        self._init_session()
 
     def save_as_onnx(self, path):
         if not self.session:
@@ -670,19 +762,7 @@ class ORTTrainer():
                           "Please run train_step or eval_step at least once before calling save_as_onnx().")
             return
         state_tensors = self.session.get_state()
-        # replace the initializers with new value
-        new_weights = []
-        replace_indices = []
-        i = 0
-        for w in self.onnx_model_.graph.initializer:
-            if w.name in state_tensors:
-                new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
-                replace_indices.append(i)
-            i += 1
-        replace_indices.sort(reverse=True)
-        for w_i in replace_indices:
-            del self.onnx_model_.graph.initializer[w_i]
-        self.onnx_model_.graph.initializer.extend(new_weights)
+        self._update_onnx_model_initializers(state_tensors)
 
         with open(path, "wb") as f:
             f.write(self.onnx_model_.SerializeToString())

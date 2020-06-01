@@ -998,7 +998,7 @@ class PipelineBatchPlanner {
 };
 
 void RetrieveEventOperators(
-  Graph& graph, 
+  Graph& graph,
   Node** forward_wait_before_recv,
   Node** forward_wait_after_recv,
   Node** forward_record_before_send,
@@ -1065,7 +1065,7 @@ void RetrieveEventOperators(
 }
 
 void RetrieveSendRecvOperators(
-  Graph& graph, 
+  Graph& graph,
   Node** forward_recv,
   Node** forward_send,
   Node** backward_recv,
@@ -1089,9 +1089,9 @@ void RetrieveSendRecvOperators(
       if (is_backward(node)) {
         // backward_send can only be assigned one valid pointer.
         // If it is assigned more than once, it means we have multiple
-        // Send in backward pass and therefore our assumption doesn't hold. 
+        // Send in backward pass and therefore our assumption doesn't hold.
         // This check ensure that only we only update *backward_send when
-        // its value is NULL and guards our one-Recv assumption. 
+        // its value is NULL and guards our one-Recv assumption.
         ASSERT_TRUE(!(*backward_send));
         *backward_send = &node;
       } else {
@@ -1112,6 +1112,46 @@ void RetrieveSendRecvOperators(
         *forward_recv = &node;
       }
     }
+  }
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
+  auto model_uri = ORIGINAL_MODEL_PATH;
+
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+
+  // evenly cut the MLP model in 3 partitions
+  TrainingSession::TrainingConfiguration::CutInfo cut0 = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
+  TrainingSession::TrainingConfiguration::CutInfo cut1 = {TrainingSession::TrainingConfiguration::CutEdge("T6")};
+  pipe.cut_list.emplace_back(cut0);
+  pipe.cut_list.emplace_back(cut1);
+
+  for (int i = 0; i < 3; ++i) {
+#ifdef _WIN32
+    auto surfix = std::to_wstring(i);
+#else
+    auto surfix = std::to_string(i);
+#endif
+    PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+
+    auto config = MakeBasicTrainingConfig();
+    config.pipeline_config = pipe;
+    config.distributed_config.world_rank = i;
+    config.distributed_config.world_size = 3;
+    config.distributed_config.local_rank = i;
+    config.distributed_config.local_size = 3;
+    config.distributed_config.data_parallel_size = 1;
+    config.distributed_config.horizontal_parallel_size = 1;
+    config.distributed_config.pipeline_parallel_size = 3;
+    config.model_with_training_graph_path = output_file;
+
+    PathString backprop_model_file;
+    ASSERT_STATUS_OK(BuildBackPropGraph(model_uri, config, backprop_model_file));
+
+    std::shared_ptr<Model> model;
+    // Ensure the partitioned model load.
+    ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
   }
 }
 
@@ -1197,7 +1237,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     Node* backward_send{nullptr};
 
     RetrieveSendRecvOperators(
-      graph, 
+      graph,
       &forward_recv,
       &forward_send,
       &backward_recv,

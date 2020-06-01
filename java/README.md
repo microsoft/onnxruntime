@@ -10,7 +10,7 @@ TBD: maven distribution
 The minimum supported Java Runtime is version 8.
 
 An example implementation is located in
-[src/test/java/sample/ScoreMNIST.java](src/test/java/sample/ScoreMNIST.java).
+[src/test/java/sample/ScoreMNIST.java](./src/test/java/sample/ScoreMNIST.java).
 Once compiled the sample code expects the following arguments `ScoreMNIST
 <path-to-mnist-model> <path-to-mnist> <scikit-learn-flag>`.  MNIST is expected
 to be in libsvm format. If the optional scikit-learn flag is supplied the model

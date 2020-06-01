@@ -95,19 +95,11 @@ def parse_arguments():
     parser.add_argument(
         "--skip_tests", action='store_true', help="Skip all tests.")
 
-    # Test options
-    parser.add_argument("--ctest_label_regex",
-                        help="Only run CTest tests with a label matching the pattern (passed to ctest --label-regex).")
-
     # Training options
     parser.add_argument(
+        "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
+    parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
-    parser.add_argument(
-        "--enable_training_e2e_tests", action="store_true",
-        help="Enable the training end-to-end tests.")
-    parser.add_argument(
-        "--training_e2e_test_data_path",
-        help="Path to training end-to-end test data directory.")
     parser.add_argument(
         "--enable_training_python_frontend_e2e_tests", action="store_true",
         help="Enable the pytorch frontend training tests.")
@@ -163,6 +155,11 @@ def parse_arguments():
     # Java bindings
     parser.add_argument(
         "--build_java", action='store_true', help="Build Java bindings.")
+
+    # Node.js binding
+    parser.add_argument(
+        "--build_nodejs", action='store_true',
+        help="Build Node.js binding and NPM package.")
 
     # Build a shared lib
     parser.add_argument(
@@ -275,13 +272,17 @@ def parse_arguments():
         help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument(
+        "--use_vitisai", action='store_true', help="Build with Vitis-AI")
+    parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
-    parser.add_argument("--use_migraphx", action='store_true', help="Build with MIGraphX")
-    parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")
+    parser.add_argument(
+        "--use_migraphx", action='store_true', help="Build with MIGraphX")
+    parser.add_argument(
+        "--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument(
         "--use_full_protobuf", action='store_true',
         help="Use the full protobuf library")
@@ -541,6 +542,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
+        "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + (
             "ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + (
@@ -575,6 +577,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
             "ON" if args.enable_msinternal else "OFF"),
+        "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (
@@ -610,10 +613,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
         # Training related flags
+        "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
+            "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + (
-            "ON" if args.enable_training_e2e_tests else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
     ]
@@ -634,7 +637,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # nGraph, TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
     if (args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or
-            args.use_openvino or args.gen_doc):
+            args.use_openvino or args.use_vitisai or args.gen_doc):
         cmake_args += [
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
             "-DProtobuf_USE_STATIC_LIBS=ON"
@@ -746,10 +749,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     else:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
 
-    if args.training_e2e_test_data_path is not None:
-        cmake_args += ["-Donnxruntime_TRAINING_E2E_TEST_DATA_ROOT={}".format(
-            os.path.abspath(args.training_e2e_test_data_path))]
-
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
     if is_windows():
@@ -835,8 +834,8 @@ def build_targets(args, cmake_path, build_dir, configs, parallel):
 
         build_tool_args = []
         if parallel:
-            num_cores = str(round(multiprocessing.cpu_count() / 4))
-            if is_windows():
+            num_cores = str(multiprocessing.cpu_count())
+            if is_windows() and args.cmake_generator != 'Ninja':
                 build_tool_args += [
                     "/maxcpucount:" + num_cores,
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
@@ -1007,6 +1006,7 @@ def setup_migraphx_vars(args):
                              .format(migraphx_home, migraphx_home_not_valid))
     return migraphx_home or ''
 
+
 def setup_dml_build(args, cmake_path, build_dir, configs):
     if args.use_dml:
         for config in configs:
@@ -1034,6 +1034,15 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
+
+    # with orttraining_run_glue.py.
+    # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES) for fine-tune tests.
+    # 2. need to run test separately (not to mix between fp16 and full precision runs. this need to be investigated).
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
+                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
+                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
@@ -1108,9 +1117,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 cwd=cwd2, dll_path=dll_path)
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
-            if args.ctest_label_regex is not None:
-                ctest_cmd += ["--label-regex", args.ctest_label_regex]
-
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
@@ -1371,9 +1377,8 @@ def nuphar_run_python_tests(build_dir, configs):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, wheel_name_suffix, use_acl,
-        nightly_build=False,
-        featurizers_build=False):
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
+        use_acl, nightly_build=False, featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -1413,6 +1418,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_vitisai:
+            args.append('--use_vitisai')
         elif use_acl:
             args.append('--use_acl')
 
@@ -1437,8 +1444,11 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
         '-Dprotobuf_BUILD_SHARED_LIBS=OFF'
     ]
+
+    is_ninja = args.cmake_generator == 'Ninja'
+
     if is_windows():
-        if args.cmake_generator != 'Ninja':
+        if not is_ninja:
             cmd_args += ['-T', 'host=x64']
         cmd_args += ['-G', args.cmake_generator]
     elif is_macOS() and args.use_xcode:
@@ -1453,14 +1463,19 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     run_subprocess(cmd_args)
 
     # Absolute protoc path is needed for cmake
-    expected_protoc_path = (
-        os.path.join(
-            protoc_build_dir, 'Release', 'protoc.exe') if is_windows()
-        else (os.path.join(protoc_build_dir, 'Release', 'protoc')
-                if is_macOS() and args.use_xcode
-                else os.path.join(protoc_build_dir, 'protoc')))
+    config_dir = ''
+    suffix = ''
+
+    if (is_windows() and not is_ninja) or (is_macOS() and args.use_xcode):
+        config_dir = 'Release'
+
+    if is_windows():
+        suffix = '.exe'
+
+    expected_protoc_path = os.path.join(protoc_build_dir, config_dir, 'protoc' + suffix)
+
     if not os.path.exists(expected_protoc_path):
-        raise BuildError("Couldn't build protoc for host. Failing build.")
+        raise BuildError("Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
 
     return expected_protoc_path
 
@@ -1541,7 +1556,7 @@ def main():
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if args.build_csharp or args.build_java:
+    if args.build_csharp or args.build_java or args.build_nodejs:
         args.build_shared_lib = True
 
     # Disabling unit tests for VAD-F as FPGA only supports
@@ -1752,6 +1767,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_vitisai,
                 args.wheel_name_suffix,
                 args.use_acl,
                 nightly_build=nightly_build,

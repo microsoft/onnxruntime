@@ -72,6 +72,7 @@ option(onnxruntime_USE_OPENMP "Build with OpenMP support" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
+option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
@@ -98,9 +99,14 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 
 # training options
+option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+
+if (onnxruntime_ENABLE_NVTX_PROFILE)
+  add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -108,6 +114,9 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
+endif()
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 # General C# properties
@@ -763,6 +772,17 @@ if(onnxruntime_USE_OPENVINO)
 
 endif()
 
+if (onnxruntime_USE_VITISAI)
+  if(WIN32)
+    message(FATAL_ERROR "Vitis-AI execution provider is not supported on Windows.")
+  else()
+    add_definitions(-DUSE_VITISAI=1)
+    include(pyxir)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES pyxir)
+    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES pyxir)
+  endif()
+endif()
+
 if (onnxruntime_USE_OPENBLAS)
   add_definitions(-DUSE_OPENBLAS=1)
   if (WIN32)
@@ -793,7 +813,13 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_STANDARD 11)
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
-  list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
+
+  if (onnxruntime_ENABLE_NVTX_PROFILE)
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft nvToolsExt)
+  else()
+    list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
+  endif()
+  
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
@@ -976,6 +1002,11 @@ endif()
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
   include(onnxruntime_java.cmake)
+endif()
+
+if (onnxruntime_BUILD_NODEJS)
+  message(STATUS "Node.js Build is enabled")
+  include(onnxruntime_nodejs.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be
