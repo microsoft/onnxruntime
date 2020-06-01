@@ -31,6 +31,7 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -71,7 +72,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
             training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
             horizontal_parallel_size, compatible_eps));
       }
-
+      transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
     } break;
 
     case TransformerLevel::Level2: {

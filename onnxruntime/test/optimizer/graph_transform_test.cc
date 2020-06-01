@@ -42,14 +42,17 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/util/math.h"
 #include "test/capturing_sink.h"
+#include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 #include "asserts.h"
 #include "gtest/gtest.h"
 
@@ -104,7 +107,7 @@ TEST_F(GraphTransformationTests, DropoutElimination) {
 }
 
 TEST_F(GraphTransformationTests, SliceElimination) {
-  std::vector<std::basic_string<ORTCHAR_T> > model_names = {ORT_TSTR("slice-v1-elim.onnx"), ORT_TSTR("slice-v11-elim.onnx")};
+  std::vector<std::basic_string<ORTCHAR_T>> model_names = {ORT_TSTR("slice-v1-elim.onnx"), ORT_TSTR("slice-v11-elim.onnx")};
   for (const auto& model_name : model_names) {
     auto model_uri = MODEL_FOLDER + model_name;
     std::shared_ptr<Model> model;
@@ -395,9 +398,9 @@ TEST_F(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
 }
 
 TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
-  std::vector<std::basic_string<ORTCHAR_T> > test_models = {ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.onnx"),
-                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx"),
-                                                            ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx")};
+  std::vector<std::basic_string<ORTCHAR_T>> test_models = {ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.onnx"),
+                                                           ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze.negative_axes.onnx"),
+                                                           ORT_TSTR("fusion/fuse-conv-bn-mul-add-unsqueeze-no-bias.onnx")};
   for (const auto& model : test_models) {
     auto model_uri = MODEL_FOLDER + model;
 
@@ -1199,7 +1202,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   ASSERT_EQ(op_to_count["Concat"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
 }
-  
+
 TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerSubgraphTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_multiple_values_in_initializer_tensor_1.onnx";
   std::shared_ptr<Model> p_model;
@@ -1270,117 +1273,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerApplies
   }
 }
 
-TEST_F(GraphTransformationTests, ReshapeFusionAnotherGraphInput) {
-  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_input_is_graph_input.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
-
-  // The optimization does not apply.
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Shape"], 0);
-  ASSERT_EQ(op_to_count["Gather"], 0);
-  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
-  ASSERT_EQ(op_to_count["Concat"], 0);
-  ASSERT_EQ(op_to_count["Reshape"], 1);
-}
-
-TEST_F(GraphTransformationTests, ReshapeFusionOverridableInitializer) {
-  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_overridable_initializer.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
-  Graph& graph = p_model->MainGraph();
-  std::map<std::string, int> op_to_count_orig = CountOpsInGraph(graph);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  std::cout << "ret " << ret << std::endl;
-  ASSERT_TRUE(ret.IsOK());
-
-  // The optimization does not apply.
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count_orig, op_to_count);
-}
-
-TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphMultipleOutputs) {
-  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_concat_subgraph_multiple_outputs.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
-
-  // The optimization applies but certain paths with multiple outputs/graph outputs are not removed.
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Shape"], 3);
-  ASSERT_EQ(op_to_count["Gather"], 1);
-  ASSERT_EQ(op_to_count["Unsqueeze"], 1);
-  ASSERT_EQ(op_to_count["Squeeze"], 1);
-  ASSERT_EQ(op_to_count["Div"], 1);
-  ASSERT_EQ(op_to_count["Concat"], 0);
-  ASSERT_EQ(op_to_count["Reshape"], 1);
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "Reshape") {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-      ASSERT_TRUE(tensor_proto != nullptr);
-
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
-
-      const int64_t* val = initializer->data<int64_t>();
-      EXPECT_EQ(val[0], 0);
-      EXPECT_EQ(val[1], 0);
-      EXPECT_EQ(val[2], -1);
-    }
-  }
-}
-
-TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
-  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_concat_subgraph.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Shape"], 0);
-  ASSERT_EQ(op_to_count["Gather"], 0);
-  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
-  ASSERT_EQ(op_to_count["Squeeze"], 0);
-  ASSERT_EQ(op_to_count["Div"], 0);
-  ASSERT_EQ(op_to_count["Concat"], 0);
-  ASSERT_EQ(op_to_count["Reshape"], 1);
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "Reshape") {
-      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-      ASSERT_TRUE(tensor_proto != nullptr);
-
-      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
-
-      const int64_t* val = initializer->data<int64_t>();
-      EXPECT_EQ(val[0], 0);
-      EXPECT_EQ(val[1], 0);
-      EXPECT_EQ(val[2], -1);
-    }
-  }
-}
-
 TEST_F(GraphTransformationTests, ExpandElimination) {
   auto model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;
@@ -1398,8 +1290,6 @@ TEST_F(GraphTransformationTests, ExpandElimination) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Expand"] == 3);
 }
-
-
 
 TEST_F(GraphTransformationTests, CastElimination) {
   auto model_uri = MODEL_FOLDER "cast_elimination.onnx";
@@ -2229,6 +2119,125 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
 }
 
 #endif
+
+TEST_F(GraphTransformationTests, BERT_VOCAB_TRANSFORMER) {
+  auto model_uri = MODEL_FOLDER "bert_vocab_transformer.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  //ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  auto model_uri2 = "pengwa_test.onnx";
+  Model::Save(*model, model_uri2);
+
+  float scale = 1.f;
+  float mean = 0.f;
+  float seed = 123.f;
+  std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
+  std::normal_distribution<float> distribution_float{mean, scale};
+
+  int batch_size = 8;
+  int sequence = 128;
+  int hidden_size = 128;
+  int dynamic_predict_count = 20;
+  std::vector<int64_t> dims_input = {batch_size, sequence, hidden_size};
+  std::vector<float> input_values(TensorShape(dims_input).Size());
+  std::for_each(input_values.begin(), input_values.end(),
+                [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
+
+  std::vector<int64_t> dims_unsqueezed_masked_lm_positions = {batch_size, dynamic_predict_count, 1};
+  std::vector<int64_t> values_unsqueezed_masked_lm_positions(TensorShape(dims_unsqueezed_masked_lm_positions).Size());
+
+  std::random_device rd;                                   // obtain a random number from hardware
+  std::mt19937 eng(rd());                                  // seed the generator
+  std::uniform_int_distribution<> distr(0, sequence - 1);  // define the range
+  std::for_each(values_unsqueezed_masked_lm_positions.begin(), values_unsqueezed_masked_lm_positions.end(),
+                [&distr, &eng](int64_t& value) { value = distr(eng); });
+
+  std::vector<OrtValue> expected_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "RawGraphRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    OrtValue input1;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
+    OrtValue input2;
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
+                           values_unsqueezed_masked_lm_positions, &input2);
+
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("input", input1));
+    feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("output");
+    output_names.push_back("gather_output");
+
+    // Now run
+    RunOptions run_options;
+    st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
+
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  std::vector<OrtValue> actual_ort_values;
+  {
+    SessionOptions so;
+    so.session_logid = "OptimizedGraphRun";
+
+    InferenceSession session_object{so, GetEnvironment()};
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+    Status st;
+    ASSERT_TRUE((st = session_object.Load(model_uri2)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+    OrtValue input1;
+    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
+    OrtValue input2;
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
+                           values_unsqueezed_masked_lm_positions, &input2);
+
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("input", input1));
+    feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
+
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("output");
+    output_names.push_back("gather_output");
+
+    // Now run
+    RunOptions run_options;
+    st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
+
+    EXPECT_TRUE(st.IsOK());
+  }
+
+  ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+  const double per_sample_tolerance = 1e-4;
+  const double relative_per_sample_tolerance = 1e-4;
+  for (size_t i = 0; i < expected_ort_values.size(); i++) {
+    auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                               per_sample_tolerance, relative_per_sample_tolerance, false);
+    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -134,6 +134,8 @@ Status TrainingRunner::Initialize() {
     config.optimizer_config = opt;
   }
 
+  config.optimize_gathernd = params_.optimize_gathernd;
+
   if (params_.EnableTensorboard()) {
     TrainingSession::TrainingConfiguration::TensorboardConfiguration tb{};
     tb.summary_name = params_.summary_name;
