@@ -1,6 +1,8 @@
-# sudo docker build --file Dockerfile.amd --tag rocm/tensorflow:rocm3.3-tf2.1-dev-wezhan .
+# sudo docker build --network=host --file Dockerfile.amd --tag rocm/tensorflow:rocm3.3-tf2.1-dev-wezhan .
 
 FROM rocm/tensorflow:rocm3.3-tf2.1-dev
+
+RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 
 RUN apt-get -y update && \
     apt-get -y install \
@@ -35,7 +37,7 @@ RUN apt-get -y update && \
     apt-get autoremove
 
 # ROCm library
-RUN apt-get purge rccl
+RUN apt-get -y purge rccl
 RUN apt-get -y install rocm-libs miopen-hip
 
 ENV WORK_DIR=/work
