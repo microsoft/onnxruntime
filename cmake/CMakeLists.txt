@@ -115,6 +115,9 @@ set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
 endif()
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
+endif()
 
 # General C# properties
 if (onnxruntime_BUILD_CSHARP)

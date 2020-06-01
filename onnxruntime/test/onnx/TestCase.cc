@@ -27,6 +27,8 @@ using namespace onnxruntime;
 using namespace onnxruntime::common;
 using google::protobuf::RepeatedPtrField;
 
+static constexpr int protobuf_block_size_in_bytes = 1 << 20;
+
 using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(Ort::GetApi().ReleaseValue)>;
 
 const std::string TestModelInfo::unknown_version = "unknown version";
@@ -176,7 +178,7 @@ class OnnxModelInfo : public TestModelInfo {
     }
 
     ONNX_NAMESPACE::ModelProto model_pb;
-    ::google::protobuf::io::FileInputStream input(model_fd, 1 << 20);
+    ::google::protobuf::io::FileInputStream input(model_fd, protobuf_block_size_in_bytes);
     const bool parse_result = model_pb.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
     if (!parse_result) {
       (void)Env::Default().FileClose(model_fd);
@@ -277,7 +279,7 @@ OrtValue* TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::te
 void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo* modelinfo,
                   std::unordered_map<std::string, OrtValue*>& name_data_map, onnxruntime::test::HeapBuffer& b,
                   std::ostringstream& oss) {
-  google::protobuf::io::FileInputStream f(test_data_pb_fd);
+  google::protobuf::io::FileInputStream f(test_data_pb_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   google::protobuf::io::CodedInputStream coded_input(&f);
   bool clean_eof = false;
@@ -502,7 +504,7 @@ static void LoadTensors(const std::vector<PATH_STRING_TYPE>& pb_files,
     if (!st.IsOK()) {
       ORT_THROW("open file '", ToMBString(pb_files.at(i)), "' failed:", st.ErrorMessage());
     }
-    google::protobuf::io::FileInputStream f(tensor_fd);
+    google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
     f.SetCloseOnDelete(true);
     ONNX_NAMESPACE::TensorProto tensor;
     if (!tensor.ParseFromZeroCopyStream(&f)) {
