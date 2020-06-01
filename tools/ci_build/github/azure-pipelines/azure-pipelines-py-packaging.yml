@@ -50,7 +50,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          sudo docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel  --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
+          sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel  --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -111,7 +111,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          sudo docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel   --build_wheel --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1
+          sudo --preserve-env docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel   --build_wheel --enable_onnx_tests $(FeaturizerBuildFlag) --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1  --cudnn_home=/usr/local/cuda-10.1
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -398,8 +398,8 @@ jobs:
           bin/cmake -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_LIBRARY=dl -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/opt/python/'$(cp.tag)'/bin/python3  -Donnxruntime_BUILD_SHARED_LIB=OFF  -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_DEV_MODE=ON -DONNX_CUSTOM_PROTOC_EXECUTABLE=$(Build.BinariesDirectory)/bin/protoc "-DPYTHON_INCLUDE_DIR=/mnt/toolchains/manylinux2014_aarch64/usr/include;/mnt/toolchains/manylinux2014_aarch64/opt/python/$(cp.tag)/include/python$(python.include)" -DNUMPY_INCLUDE_DIR=/mnt/toolchains $(Build.SourcesDirectory)/cmake
           make -j$(getconf _NPROCESSORS_ONLN)
           case $NIGHTLY_BUILD in
-            1) sudo docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel --nightly_build;;
-            *) sudo docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel;;
+            1) sudo --preserve-env docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel --nightly_build;;
+            *) sudo --preserve-env docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel;;
           esac
         workingDirectory: $(Build.BinariesDirectory)
     - task: PublishBuildArtifacts@1
