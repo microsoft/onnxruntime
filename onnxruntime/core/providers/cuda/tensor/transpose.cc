@@ -64,7 +64,11 @@ Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Te
   return Status::OK();
 }
 
-//  `input_shape_override` overrides the shape of `input` for compute purposes.
+Status Transpose::DoTranspose(const Transpose& transpose_kernel,
+                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+  return Transpose::DoTranspose(transpose_kernel.CublasHandle(), permutations, input, output);
+}
+
 Status Transpose::DoTranspose(const cublasHandle_t cublas_handle,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
                               const TensorShape* input_shape_override) {

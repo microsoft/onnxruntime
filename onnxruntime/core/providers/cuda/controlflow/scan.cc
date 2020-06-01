@@ -14,9 +14,6 @@ namespace cuda {
 
 template <>
 Scan<8>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<8>(info) {
-  // We need to cast away the const as PerThreadCublasHandle() is currently a non-const method
-  // TODO: Clean up the CUDAExecutionProvider interface to avoid this
-  cuda_ep_ = const_cast<CUDAExecutionProvider*>(dynamic_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
   scan::detail::DeviceHelpers helpers;
 
   helpers.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
@@ -30,14 +27,15 @@ Scan<8>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<8>(info) {
 
 template <>
 Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
-  // We need to cast away the const as PerThreadCublasHandle() is currently a non-const method
-  // TODO: Clean up the CUDAExecutionProvider interface to avoid this
-  cuda_ep_ = const_cast<CUDAExecutionProvider*>(dynamic_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
   scan::detail::DeviceHelpers helpers;
 
+  // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
+  // We could potentially keep a single instance and reuse it if that isn't performant enough.
   helpers.transpose_func = [this](const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
-    return cuda::Transpose::DoTranspose(cuda_ep_->PerThreadCublasHandle(), permutations, input, output);
-  };
+    // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
+    // We could potentially keep a single instance and reuse it if that isn't performant enough.
+    const OpKernelInfo& info = OpKernel::Info();
+    return cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, input, output); };
 
   // copy into base class
   SetDeviceHelpers(helpers);
