@@ -146,7 +146,7 @@ jobs:
           arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - ${{ if (eq(parameters.BuildCSharp, true) -And in(parameters['sln_platform'], 'Win32', 'x64')) }}:
+    - ${{ if and(eq(parameters.BuildCSharp, true), in(parameters['sln_platform'], 'Win32', 'x64')) }}:
       - task: DotNetCoreCLI@2
         displayName: 'Test C#'
         inputs:
@@ -179,7 +179,7 @@ jobs:
         condition: succeededOrFailed()
 
     # Nuget packaging if needed
-    - ${{ if (eq(parameters.BuildCSharp, true) -And eq(parameters['DoNugetPack'], 'true')) }}:
+    - ${{ if and(eq(parameters.BuildCSharp, true), eq(parameters['DoNugetPack'], 'true')) }}:
       - task: BatchScript@1
         displayName: 'Setup VS2019 env vars'
         inputs:
