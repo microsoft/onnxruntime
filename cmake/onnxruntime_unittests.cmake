@@ -217,6 +217,7 @@ endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
+set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${ONNXRUNTIME_ROOT}/test/api_tests_without_env")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -234,6 +235,9 @@ set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
+
+set (onnxruntime_api_tests_without_env_SRC
+          ${ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR}/test_apis_without_env.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -762,6 +766,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
   AddTest(DYN
           TARGET onnxruntime_global_thread_pools_test
           SOURCES ${onnxruntime_global_thread_pools_test_SRC}
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
+  endif()
+
+ # A separate test is needed to test the APIs that don't rely on the env being created first.
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  AddTest(DYN
+          TARGET onnxruntime_api_tests_without_env
+          SOURCES ${onnxruntime_api_tests_without_env_SRC}
           LIBS ${onnxruntime_shared_lib_test_LIBS}
           DEPENDS ${all_dependencies}
   )
