@@ -15,6 +15,6 @@ jobs:
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNodejsPack : 'true'
-    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-
+    DoCompliance: ${{ parameters.DoCompliance }}
+    BuildCSharp: ${{ parameters.BuildCSharp }}
