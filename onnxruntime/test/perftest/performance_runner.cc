@@ -168,21 +168,24 @@ Status PerformanceRunner::ForkJoinRepeat() {
   return Status::OK();
 }
 
-static TestModelInfo* CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
+static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
     return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
   }
+
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
     return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
   }
+
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
 
-static TestSession* CreateSession(Ort::Env& env, std::random_device& rd,
-                                  const PerformanceTestConfig& performance_test_config_,
-                                  TestModelInfo* test_model_info) {
+static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd,
+                                                  const PerformanceTestConfig& performance_test_config_,
+                                                  const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info);
+    return std::unique_ptr<TestSession>(
+        new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
@@ -191,11 +194,12 @@ static TestSession* CreateSession(Ort::Env& env, std::random_device& rd,
 #endif
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
+
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
-      test_model_info_(CreateModelInfo(test_config)) {
+      test_model_info_(std::move(CreateModelInfo(test_config))) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
-  session_.reset(CreateSession(env, rd, test_config, test_model_info_));
+  session_ = CreateSession(env, rd, test_config, *test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
 }
 
@@ -216,10 +220,11 @@ bool PerformanceRunner::Initialize() {
   std::string narrow_model_name = ToMBString(model_name);
   performance_result_.model_name = narrow_model_name;
 
-  test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
+  // ownership semantics are a little unexpected here as the test case takes ownership of the model info
+  TestModelInfo* test_model_info = test_model_info_.get();
+  test_case_ = std::move(CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0));
 
-  if (performance_test_config_.run_config.generate_model_input_binding)
-  {
+  if (performance_test_config_.run_config.generate_model_input_binding) {
     return static_cast<OnnxRuntimeTestSession*>(session_.get())->PopulateGeneratedInputTestData();
   }
 
@@ -233,19 +238,18 @@ bool PerformanceRunner::Initialize() {
     std::unordered_map<std::string, OrtValue*> feeds;
     test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
     // Discard the names in feeds
-    int input_count = test_model_info_->GetInputCount();
+    int input_count = test_model_info->GetInputCount();
     for (int i = 0; i != input_count; ++i) {
-      auto iter = feeds.find(test_model_info_->GetInputName(i));
+      auto iter = feeds.find(test_model_info->GetInputName(i));
       if (iter == feeds.end()) {
-        std::cout << "there is no test input data for input " << test_model_info_->GetInputName(i) << " and model "
+        std::cout << "there is no test input data for input " << test_model_info->GetInputName(i) << " and model "
                   << test_case_->GetTestCaseName() << std::endl;
         return false;
       }
       session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), iter->second);
     }
   }
-  test_case_.reset(nullptr);
-  test_model_info_ = nullptr;
+
   return true;
 }
 

@@ -37,15 +37,29 @@ struct PerformanceResult {
   std::string model_name;
 
   void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const {
+    bool have_file = !path.empty();
     std::ofstream outfile;
-    outfile.open(path, std::ofstream::out | std::ofstream::app);
-    if (!outfile.good()) {
-      printf("failed to open result file");
-      return;
+
+    if (have_file) {
+      outfile.open(path, std::ofstream::out | std::ofstream::app);
+      if (!outfile.good()) {
+        // at least provide some info on the run
+        std::cerr << "failed to open result file '" << path.c_str() << "'. will dump stats to output.";
+        have_file = false;
+        f_include_statistics = true;
+      }
     }
 
-    for (size_t runs = 0; runs < time_costs.size(); runs++) {
-      outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << "," << average_CPU_usage << "," << runs << std::endl;
+    if (have_file) {
+      for (size_t runs = 0; runs < time_costs.size(); runs++) {
+        outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << ","
+                << average_CPU_usage << "," << runs << std::endl;
+      }
+    } else {
+      // match formatting of the initial output from PerformanceRunner::Run
+      std::cout << "Avg CPU usage:" << average_CPU_usage
+                << "\nPeak working set size:" << peak_workingset_size
+                << "\nRuns:" << time_costs.size() << std::endl;
     }
 
     if (!time_costs.empty() && f_include_statistics) {
@@ -60,7 +74,6 @@ struct PerformanceResult {
 
       std::sort(sorted_time.begin(), sorted_time.end());
 
-      outfile << std::endl;
       auto output_stats = [&](std::ostream& ostream) {
         ostream << "Min Latency is " << sorted_time[0] << "sec" << std::endl;
         ostream << "Max Latency is " << sorted_time[total - 1] << "sec" << std::endl;
@@ -71,11 +84,17 @@ struct PerformanceResult {
         ostream << "P999 Latency is " << sorted_time[n999] << "sec" << std::endl;
       };
 
-      output_stats(outfile);
+      if (have_file) {
+        outfile << std::endl;
+        output_stats(outfile);
+      }
+
       output_stats(std::cout);
     }
 
-    outfile.close();
+    if (have_file) {
+      outfile.close();
+    }
   }
 };
 
@@ -143,7 +162,7 @@ class PerformanceRunner {
   std::chrono::time_point<std::chrono::high_resolution_clock> session_create_end_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
-  TestModelInfo* test_model_info_;
+  std::unique_ptr<TestModelInfo> test_model_info_;
   std::unique_ptr<TestSession> session_;
   onnxruntime::test::HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
