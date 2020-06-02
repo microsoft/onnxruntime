@@ -208,8 +208,8 @@ void NodeArg::ClearShape() {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types,
-                                           const logging::Logger& logger) {
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict,
+                                           bool override_types, const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -784,9 +784,17 @@ Graph::Graph(const Model& owning_model,
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
   for (auto& graph_input : graph_proto_->input()) {
-    if (utils::HasName(graph_input) && utils::HasType(graph_input)) {
-      name_to_type_map[graph_input.name()] = graph_input.type();
-      GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+    if (utils::HasName(graph_input)) {
+      if (utils::HasType(graph_input)) {
+        name_to_type_map[graph_input.name()] = graph_input.type();
+        GetOrCreateNodeArg(graph_input.name(), &graph_input.type());
+      } else {
+        // subgraph inputs can have type inferred later. need to create a NodeArg in case this input is only used in
+        // a nested subgraph (a NodeArg won't be added by AddNode for the nodes in this subgraph)
+        if (IsSubgraph()) {
+          GetOrCreateNodeArg(graph_input.name(), nullptr);
+        }
+      }
     }
   }
 
@@ -813,7 +821,7 @@ Graph::Graph(const Model& owning_model,
       } else {
         LOGS(logger_, WARNING) << "Initializer " << tensor.name()
                                << " appears in graph inputs and will not be treated as constant value/weight. "
-                               << "This may fail some of the graph optimizations, like const folding. "
+                               << "This may prevent some of the graph optimizations, like const folding. "
                                << "Move it out of graph inputs if there is no need to override it, "
                                << "by either re-generating the model with latest exporter/converter "
                                << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
@@ -880,7 +888,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& graph_input : graph_proto_->input()) {
     auto& name = graph_input.name();
     const auto* node_arg = GetNodeArg(name);
-    ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer.");
+    ORT_ENFORCE(node_arg, "Graph ctor should have created NodeArg for initializer. Missing:", name);
     graph_inputs.insert({name, node_arg});
     graph_inputs_including_initializers_.push_back(node_arg);
     if (graph_initializers.end() == graph_initializers.find(name)) {
@@ -1116,6 +1124,8 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   const std::unordered_set<std::string>& outer_scope_node_args = resolve_context_.outer_scope_node_args;
   std::unordered_set<Node*> inner_nodes;
 
+  std::unordered_set<std::string> node_args_consumed_by_subgraphs;
+
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
@@ -1149,6 +1159,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
                   "This is an invalid model. Failed to find NodeArg in all parent graphs. Name=", node_arg_name,
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
+          } else {
+            // this value may be produced by this graph, or it could still be coming from a parent graph if it
+            // is also directly consumed at this level as we create a NodeArg for all Node inputs in this graph.
+            // due to that we need to check the outputs from this level to determine if it is an outer scope value.
+            // we don't have that info yet so store and check before returning from BuildConnections
+            ORT_IGNORE_RETURN_VALUE(node_args_consumed_by_subgraphs.insert(node_arg_name));
           }
 
           // add it to the Node's list of implicit inputs
@@ -1170,8 +1186,9 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
 
             inner_nodes.insert(&output_node);
 
-            // If this Graph was built manually, remove the implicit input from the graph outputs if it is present there
-            // and not explicitly listed in the ordered graph outputs (as that implies we should leave it as an output).
+            // If this Graph was built manually, remove the implicit input from the graph outputs
+            // if it is present there and not explicitly listed in the ordered graph outputs
+            // (as that implies we should leave it as an output).
             // If the Graph was loaded from a GraphProto, honor the explicit graph outputs and leave as is.
             if (!is_loaded_from_model_file_) {
               graph_outputs_.erase(std::remove(graph_outputs_.begin(), graph_outputs_.end(), node_arg),
@@ -1244,8 +1261,17 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
     }
   }
 
+  // finally check any node args consumed by subgraphs to see if they're available locally.
+  // if not we add them to the list of outer scope values consumed.
+  for (const auto& name : node_args_consumed_by_subgraphs) {
+    if (node_arg_to_producer_node_.count(name) == 0 &&
+        resolve_context_.inputs_and_initializers.find(name) == resolve_context_.inputs_and_initializers.cend()) {
+      ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(name));
+    }
+  }
+
   return Status::OK();
-}  // namespace onnxruntime
+}
 
 void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
                            const std::function<void(const Node*)>& enter,

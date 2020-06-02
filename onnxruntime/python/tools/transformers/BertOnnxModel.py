@@ -224,7 +224,7 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: BertOptimizationOptions = None):
+    def optimize(self, options: BertOptimizationOptions = None, add_dynamic_axes=False):
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
 
@@ -263,7 +263,8 @@ class BertOnnxModel(OnnxModel):
         self.remove_unused_constant()
 
         # Use symbolic batch dimension in input and output.
-        self.use_dynamic_axes()
+        if add_dynamic_axes:
+            self.use_dynamic_axes()
 
         logger.info(f"opset verion: {self.model.opset_import[0].version}")
 

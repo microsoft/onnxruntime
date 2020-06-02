@@ -8,8 +8,10 @@ from onnx import helper
 import torch
 import torch.nn
 import torch.onnx
-import onnxruntime as ort
 from distutils.version import LooseVersion
+import warnings
+
+import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
@@ -22,12 +24,10 @@ class IODescription():
         self.dtype_ = dtype
         self.num_classes_ = num_classes
 
-
 class ModelDescription():
     def __init__(self, inputs, outputs):
         self.inputs_ = inputs
         self.outputs_ = outputs
-
 
 def resolve_symbolic_dimensions(inputs, input_descs, output_descs):
     import copy
@@ -511,34 +511,70 @@ class ORTTrainer():
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION):
         super(ORTTrainer, self).__init__()
         """
-        Initializes ORTTrainer.
+        Initialize ORTTrainer.
 
-        Params:
-            model: either:
-                - a PyTorch model: if 'loss_fn' is not provided, the 'model's first output must be the loss.
-                    if 'loss_fn' is provided, 'model' and 'loss_fn' are combined as described in 'loss_fn:'
-                - an ONNX model: the 'model's first output must be the loss.
-            loss_fn: a PyTorch loss function. It takes two inputs [prediction, label] and ouput a loss tensor.
-                If provided, 'loss_fn' is combined with the PyTorch 'model' to form a Combined PyTorch model.
-                Inputs to the Combined PyTorch model are concatination of the 'model's input and 'loss_fn's label input.
-                Outputs of the Combined PyTorch model are concatination of 'loss_fn's loss output and 'model's outputs.
-            model_desc: model input and output description. it is used to specify input/output shapes, types, and names.
-                'model_desc' must be consistent with the training model.
-            training_optimizer_name: one of: 'SGDOptimizer', 'AdamOptimizer', 'LambOptimizer'.
-            map_optimizer_attributes: for optimizers with weight dependent parameters,
-                'map_optimizer_attributes' maps weight name to a set of optimization parameters.
-            learning_rate_description: in form of IODescription(Learning_Rate_Name, [1,], torch.float32).
-                Because learning_rate is an input to the training model, Learning_Rate_Name shall be set so that
-                there is no name conflict within the above model.
-            device: cuda device to store tensors
-            gradient_accumulation_steps: number of training steps to accumulate gradients before averaging and applying them (default is 1)
-            postprocess_model: a callable to postprocess the ONNX model that is converted from PyTorch (default is None)
-            world_rank: rank id used for distributed training (default is 0)
-            world_size: number of ranks participating in distributed training (default is 1)
-            use_mixed_precision: flag to enable mixed precision (aka fp16) (default is False)
-            allreduce_post_accumulation: controls whether overlaping gradient computation with allreduce (default is False)
-            partition_optimizer: controls whether to partition the optimizer state (default is False)
+        Args:
+
+            model: one of
+               - a PyTorch model (class that inherits from torch.nn.Module)
+               - a combined PyTorch model and loss function.
+                  Inputs to this combined PyTorch model are a concatenation of the
+                  model's input and the loss function's label input.
+                  Outputs are a concatenation of the loss function's output and the
+                  model's output.
+               - a combined ONNX model and loss function.
+            loss_fn: one of
+               - a PyTorch loss function if 'model' is a PyTorch model. A loss
+                 function takes two inputs (prediction, label) and outputs a loss
+                 tensor.
+               - None if model is already combined with a loss function.
+            model_desc: Specify input/output shapes, types, and names.
+               Must be consistent with the training model.
+            training_optimizer_name: one of
+               - 'SGDOptimizer'
+               - 'AdamOptimizer'
+               - 'LambOptimizer'
+            map_optimizer_attributes: for optimizers with weight-dependent
+               parameters. A callable that maps weight name to a set of optimization
+               parameters.
+               Defaults to None.
+            learning_rate_description: the name, shape and type of the learning
+               rate in form of IODescription(Learning_Rate_Name, [1,], torch.float32).
+               Because learning_rate is an input to the training model,
+               Learning_Rate_Name must be specified so that there is no name conflict
+               within the model.
+            device: device to store tensors (e.g. 'cpu', 'cuda', 'cuda:<int_idx>').
+            gradient_accumulation_steps: number of training steps to accumulate
+               gradients before averaging and applying them.
+               Defaults to 1.
+            postprocess_model: a callable to postprocess the ONNX model that is
+               converted from PyTorch.
+               Defaults to None.
+            world_rank: rank id used for distributed training.
+               Defaults to 0.
+            world_size: number of ranks participating in distributed training.
+               Defaults to 1.
+            use_mixed_precision: flag to enable mixed precision (aka fp16).
+               Defaults to False.
+            allreduce_post_accumulation: controls whether overlaping gradient
+               computation is applied with allreduce.
+               Defaults to False.
+            global_step: training step that is used as input to 'get_lr_this_step'.
+               Defaults to 0.
+            get_lr_this_step: functor used as learning rate scheduler.
+               It uses 'global_step' as input.
+               Defaults to None.
+            loss_scaler: updates loss scale automatically when 'use_mixed_precision'
+               is specified.
+               Defaults to None.
+            partition_optimizer: controls whether to partition the optimizer state.
+               Defaults to False.
+            enable_grad_norm_clip: enables gradient norm clipping.
+               Defaults to True.
+            frozen_weights: list of model parameters to be frozen (not trained).
+               Defaults to [].
         """
+        warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
 
         self.torch_model_ = None

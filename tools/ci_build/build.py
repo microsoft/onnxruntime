@@ -95,21 +95,11 @@ def parse_arguments():
     parser.add_argument(
         "--skip_tests", action='store_true', help="Skip all tests.")
 
-    # Test options
-    parser.add_argument("--ctest_label_regex",
-                        help="Only run CTest tests with a label matching the pattern (passed to ctest --label-regex).")
-
     # Training options
     parser.add_argument(
         "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
     parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
-    parser.add_argument(
-        "--enable_training_e2e_tests", action="store_true",
-        help="Enable the training end-to-end tests.")
-    parser.add_argument(
-        "--training_e2e_test_data_path",
-        help="Path to training end-to-end test data directory.")
     parser.add_argument(
         "--enable_training_python_frontend_e2e_tests", action="store_true",
         help="Enable the pytorch frontend training tests.")
@@ -627,8 +617,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + (
-            "ON" if args.enable_training_e2e_tests else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
             "ON" if args.use_horovod else "OFF"),
     ]
@@ -760,10 +748,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
     else:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
-
-    if args.training_e2e_test_data_path is not None:
-        cmake_args += ["-Donnxruntime_TRAINING_E2E_TEST_DATA_ROOT={}".format(
-            os.path.abspath(args.training_e2e_test_data_path))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1052,11 +1036,13 @@ def run_training_python_frontend_e2e_tests(args, cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
-    # with orttraining_run_glue.py. 
+    # with orttraining_run_glue.py.
     # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES) for fine-tune tests.
     # 2. need to run test separately (not to mix between fp16 and full precision runs. this need to be investigated).
-    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
-    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'], cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
+                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
+                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
 
@@ -1097,7 +1083,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
             if args.use_dnnlibrary:
                 adb_shell(
-                    'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi -o 0 /data/local/tmp/test')  # noqa
+                    'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
             else:
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
@@ -1132,9 +1118,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 cwd=cwd2, dll_path=dll_path)
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
-            if args.ctest_label_regex is not None:
-                ctest_cmd += ["--label-regex", args.ctest_label_regex]
-
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
@@ -1215,9 +1198,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
         else:
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
-        # Temporarily disable optimizers because some
-        # of them are failing
-        cmd = ["-o", "0"]
+
+        cmd = []
         if provider:
             cmd += ["-e", provider]
         if num_parallel_tests != 0:
@@ -1252,7 +1234,7 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
 
-        cmd_base = ['-o', '0']
+        cmd_base = []
         if provider:
             cmd_base += ["-e", provider]
 
@@ -1342,7 +1324,7 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-o', '0', '-e', 'dnnl', '-c', '1', '-j', '1']
+        cmd_base = ['-e', 'dnnl', '-c', '1', '-j', '1']
         if os.path.exists(onnx_test_data_dir):
             onnxdata_cmd = cmd_base + [onnx_test_data_dir]
             # /data/onnx
