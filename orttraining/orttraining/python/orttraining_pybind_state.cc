@@ -89,8 +89,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     parameters.local_size = mpi_context.local_size;
     parameters.local_rank = mpi_context.local_rank;
   }
-
-  config.
 #endif
 
   training::TrainingSession::TrainingConfiguration config{};
