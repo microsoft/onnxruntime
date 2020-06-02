@@ -43,6 +43,18 @@ def fix_expand_shape(model):
     for expand_node in expand_nodes:
         shape = find_input_node(model, expand_node.input[1])
         if shape.op_type == 'Shape':
+            # an expand subgraph
+            # Input    Input2
+            # |        |
+            # |        Shape
+            # |        |
+            # |__    __|
+            #    |  |
+            #   Expand
+            #     |
+            #   output
+            #
+            # Only if Input2 is one of the model inputs, assign Input2's shape to output of expand.
             shape_input_name = shape.input[0]
             if shape_input_name in model_inputs_names:
                 index = model_inputs_names.index(shape_input_name)
@@ -97,6 +109,16 @@ def layer_norm_transform(model):
 
         # check that sub output[0] is Div and output[1] is Pow
         pow, div = find_output_node(model, sub.output[0])
+        if is_type(pow, "Cast"):
+            # During an update in PyTorch, Cast nodes are inserted between Sub and Pow.
+            remove_nodes += [pow]
+            pow = find_output_node(model, pow.output[0])
+            if not is_type(pow, "Pow"):
+                continue
+            cast_pow = find_input_node(model, pow.input[1])
+            if not is_type(cast_pow, "Cast"):
+                continue
+            remove_nodes += [cast_pow]
         if not is_type(div, "Div") or not is_type(pow, "Pow"):
             continue
 

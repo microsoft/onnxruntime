@@ -19,7 +19,7 @@ def warmup_linear(x, warmup=0.002):
     if x < warmup:
         return x/warmup
     return max((x - 1. )/ (warmup - 1.), 0.)
-    
+
 def warmup_poly(x, warmup=0.002, degree=0.5):
     if x < warmup:
         return x/warmup
@@ -49,15 +49,16 @@ def map_optimizer_attributes(name):
         return {"alpha": 0.9, "beta": 0.999, "lambda": 0.01, "epsilon": 1e-6}
 
 def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
-    allreduce_post_accumulation, get_lr_this_step, use_internal_get_lr_this_step, loss_scaler, use_internal_loss_scaler, 
+    allreduce_post_accumulation, get_lr_this_step, use_internal_get_lr_this_step, loss_scaler, use_internal_loss_scaler,
     batch_args_option):
     dataloader = create_ort_test_dataloader(model_desc.inputs_, args.batch_size, args.seq_len, device)
 
     model = ORTTrainer(model, None, model_desc, "LambOptimizer",
         map_optimizer_attributes=map_optimizer_attributes,
         learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
-        device=device, postprocess_model=postprocess_model,
-        gradient_accumulation_steps=gradient_accumulation_steps,                
+        device=device, _extra_postprocess=postprocess_model,
+        _enable_internal_postprocess=True,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         # BertLAMB default initial settings: b1=0.9, b2=0.999, e=1e-6
         world_rank=args.local_rank, world_size=args.world_size,
         use_mixed_precision=fp16,

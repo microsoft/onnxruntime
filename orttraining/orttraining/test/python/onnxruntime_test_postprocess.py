@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from orttraining_test_utils import map_optimizer_attributes
 from orttraining_test_transformers import BertModelTest, BertForPreTraining
 from orttraining_test_data_loader import create_ort_test_dataloader
+from orttraining_test_bert_postprocess import postprocess_model
 import onnxruntime
 
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
@@ -21,7 +22,8 @@ torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
 class Test_PostPasses(unittest.TestCase):
-    def get_onnx_model(self, model, model_desc, inputs, device):
+    def get_onnx_model(self, model, model_desc, inputs, device,
+                       _enable_internal_postprocess=True, _extra_postprocess=None):
         lr_desc = IODescription('Learning_Rate', [1,], torch.float32)
         model = ORTTrainer(model,
                            None,
@@ -32,7 +34,9 @@ class Test_PostPasses(unittest.TestCase):
                            device,
                            world_rank=0,
                            world_size=1,
-                           _opset_version=12)
+                           _opset_version=12,
+                           _enable_internal_postprocess=_enable_internal_postprocess,
+                           _extra_postprocess=_extra_postprocess)
 
         train_output = model.train_step(*inputs)
         return model.onnx_model_
@@ -107,9 +111,11 @@ class Test_PostPasses(unittest.TestCase):
                 super(ExpandNet, self).__init__()
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
+                self.linear = torch.nn.Linear(2, 2)
 
             def forward(self, x, x1):
                 output = x.expand_as(x1)
+                output = self.linear(output)
                 output = output + output
                 loss = self.loss(output, self.target)
                 return loss, output
@@ -121,8 +127,8 @@ class Test_PostPasses(unittest.TestCase):
         x = torch.randn(5, 3, 1, 2, dtype=torch.float32).to(device)
         x1 = torch.randn(5, 3, 5, 2, dtype=torch.float32).to(device)
 
-        input0_desc = IODescription('input0', [5, 3, 1, 2], "float32")
-        input1_desc = IODescription('input1', [5, 3, 5, 2], "float32")
+        input0_desc = IODescription('x', [5, 3, 1, 2], "float32")
+        input1_desc = IODescription('x1', [5, 3, 5, 2], "float32")
         output0_desc = IODescription('output0', [], "float32")
         output1_desc = IODescription('output1', [5, 3, 5, 2], "float32")
         model_desc = ModelDescription([input0_desc, input1_desc], [output0_desc, output1_desc])
@@ -133,10 +139,10 @@ class Test_PostPasses(unittest.TestCase):
         onnx_model = self.get_onnx_model(model, model_desc, input_args, device)
 
         # check that expand output has shape
-        expand_nodes = self.find_expand_nodes(onnx_model, "Expand")
+        expand_nodes = self.find_nodes(onnx_model, "Expand")
         assert len(expand_nodes) == 1
 
-        model_info = onnx_model.grah.value_info
+        model_info = onnx_model.graph.value_info
         assert model_info[0].name == expand_nodes[0].output[0]
         assert model_info[0].type == onnx_model.graph.input[1].type
 
@@ -186,39 +192,9 @@ class Test_PostPasses(unittest.TestCase):
         learning_rate = torch.tensor([1.00e+00]).to(device)
         inputs = batch + [learning_rate,]
 
-        onnx_model = self.get_onnx_model(model, model_desc, inputs, device)
+        onnx_model = self.get_onnx_model(model, model_desc, inputs, device, _extra_postprocess=postprocess_model)
 
         self._bert_helper(onnx_model)
-
-    def test_bert_from_ONNX(self):
-        device = torch.device("cpu")
-        onnx_model = onnx.load(self.get_name("bert_no_postprocessing.onnx"))
-
-        vocab_size = 30528
-        input_ids_desc = IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
-        segment_ids_desc = IODescription('segment_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-        input_mask_desc = IODescription('input_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2)
-        masked_lm_labels_desc = IODescription('masked_lm_labels', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=vocab_size)
-        next_sentence_labels_desc = IODescription('next_sentence_labels', ['batch', ], torch.int64, num_classes=2)
-        loss_desc = IODescription('loss', [], torch.float32)
-
-        model_desc = ModelDescription([input_ids_desc, segment_ids_desc, input_mask_desc, masked_lm_labels_desc, next_sentence_labels_desc], [loss_desc])
-
-
-        map_opimizer_attributes = None
-
-        # verify that the initial model is not processed
-        count_layer_norm = self.count_nodes(onnx_model, "LayerNormalization")
-        assert count_layer_norm == 0
-
-        model_info = onnx_model.graph.value_info
-        assert len(model_info) == 0
-
-        model = ORTTrainer(onnx_model, None, model_desc, "LambOptimizer",
-                           map_optimizer_attributes, IODescription('Learning_Rate', [1,], torch.float32),
-                           device, world_rank=0, world_size=1, _opset_version=12)
-
-        self._bert_helper(model.onnx_model_)
 
     def _bert_helper(self, onnx_model):
         # count layer_norm
@@ -236,4 +212,3 @@ class Test_PostPasses(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
-
