@@ -178,8 +178,8 @@ Status Attention<T, use_past_state>::Compute(OpKernelContext* context) const {
     present = context->Output(1, present_shape);
   }
 
-  // S* = S + S'
-  const int all_sequence_length = sequence_length + past_sequence_length;
+  // S* = S' + S
+  const int all_sequence_length = past_sequence_length + sequence_length;
 
   constexpr size_t element_size = sizeof(T);
 
@@ -313,7 +313,7 @@ Status Attention<T, use_past_state>::Compute(OpKernelContext* context) const {
 
         T* present_k = K + sequence_length * head_size * i;
         if (nullptr != present) {
-          // concatenate K and past-K: (BxNx)SxH -> (BxNx)S*xH
+          // concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
           present_k = present->template MutableData<T>() + i * all_sequence_length * head_size;
           if (nullptr != past) {
             const T* src_past_k = past->template Data<T>() + i * past_sequence_length * head_size;
@@ -398,7 +398,7 @@ Status Attention<T, use_past_state>::Compute(OpKernelContext* context) const {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
       T* present_v = start_v + sequence_length_mul_head_size * i;
       if (nullptr != present) {
-        // concatenate V and Past-V: (BxNx)SxH -> (BxNx)S*xH
+        // concatenate past_V and V: (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
         present_v = start_v + i * all_sequence_length * head_size;
         if (nullptr != past) {
           const T* src_past_v = start_past_v + i * past_sequence_length * head_size;

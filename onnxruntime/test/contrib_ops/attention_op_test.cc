@@ -28,7 +28,7 @@ static void RunAttentionTest(
     const std::vector<float>* present_data = nullptr) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !use_past_state;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16;
 
   if (enable_cpu || enable_cuda) {
