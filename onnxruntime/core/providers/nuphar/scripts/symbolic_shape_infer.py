@@ -1139,6 +1139,13 @@ class SymbolicShapeInference:
             self._onnx_infer_single_node(node)
             if node.op_type in self.dispatcher_:
                 self.dispatcher_[node.op_type](node)
+            elif node.op_type in ['ConvTranspose']:
+                # onnx shape inference ops like ConvTranspose may have empty shape for symbolic input
+                # before adding symbolic compute for them
+                # mark the output type as UNDEFINED to allow guessing of rank
+                vi = self.known_vi_[node.output[0]]
+                if len(vi.type.tensor_type.shape.dim) == 0:
+                    vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
 
             if self.verbose_ > 2:
                 print(node.op_type + ': ' + node.name)
