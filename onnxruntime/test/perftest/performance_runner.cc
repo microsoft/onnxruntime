@@ -255,7 +255,7 @@ static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_dev
 
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
-      test_model_info_(std::move(CreateModelInfo(test_config))) {
+      test_model_info_(CreateModelInfo(test_config)) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
   session_ = CreateSession(env, rd, test_config, *test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
@@ -280,7 +280,7 @@ bool PerformanceRunner::Initialize() {
 
   // ownership semantics are a little unexpected here as the test case takes ownership of the model info
   TestModelInfo* test_model_info = test_model_info_.get();
-  test_case_ = std::move(CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0));
+  test_case_ = CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0);
 
   if (performance_test_config_.run_config.generate_model_input_binding) {
     return static_cast<OnnxRuntimeTestSession*>(session_.get())->PopulateGeneratedInputTestData();
