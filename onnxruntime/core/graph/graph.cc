@@ -654,6 +654,10 @@ const NodeAttributes& Node::GetAttributes() const noexcept {
   return attributes_;
 }
 
+NodeAttributes& Node::GetMutableAttributes() noexcept {
+  return attributes_;
+}
+
 Graph* Node::GetMutableGraphAttribute(const std::string& attr_name) {
   Graph* subgraph = nullptr;
 
@@ -2996,6 +3000,15 @@ Status Graph::InlineFunction(Node& node) {
   }
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
+}
+
+void Graph::SyncWithFP16Initializer(const std::unordered_map<std::string, NodeArg*>& updated_input_map) {
+  for (size_t index = 0; index < graph_inputs_including_initializers_.size(); ++index) {
+    auto search = updated_input_map.find(graph_inputs_including_initializers_[index]->Name());
+    if (search != updated_input_map.end()) {
+      graph_inputs_including_initializers_[index] = search->second;
+    }
+  }
 }
 
 void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {

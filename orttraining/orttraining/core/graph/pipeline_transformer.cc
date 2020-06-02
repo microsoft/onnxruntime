@@ -887,15 +887,8 @@ common::Status SplitGraph(Graph& graph,
       send_input_args.push_back(updated_node_arg);
 
       auto dtype = original_node_arg->TypeAsProto()->tensor_type().elem_type();
-      switch (dtype) {
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          element_types.add_ints(static_cast<int64_t>(1));
-          break;
-        default:
-          // Assume all tensors are of type float.
-          // TODO: update if graph supports other data type.
-          ORT_THROW("pipeline partition unsupported 'type' value: ", dtype);
-      }
+
+      element_types.add_ints(static_cast<int64_t>(dtype));
 
       auto& new_receive_output = CreateNodeArg(graph, updated_node_arg);
       const auto old_shape = *(updated_node_arg->Shape());

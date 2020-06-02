@@ -264,6 +264,9 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept;
 
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept;
+
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
   @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
@@ -793,6 +796,12 @@ class Graph {
   @remarks Note that the input order matters for subgraphs.
   */
   void SetInputs(const std::vector<const NodeArg*>& inputs);
+
+  /** Explicitly update specified graph initializers.
+  @param updated_input_map An map contains the name of the initializer that needs to update and the
+  corresponding new value. This function will overwrite the old NodeArg with the new value.
+  */
+  void SyncWithFP16Initializer(const std::unordered_map<std::string, NodeArg*>& updated_input_map);
 
   /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
