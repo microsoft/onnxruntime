@@ -216,7 +216,7 @@ class TrainingRunner {
   Status SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                          const size_t weight_update_steps, const double total_time,
                          const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
-                         const MapStringToString& mapped_dimensions,
+                         const double e2e_throughput, const MapStringToString& mapped_dimensions,
                          const short average_cpu_usage, const size_t peak_workingset_size);
 
   size_t step_;
