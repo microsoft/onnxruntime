@@ -11,17 +11,19 @@ namespace contrib {
 
 class AttentionBase {
  protected:
-  AttentionBase(const OpKernelInfo& info);
+  AttentionBase(const OpKernelInfo& info, bool use_past);
   Status CheckInputs(const Tensor* input,
                      const Tensor* weights,
                      const Tensor* bias,
-                     const Tensor* mask_index) const;
+                     const Tensor* mask_index,
+                     const Tensor* past) const;
 
-  int num_heads_;  // number of attention heads
-  bool is_unidirectional_; // whether every token can only attend to previous tokens.
+  int num_heads_;           // number of attention heads
+  bool is_unidirectional_;  // whether every token can only attend to previous tokens.
+  bool use_past_;           // use past state in operator definition or not
 };
 
-template <typename T>
+template <typename T, bool use_past_state>
 class Attention : public OpKernel, public AttentionBase {
  public:
   explicit Attention(const OpKernelInfo& info);

@@ -30,7 +30,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {}
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -44,7 +44,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
-  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
+  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index, nullptr));
 
   const auto dims = input->Shape().GetDims();
   int batch_size = static_cast<int>(dims[0]);

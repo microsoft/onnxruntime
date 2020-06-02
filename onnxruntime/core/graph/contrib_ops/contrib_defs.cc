@@ -387,6 +387,57 @@ mask_index shall not be provided.)DOC";
         return;
       });
 
+  static const char* GptAttention_ver1_doc = R"DOC(
+Multi-Head Self Attention for GPT2 with past state.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GptAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(GptAttention_ver1_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
+      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(3, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        if (hasInputShape(ctx, 0)) {
+          auto& input_shape = getInputShape(ctx, 0);
+
+          // propagate shape from input 0 to output 0.
+          updateOutputShape(ctx, 0, input_shape);
+
+          auto& input_dims = input_shape.dim();
+          if (input_dims.size() != 3) {
+            fail_shape_inference("Inputs 0 shall be 3 dimensions");
+          }
+
+          if (hasInputShape(ctx, 3)) {
+            auto& past_shape = getInputShape(ctx, 3);
+            auto& past_dims = past_shape.dim();
+            if (past_dims.size() != 5) {
+              fail_shape_inference("Inputs 3 shall be 5 dimensions");
+            }
+            if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+              auto sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+
+              ONNX_NAMESPACE::TensorShapeProto present_shape;
+              for (auto& dim : past_dims) {
+                *present_shape.add_dim() = dim;
+              }
+              present_shape.mutable_dim(3)->set_dim_value(sequence_length);
+
+              updateOutputShape(ctx, 1, present_shape);
+            }
+          }
+        }
+      });
+
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,

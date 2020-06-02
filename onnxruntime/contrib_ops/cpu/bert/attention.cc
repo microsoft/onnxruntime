@@ -18,26 +18,37 @@ namespace contrib {
 #define REGISTER_KERNEL_TYPED(T)                                                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(Attention, kMSDomain, 1, T, kCpuExecutionProvider,                        \
                                 KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-                                Attention<T>);
+                                Attention<T, false>);                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(GptAttention, kMSDomain, 1, T, kCpuExecutionProvider,                     \
+                                KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+                                Attention<T, true>);
 
 REGISTER_KERNEL_TYPED(float)
 
-AttentionBase::AttentionBase(const OpKernelInfo& info) {
+AttentionBase::AttentionBase(const OpKernelInfo& info, bool use_past) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
-  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+
+  use_past_ = use_past;
+  if (use_past) {
+    is_unidirectional_ = true;
+  } else {
+    is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+  }
 }
 
 Status AttentionBase::CheckInputs(const Tensor* input,
                                   const Tensor* weights,
                                   const Tensor* bias,
-                                  const Tensor* mask_index) const {
+                                  const Tensor* mask_index,
+                                  const Tensor* past) const {
   // Input and output shapes:
   //   input       : (batch_size, sequence_length, hidden_size)
   //   weights     : (hidden_size, 3 * hidden_size)
   //   bias        : (3 * hidden_size)
   //   mask_index  : (batch_size) if presented
+  //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
   const auto dims = input->Shape().GetDims();
   if (dims.size() != 3) {
@@ -90,20 +101,48 @@ Status AttentionBase::CheckInputs(const Tensor* input,
     }
   }
 
+  if (past != nullptr) {  // past is optional
+    const auto past_dims = past->Shape().GetDims();
+    if (past_dims.size() != 5) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 5 dimension, got ",
+                             past_dims.size());
+    }
+    if (static_cast<int>(past_dims[0]) != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 0 shall have length of 2");
+    }
+    if (static_cast<int>(past_dims[1]) != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 1 shall have same length as dimension 0 of input 0");
+    }
+    if (static_cast<int>(past_dims[2]) != num_heads_) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 2 shall have length of num_heads", num_heads_);
+    }
+    if (static_cast<int>(past_dims[4]) != hidden_size / num_heads_) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 2 shall have length of ", hidden_size / num_heads_);
+    }
+  }
+
   return Status::OK();
 }
 
-template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {
+template <typename T, bool use_past_state>
+Attention<T, use_past_state>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info, use_past_state) {
 }
 
-template <typename T>
-Status Attention<T>::Compute(OpKernelContext* context) const {
+template <typename T, bool use_past_state>
+Status Attention<T, use_past_state>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
-  const Tensor* mask_index = context->Input<Tensor>(3);
-  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
+  const Tensor* mask_index = nullptr;
+  const Tensor* past = nullptr;
+
+  if (use_past_state) {
+    past = context->Input<Tensor>(3);
+  } else {
+    mask_index = context->Input<Tensor>(3);
+  }
+
+  ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index, past));
 
   const auto dims = input->Shape().GetDims();
   const int batch_size = static_cast<int>(dims[0]);
@@ -113,6 +152,34 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   TensorShape output_shape(dims);
   Tensor* output = context->Output(0, output_shape);
+
+  int past_sequence_length = 0;
+  Tensor* present = nullptr;
+  if (use_past_state) {
+    std::vector<int64_t> present_dims;
+    if (nullptr != past) {
+      const auto past_dims = past->Shape().GetDims();
+      past_sequence_length = static_cast<int>(past_dims[3]);
+
+      present_dims.push_back(past_dims[0]);
+      present_dims.push_back(past_dims[1]);
+      present_dims.push_back(past_dims[2]);
+      present_dims.push_back(static_cast<int64_t>(past_sequence_length + sequence_length));
+      present_dims.push_back(past_dims[4]);
+    } else {
+      present_dims.push_back(static_cast<int64_t>(2));
+      present_dims.push_back(static_cast<int64_t>(batch_size));
+      present_dims.push_back(static_cast<int64_t>(num_heads_));
+      present_dims.push_back(static_cast<int64_t>(sequence_length));
+      present_dims.push_back(static_cast<int64_t>(head_size));
+    }
+
+    TensorShape present_shape(present_dims);
+    present = context->Output(1, present_shape);
+  }
+
+  // S* = S + S'
+  const int all_sequence_length = sequence_length + past_sequence_length;
 
   constexpr size_t element_size = sizeof(T);
 
@@ -180,18 +247,17 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     });
   }
 
-  // STEP.2: scratch(B, N, S, S) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S, H -> B, N, H, S) + 1 x mask_index(B -> B, 1,
-  // 1, 1)
-  size_t scratch_data_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * sequence_length * element_size;
+  // STEP.2: scratch(BxNxSxS*) = 1/sqrt(H) x Q(BxNxSxH) x K'(BxNxS*xH -> BxNxHxS*) + 1 x mask(BxNxSxS*)
+  size_t scratch_data_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * element_size;
   auto scratch_data = allocator->Alloc(scratch_data_bytes);
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
 
   {
     size_t mask_data_bytes = 0;
     if (mask_index != nullptr) {
-      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * sequence_length * element_size;
+      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * all_sequence_length * element_size;
     } else if (is_unidirectional_) {
-      mask_data_bytes = SafeInt<size_t>(sequence_length) * sequence_length * element_size;
+      mask_data_bytes = SafeInt<size_t>(sequence_length) * all_sequence_length * element_size;
     }
 
     void* mask_data = nullptr;
@@ -205,23 +271,23 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int b_i = 0; b_i < batch_size; b_i++) {
         // TODO: mask_index can be used in softmax to save some calculation.
-        // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS
+        // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS*
         int valid_length = mask_index->template Data<int32_t>()[b_i];
-        for (int m_i = valid_length; m_i < sequence_length; m_i++) {
+        for (int m_i = valid_length; m_i < all_sequence_length; m_i++) {
           p_mask[m_i] = static_cast<T>(-10000.0);
         }
 
-        // Broadcast mask from BxS to BxSxS
+        // Broadcast mask from BxS* to BxSxS*
         for (int s_i = 1; s_i < sequence_length; s_i++) {
-          memcpy(p_mask + s_i * sequence_length, p_mask, sequence_length * sizeof(T));
+          memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
         }
         p_mask += sequence_length * sequence_length;
       }
     } else if (is_unidirectional_ && mask_data != nullptr) {  // unidirectional mask
       T* p_mask = reinterpret_cast<T*>(mask_data);
       for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-        for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
-          p_mask[s_i * sequence_length + m_i] = static_cast<T>(-10000.0);
+        for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
+          p_mask[s_i * all_sequence_length + m_i] = static_cast<T>(-10000.0);
         }
       }
     } else {  // no any mask
@@ -233,42 +299,53 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
     // The cost of Gemm
     const double cost =
-        static_cast<double>(head_size) * static_cast<double>(sequence_length) * static_cast<double>(sequence_length);
+        static_cast<double>(head_size) * static_cast<double>(sequence_length) * static_cast<double>(all_sequence_length);
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const std::ptrdiff_t batch_index = i / num_heads_;
 
-        // broadcast mask data: SxS or (Bx)SxS -> (BxNx)SxS
+        // broadcast mask data: SxS* or (Bx)SxS* -> (BxNx)SxS*
         if (mask_data != nullptr) {
-          const T* broadcast_data_src = is_unidirectional_ ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * sequence_length;
-          T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i;
-          memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sequence_length * sizeof(T));
+          const T* broadcast_data_src = is_unidirectional_ ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
+          T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * all_sequence_length * i;
+          memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * all_sequence_length * sizeof(T));
+        }
+
+        T* present_k = K + sequence_length * head_size * i;
+        if (nullptr != present) {
+          // concatenate K and past-K: (BxNx)SxH -> (BxNx)S*xH
+          present_k = present->template MutableData<T>() + i * all_sequence_length * head_size;
+          if (nullptr != past) {
+            const T* src_past_k = past->template Data<T>() + i * past_sequence_length * head_size;
+            memcpy(present_k, src_past_k, past_sequence_length * head_size * element_size);
+          }
+          const T* src_k = K + i * sequence_length * head_size;
+          memcpy(present_k + past_sequence_length * head_size, src_k, sequence_length * head_size * element_size);
         }
 
         // gemm
-
-        //                   original           transposed            iteration
+        //                   original           transposed             each iteration
         // A: Q              (BxNxSxH)          (B.N.)S x H            S x H
-        // B: K'             (BxNxSxH)          (B.N.)H x S            H x S
-        // C: scratch_data   (BxNxSxS)          (B.N.)S x S            S x S
+        // B: K'             (BxNxS*xH)         (B.N.)H x S*           H x S*
+        // C: scratch_data   (BxNxSxS*)         (B.N.)S x S*           S x S*
 
-        math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, sequence_length, head_size, alpha,
-                                  Q + sequence_length * head_size * i, K + sequence_length * head_size * i, 1.0,
-                                  reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i, nullptr);
+        math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, all_sequence_length, head_size, alpha,
+                                  Q + sequence_length * head_size * i, present_k, 1.0,
+                                  reinterpret_cast<T*>(scratch_data) + sequence_length * all_sequence_length * i, nullptr);
       }
     });
   }
 
-  // STEP.3: P(B, N, S, S) = Softmax(scratch)
+  // STEP.3: P(B, N, S, S*) = Softmax(scratch)
   {
     const int N = batch_size * num_heads_ * sequence_length;
-    const int D = sequence_length;
+    const int D = all_sequence_length;
 
     if (std::is_same<T, float>::value) {
       float* x = reinterpret_cast<float*>(scratch_data);
       MlasComputeSoftmax(x, x, N, D, false, tp);
     } else {
-      ThreadPool::TryParallelFor(tp, N, sequence_length * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      ThreadPool::TryParallelFor(tp, N, all_sequence_length * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t j = begin; j != end; ++j) {
           float* x = reinterpret_cast<T*>(scratch_data) + j * D;
           float* y = x;
@@ -307,20 +384,34 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
+  // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S*) x V(B, N, S*, H)
   auto out_tmp_data =
       allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * element_size);
   BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
+  T* start_v = nullptr != present ? (present->template MutableData<T>() + batch_size * num_heads_ * all_sequence_length * head_size) : V;
+  const T* start_past_v = nullptr != past ? (past->template Data<T>() + batch_size * num_heads_ * past_sequence_length * head_size) : nullptr;
   // cost of MatMul
   const double cost =
       static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(sequence_length);
   ThreadPool::TryParallelFor(tp, batch_size * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     const int sequence_length_mul_head_size = sequence_length * head_size;
     for (std::ptrdiff_t i = begin; i != end; ++i) {
+      T* present_v = start_v + sequence_length_mul_head_size * i;
+      if (nullptr != present) {
+        // concatenate V and Past-V: (BxNx)SxH -> (BxNx)S*xH
+        present_v = start_v + i * all_sequence_length * head_size;
+        if (nullptr != past) {
+          const T* src_past_v = start_past_v + i * past_sequence_length * head_size;
+          memcpy(present_v, src_past_v, past_sequence_length * head_size * element_size);
+        }
+        const T* src_v = V + i * sequence_length_mul_head_size;
+        memcpy(present_v + past_sequence_length * head_size, src_v, sequence_length_mul_head_size * element_size);
+      }
+
       T* current_tmp_data = reinterpret_cast<T*>(out_tmp_data) + sequence_length_mul_head_size * i;
-      math::MatMul<T>(sequence_length, head_size, sequence_length,
-                      reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
-                      V + sequence_length_mul_head_size * i, current_tmp_data, nullptr);
+      math::MatMul<T>(sequence_length, head_size, all_sequence_length,
+                      reinterpret_cast<T*>(scratch_data) + sequence_length * all_sequence_length * i,
+                      present_v, current_tmp_data, nullptr);
 
       // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
       const int batch_index = static_cast<int>(i / num_heads_);
