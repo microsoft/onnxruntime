@@ -41,6 +41,64 @@ Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
 
 namespace onnxruntime {
 namespace perftest {
+
+void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics) const {
+  bool have_file = !path.empty();
+  std::ofstream outfile;
+
+  if (have_file) {
+    outfile.open(path, std::ofstream::out | std::ofstream::app);
+    if (!outfile.good()) {
+      // at least provide some info on the run
+      std::cerr << "failed to open result file '" << path.c_str() << "'. will dump stats to output.\n";
+      have_file = false;
+      f_include_statistics = true;
+    }
+  }
+
+  if (have_file) {
+    for (size_t runs = 0; runs < time_costs.size(); runs++) {
+      outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << ","
+              << average_CPU_usage << "," << runs << std::endl;
+    }
+  } else {
+    // match formatting of the initial output from PerformanceRunner::Run
+    std::cout << "Avg CPU usage:" << average_CPU_usage
+              << "\nPeak working set size:" << peak_workingset_size
+              << "\nRuns:" << time_costs.size() << std::endl;
+  }
+
+  if (!time_costs.empty() && f_include_statistics) {
+    std::vector<double> sorted_time = time_costs;
+
+    size_t total = sorted_time.size();
+    size_t n50 = static_cast<size_t>(total * 0.5);
+    size_t n90 = static_cast<size_t>(total * 0.9);
+    size_t n95 = static_cast<size_t>(total * 0.95);
+    size_t n99 = static_cast<size_t>(total * 0.99);
+    size_t n999 = static_cast<size_t>(total * 0.999);
+
+    std::sort(sorted_time.begin(), sorted_time.end());
+
+    auto output_stats = [&](std::ostream& ostream) {
+      ostream << "Min Latency is " << sorted_time[0] << "sec\n";
+      ostream << "Max Latency is " << sorted_time[total - 1] << "sec\n";
+      ostream << "P50 Latency is " << sorted_time[n50] << "sec\n";
+      ostream << "P90 Latency is " << sorted_time[n90] << "sec\n";
+      ostream << "P95 Latency is " << sorted_time[n95] << "sec\n";
+      ostream << "P99 Latency is " << sorted_time[n99] << "sec\n";
+      ostream << "P999 Latency is " << sorted_time[n999] << "sec" << std::endl;
+    };
+
+    if (have_file) {
+      outfile << std::endl;
+      output_stats(outfile);
+    }
+
+    output_stats(std::cout);
+  }
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
@@ -51,7 +109,7 @@ Status PerformanceRunner::Run() {
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
-  performance_result_.start_ = std::chrono::high_resolution_clock::now();
+  performance_result_.start = std::chrono::high_resolution_clock::now();
 
   std::unique_ptr<utils::ICPUUsage> p_ICPUUsage = utils::CreateICPUUsage();
   switch (performance_test_config_.run_config.test_mode) {
@@ -64,7 +122,7 @@ Status PerformanceRunner::Run() {
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
   }
-  performance_result_.end_ = std::chrono::high_resolution_clock::now();
+  performance_result_.end = std::chrono::high_resolution_clock::now();
 
   performance_result_.average_CPU_usage = p_ICPUUsage->GetUsage();
   performance_result_.peak_workingset_size = utils::GetPeakWorkingSetSize();
@@ -72,7 +130,7 @@ Status PerformanceRunner::Run() {
   std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
-  std::chrono::duration<double> inference_duration = performance_result_.end_ - performance_result_.start_;
+  std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
   std::cout << "Session creation time cost:" << session_create_duration.count() << " s" << std::endl
             << "Total inference time cost:" << performance_result_.total_time_cost << " s" << std::endl  // sum of time taken by each request

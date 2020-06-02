@@ -28,74 +28,15 @@ namespace onnxruntime {
 namespace perftest {
 
 struct PerformanceResult {
-  std::chrono::time_point<std::chrono::high_resolution_clock> start_;
-  std::chrono::time_point<std::chrono::high_resolution_clock> end_;
+  std::chrono::time_point<std::chrono::high_resolution_clock> start;
+  std::chrono::time_point<std::chrono::high_resolution_clock> end;
   size_t peak_workingset_size{0};
   short average_CPU_usage{0};
   double total_time_cost{0};
   std::vector<double> time_costs;
   std::string model_name;
 
-  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const {
-    bool have_file = !path.empty();
-    std::ofstream outfile;
-
-    if (have_file) {
-      outfile.open(path, std::ofstream::out | std::ofstream::app);
-      if (!outfile.good()) {
-        // at least provide some info on the run
-        std::cerr << "failed to open result file '" << path.c_str() << "'. will dump stats to output.";
-        have_file = false;
-        f_include_statistics = true;
-      }
-    }
-
-    if (have_file) {
-      for (size_t runs = 0; runs < time_costs.size(); runs++) {
-        outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << ","
-                << average_CPU_usage << "," << runs << std::endl;
-      }
-    } else {
-      // match formatting of the initial output from PerformanceRunner::Run
-      std::cout << "Avg CPU usage:" << average_CPU_usage
-                << "\nPeak working set size:" << peak_workingset_size
-                << "\nRuns:" << time_costs.size() << std::endl;
-    }
-
-    if (!time_costs.empty() && f_include_statistics) {
-      std::vector<double> sorted_time = time_costs;
-
-      size_t total = sorted_time.size();
-      size_t n50 = static_cast<size_t>(total * 0.5);
-      size_t n90 = static_cast<size_t>(total * 0.9);
-      size_t n95 = static_cast<size_t>(total * 0.95);
-      size_t n99 = static_cast<size_t>(total * 0.99);
-      size_t n999 = static_cast<size_t>(total * 0.999);
-
-      std::sort(sorted_time.begin(), sorted_time.end());
-
-      auto output_stats = [&](std::ostream& ostream) {
-        ostream << "Min Latency is " << sorted_time[0] << "sec" << std::endl;
-        ostream << "Max Latency is " << sorted_time[total - 1] << "sec" << std::endl;
-        ostream << "P50 Latency is " << sorted_time[n50] << "sec" << std::endl;
-        ostream << "P90 Latency is " << sorted_time[n90] << "sec" << std::endl;
-        ostream << "P95 Latency is " << sorted_time[n95] << "sec" << std::endl;
-        ostream << "P99 Latency is " << sorted_time[n99] << "sec" << std::endl;
-        ostream << "P999 Latency is " << sorted_time[n999] << "sec" << std::endl;
-      };
-
-      if (have_file) {
-        outfile << std::endl;
-        output_stats(outfile);
-      }
-
-      output_stats(std::cout);
-    }
-
-    if (have_file) {
-      outfile.close();
-    }
-  }
+  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const;
 };
 
 class PerformanceRunner {
