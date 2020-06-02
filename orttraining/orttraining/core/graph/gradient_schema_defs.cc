@@ -1046,6 +1046,12 @@ Example 4:
              "the case during training.",
              "T1",
              OpSchema::Optional)
+      .Input(3, "training_mode",
+            "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+            "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+            "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+            "T2",
+            OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -1058,7 +1064,7 @@ Example 4:
       .TypeConstraint(
           "T2",
           {"tensor(bool)"},
-          "Constrain 'mask' types to boolean tensors.")
+          "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });

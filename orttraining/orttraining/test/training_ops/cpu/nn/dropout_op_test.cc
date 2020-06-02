@@ -146,7 +146,7 @@ TEST(TrainableDropoutTest, EmptyRatio) {
 }
 
 namespace {
-void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
+void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool training_mode, bool default_ratio = true) {
   const auto input_shape = TensorShape(input_dims);
   OpTester test(op, 1, kMSDomain);
   if (default_ratio) {
@@ -168,9 +168,14 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
   const float output_constant = input_constant / (1.0f - ratio);
   std::vector<float> dx_data{};
   dx_data.reserve(input_shape.Size());
-  std::transform(
-      mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data),
-      [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
+
+  if (training_mode) {
+    std::transform(
+        mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data),
+        [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
+  } else {
+    dx_data.resize(input_shape.Size(), input_constant);
+  }
 
   test.AddInput<float>("dy", input_shape.GetDims(), dy_data);
   test.AddInput<bool>("mask", input_shape.GetDims(), mask_buffer.get(), input_shape.Size());
@@ -180,9 +185,7 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
     test.AddMissingOptionalInput<float>();
   }
 
-  if (strcmp(op, "TrainableDropoutGrad") != 0) {
-    test.AddInput<bool>("training_mode", {}, {true});
-  }
+  test.AddInput<bool>("training_mode", {}, {training_mode});
 
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
 
@@ -193,39 +196,52 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
 // DropoutGrad
 
 TEST(DropoutGradTest, Basic) {
-  //Ratio 0.2, 1D
-  RunDropoutGradTest("DropoutGrad", 0.2f, {16}, false);
 
-  //Ratio 0.3, 2D
-  RunDropoutGradTest("DropoutGrad", 0.3f, {8, 2}, false);
+  std::vector<float> training_mode({true, false});
+  for (const auto& mode : training_mode) {
+    //Ratio 0.2, 1D
+    RunDropoutGradTest("DropoutGrad", 0.2f, {16}, mode, false);
 
-  //Ratio 0.4, 3D
-  RunDropoutGradTest("DropoutGrad", 0.4f, {2, 4, 2}, false);
+    //Ratio 0.3, 2D
+    RunDropoutGradTest("DropoutGrad", 0.3f, {8, 2}, mode, false);
 
-  //default Ratio, 3D
-  RunDropoutGradTest("DropoutGrad", 0.5f, {2, 4, 2});
+    //Ratio 0.4, 3D
+    RunDropoutGradTest("DropoutGrad", 0.4f, {2, 4, 2}, mode, false);
+
+    //default Ratio, 3D
+    RunDropoutGradTest("DropoutGrad", 0.5f, {2, 4, 2}, mode);
+  }
 }
 
 TEST(DropoutGradTest, RatioLimit) {
-  RunDropoutGradTest("DropoutGrad", 0.0f, {16}, false);
+  std::vector<float> training_mode({true, false});
+  for (const auto& mode : training_mode) {
+    RunDropoutGradTest("DropoutGrad", 0.0f, {16}, mode, false);
+  }
 }
 
 TEST(TrainableDropoutGradTest, Basic) {
-  //Ratio 0.2, 1D
-  RunDropoutGradTest("TrainableDropoutGrad", 0.2f, {16}, false);
 
-  //Ratio 0.3, 2D
-  RunDropoutGradTest("TrainableDropoutGrad", 0.3f, {8, 2}, false);
+  std::vector<float> training_mode({true, false});
+  for (const auto& mode : training_mode) {    //Ratio 0.2, 1D
+    RunDropoutGradTest("TrainableDropoutGrad", 0.2f, {16}, mode, false);
 
-  //Ratio 0.4, 3D
-  RunDropoutGradTest("TrainableDropoutGrad", 0.4f, {2, 4, 2}, false);
+    //Ratio 0.3, 2D
+    RunDropoutGradTest("TrainableDropoutGrad", 0.3f, {8, 2}, mode, false);
 
-  //default Ratio, 3D
-  RunDropoutGradTest("TrainableDropoutGrad", 0.5f, {2, 4, 2});
+    //Ratio 0.4, 3D
+    RunDropoutGradTest("TrainableDropoutGrad", 0.4f, {2, 4, 2}, mode, false);
+
+    //default Ratio, 3D
+    RunDropoutGradTest("TrainableDropoutGrad", 0.5f, {2, 4, 2}, mode);
+  }
 }
 
 TEST(TrainableDropoutGradTest, RatioLimit) {
-  RunDropoutGradTest("TrainableDropoutGrad", 0.0f, {16}, false);
+  std::vector<float> training_mode({true, false});
+  for (const auto& mode : training_mode) {
+    RunDropoutGradTest("TrainableDropoutGrad", 0.0f, {16}, mode, false);
+  }
 }
 
 }  // namespace test
