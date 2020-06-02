@@ -107,7 +107,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   
-  std::cout<<"Using Adasm for reduction."<<std::endl;
+  std::cout<<"Using Adasum for reduction."<<std::endl;
   // Set weight update to false for optimizer
   for (auto& opt_config : opt_configs_) {
     opt_config.update_weight = false;

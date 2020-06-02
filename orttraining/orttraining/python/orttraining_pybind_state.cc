@@ -152,7 +152,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
 
   // TODO reduction types
   if (parameters.use_adasum) {
-    config.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
+    config.optimizer_config.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
   }
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
