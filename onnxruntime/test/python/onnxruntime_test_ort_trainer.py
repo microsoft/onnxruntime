@@ -287,10 +287,11 @@ class MNISTWrapper():
         return model, model_desc
 
     def get_trainer(self, model, model_desc, device, onnx_opset_ver=12, frozen_weights=[],
-                    internal_loss_fn=False):
+                    internal_loss_fn=False, get_lr_this_step=None):
         loss_fn = MNISTWrapper.my_loss if not internal_loss_fn else None
         return ORTTrainer(model, loss_fn, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
-                                torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights)
+                                torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights,
+                                get_lr_this_step=get_lr_this_step)
 
 class TestOrtTrainer(unittest.TestCase):
 
@@ -492,15 +493,20 @@ class TestOrtTrainer(unittest.TestCase):
         train_loader, test_loader = mnist.get_loaders()
         model, model_desc = mnist.get_model_with_internal_loss()
 
-        trainer = mnist.get_trainer(model, model_desc, device, internal_loss_fn=True)
-        learningRate = 0.02
+
+        def get_lr_this_step(global_step):
+            learningRate = 0.02
+            return torch.tensor([learningRate])
+
+        trainer = mnist.get_trainer(model, model_desc, device, internal_loss_fn=True,
+                                    get_lr_this_step=get_lr_this_step)
         epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
         data = data.reshape(data.shape[0], -1)
 
-        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+        loss, _ = trainer.train_step(data, target)
 
         assert set([n.name for n in trainer.onnx_model_.graph.initializer]) \
             == set([n for n, t in model.named_parameters()])
