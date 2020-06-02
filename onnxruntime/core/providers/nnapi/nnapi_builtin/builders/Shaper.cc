@@ -1,5 +1,6 @@
 #include "helper.h"
 #include "Shaper.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
 using std::string;
 using std::vector;

@@ -66,7 +66,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   nnapi::ModelBuilder builder(model_proto);
   const auto supported_nodes_vector = builder.GetSupportedNodes();
-  LOGS_DEFAULT(INFO) << "Support vector size is " << supported_nodes_vector.size();
+
+  LOGS_DEFAULT(INFO) << "Support vectors size is " << supported_nodes_vector.size();
+  for (const auto& group : supported_nodes_vector)
+    LOGS_DEFAULT(INFO) << "Support vector size is " << group.size();
+
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (0)
@@ -239,14 +243,36 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         model->SetOutputBuffer(i, ort.GetTensorMutableData<float>(output_tensor));
       }
 
-      std::vector<float*> inputs;
+      std::vector<nnapi::InputOutputInfo> inputs;
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
+        const auto input_name = model->GetInputs()[i];
+        auto model_input_type = model->GetType(input_name);
+
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-        float* input = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
-        inputs.push_back(input);
+        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        std::vector<uint32_t> dimensions;
+        for (const auto& dim : tensor_shape) {
+          dimensions.push_back(static_cast<uint32_t>(dim));
+          LOGS_DEFAULT(INFO) << "dim is " << dim;
+        }
+
+        ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandByteSize() == 0,
+                    "dimanesions should match or model input dimension has 0");
+
+        // it is possible that the input has the detailed size while
+        // the model has an operand with unknown size, use the size
+        // of the actual input
+        android::nn::wrapper::OperandType type(model_input_type.type, dimensions,
+                                               model_input_type.operandType.scale,
+                                               model_input_type.operandType.zeroPoint);
+
+        void* inputBuffer = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+        inputs.push_back({inputBuffer, type});
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
         // Remove
-        LOGS_DEFAULT(INFO) << "i is " << i << " input[0] is " << input[0];
+        LOGS_DEFAULT(INFO) << "i is " << i << " input[0] is " << ((float*)inputBuffer)[0];
       }
 
       model->Predict(inputs);

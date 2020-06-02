@@ -26,7 +26,9 @@ std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
 #endif
 
   const auto& op = node.op_type();
-  std::map<std::string, int> supported_ops{{"Add", 27}};
+  std::map<std::string, int>
+      supported_ops{{"Add", 27},
+                    {"Relu", 27}};
 
   if (supported_ops.find(op) == supported_ops.end()) {
     LOGI("Unsupported operator %s", op.c_str());
@@ -149,43 +151,7 @@ void ModelBuilder::addInitializers() {
   }
 }
 
-static size_t GetBytesNumFromOperandType(const OperandType& operand_type) {
-  size_t element_size;
-  switch (operand_type.type) {
-    case Type::TENSOR_BOOL8:
-      element_size = 1;
-      break;
-    case Type::TENSOR_FLOAT16:
-      element_size = 2;
-      break;
-    case Type::TENSOR_FLOAT32:
-    case Type::FLOAT32:
-      element_size = 4;
-      break;
-    case Type::TENSOR_INT32:
-      element_size = 4;
-      break;
-    case Type::TENSOR_QUANT8_SYMM_PER_CHANNEL:
-      element_size = 1;
-      break;
-    case Type::TENSOR_QUANT8_ASYMM:
-      element_size = 1;
-      break;
-    case Type::TENSOR_QUANT16_SYMM:
-      element_size = 2;
-      break;
-    case Type::TENSOR_QUANT16_ASYMM:
-      element_size = 2;
-      break;
-    default:
-      throw std::invalid_argument("Wrong type: " +
-                                  typeToStr(operand_type.type));
-  }
-  return Product(operand_type.dimensions) * element_size;
-}
-
 constexpr size_t kDefaultByteAlignmentForNNAPI = 16;
-
 static size_t getPaddedByteSize(size_t size) {
   if (size_t r = size % kDefaultByteAlignmentForNNAPI)
     return size + kDefaultByteAlignmentForNNAPI - r;
@@ -202,7 +168,7 @@ void ModelBuilder::copyInitializersData() {
     const auto& name = tensor.name();
     const auto& type(operand_types_.at(name));
     const Index index = operand_indexes_.at(name);
-    const size_t size = GetBytesNumFromOperandType(type);
+    const size_t size = type.GetOperandByteSize();
     const size_t paddedSize = getPaddedByteSize(size);
     sizeAll += paddedSize;
     initializers.push_back(std::make_tuple(index, size, paddedSize));
@@ -272,11 +238,12 @@ void ModelBuilder::registerModelInputs() {
       }
     }
 
-    auto index = AddNewOperand({type, shape});
-    RegisterOperand(name, index, {type, shape});
+    OperandType operand_type = {type, shape};
+    auto index = AddNewOperand(operand_type);
+    RegisterOperand(name, index, operand_type);
 
     input_index_vec_.push_back(index);
-    nnapi_model_->AddInput(name, shape);
+    nnapi_model_->AddInput(name, shape, operand_type);
   }
 }
 
@@ -289,7 +256,7 @@ void ModelBuilder::registerModelOutputs() {
     }
 
     output_index_vec_.push_back(operand_indexes_[name]);
-    nnapi_model_->AddOutput(name, shaper_[name]);
+    nnapi_model_->AddOutput(name, shaper_[name], operand_types_.at(name));
   }
 }
 
@@ -317,7 +284,7 @@ void ModelBuilder::addOperations() {
       const auto input2 = node.input(1);
       const auto output = node.output(0);
 
-      std::vector<uint32_t> input_indices;
+      IndexSeq input_indices;
       input_indices.push_back(operand_indexes_.at(input1));  // input 1
       input_indices.push_back(operand_indexes_.at(input2));  // input 2
       int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
@@ -329,6 +296,14 @@ void ModelBuilder::addOperations() {
       const OperandType output_operand_type = {operand_types_.at(input1).type, shaper_[output]};
       AddOperation(ANEURALNETWORKS_ADD, input_indices, {output}, {output_operand_type});
       //   AddLayerAdd(input1, input2, output);
+    } else if (op == "Relu") {
+      const auto input = node.input(0);
+      const auto output = node.output(0);
+      IndexSeq input_indices;
+      input_indices.push_back(operand_indexes_.at(input));
+      shaper_.Identity(input, output);
+      const OperandType output_operand_type = {operand_types_.at(input).type, shaper_[output]};
+      AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
     } else {
       throw std::invalid_argument("Unsupported operator " + op);
     }

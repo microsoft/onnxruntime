@@ -20,6 +20,13 @@
 #include <math.h>
 #include <string>
 #include <vector>
+#include <numeric>
+
+template <typename T>
+T Product(const std::vector<T>& v) {
+  return static_cast<T>(
+      accumulate(v.begin(), v.end(), 1, std::multiplies<T>()));
+}
 
 namespace android {
 namespace nn {
@@ -39,11 +46,13 @@ enum class Type {
   TENSOR_QUANT8_SYMM_PER_CHANNEL = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL,
   TENSOR_QUANT16_ASYMM = ANEURALNETWORKS_TENSOR_QUANT16_ASYMM,
 };
+
 enum class ExecutePreference {
   PREFER_LOW_POWER = ANEURALNETWORKS_PREFER_LOW_POWER,
   PREFER_FAST_SINGLE_ANSWER = ANEURALNETWORKS_PREFER_FAST_SINGLE_ANSWER,
   PREFER_SUSTAINED_SPEED = ANEURALNETWORKS_PREFER_SUSTAINED_SPEED
 };
+
 enum class Result {
   NO_ERROR = ANEURALNETWORKS_NO_ERROR,
   OUT_OF_MEMORY = ANEURALNETWORKS_OUT_OF_MEMORY,
@@ -95,16 +104,9 @@ struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
   std::vector<uint32_t> dimensions;
-  OperandType(Type type, std::vector<uint32_t> d = {}, float scale = 0.0f, int32_t zeroPoint = 0)
-      : type(type), dimensions(std::move(d)) {
-    operandType = {
-        .type = static_cast<int32_t>(type),
-        .dimensionCount = static_cast<uint32_t>(dimensions.size()),
-        .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
-        .scale = scale,
-        .zeroPoint = zeroPoint,
-    };
-  }
+  OperandType(Type type, std::vector<uint32_t> d = {}, float scale = 0.0f, int32_t zeroPoint = 0);
+  size_t GetElementByteSize() const;
+  size_t GetOperandByteSize() const;
 
   operator ANeuralNetworksOperandType() const { return operandType; }
 };

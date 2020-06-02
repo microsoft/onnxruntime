@@ -3,6 +3,7 @@
 
 #pragma once
 #include "builders/Shaper.h"
+#include "nnapi_lib/NeuralNetworksWrapper.h"
 
 struct ANeuralNetworksModel;
 struct ANeuralNetworksCompilation;
@@ -31,6 +32,11 @@ class NNMemory {
   ANeuralNetworksMemory* nn_memory_handle_{nullptr};
 };
 
+struct InputOutputInfo {
+  void* buffer{nullptr};
+  android::nn::wrapper::OperandType type;
+};
+
 class Model {
   friend class ModelBuilder;
 
@@ -38,24 +44,19 @@ class Model {
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
-  std::vector<std::string> GetInputs();
-  std::vector<std::string> GetOutputs();
+
+  const std::vector<std::string>& GetInputs() const;
+  const std::vector<std::string>& GetOutputs() const;
+  android::nn::wrapper::OperandType GetType(const std::string& name) const;
   Shaper::Shape GetShape(const std::string& name);
+
   void SetOutputBuffer(const int32_t index, float* buffer);
   void SetOutputBuffer(const int32_t index, uint8_t* buffer);
   void SetOutputBuffer(const int32_t index, char* buffer);
   void SetOutputBuffer(const int32_t index, void* buffer,
                        const size_t elemsize);
 
-  template <typename T>
-  void Predict(const std::vector<T>& input);
-  template <typename T>
-  void Predict(const std::vector<std::vector<T>>& inputs);
-  template <typename T>
-  void Predict(const T* input);
-  template <typename T>
-  void Predict(const std::vector<T*>& inputs);
-  void Predict(const std::vector<float*>& inputs);
+  void Predict(const std::vector<InputOutputInfo>& inputs);
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -68,16 +69,16 @@ class Model {
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
+  std::map<std::string, android::nn::wrapper::OperandType> operand_types_;
   Shaper shaper_;
 
   Model();
-  void AddInput(const std::string& name, const Shaper::Shape& shape);
-  void AddOutput(const std::string& name, const Shaper::Shape& shape);
+  void AddInput(const std::string& name, const Shaper::Shape& shape,
+                const android::nn::wrapper::OperandType& operand_type);
+  void AddOutput(const std::string& name, const Shaper::Shape& shape,
+                 const android::nn::wrapper::OperandType& operand_type);
 
-  void SetInputBuffer(const int32_t index, const float* buffer);
-  void SetInputBuffer(const int32_t index, const uint8_t* buffer);
-  void SetInputBuffer(const int32_t index, const void* buffer,
-                      const size_t elemsize);
+  void SetInputBuffer(const int32_t index, const InputOutputInfo& input);
   void PrepareForExecution();
   void ResetExecution();
   void PredictAfterSetInputBuffer();
