@@ -14,69 +14,6 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-// A helper function to compute qkv_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
-template <typename T>
-void GenerateQKV(T* Q, T* K, T* V,
-                 const T* input_data,
-                 const T* weights_data,
-                 const T* bias_data,
-                 int batch_size,
-                 int sequence_length,
-                 int head_size,
-                 int num_heads,
-                 int hidden_size,
-                 ThreadPool* tp) {
-  T* QKV[3] = {Q, K, V};
-
-  {
-    const int loop_len = 3 * batch_size * num_heads;
-
-    const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(hidden_size);
-    ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const int batch_index = static_cast<int>((i / 3) / num_heads);
-        const int head_index = static_cast<int>((i / 3) % num_heads);
-        const int qkv_index = static_cast<int>(i % 3);
-
-        int input_offset = batch_index * sequence_length * hidden_size;
-        int weights_offset = qkv_index * hidden_size + head_index * head_size;
-        T* qkv_dest = QKV[qkv_index];
-        int qkv_offset = (batch_index * num_heads + head_index) * (sequence_length * head_size);
-
-        // broadcast 3NH -> (3.B.N.S.H)
-        const T* broadcast_data_src = bias_data + weights_offset;
-        T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
-        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
-          broadcast_data_dest += head_size;
-        }
-
-        //                   original           transposed            iteration
-        // A: input          (BxSxNxH)          (B.)S x NH            S x NH
-        // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
-        // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
-
-        math::GemmEx<float, ThreadPool>(CblasNoTrans,                   // TransA = no
-                                        CblasNoTrans,                   // TransB = no
-                                        sequence_length,                // M      = S
-                                        head_size,                      // N      = H
-                                        hidden_size,                    // K      = NH
-                                        1.0f,                           // alpha
-                                        input_data + input_offset,      // A
-                                        hidden_size,                    // lda    = NH
-                                        weights_data + weights_offset,  // B
-                                        3 * hidden_size,                // ldb    = 3NH
-                                        1.0f,                           // beta
-                                        qkv_dest + qkv_offset,          // C
-                                        head_size,                      // ldc
-                                        nullptr                         // use single-thread
-                                        );
-      }
-    });
-  }
-}
-
 template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
