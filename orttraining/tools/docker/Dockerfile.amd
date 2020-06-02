@@ -93,4 +93,6 @@ WORKDIR $BERT_DIR
 ADD script $BERT_DIR/script
 RUN chmod a+x $BERT_DIR/script/run_perf.sh
 
-WORKDIR $WORK_DIR
+ENV LOG_DIR=/data/wezhan/logs
+
+WORKDIR $BERT_DIR/
