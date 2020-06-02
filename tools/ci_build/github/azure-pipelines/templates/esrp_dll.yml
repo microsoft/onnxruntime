@@ -2,6 +2,7 @@ parameters:
   FolderPath: ''
   DisplayName: ''
   DoEsrp: 'false'
+  Pattern: '*.dll'
 
 steps:
 - ${{ if eq(parameters['DoEsrp'], 'true') }}:
@@ -10,7 +11,7 @@ steps:
     inputs:
       ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
       FolderPath: ${{ parameters.FolderPath }}
-      Pattern: '*.dll'
+      Pattern: ${{ parameters.Pattern }}
       signConfigType: inlineSignParams
       inlineOperation: |
        [
