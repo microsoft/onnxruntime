@@ -1366,11 +1366,11 @@ class ONNXQuantizer:
         inputs.extend([node.input[3]])
         inputs.extend(zero_point_names)
 
-        numOfHeads = 12
-        for attr in node.attribute:
-            if attr.name == "num_heads":
-                numOfHeads = onnx.helper.get_attribute_value(attr)
-        qattention_node = onnx.helper.make_node("QAttention", inputs, node.output, qattention_name, domain="com.microsoft", num_heads=numOfHeads)
+        kwargs = {}
+        for attribute in node.attribute:
+            kwargs.update(_attribute_to_kwarg(attribute))
+        kwargs["domain"]=ms_domain
+        qattention_node = onnx.helper.make_node("QAttention", inputs, node.output, qattention_name, **kwargs)
         nodes.append(qattention_node)
 
         return nodes
