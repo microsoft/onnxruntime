@@ -149,3 +149,11 @@ ORT_API_STATUS_IMPL(OrtApis::ExecutableKernelContext_Compute, _Inout_ OrtExecuta
     API_IMPL_END
 }
 
+ORT_API(void, OrtApis::ReleaseKernelSession, _Frees_ptr_opt_ OrtKernelSession* value) {
+    delete reinterpret_cast<KernelSessionImpl*>(value);
+}
+
+ORT_API(void, OrtApis::ReleaseExecutableKernelContext, _Frees_ptr_opt_ OrtExecutableKernelContext * value) {
+    delete reinterpret_cast<ExecutableKernelContextImpl*>(value);
+}
+

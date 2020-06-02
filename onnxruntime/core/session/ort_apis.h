@@ -224,4 +224,6 @@ ORT_API_STATUS_IMPL(ExecutableKernelContext_SetOutput,
 
 ORT_API_STATUS_IMPL(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
 
+ORT_API(void, ReleaseKernelSession, _Frees_ptr_opt_ OrtKernelSession*);
+ORT_API(void, ReleaseExecutableKernelContext, _Frees_ptr_opt_ OrtExecutableKernelContext*);
 }  // namespace OrtApis

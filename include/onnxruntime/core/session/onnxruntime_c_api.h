@@ -847,7 +847,8 @@ struct OrtApi {
   // TODO check what happens if some inputs aren't set
   ORT_API2_STATUS(ExecutableKernelContext_Compute, _Inout_ OrtExecutableKernelContext* context);
 
-  // TODO Add release API methods
+  ORT_CLASS_RELEASE(KernelSession);
+  ORT_CLASS_RELEASE(ExecutableKernelContext);
 };
 
 /*
