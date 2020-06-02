@@ -147,12 +147,12 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
-    config.optimizer_config = opt;
-  }
+    // TODO reduction types
+    if (parameters.use_adasum) {
+      opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
+    }
 
-  // TODO reduction types
-  if (parameters.use_adasum) {
-    config.optimizer_config.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
+    config.optimizer_config = opt;
   }
 
   training::TrainingSession::TrainingConfigurationResult config_result{};
