@@ -35,7 +35,7 @@ class ExecutionFrameTest : public ::testing::Test {
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
-  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);

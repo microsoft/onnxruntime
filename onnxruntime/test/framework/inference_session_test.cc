@@ -1065,7 +1065,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -1160,7 +1160,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   // the then-branch subgraph of main graph's If node 'graph_0__if_0'
   ONNX_NAMESPACE::GraphProto graph_0__if_0__then;
   {
-    onnxruntime::Model model("graph_0__if_0__then__graph", false, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("graph_0__if_0__then__graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
     {
       ONNX_NAMESPACE::TypeProto float_tensor;
@@ -1193,7 +1193,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
     float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("__iii_then__unknown");
 
-    onnxruntime::Model model("graph_if_else___then", false, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("graph_if_else___then", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
 
     // implicit inputs
@@ -1220,7 +1220,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   // the else-branch subgraph of main graph's If node 'graph_0__if_0'
   ONNX_NAMESPACE::GraphProto graph_0__if_0__else;
   {
-    onnxruntime::Model model("graph_if_else", false, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("graph_if_else", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
     {
       ONNX_NAMESPACE::TypeProto float_tensor;
@@ -1288,7 +1288,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   }
 
   // the main graph 'graph_0'
-  onnxruntime::Model model("graph_0", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("graph_0", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   ONNX_NAMESPACE::TypeProto float_tensor;
@@ -1384,7 +1384,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
     float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("__graph_0__if_0__thenelse__unknown");
 
-    onnxruntime::Model model("graph_0__if_0__thenelse__graph", false, DefaultLoggingManager().DefaultLogger());
+    onnxruntime::Model model("graph_0__if_0__thenelse__graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
 
     // implicit inputs
@@ -1409,7 +1409,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   }
 
   // the main graph 'graph_0'
-  onnxruntime::Model model("graph_0", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("graph_0", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   ONNX_NAMESPACE::TypeProto float_tensor_input;
@@ -1517,7 +1517,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 }
 
 TEST(ExecutionProviderTest, FunctionInlineTest) {
-  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
 
   ONNX_NAMESPACE::FunctionProto fc_proto;
   fc_proto.set_name("FC");

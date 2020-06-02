@@ -26,7 +26,7 @@ namespace test {
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
 TEST(OptimizerTest, Basic) {
-  Model model("OptimizerBasic", false, DefaultLoggingManager().DefaultLogger());
+  Model model("OptimizerBasic", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   const int tensor_dim = 10;
