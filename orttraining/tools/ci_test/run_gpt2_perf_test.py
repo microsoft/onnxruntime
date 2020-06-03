@@ -44,7 +44,7 @@ def main():
             "--train_batch_size", str(c.batch_size),
             "--mode", "train",
             "--max_seq_length", str(c.max_seq_length),
-            "--num_train_steps", "200",
+            "--num_train_steps", "640",
             "--gradient_accumulation_steps", "1",
             "--perf_output_dir", os.path.join(SCRIPT_DIR, "results"), 
         ]

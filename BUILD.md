@@ -19,6 +19,7 @@
     * [Nuphar Model Compiler](#Nuphar)
     * [DirectML](#DirectML)
     * [ARM Compute Library](#ARM-Compute-Library)
+    * [ArmNN](#ArmNN)
     * [Rockchip RKNPU](#RKNPU)
     * [Xilinx Vitis-AI](#Vitis-AI)
   * Options
@@ -124,7 +125,7 @@ GCC 4.x and below are not supported.
 |**C# and C packages**|--build_csharp||
 |**WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library|
 |**Java**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`<br>Compiling the Java API requires [gradle](https://gradle.org) v6.1+ to be installed in addition to the usual requirements.|
-|**Node.js**|--build_nodejs|Implies `--build_shared_lib`<br>`npm install` to pull dev dependencies<br>`npm run build` to build binding<br>`npm test` to run tests|
+|**Node.js**|--build_nodejs|Build Node.js binding. Implies `--build_shared_lib`|
 
 ---
 
@@ -487,6 +488,31 @@ export LD_LIBRARY_PATH=~/ComputeLibrary/build/
 3. Build onnxruntime with --use_acl flag
 ```
 ./build.sh --use_acl
+```
+
+---
+
+### ArmNN
+See more information on the ArmNN Execution Provider [here](./docs/execution_providers/ArmNN-ExecutionProvider.md).
+
+#### Prerequisites
+* Supported backend: i.MX8QM Armv8 CPUs
+* Supported BSP: i.MX8QM BSP
+  * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
+* Set up the build environment
+```
+source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
+alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
+```
+* See [Build ARM](#ARM) below for information on building for ARM devices
+
+#### Build Instructions
+```
+./build.sh --use_armnn
+```
+The Relu operator is set by default to use the CPU execution provider for better performance. To use the ArmNN implementation build with --armnn_relu flag
+```
+./build.sh --use_armnn --armnn_relu
 ```
 
 ---

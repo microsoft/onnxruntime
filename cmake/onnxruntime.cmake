@@ -82,11 +82,13 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     ${onnxruntime_winml}
     onnxruntime_optimizer
     onnxruntime_providers

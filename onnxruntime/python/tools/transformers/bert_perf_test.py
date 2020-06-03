@@ -52,7 +52,7 @@ class TestSetting:
 
     def check(self, intra_op_threads, omp_threads, omp_policy) -> bool:
         if intra_op_threads is None:
-            if self.intra_op_num_threads > 0:
+            if self.intra_op_num_threads is not None and self.intra_op_num_threads > 0:
                 return False
         else:
             assert intra_op_threads > 0
@@ -60,7 +60,7 @@ class TestSetting:
                 return False
 
         if omp_threads is None:
-            if self.omp_num_threads > 0:
+            if self.omp_num_threads is not None and self.omp_num_threads > 0:
                 return False
         else:
             assert omp_threads > 0
@@ -77,9 +77,9 @@ class TestSetting:
 @dataclass
 class ModelSetting:
     model_path: str
-    input_ids: str
-    segment_ids: str
-    input_mask: str
+    input_ids_name: str
+    segment_ids_name: str
+    input_mask_name: str
     opt_level: int
 
 
@@ -287,8 +287,8 @@ def run_perf_tests(model_setting, test_setting, perf_results, test_all, all_inpu
     if test_setting.use_gpu and not test_all:
         return
 
-    for intra_op_num_threads in candidates:
-        for omp_num_threads in candidates:
+    for intra_op_num_threads in candidate_threads:
+        for omp_num_threads in candidate_threads:
             # skip settings that are very slow
             if intra_op_num_threads == 1 and omp_num_threads == 1 and logical_cores != 1:
                 continue
@@ -311,8 +311,8 @@ def run_perf_tests(model_setting, test_setting, perf_results, test_all, all_inpu
 
 
 def run_performance(model_setting, test_setting, perf_results, test_all):
-    input_ids, segment_ids, input_mask = get_bert_inputs(model_setting.model_path, model_setting.input_ids,
-                                                         model_setting.segment_ids, model_setting.input_mask)
+    input_ids, segment_ids, input_mask = get_bert_inputs(model_setting.model_path, model_setting.input_ids_name,
+                                                         model_setting.segment_ids_name, model_setting.input_mask_name)
 
     # Do not generate random mask for performance test.
     print(
@@ -403,15 +403,15 @@ def parse_arguments():
                         choices=['ACTIVE', 'PASSIVE'],
                         help="OMP_WAIT_POLICY")
 
-    parser.add_argument('--contiguous', required=False, type=bool, default=False, help="contiguous input")
+    parser.add_argument('--contiguous', required=False, action='store_true', help="contiguous input")
     parser.set_defaults(contiguous=False)
 
     parser.add_argument('--no_warmup', required=False, action='store_true', help="do not use one sample for warm-up.")
     parser.set_defaults(no_warmup=False)
 
-    parser.add_argument('--input_ids', required=False, type=str, default=None, help="input name for input ids")
-    parser.add_argument('--segment_ids', required=False, type=str, default=None, help="input name for segment ids")
-    parser.add_argument('--input_mask', required=False, type=str, default=None, help="input name for attention mask")
+    parser.add_argument('--input_ids_name', required=False, type=str, default=None, help="input name for input ids")
+    parser.add_argument('--segment_ids_name', required=False, type=str, default=None, help="input name for segment ids")
+    parser.add_argument('--input_mask_name', required=False, type=str, default=None, help="input name for attention mask")
 
     args = parser.parse_args()
     return args
@@ -430,7 +430,7 @@ def main():
     if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
         raise Exception("batch_size not in range [1, 128]")
 
-    model_setting = ModelSetting(args.model, args.input_ids, args.segment_ids, args.input_mask, args.opt_level)
+    model_setting = ModelSetting(args.model, args.input_ids_name, args.segment_ids_name, args.input_mask_name, args.opt_level)
 
     for batch_size in batch_size_set:
         test_setting = TestSetting(

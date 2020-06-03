@@ -187,3 +187,71 @@ graph = helper.make_graph(
 
 save_model(graph, 'reshape_fusion_with_graph_inputs.onnx')
 
+graph = helper.make_graph(
+    [ # nodes
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
+        
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
+        helper.make_node("Squeeze", ["shape2_out"], ["squeeze_out"], "squeeze"),
+        helper.make_node("Div", ["squeeze_out", "div_init"], ["div_out"], "div"),
+        helper.make_node("Unsqueeze", ["div_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+
+        helper.make_node("Concat", ["unsqueeze0_out", "unsqueeze1_out", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
+    ],
+    "Reshape_Fusion",  #name
+    [  # inputs
+        helper.make_tensor_value_info('SubgraphRoot', TensorProto.FLOAT, [10, 20, 30]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info('Result', TensorProto.FLOAT, [10, 20, 'unk']),
+    ],
+    [  # initializers
+        helper.make_tensor('indices0', TensorProto.INT64, [], [0]),
+        helper.make_tensor('indices1', TensorProto.INT64, [], [1]),
+        helper.make_tensor('div_init', TensorProto.INT64, [], [1]),
+    ]
+)
+
+save_model(graph, 'reshape_fusion_concat_subgraph.onnx')
+
+graph = helper.make_graph(
+    [ # nodes
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
+        
+        helper.make_node("Shape", ["unsqueeze0_out"], ["dummy_out"], "dummy"),
+        
+        helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
+        helper.make_node("Squeeze", ["shape2_out"], ["squeeze_out"], "squeeze"),
+        helper.make_node("Div", ["squeeze_out", "div_init"], ["div_out"], "div"),
+        helper.make_node("Unsqueeze", ["div_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+
+        helper.make_node("Concat", ["unsqueeze0_out", "unsqueeze1_out", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
+    ],
+    "Reshape_Fusion",  #name
+    [  # inputs
+        helper.make_tensor_value_info('SubgraphRoot', TensorProto.FLOAT, [10, 20, 30]),
+    ],
+    [  # outputs
+        helper.make_tensor_value_info('Result', TensorProto.FLOAT, [10, 20, 'unk']),
+        helper.make_tensor_value_info('div_out', TensorProto.INT64, []),
+    ],
+    [  # initializers
+        helper.make_tensor('indices0', TensorProto.INT64, [], [0]),
+        helper.make_tensor('indices1', TensorProto.INT64, [], [1]),
+        helper.make_tensor('div_init', TensorProto.INT64, [], [1]),
+    ]
+)
+
+save_model(graph, 'reshape_fusion_concat_subgraph_multiple_outputs.onnx')

@@ -67,6 +67,10 @@ if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
 endif()
+if(onnxruntime_USE_MIGRAPHX)
+  set(PROVIDERS_MIGRAPHX onnxruntime_providers_migraphx)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
+endif()
 if(onnxruntime_USE_OPENVINO)
   set(PROVIDERS_OPENVINO onnxruntime_providers_openvino)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
@@ -78,6 +82,10 @@ endif()
 if(onnxruntime_USE_ACL)
   set(PROVIDERS_ACL onnxruntime_providers_acl)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
+endif()
+if(onnxruntime_USE_ARMNN)
+  set(PROVIDERS_ARMNN onnxruntime_providers_armnn)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
 endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -607,6 +615,32 @@ if (onnxruntime_USE_DML)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  # Add search paths for default rocm installation
+  list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hcc /opt/rocm/hip /opt/rocm)
+
+  find_package(hip)
+  find_package(migraphx PATHS ${AMD_MIGRAPHX_HOME})
+
+  set(migraphx_libs migraphx::c hip::host)
+
+  file(GLOB_RECURSE onnxruntime_providers_migraphx_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
+  add_library(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
+  target_link_libraries(onnxruntime_providers_migraphx PRIVATE ${migraphx_libs})
+  set_target_properties(onnxruntime_providers_migraphx PROPERTIES FOLDER "ONNXRuntime")
+  target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
+  target_include_directories(onnxruntime_providers_migraphx PRIVATE ${ONNXRUNTIME_ROOT})
+  onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_common onnxruntime_framework onnx)
+  add_dependencies(onnxruntime_providers_migraphx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/migraphx  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_migraphx PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
 if (onnxruntime_USE_ACL)
   add_definitions(-DUSE_ACL=1)
   file(GLOB_RECURSE onnxruntime_providers_acl_cc_srcs
@@ -623,4 +657,21 @@ if (onnxruntime_USE_ACL)
   target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_ARMNN)
+  add_definitions(-DUSE_ARMNN=1)
+  file(GLOB_RECURSE onnxruntime_providers_armnn_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_armnn_cc_srcs})
+  add_library(onnxruntime_providers_armnn ${onnxruntime_providers_armnn_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ARMNN_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
 endif()
