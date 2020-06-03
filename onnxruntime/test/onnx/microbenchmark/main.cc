@@ -9,12 +9,14 @@
 #include <core/providers/cpu/cpu_execution_provider.h>
 #include "core/session/environment.h"
 #include <core/common/logging/sinks/clog_sink.h>
+#include <core/platform/Barrier.h>
 #include <core/graph/model.h>
 #include <core/graph/graph.h>
 #include <core/framework/kernel_def_builder.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/session/ort_env.h>
+#include <core/util/thread_utils.h>
 
 #include <unordered_map>
 
@@ -69,12 +71,6 @@ BENCHMARK(BM_ResolveGraph);
     }                                                        \
   } while (0);
 
-static void BM_CreateThreadPool(benchmark::State& state) {
-  for (auto _ : state) {
-    onnxruntime::concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR(""), 48, true);
-  }
-}
-BENCHMARK(BM_CreateThreadPool)->UseRealTime()->Unit(benchmark::TimeUnit::kMillisecond);
 
 int main(int argc, char** argv) {
   ::benchmark::Initialize(&argc, argv);

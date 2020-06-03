@@ -5,14 +5,15 @@
 
 import argparse
 import mysql.connector
-import xml.etree.ElementTree as ET
 import sys
 import os
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime binary size uploader for dashboard")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
-    parser.add_argument("--build_project", default='Lotus', choices=['Lotus','onnxruntime'], help="Lotus or onnxruntime build project, to construct the build URL")
+    parser.add_argument("--build_project", default='Lotus', choices=['Lotus', 'onnxruntime'],
+                        help="Lotus or onnxruntime build project, to construct the build URL")
     parser.add_argument("--build_id", help="Build Id")
     parser.add_argument("--size_data_file", help="Path to file that contains the binary size data")
 
@@ -22,6 +23,8 @@ def parse_arguments():
 # CSV fields are:
 #    os,arch,build_config,size
 # No empty line or space between fields expected
+
+
 def get_binary_sizes(size_data_file):
     binary_size = []
     with open(size_data_file, 'r') as f:
@@ -30,10 +33,10 @@ def get_binary_sizes(size_data_file):
         while line:
             line = f.readline()
             if not line:
-                break;    
-            linedata = line.strip().split(',') 
+                break
+            linedata = line.strip().split(',')
             tablerow = {}
-            for i in range(0,len(headers)):
+            for i in range(0, len(headers)):
                 if headers[i] == 'size':
                     tablerow[headers[i]] = int(linedata[i])
                 else:
@@ -46,25 +49,25 @@ def write_to_db(binary_size_data, args):
     # connect to database
 
     cnx = mysql.connector.connect(
-        user='ort@onnxruntimedashboard', 
-        password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'), 
-        host='onnxruntimedashboard.mysql.database.azure.com', 
+        user='ort@onnxruntimedashboard',
+        password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD'),
+        host='onnxruntimedashboard.mysql.database.azure.com',
         database='onnxruntime')
 
     try:
         cursor = cnx.cursor()
 
-        #insert current records
+        # insert current records
         for row in binary_size_data:
             insert_query = ('INSERT INTO onnxruntime.binary_size '
-                '(build_time, build_project, build_id, commit_id, os, arch, build_config, size) '
-                'VALUES (Now(), "%s", "%s", "%s", "%s", "%s", "%s", %d) '
-                'ON DUPLICATE KEY UPDATE '
-                'build_time=Now(), build_project="%s", build_id="%s", size=%d;'
-            ) % (
+                            '(build_time, build_project, build_id, commit_id, os, arch, build_config, size) '
+                            'VALUES (Now(), "%s", "%s", "%s", "%s", "%s", "%s", %d) '
+                            'ON DUPLICATE KEY UPDATE '
+                            'build_time=Now(), build_project="%s", build_id="%s", size=%d;'
+                            ) % (
                 args.build_project,
                 args.build_id,
-                args.commit_hash, 
+                args.commit_hash,
                 row['os'],
                 row['arch'],
                 row['build_config'],
@@ -74,7 +77,7 @@ def write_to_db(binary_size_data, args):
                 args.build_id,
                 row['size']
             )
-            cursor.execute(insert_query) 
+            cursor.execute(insert_query)
 
         cnx.commit()
 
@@ -82,7 +85,7 @@ def write_to_db(binary_size_data, args):
         # cursor.execute('select * from onnxruntime.binary_size')
         # for r in cursor:
         #     print(r)
-            
+
         cursor.close()
         cnx.close()
     except BaseException as e:
@@ -98,6 +101,3 @@ if __name__ == "__main__":
     except BaseException as e:
         print(str(e))
         sys.exit(1)
-
-
-

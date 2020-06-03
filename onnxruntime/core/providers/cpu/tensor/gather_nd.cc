@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gather_nd.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -44,7 +45,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <typename Tind>
 Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor,
-                                       const int64_t bytes_per_value, Prepare& p) const {
+                                       const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const {
   const auto& indices_shape = indices_tensor->Shape();
   if (indices_shape.NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
@@ -57,9 +58,6 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims_);
   const auto num_slices_per_batch = num_slices / num_batches;
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
   for (int64_t i = 0; i < num_slice_dims; ++i) {
     sizes_from_slice_dims[i] = input_shape.SizeFromDimension(batch_dims_ + i + 1);
   }
@@ -71,11 +69,8 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   const auto* indices_data = indices_tensor->Data<Tind>();
   p.slice_offsets.assign(num_slices, 0LL);
 
-// Compute the element_offset
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+  // Compute the element_offset
+  auto lambda = [&](int64_t slice_idx) {
     const size_t batch_idx = slice_idx / num_slices_per_batch;
     const size_t input_base_offset = batch_idx * input_batch_stride;
 
@@ -95,7 +90,13 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
     }
 
     p.slice_offsets[slice_idx] = input_base_offset + relative_slice_offset;
-  }
+  };
+  concurrency::ThreadPool::TryParallelFor(tp, num_slices, static_cast<double>(num_slice_dims),
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                            for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+                                              lambda(slice_idx);
+                                            }
+                                          });
 
   return err_index == 0 ? Status::OK()
                         : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
@@ -103,10 +104,12 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape& input_shape,
                                                          const Tensor* indices_tensor,
-                                                         const int64_t bytes_per_value, Prepare& p) const;
+                                                         const int64_t bytes_per_value, Prepare& p,
+                                                         concurrency::ThreadPool*) const;
 template Status GatherNDBase::PrepareForCompute<int64_t>(const TensorShape& input_shape,
                                                          const Tensor* indices_tensor,
-                                                         const int64_t bytes_per_value, Prepare& p) const;
+                                                         const int64_t bytes_per_value, Prepare& p,
+                                                         concurrency::ThreadPool*) const;
 
 Status GatherND::Compute(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
@@ -130,6 +133,7 @@ Status GatherND::Compute(OpKernelContext* context) const {
   auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
 
   Prepare p;
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   if (input_tensor->IsDataTypeString()) {
     p.input_str_base = static_cast<const std::string*>(input_tensor->DataRaw());
     p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
@@ -141,38 +145,43 @@ Status GatherND::Compute(OpKernelContext* context) const {
   auto bytes_per_value = input_tensor->DataType()->Size();
 
   if (indices_tensor->IsDataType<int32_t>()) {
-    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p);
+    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
   } else if (indices_tensor->IsDataType<int64_t>()) {
-    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p);
+    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor data type not supported");
   }
 
-  return nullptr == p.input_str_base ? GatherNumber(p) : GatherString(p);
+  return nullptr == p.input_str_base ? GatherNumber(p, tp) : GatherString(p, tp);
 }
 
-Status GatherND::GatherNumber(const Prepare& p) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t slice_idx = 0; slice_idx < static_cast<int64_t>(p.slice_offsets.size()); ++slice_idx) {
+Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
+  auto lambda = [&](int64_t slice_idx) {
     memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[slice_idx] * p.element_bytes,
            p.bytes_per_slice);
-  }
-
+  };
+  concurrency::ThreadPool::TryParallelFor(tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                            for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+                                              lambda(slice_idx);
+                                            }
+                                          });
   return Status::OK();
 }
 
-Status GatherND::GatherString(const Prepare& p) const {
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-  for (int64_t slice_idx = 0; slice_idx < static_cast<int64_t>(p.slice_offsets.size()); ++slice_idx) {
+Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) const {
+  auto lambda = [&](int64_t slice_idx) {
     const int64_t slice_base_offset = slice_idx * p.element_count_per_slice;
     for (int64_t j = 0; j < static_cast<int64_t>(p.element_count_per_slice); ++j) {
       p.output_str_base[slice_base_offset + j] = p.input_str_base[p.slice_offsets[slice_idx] + j];
     }
-  }
+  };
+  concurrency::ThreadPool::TryParallelFor(tp, p.slice_offsets.size(), static_cast<double>(p.element_count_per_slice),
+                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                            for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
+                                              lambda(slice_idx);
+                                            }
+                                          });
 
   return Status::OK();
 }

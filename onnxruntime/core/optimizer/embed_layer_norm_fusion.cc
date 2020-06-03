@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,7 +13,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-
 // Add a Cast to convert Input from int64 to int32.
 static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
@@ -298,7 +298,7 @@ static bool MatchPositionEmbeddingSubgraph1(
        |                    |
     Gather (indice=0)    Gather (indice=1)--+
        |                    |               |
-    Unsqueeze            Unsqueeze         Cast
+    Unsqueeze            Unsqueeze         Cast(to=7)  (Cast is optional)
          \             /                    |
           \           /                Range(start=0, delta=1)
            \         /                      |
@@ -331,12 +331,23 @@ static bool MatchPositionEmbeddingSubgraph2(
       {0, 1, "Cast", {9}, kOnnxDomain},
       {0, 0, "Gather", {11}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
+
   if (!graph_utils::FindPath(position_gather_node, true, position_embedding_path_symbolic, edges, logger)) {
-    DEBUG_LOG("Failed to find path 1.");
-    return false;
+    // Cast node might be removed by other optimizer. Here we check a pattern without Cast node.
+    std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_no_cast{
+        {0, 1, "Expand", {8}, kOnnxDomain},
+        {0, 0, "Unsqueeze", {11}, kOnnxDomain},
+        {0, 0, "Range", {11}, kOnnxDomain},
+        {0, 1, "Gather", {11}, kOnnxDomain}};
+    if (!graph_utils::FindPath(position_gather_node, true, position_embedding_path_no_cast, edges, logger)) {
+      DEBUG_LOG("Failed to find path 1.");
+      return false;
+    }
   }
+
+  size_t last_edge = edges.size() - 1;
   for (size_t i = 0; i < edges.size(); i++) {
-    if (edges[i]->GetNode().GetOutputEdgesCount() != (i == 4 ? 2u : 1u)) {
+    if (edges[i]->GetNode().GetOutputEdgesCount() != (i == last_edge ? 2u : 1u)) {
       DEBUG_LOG("Output edge count not expected for nodes in path 1.");
       return false;
     }
@@ -344,7 +355,7 @@ static bool MatchPositionEmbeddingSubgraph2(
 
   Node& expand_node = *graph.GetNode(edges[0]->GetNode().Index());
   Node& range_node = *graph.GetNode(edges[2]->GetNode().Index());
-  Node& gather_node_1 = *graph.GetNode(edges[4]->GetNode().Index());
+  Node& gather_node_1 = *graph.GetNode(edges[last_edge]->GetNode().Index());
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(range_node.InputDefs()[0]), int64_t(0), true)) {
     DEBUG_LOG("The first input of Range should be a constant with value 0.");
     return false;
@@ -698,6 +709,16 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                                 embed_layer_norm_input_defs,
                                                 {layer_norm_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
                                                 {}, kMSDomain);
+
+    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
+    // will be used.
+    NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
+    NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
+    if (epsilon != ln_attrs.end()) {
+      embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    } else {
+      embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
+    }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());

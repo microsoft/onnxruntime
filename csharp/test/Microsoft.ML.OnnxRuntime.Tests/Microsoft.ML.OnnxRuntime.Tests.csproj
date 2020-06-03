@@ -17,6 +17,7 @@
     <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
   </PropertyGroup>
 
@@ -45,8 +46,8 @@
   </ItemGroup> 
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NETCore.Targets" Version="2.1.0"/>
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.2"/>
+    <PackageReference Include="Microsoft.NETCore.Targets" Version="2.1.0" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.5.2" />
     <PackageReference Include="Google.Protobuf" Version="3.11.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
     <PackageReference Include="xunit" Version="2.4.1" />

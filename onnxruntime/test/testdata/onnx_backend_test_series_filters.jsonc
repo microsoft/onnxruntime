@@ -1,0 +1,169 @@
+{
+    // Tests that are failing temporarily and should be fixed
+    "current_failing_tests": [
+        "^test_adagrad",
+        "^test_adagrad_multiple",
+        "^test_batchnorm_epsilon_old",
+        "^test_batchnorm_epsilon_training_mode",
+        "^test_batchnorm_example_old",
+        "^test_batchnorm_example_training_mode",
+        "^test_gathernd_example_int32_batch_dim1",
+        "^test_max_int16",
+        "^test_max_int8",
+        "^test_max_uint16",
+        "^test_max_uint8",
+        "^test_min_int16",
+        "^test_min_int8",
+        "^test_min_uint16",
+        "^test_min_uint8",
+        "^test_momentum",
+        "^test_momentum_multiple",
+        "^test_nesterov_momentum",
+        "^test_pow_types_float32_uint32",
+        "^test_pow_types_float32_uint64",
+        "^test_gradient_of_add_and_mul",
+        "^test_gradient_of_add",
+        "^test_batchnorm_example_training_mode",
+        "^test_batchnorm_epsilon_training_mode",
+        "^test_maxunpool_export_with_output_shape", // result mismatch
+        "^test_resize_downsample_scales_cubic_align_corners", // results mismatch with onnx tests
+        "^test_resize_downsample_scales_linear_align_corners", // results mismatch with onnx tests
+        "^test_adam", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
+        "^test_adam_multiple", // NOT_IMPLEMENTED : Could not find an implementation for the node Adam(1)
+        "^test_training_dropout.*" // NOT_IMPLEMENTED : Could not find an implementation for the node Dropout(12) (Temporary, subsequent PR will add this -- we need training_mode change in the kernel)
+    ],
+    "current_failing_tests_x86": [
+        "^test_vgg19",
+        "^test_zfnet512",
+        "^test_bvlc_alexnet"
+    ],
+    "current_failing_tests_NGRAPH": [
+        "^test_clip.*",
+        "^test_qlinearconv",
+        "^test_depthtospace_crd.*",
+        "^test_argmax_negative_axis.*",
+        "^test_argmin_negative_axis.*",
+        "^test_hardmax_negative_axis.*",
+        "^test_gemm_default_no_bias",
+        "^test_flatten_negative_axis.*",
+        "^test_reduce_[a-z1-9_]*_negative_axes_.*",
+        "test_squeeze_negative_axes",
+        "test_unsqueeze_negative_axes",
+        "test_constant_pad",
+        "test_edge_pad",
+        "test_reflect_pad",
+        "^test_split_zero_size_splits_.*",
+        "^test_argmax_keepdims_example_select_last_index",
+        "^test_argmax_no_keepdims_example_select_last_index",
+        "^test_argmin_no_keepdims_example_select_last_index",
+        "^test_argmin_keepdims_example_select_last_index",
+        "^test_pow_types_float32_int32_*",
+        "^test_pow_types_float32_int64_*",
+        "^test_pow_types_float_*",
+        "^test_pow_types_int32_float32_*",
+        "^test_pow_types_int_*",
+        "^test_pow_types_int64_float32_*",
+        "^test_dropout_default_mask_*", // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size() 
+        "^test_dropout_default_mask_ratio_*" // 11 : EP_FAIL : Non-zero status code returned while running NGRAPHCustomOp_100 node. Name:'NGRAPHExecutionProvider_NGRAPHCustomOp_100_0' Status Message: [NGRAPHCustomOp] - NGRAPHExecutionProvider_NGRAPHCustomOp_100_0 - Exception while importing model to nGraph: deque::_M_range_check: __n (which is 0)>= this->size() 
+    ],
+    "current_failing_tests_DNNL": [
+        "^test_range_float_type_positive_delta_expanded",
+        "^test_range_int32_type_negative_delta_expanded",
+        "^test_averagepool_2d_ceil",
+        "^test_maxpool_2d_ceil",
+        "^test_maxpool_2d_dilations",
+        "^test_maxpool_2d_uint8",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+    ],
+    "current_failing_tests_NNAPI": [
+        "^test_maxpool_2d_uint8",
+        "^test_negative_log_likelihood.*",
+        "^test_softmax_cross_entropy.*"
+    ],
+    "current_failing_tests_OPENVINO_GPU": [
+        "^test_div",
+        // temporarily exclude vgg19 test which comsumes too much memory, run out of memory on Upsquared device.
+        // single test pass for vgg19, need furture investigation
+        "^test_vgg19",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+    ],
+    "current_failing_tests_OPENVINO_GPU_FP32": [
+        "^test_operator_permute2",
+        "^test_operator_repeat",
+        "^test_operator_repeat_dim_overflow",
+        "^test_add_bcast",
+        "^test_batchnorm_epsilon",
+        "^test_div_bcast",
+        "^test_mul_bcast",
+        "^test_pow_bcast_array",
+        "^test_sub_bcast",
+        "^test_batchnorm_example",
+        "^test_clip_default_inbounds",
+        "^test_resize_upsample_sizes_nearest_ceil_half_pixel",
+        "^test_resize_upsample_sizes_nearest_floor_align_corners",
+        "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric",
+        "^test_unique_not_sorted_without_axis",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+    ],
+    "current_failing_tests_OPENVINO_CPU_FP32": [
+        "^test_operator_permute2",
+        "^test_operator_repeat",
+        "^test_operator_repeat_dim_overflow",
+        "^test_negative_log_likelihood.*", // Does not support 5-D or above tensors for SUB op.
+        "^test_softmax_cross_entropy.*" // Does not support 5-D or above tensors for SUB op.
+    ],
+    // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
+    "tests_with_pre_opset7_dependencies": [
+        "^test_AvgPool1d",
+        "^test_AvgPool1d_stride",
+        "^test_AvgPool2d",
+        "^test_AvgPool2d_stride",
+        "^test_AvgPool3d",
+        "^test_AvgPool3d_stride1_pad0_gpu_input",
+        "^test_AvgPool3d_stride",
+        "^test_BatchNorm1d_3d_input_eval",
+        "^test_BatchNorm2d_eval",
+        "^test_BatchNorm2d_momentum_eval",
+        "^test_BatchNorm3d_eval",
+        "^test_BatchNorm3d_momentum_eval",
+        "^test_GLU",
+        "^test_GLU_dim",
+        "^test_Linear",
+        "^test_PReLU_1d",
+        "^test_PReLU_1d_multiparam",
+        "^test_PReLU_2d",
+        "^test_PReLU_2d_multiparam",
+        "^test_PReLU_3d",
+        "^test_PReLU_3d_multiparam",
+        "^test_PoissonNLLLLoss_no_reduce",
+        "^test_Softsign",
+        "^test_operator_add_broadcast",
+        "^test_operator_add_size1_broadcast",
+        "^test_operator_add_size1_right_broadcast",
+        "^test_operator_add_size1_singleton_broadcast",
+        "^test_operator_addconstant",
+        "^test_operator_addmm",
+        "^test_operator_basic",
+        "^test_operator_mm",
+        "^test_operator_non_float_params",
+        "^test_operator_params",
+        "^test_operator_pow"
+    ],
+    "unsupported_usages": [
+        "^test_convtranspose_1d", // ConvTransponse supports 4-D only
+        "^test_convtranspose_3d"
+    ],
+    "failing_permanently": [
+        // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
+        // e.g. 0.296140194 -> "0.2961402" not "0.29614019". ORT produces the latter with precision set to 8, which
+        // doesn"t match the expected output that was generated with numpy.
+        "^test_cast_FLOAT_to_STRING"
+    ],
+    "test_with_types_disabled_due_to_binary_size_concerns": [
+        "^test_bitshift_right_uint16",
+        "^test_bitshift_left_uint16"
+    ]
+}

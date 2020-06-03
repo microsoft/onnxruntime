@@ -2,8 +2,10 @@ FROM mcr.microsoft.com/dotnet-buildtools/prereqs:centos-6-50f0d02-20190918213956
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh
-ENV PATH /opt/rh/devtoolset-2/root/usr/bin:${PATH}
+ENV JAVA_HOME /usr/lib/jvm/jre-1.8.0-openjdk.x86_64
+ENV PATH /opt/rh/devtoolset-2/root/usr/bin:${JAVA_HOME}/bin:${PATH}
 RUN /tmp/scripts/install_deps.sh -p 3.6 && rm -rf /tmp/scripts
+ENV PATH ${PATH}:/usr/local/gradle/bin
 
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev

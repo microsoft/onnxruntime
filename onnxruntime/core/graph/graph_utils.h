@@ -61,9 +61,10 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 
-/** Checks if the given node has only constant inputs (initializers) and if so returns them in constant_inputs as they
-may come from outer scope. */
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs);
+/** Checks if the given node has only constant inputs (initializers) and no input is in excluded_initializers.
+If so returns them in constant_inputs as they may come from outer scope. */
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
+                              const std::unordered_set<std::string>& excluded_initializers = {});
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
@@ -243,5 +244,11 @@ struct EdgeEndToMatch {
 */
 bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
+/**
+ * Remove nodes with only one output edge using bottom-up bfs traversal.
+ * @param node: The node to start with. 
+ * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
+*/
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
 }  // namespace graph_utils
 }  // namespace onnxruntime

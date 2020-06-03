@@ -169,14 +169,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
       ORT_EVENT ev;
       ORT_RETURN_IF_ERROR(CreateOnnxRuntimeEvent(&ev));
       try {
-        RunSingleTestCase(env.tests[i], env.env, env.sf, concurrent_runs, repeat_count, tpool, nullptr, [repeat_count, &results, ev, concurrent_runs, test_case_name](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
-          //TODO:output this information to a xml
-          if (concurrent_runs == 1) {
-            TIME_SPEC ts = result->GetSpentTime();
-            double spent = TimeSpecToSeconds(&ts);
-            double spent2 = spent / result->GetExcutionResult().size() / repeat_count;
-            LOGF_DEFAULT(ERROR, "Test %s finished in %.3g seconds, took %.3g for each input", test_case_name, spent, spent2);
-          }
+        RunSingleTestCase(env.tests[i], env.env, env.sf, concurrent_runs, repeat_count, tpool, nullptr, [&results, ev](std::shared_ptr<TestCaseResult> result, ORT_CALLBACK_INSTANCE pci) {
           results.push_back(result);
           return OnnxRuntimeSetEventWhenCallbackReturns(pci, ev);
         });

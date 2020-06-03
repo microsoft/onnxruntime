@@ -157,15 +157,21 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 ### OpenVINO on VAD-M Accelerator Version
 
-1. Build the docker image from the DockerFile in this repository.
-     ```
-      docker build --rm -t onnxruntime-vadr --build-arg DEVICE=VAD-M_FP16 --network host .
-     ```
-2. Install the HDDL drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+1.  Download OpenVINO **Full package** for version **2020.2** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
 
-3. Run the docker image by mounting the device drivers
+2. Install the drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+
+3. Build the docker image from the DockerFile in this repository.
+     ```
+      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 --network host .
+     ```
+4. Run hddldaemon on the host in a separate terminal session using the following command: 
+     ```
+      $HDDL_INSTALL_DIR/bin/hddldaemon
+     ```
+5. Run the docker image by mounting the device drivers
     ```
-    docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-hddl:latest
+    docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
 
     ```
 ## ARM 32v7
@@ -173,14 +179,17 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+ running Raspbian Stretch. The same approach should work for other ARM devices, but may require some changes to the Dockerfile such as choosing a different base image (Line 0: `FROM ...`).
 
-1. Install DockerCE on your development machine by following the instructions [here](https://docs.docker.com/install/)
+1. Install dependencies:
+
+- DockerCE on your development machine by following the instructions [here](https://docs.docker.com/install/)
+- ARM emulator: `sudo apt-get install -y qemu-user-static`
+
 2. Create an empty local directory
     ```bash
     mkdir onnx-build
     cd onnx-build
     ```
-3. Save the Dockerfile to your new directory
-    - [Dockerfile.arm32v7](./Dockerfile.arm32v7)
+3. Save the Dockerfile from this repo to your new directory: [Dockerfile.arm32v7](./Dockerfile.arm32v7)
 4. Run docker build
 
     This will build all the dependencies first, then build ONNX Runtime and its Python bindings. This will take several hours.

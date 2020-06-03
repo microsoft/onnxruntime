@@ -42,16 +42,17 @@ public:
         m_inputTensorDescs[IN_X] = CreateTensorDescFromInput(kernelInfo, 0/*Onnx Index*/, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
         m_inputTensorDescs[IN_F] = CreateTensorDescFromInput(kernelInfo, 3/*Onnx Index*/, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
+        uint32_t inputDimSize = kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
+        ML_CHECK_VALID_ARGUMENT(
+            inputDimSize >= 3 && inputDimSize <= 4,
+            "Input can only be used with 3D/4D tensors."
+            );
+
+        uint32_t dmlDimSize = m_inputTensorDescs[0].GetDimensionCount();
+
         // Bias is optional so only adjust it if it exists.
         if (m_inputTensorDescs[IN_BIAS].GetDmlDesc().Desc != nullptr)
         {
-            uint32_t inputDimSize = kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
-            ML_CHECK_VALID_ARGUMENT(
-                inputDimSize >= 3 && inputDimSize <= 5,
-                "Bias can only be used with 3D/4D/5D tensors."
-                );
-            uint32_t dmlDimSize = m_inputTensorDescs[0].GetDimensionCount();
-
             // Resize the bias to be the same dimension as the input tensor.
             // The 1D tensor needs to be moved to the C channel.
             m_inputTensorDescs[IN_BIAS] = CreateTensorDescFromInput(
@@ -64,6 +65,29 @@ public:
                 dmlDimSize
                 );
         }
+
+        // Resize the Filter ZeroPoint to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the C channel.
+        m_inputTensorDescs[IN_F_ZERO_POINT] = CreateTensorDescFromInput(
+            kernelInfo, 
+            5/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::C,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
+        // Resize the Filter Scale to be the same dimension as the input tensor.
+        // The 1D tensor needs to be moved to the C channel.
+        m_inputTensorDescs[IN_F_SCALE] = CreateTensorDescFromInput(
+            kernelInfo, 
+            4/*Onnx Index*/, 
+            TensorAxis::DoNotCoerce, 
+            TensorAxis::C,
+            TensorAxis::LeftAligned,
+            std::nullopt,
+            dmlDimSize
+            );
 
         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 

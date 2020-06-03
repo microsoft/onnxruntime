@@ -1,0 +1,5 @@
+[flake8]
+max-line-length = 120
+per-file-ignores =
+    __init__.py:F401
+format = [flake8 PEP8 ERROR] %(path)s:%(row)d:%(col)d: %(code)s %(text)s
