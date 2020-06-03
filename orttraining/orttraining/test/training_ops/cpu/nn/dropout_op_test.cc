@@ -197,7 +197,7 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
 
 TEST(DropoutGradTest, Basic) {
 
-  std::vector<float> training_mode({true, false});
+  const std::vector<bool> training_mode({true, false});
   for (const auto& mode : training_mode) {
     //Ratio 0.2, 1D
     RunDropoutGradTest("DropoutGrad", 0.2f, {16}, mode, false);
@@ -214,15 +214,14 @@ TEST(DropoutGradTest, Basic) {
 }
 
 TEST(DropoutGradTest, RatioLimit) {
-  std::vector<float> training_mode({true, false});
+  const std::vector<bool> training_mode({true, false});
   for (const auto& mode : training_mode) {
     RunDropoutGradTest("DropoutGrad", 0.0f, {16}, mode, false);
   }
 }
 
 TEST(TrainableDropoutGradTest, Basic) {
-
-  std::vector<float> training_mode({true, false});
+  const std::vector<bool> training_mode({true, false});
   for (const auto& mode : training_mode) {    //Ratio 0.2, 1D
     RunDropoutGradTest("TrainableDropoutGrad", 0.2f, {16}, mode, false);
 
@@ -238,7 +237,7 @@ TEST(TrainableDropoutGradTest, Basic) {
 }
 
 TEST(TrainableDropoutGradTest, RatioLimit) {
-  std::vector<float> training_mode({true, false});
+  const std::vector<bool> training_mode({true, false});
   for (const auto& mode : training_mode) {
     RunDropoutGradTest("TrainableDropoutGrad", 0.0f, {16}, mode, false);
   }
