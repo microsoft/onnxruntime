@@ -86,6 +86,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
+#ifdef USE_ARMNN
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
+                                                                   performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+#else
+    ORT_THROW("ArmNN is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
