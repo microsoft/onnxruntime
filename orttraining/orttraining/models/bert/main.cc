@@ -554,7 +554,6 @@ void setup_training_params(BertParameters& params) {
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
-      // "72",                     // [BERT-tiny only] input of expand
   };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 

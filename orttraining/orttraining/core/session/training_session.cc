@@ -139,31 +139,6 @@ Status TrainingSession::ConfigureForTraining(
                                                           config.distributed_config.world_size));
   }
 
-  /* // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
-  // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
-  // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
-  std::unordered_set<std::string> excluded_initializers =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
-          : GetTrainableModelInitializers(config.immutable_weights);
-  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    excluded_initializers.erase(weight_name_to_not_train);
-  } */
-
-  // suffian edit: dump bert model to debug work item associated with expand grad errors
-  std::stringstream ssa;
-  ssa << "before_transform_on_rank_" << config.distributed_config.local_rank << ".onnx";
-  Save(ssa.str(), TrainingSession::SaveOption::NO_RELOAD);
-  // --
-
-  /* ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
-
-  // suffian edit: dump bert model to debug work item associated with expand grad errors
-  std::stringstream ssb;
-  ssb << "after_transform_on_rank_" << config.distributed_config.local_rank << ".onnx";
-  Save(ssb.str(), TrainingSession::SaveOption::NO_RELOAD);
-  // -- */
-
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
@@ -206,24 +181,18 @@ Status TrainingSession::ConfigureForTraining(
   std::unordered_set<std::string> excluded_initializers =
       !config.weight_names_to_train.empty()
           ? config.weight_names_to_train
-          : GetTrainableModelInitializersFromReverseDFS(config.immutable_weights, loss_name, config.distributed_config.local_rank);
+          : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     excluded_initializers.erase(weight_name_to_not_train);
   }
   
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
 
-  // suffian edit: dump bert model to debug work item associated with expand grad errors
-  std::stringstream ssb;
-  ssb << "after_adding_loss_then_transform_on_rank_" << config.distributed_config.local_rank << ".onnx";
-  Save(ssb.str(), TrainingSession::SaveOption::NO_RELOAD);
-  // ---
-
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !config.weight_names_to_train.empty()
           ? config.weight_names_to_train
-          : GetTrainableModelInitializersFromReverseDFS(config.immutable_weights, loss_name, config.distributed_config.local_rank);
+          : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     weight_names_to_train.erase(weight_name_to_not_train);
   }
@@ -968,56 +937,15 @@ bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weight
 }
 
 std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
-    const ImmutableWeights& immutable_weights) const {
+    const ImmutableWeights& immutable_weights, const std::string& loss_name) const {
+
   const Graph& graph = model_->MainGraph();
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
-  std::unordered_set<std::string> model_initializers;
-  std::transform(initialized_tensors.begin(),
-                 initialized_tensors.end(),
-                 std::inserter(model_initializers, model_initializers.end()),
-                 [](const auto& pair) { return pair.first; });
-
-  std::unordered_set<std::string> trainable_initializers(model_initializers);
-  for (const std::string& initializer_name : model_initializers) {
-    const auto& nodes = graph.GetConsumerNodes(initializer_name);
-    for (const Node* node : nodes) {
-      if (IsUntrainable(node, initializer_name, session_logger_) ||
-          IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_)) {
-        trainable_initializers.erase(initializer_name);
-      }
-    }
-  }
-
-  return trainable_initializers;
-}
-
-std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializersFromReverseDFS(
-    const ImmutableWeights& immutable_weights, const std::string& loss_name, const int rank) const {
-
-  std::ofstream ti;
-
-  // invoke the original fn and dump list of trainable weights
-  std::stringstream ssa;
-  ssa << "previously_found_trainable_weights_" << rank << ".txt";
-  ti.open(ssa.str());
-  auto previous_trainable_initializers = GetTrainableModelInitializers(immutable_weights);
-  for (const std::string& initializer_name : previous_trainable_initializers) {
-    ti << initializer_name << std::endl;
-  }
-  ti.close();
-
-  // perform reverse dfs from output node to discover trainable parameters
-  const Graph& graph = model_->MainGraph();
-  const auto& initialized_tensors = graph.GetAllInitializedTensors();
-  std::stringstream ssb;
-  ssb << "dfs_discovered_trainable_weights_" << rank << ".txt";
-  ti.open(ssb.str());
   std::unordered_set<std::string> trainable_initializers;
 
   auto add_valid_initializers = [&](const Node* node) { 
       for (auto input : node->InputDefs()) {
         std::string initializer_name = input->Name();
-        std::cout << "Checking if input " << initializer_name << " qualifies." << std::endl;
         if (initialized_tensors.count(initializer_name) == 0)
           continue;
 
@@ -1025,7 +953,6 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializersFr
             IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_))
           continue;
 
-        std::cout << "Inserting " << initializer_name << "to initializer list" << std::endl;
         trainable_initializers.insert(initializer_name);
       }
   };
@@ -1041,18 +968,15 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializersFr
       };
 
       bool proceed = std::any_of(from->InputEdgesBegin(), from->InputEdgesEnd(), is_trainable_from_to_link);
-      if (!proceed)
-        std::cout << "Stopping traversal from " << from->OpType() << " to " << to->OpType() << std::endl;
+      if (!proceed && session_logger_) {
+        VLOGS(*session_logger_, 1) << "Stopping training parameters discovery traversal from " << from->Name() << " to " << to->Name() << std::endl;
+      }
 
       return !proceed;
   };
 
+  // perform reverse dfs from output node to discover trainable parameters
   graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_valid_initializers, {}, {}, stop_at_untrainable);
-  for (const std::string& initializer_name : trainable_initializers) {
-    ti << initializer_name << std::endl;
-  }
-  ti.close();
-
   return trainable_initializers;
 }
 
