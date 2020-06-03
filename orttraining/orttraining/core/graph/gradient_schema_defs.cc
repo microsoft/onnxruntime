@@ -1096,7 +1096,7 @@ Example 4:
       .TypeConstraint(
           "T2",
           {"tensor(bool)"},
-          "Constrain 'mask' and ' training_mode'  types to boolean tensors.")
+          "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });

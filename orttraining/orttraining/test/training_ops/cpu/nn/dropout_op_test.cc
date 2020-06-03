@@ -177,7 +177,7 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
-    test.AddMissingOptionalInput<bool>();
+    test.AddMissingOptionalInput<float>();
   }
 
   if (strcmp(op, "TrainableDropoutGrad") != 0) {
