@@ -32,7 +32,8 @@ class GatherNDBase {
   };  // struct Prepare
 
   template <typename Tind>
-  Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
+  Status PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor,
+                           const int64_t bytes_per_value, Prepare& p) const;
   int64_t batch_dims_;
 };  // class GatherNDBase
 
