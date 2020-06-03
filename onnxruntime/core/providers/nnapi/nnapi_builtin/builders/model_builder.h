@@ -33,6 +33,8 @@ class ModelBuilder {
   std::map<std::string, android::nn::wrapper::OperandType> operand_types_;
 
   std::unordered_set<std::string> operands_;
+  std::map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
+  std::unordered_set<std::string> skipped_initializers_;
 
   IndexSeq input_index_vec_;
   IndexSeq output_index_vec_;
@@ -42,16 +44,21 @@ class ModelBuilder {
   std::pair<bool, std::string> IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
 
   // Convert the onnx model to ANeuralNetworksModel
-  void prepare();
+  void Prepare();
 
-  void addInitializers();
-  void copyInitializersData();
-  void registerModelInputs();
-  void addOperations();
-  void registerModelOutputs();
-  void clearData();
+  void GetAllIntializers();
+  void PreprocessIntializers();
+  void RegisterInitializers();
+  void RegisterModelInputs();
+  void AddOperations();
+  void RegisterModelOutputs();
+  void ClearData();
 
-  uint32_t SetOperandFromScalar(android::nn::wrapper::Type type, void* value, size_t size);
+  uint32_t AddOperandFromPersistMemoryBuffer(
+      const std::string& name, const void* buffer,
+      const android::nn::wrapper::OperandType& operand_type);
+
+  uint32_t SetOperandFromScalar(android::nn::wrapper::Type type, const void* value, size_t size);
   uint32_t AddNewOperand(const android::nn::wrapper::OperandType& type);
   void RegisterOperand(const std::string& name,
                        Index index, const android::nn::wrapper::OperandType& operand_type);

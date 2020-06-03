@@ -104,7 +104,11 @@ struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
   std::vector<uint32_t> dimensions;
-  OperandType(Type type, std::vector<uint32_t> d = {}, float scale = 0.0f, int32_t zeroPoint = 0);
+
+  explicit OperandType(Type type, const std::vector<uint32_t>& d = {}, float scale = 0.0f, int32_t zeroPoint = 0);
+  OperandType(const OperandType& other);
+  OperandType& operator=(const OperandType& other) = delete;
+
   size_t GetElementByteSize() const;
   size_t GetOperandByteSize() const;
 

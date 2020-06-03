@@ -245,8 +245,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
       std::vector<nnapi::InputOutputInfo> inputs;
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
-        const auto input_name = model->GetInputs()[i];
-        auto model_input_type = model->GetType(input_name);
+        const auto& input_name = model->GetInputs()[i];
+        const auto& model_input_type = model->GetType(input_name);
 
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
         const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
@@ -268,7 +268,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
                                                model_input_type.operandType.zeroPoint);
 
         void* inputBuffer = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
-        inputs.push_back({inputBuffer, type});
+        inputs.push_back({inputBuffer, std::move(type)});
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
         // Remove

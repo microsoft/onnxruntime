@@ -48,7 +48,7 @@ const std::vector<std::string>& Model::GetOutputs() const {
   return output_names_;
 }
 
-android::nn::wrapper::OperandType Model::GetType(const std::string& name) const {
+const android::nn::wrapper::OperandType& Model::GetType(const std::string& name) const {
   return operand_types_.at(name);
 }
 

@@ -47,7 +47,7 @@ class Model {
 
   const std::vector<std::string>& GetInputs() const;
   const std::vector<std::string>& GetOutputs() const;
-  android::nn::wrapper::OperandType GetType(const std::string& name) const;
+  const android::nn::wrapper::OperandType& GetType(const std::string& name) const;
   Shaper::Shape GetShape(const std::string& name);
 
   void SetOutputBuffer(const int32_t index, float* buffer);
@@ -65,7 +65,8 @@ class Model {
   ANeuralNetworksCompilation* compilation_{nullptr};
   ANeuralNetworksExecution* execution_{nullptr};
 
-  std::unique_ptr<NNMemory> mem_initializers;
+  std::unique_ptr<NNMemory> mem_initializers_;
+  std::vector<std::unique_ptr<NNMemory> > mem_persist_buffers_;
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

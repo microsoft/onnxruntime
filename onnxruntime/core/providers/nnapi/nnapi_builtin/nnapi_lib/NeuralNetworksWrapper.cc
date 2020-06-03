@@ -19,7 +19,7 @@ namespace android {
 namespace nn {
 namespace wrapper {
 
-OperandType::OperandType(Type type, std::vector<uint32_t> d, float scale, int32_t zeroPoint)
+OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(std::move(d)) {
   operandType = {
       .type = static_cast<int32_t>(type),
@@ -29,6 +29,18 @@ OperandType::OperandType(Type type, std::vector<uint32_t> d, float scale, int32_
       .zeroPoint = zeroPoint,
   };
 }
+
+OperandType::OperandType(const OperandType& other) {
+  type = other.type;
+  dimensions = other.dimensions;
+  operandType = {
+      .type = static_cast<int32_t>(type),
+      .dimensionCount = static_cast<uint32_t>(dimensions.size()),
+      .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
+      .scale = other.operandType.scale,
+      .zeroPoint = other.operandType.zeroPoint,
+  };
+}  // namespace wrapper
 
 size_t OperandType::GetElementByteSize() const {
   size_t element_size;
