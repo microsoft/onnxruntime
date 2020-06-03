@@ -204,7 +204,7 @@ void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffe
   }
 
   const int shared_mem_size = sizeof(TOut) * block_size.first * block_size.second / NUM_THREADS_PER_WARP;
-  hipLaunchKernelGGL(reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize>, dim3(grid), dim3(block), shared_mem_size, 0, size, data, output, buffer);
+  hipLaunchKernelGGL((reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize>), dim3(grid), dim3(block), shared_mem_size, 0, size, data, output, buffer);
 }
 
 template<typename TIn, typename TOut>
@@ -335,7 +335,7 @@ void call_reduce_matrix_rows(const TIn *input, TOut *output, int m, int n) {
   const dim3 grid(grid_x_dim, grid_y_dim, 1);
   const dim3 block(block_x_dim, block_y_dim, 1);
 
-  hipLaunchKernelGGL(reduce_matrix_rows_kernel<TIn, TOut, TBuf>, dim3(grid), dim3(block), block.y * block.x * sizeof(TBuf), 0, 
+  hipLaunchKernelGGL((reduce_matrix_rows_kernel<TIn, TOut, TBuf>), dim3(grid), dim3(block), block.y * block.x * sizeof(TBuf), 0, 
       input, output, m, n);
 }
 
