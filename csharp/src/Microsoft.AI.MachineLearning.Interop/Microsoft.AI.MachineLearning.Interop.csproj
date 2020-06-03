@@ -5,7 +5,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
-    <Platform>AnyCPU</Platform>
+    <Platform>Any CPU</Platform>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
  
     <OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">..\..\..\build\Windows</OnnxRuntimeBuildDirectory>
