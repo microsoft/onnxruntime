@@ -69,10 +69,11 @@ Status GatherNDGrad::Compute(OpKernelContext* context) const {
   p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
 
   auto bytes_per_value = update_tensor->DataType()->Size();
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   if (indices_tensor->IsDataType<int32_t>()) {
-    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p);
+    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
   } else if (indices_tensor->IsDataType<int64_t>()) {
-    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p);
+    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor data type not supported");
   }
