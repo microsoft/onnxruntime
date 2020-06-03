@@ -66,5 +66,10 @@ int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg);
 */
 bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types);
 
+/** Check whether node's output edges count is expected.
+@remarks graph output is not included in output edges, and by defult graph output is not allowed.
+*/
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges, bool no_graph_output = true);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

@@ -227,5 +227,14 @@ bool IsSupportedDataType(const Node& node, const std::vector<std::string>& suppo
   return true;
 }
 
+
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges, bool no_graph_output) {
+  if (no_graph_output && !graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    return false;
+  }
+
+  return node.GetOutputEdgesCount() == expected_output_edges;
+}
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

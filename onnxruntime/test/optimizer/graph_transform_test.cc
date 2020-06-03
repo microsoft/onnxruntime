@@ -1684,6 +1684,23 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphInput) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
+TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphOutput) {
+  auto model_uri = MODEL_FOLDER "fusion/gelu_format2_0_with_bias_use_graph_output.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Gelu"] == 0);
+  ASSERT_TRUE(op_to_count["BiasGelu"] == 0);
+}
+
 TEST_F(GraphTransformationTests, BiasGeluTest) {
   auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
