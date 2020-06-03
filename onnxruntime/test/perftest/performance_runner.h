@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <mutex>
 #include <iostream>
 #include <random>
 #include <chrono>
@@ -15,6 +14,7 @@
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/env.h>
+#include <core/platform/ort_mutex.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "test_configuration.h"
 #include "heap_buffer.h"
@@ -108,7 +108,7 @@ class PerformanceRunner {
     }
 
     if (!isWarmup) {
-      std::lock_guard<std::mutex> guard(results_mutex_);
+      std::lock_guard<OrtMutex> guard(results_mutex_);
       performance_result_.time_costs.emplace_back(duration_seconds.count());
       performance_result_.total_time_cost += duration_seconds.count();
       if (performance_test_config_.run_config.f_verbose) {
@@ -148,8 +148,7 @@ class PerformanceRunner {
   onnxruntime::test::HeapBuffer b_;
   std::unique_ptr<ITestCase> test_case_;
 
-  // TODO: Convert to OrtMutex
-  std::mutex results_mutex_;
+  OrtMutex results_mutex_;
 };
 }  // namespace perftest
 }  // namespace onnxruntime

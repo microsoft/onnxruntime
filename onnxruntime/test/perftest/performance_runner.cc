@@ -104,8 +104,8 @@ Status PerformanceRunner::RunParallelDuration() {
   // TODO: Make each thread enqueue a new worker.
   auto tpool = GetDefaultThreadPool(Env::Default());
   std::atomic<int> counter = {0};
-  std::mutex m;
-  std::condition_variable cv;
+  OrtMutex m;
+  OrtCondVar cv;
 
   auto start = std::chrono::high_resolution_clock::now();
   auto end = start;
@@ -119,7 +119,7 @@ Status PerformanceRunner::RunParallelDuration() {
       tpool->Schedule([this, &counter, &m, &cv]() {
         session_->ThreadSafeRun();
         // Simplified version of Eigen::Barrier
-        std::lock_guard<std::mutex> lg(m);
+        std::lock_guard<OrtMutex> lg(m);
         counter--;
         cv.notify_all();
       });
@@ -129,7 +129,7 @@ Status PerformanceRunner::RunParallelDuration() {
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
   //Join
-  std::unique_lock<std::mutex> lock(m);
+  std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
@@ -141,8 +141,8 @@ Status PerformanceRunner::ForkJoinRepeat() {
   // create a threadpool with one thread per concurrent request
   auto tpool = onnxruntime::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
   std::atomic<int> counter{0}, requests{0};
-  std::mutex m;
-  std::condition_variable cv;
+  OrtMutex m;
+  OrtCondVar cv;
 
   // Fork
   for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
@@ -155,14 +155,14 @@ Status PerformanceRunner::ForkJoinRepeat() {
       }
 
       // Simplified version of Eigen::Barrier
-      std::lock_guard<std::mutex> lg(m);
+      std::lock_guard<OrtMutex> lg(m);
       counter--;
       cv.notify_all();
     });
   }
 
   //Join
-  std::unique_lock<std::mutex> lock(m);
+  std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
@@ -218,8 +218,7 @@ bool PerformanceRunner::Initialize() {
 
   test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
 
-  if (performance_test_config_.run_config.generate_model_input_binding)
-  {
+  if (performance_test_config_.run_config.generate_model_input_binding) {
     return static_cast<OnnxRuntimeTestSession*>(session_.get())->PopulateGeneratedInputTestData();
   }
 
