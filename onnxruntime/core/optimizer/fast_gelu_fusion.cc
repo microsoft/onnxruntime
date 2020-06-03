@@ -197,11 +197,6 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    // ingnore the transformer if Gelu's output is the graph's output.
-    if (!graph.GetNodeOutputsInGraphOutputs(mul5_node).empty()) {
-      continue;
-    }
-
     input_index = optimizer_utils::IndexOfNodeInput(mul5_node, *add2_node.MutableOutputDefs()[0]);
     const Node* p_mul5_input_node = graph_utils::GetInputNode(mul5_node, (input_index + 1) % 2);
     if (p_mul5_input_node == nullptr) continue;
@@ -225,6 +220,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     nodes_to_fuse.insert(nodes_to_fuse.end(), {tanh_node, add2_node, mul6_node, mul5_node});
 
     auto type_info = *node.MutableOutputDefs()[0]->TypeAsProto();
+    // TODO: re-use node arg of mul5 so that it is allowed to be graph output (Need modify CheckNode as well).
     auto& shape_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("fast_gelu_output"), &type_info);
     Node& fast_gelu_node = graph.AddNode(graph.GenerateNodeName("GPT2Gelu"),
                                          "FastGelu",
