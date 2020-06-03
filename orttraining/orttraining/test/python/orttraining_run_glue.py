@@ -68,14 +68,14 @@ class ORTGlueTest(unittest.TestCase):
 
     def test_bert_with_mrpc(self):
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        self.assertTrue(results['acc'] > 0.84)
+        self.assertTrue(results['acc'] > 0.83)
         self.assertTrue(results['f1'] > 0.88)
         self.assertTrue(results['acc_and_f1'] > 0.86)
         self.assertTrue(results['loss'] < 0.47)
 
     def test_bert_fp16_with_mrpc(self):
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        self.assertTrue(results['acc'] > 0.85)
+        self.assertTrue(results['acc'] > 0.84)
         self.assertTrue(results['f1'] > 0.89)
         self.assertTrue(results['acc_and_f1'] > 0.87)
         self.assertTrue(results['loss'] < 0.46)
