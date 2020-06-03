@@ -19,6 +19,7 @@ Abstract:
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <random>
 #include <mlas.h>
 
 #if defined(_WIN32)
@@ -511,7 +512,7 @@ private:
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, (int)offa, (int)offb);
             }
         }
     }
@@ -1939,12 +1940,12 @@ public:
                 Buffer[i].u = TestData[i][0].u;
             }
 
-            MlasActivation(&Activation, &Buffer[0].f, nullptr, _countof(Buffer), 1, 1);
+            MlasActivation(&Activation, &Buffer[0].f, nullptr, 1, _countof(Buffer), _countof(Buffer));
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
                 if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
-                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i].u, TestData[i][kind].u);
+                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", (int)kind, (int)i, Buffer[i].u, TestData[i][kind].u);
                 }
             }
 
@@ -1960,7 +1961,7 @@ public:
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
                 if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
-                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i].u, TestData[i][kind].u);
+                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", (int)kind, (int)i, Buffer[i].u, TestData[i][kind].u);
                 }
             }
         }
@@ -2069,6 +2070,214 @@ public:
     }
 };
 
+class MlasSoftmaxTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
+
+    void
+    Test(
+        size_t N,
+        size_t D,
+        float MinimumValue,
+        float MaximumValue
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N * D);
+        float* Output = BufferOutput.GetBuffer(N * D);
+        float* OutputReference = BufferOutputReference.GetBuffer(N * D);
+
+        std::default_random_engine generator(static_cast<unsigned>(N * D));
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+
+        for (size_t nd = 0; nd < N * D; nd++) {
+            Input[nd] = distribution(generator);
+        }
+
+        Test(Input, Output, OutputReference, N, D, false);
+        Test(Input, Output, OutputReference, N, D, true);
+    }
+
+    void
+    Test(
+        const float* Input,
+        float* Output,
+        float* OutputReference,
+        size_t N,
+        size_t D,
+        bool LogSoftmax
+        )
+    {
+        MlasComputeSoftmax(Input, Output, N, D, LogSoftmax, threadpool);
+        ReferenceSoftmax(Input, OutputReference, N, D, LogSoftmax);
+
+        constexpr float AbsoluteTolerance = 1e-6f;
+        constexpr float RelativeTolerance = 1e-6f;
+
+        for (size_t nd = 0; nd < N * D; nd++) {
+            float diff = std::fabs(Output[nd] - OutputReference[nd]);
+            if (diff > AbsoluteTolerance && diff > std::fabs(OutputReference[nd]) * RelativeTolerance) {
+                printf("softmax(%d) difference: %u/%u %.8f %.8f\n", int32_t(LogSoftmax), unsigned(N), unsigned(D), Output[nd], OutputReference[nd]);
+            }
+        }
+    }
+
+    void
+    ReferenceSoftmax(
+        const float* Input,
+        float* Output,
+        size_t N,
+        size_t D,
+        bool LogSoftmax
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+
+            float MaximumValue = std::numeric_limits<float>::lowest();
+
+            for (size_t d = 0; d < D; d++) {
+                MaximumValue = (std::max)(MaximumValue, Input[d]);
+            }
+
+            double Sum = 0.0;
+
+            for (size_t d = 0; d < D; d++) {
+                double e = std::exp(double(Input[d]) - double(MaximumValue));
+                Sum += e;
+                Output[d] = float(e);
+            }
+
+            if (LogSoftmax) {
+
+                float Scale = float(std::log(Sum));
+
+                for (size_t d = 0; d < D; d++) {
+                    Output[d] = Input[d] - MaximumValue - Scale;
+                }
+
+            } else {
+
+                float Scale = float(Sum);
+
+                for (size_t d = 0; d < D; d++) {
+                    Output[d] /= Scale;
+                }
+            }
+
+            Input += D;
+            Output += D;
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t d = 1; d < 128; d++) {
+            Test(1, d, -10.f, 10.f);
+        }
+
+        Test(3, 128, 20.f, 30.f);
+        Test(63, 95, -150.f, 190.f);
+        Test(16, 211, 20.f, 30.f);
+    }
+};
+
+class MlasComputeExpTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+    MatrixGuardBuffer<float> BufferOutput;
+    MatrixGuardBuffer<float> BufferOutputReference;
+
+    void
+    Test(
+        size_t N,
+        float MinimumValue,
+        float MaximumValue
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+        float* Output = BufferOutput.GetBuffer(N);
+        float* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        for (size_t n = 0; n < N; n++) {
+            OutputReference[n] = std::exp(Input[n]);
+        }
+
+        MlasComputeExp(Input, Output, N);
+
+        constexpr float AbsoluteTolerance = 1e-6f;
+        constexpr float RelativeTolerance = 1e-6f;
+
+        for (size_t n = 0; n < N; n++) {
+            float diff = std::fabs(Output[n] - OutputReference[n]);
+            if (diff > AbsoluteTolerance && diff > std::fabs(OutputReference[n]) * RelativeTolerance) {
+                printf("exp difference: %u %.8f %.8f\n", unsigned(N), Output[n], OutputReference[n]);
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n < 128; n++) {
+            Test(n, -10.f, 10.f);
+        }
+    }
+};
+
+void
+RunThreadedTests(
+    void
+    )
+{
+    printf("SGEMM tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
+#ifdef MLAS_HAS_DGEMM
+    printf("DGEMM tests.\n");
+    onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
+#endif
+
+#ifdef MLAS_HAS_QGEMM_U8X8
+    printf("QGEMM tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
+#endif
+
+    printf("Conv2D tests.\n");
+    onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
+    if (MlasNchwcGetBlockSize() > 1) {
+      onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+    }
+
+    printf("Pool2D tests.\n");
+    onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
+    if (MlasNchwcGetBlockSize() > 1) {
+      onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+    }
+
+    printf("Pool3D tests.\n");
+    onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
+
+    printf("Softmax tests.\n");
+    onnxruntime::make_unique<MlasSoftmaxTest>()->ExecuteShort();
+}
+
 int
 #if defined(_WIN32)
 __cdecl
@@ -2077,56 +2286,43 @@ main(
     void
     )
 {
-    for (int i = 0; i != 2; ++i) {
+    //
+    // Run threaded tests without the thread pool.
+    //
 
-        printf("SGEMM tests.\n");
-        onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
-#ifdef MLAS_HAS_DGEMM
-        printf("DGEMM tests.\n");
-        onnxruntime::make_unique<MlasFgemmTest<double>>()->ExecuteShort();
-#endif
+    RunThreadedTests();
 
-#ifdef MLAS_HAS_QGEMM_U8X8
-        printf("QGEMM tests.\n");
-        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
-        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
-#endif
-
-        printf("Conv2D tests.\n");
-        onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
-        if (MlasNchwcGetBlockSize() > 1) {
-          onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
-        }
-
-        printf("Pool2D tests.\n");
-        onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
-        if (MlasNchwcGetBlockSize() > 1) {
-          onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
-        }
-
-        printf("Pool3D tests.\n");
-        onnxruntime::make_unique<MlasPool3DTest>()->ExecuteShort();
-
-        printf("Done.\n");
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
-        if (threadpool != nullptr)
-          threadpool = new onnxruntime::concurrency::ThreadPool(
-              &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true, nullptr);
-#else
-        break;
-#endif
-	}
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+
+    //
+    // Run threaded tests using the thread pool.
+    //
+
+    threadpool = new onnxruntime::concurrency::ThreadPool(
+        &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 2, true);
+
+    RunThreadedTests();
+
     delete threadpool;
+
 #endif
+
+    //
+    // Run remaining tests that do not use the thread pool.
+    //
 
     printf("Activation tests.\n");
     onnxruntime::make_unique<MlasActivationTest>()->ExecuteShort();
+
+    printf("Transcendental tests.\n");
+    onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
 
     printf("ReorderOutput tests.\n");
     if (MlasNchwcGetBlockSize() > 1) {
         onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
     }
+
+    printf("Done.\n");
 
     return 0;
 }

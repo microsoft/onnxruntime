@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//! \file windows.ai.machinelearning.attributes.idl
+//! \file dualapipartitionattribute.idl
 
 import "Windows.Foundation.idl";
 #include <sdkddkver.h>

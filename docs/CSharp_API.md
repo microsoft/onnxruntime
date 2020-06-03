@@ -44,7 +44,7 @@ Here is a [complete sample code](../csharp/sample/Microsoft.ML.OnnxRuntime.Infer
 
 ## Reuse input/output tensor buffers
 
-In some scenarios, you may want to reuse input/output tensors. This offen happens when you want to chain 2 models (ie. feed one's output as input to another), or want to accelerate inference speed during multiple inference runs.
+In some scenarios, you may want to reuse input/output tensors. This often happens when you want to chain 2 models (ie. feed one's output as input to another), or want to accelerate inference speed during multiple inference runs.
 
 ### Chaining: Feed model A's output(s) as input(s) to model B
 
@@ -101,7 +101,7 @@ The runtime representation of an ONNX model
 #### Constructor
 ```cs
 InferenceSession(string modelPath);
-InferenceSession(string modelPath, SesionOptions options);
+InferenceSession(string modelPath, SessionOptions options);
 ```
     
 #### Properties

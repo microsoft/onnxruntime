@@ -1,4 +1,4 @@
-# DirectML Execution Provider (Preview)
+# DirectML Execution Provider
 
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
@@ -6,11 +6,11 @@ When used standalone, the DirectML API is a low-level DirectX 12 library and is 
 
 The *DirectML Execution Provider* is an optional component of ONNX Runtime that uses DirectML to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
-The DirectML Execution Provider is currently in preview.
+The DirectML Execution Provider currently uses DirectML version 2.1.0.
 
 ## Table of contents
 
-- [DirectML Execution Provider (Preview)](#directml-execution-provider-preview)
+- [DirectML Execution Provider](#directml-execution-provider)
   - [Table of contents](#table-of-contents)
   - [Minimum requirements](#minimum-requirements)
   - [Building from source](#building-from-source)
@@ -48,7 +48,7 @@ To build onnxruntime with the DML EP included, supply the `--use_dml` parameter 
 
 The DirectML execution provider supports building for both x64 (default) and x86 architectures.
 
-Note that building onnxruntime with the DirectML execution provider enabled causes the the DirectML redistributable package to be automatically downloaded as part of the build. This package contains a pre-release version of DirectML, and its use is governed by a license whose text may be found as part of the NuGet package.
+Note that building onnxruntime with the DirectML execution provider enabled causes the the DirectML redistributable package to be automatically downloaded as part of the build.  Its use is governed by a license whose text may be found as part of the NuGet package.
 
 
 
@@ -83,7 +83,7 @@ Creates a DirectML Execution Provider using the given DirectML device, and which
 
 ### ONNX opset support
 
-The DirectML execution provider currently supports ONNX opset 9 ([ONNX v1.4](https://github.com/onnx/onnx/releases/tag/v1.4.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
+The DirectML execution provider currently supports ONNX opset 11 ([ONNX v1.6](https://github.com/onnx/onnx/releases/tag/v1.6.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
 
 ### Multi-threading and supported session options
 
@@ -91,7 +91,7 @@ The DirectML execution provider does not support the use of memory pattern optim
 
 If using the onnxruntime C API, you must call `DisableMemPattern` and `SetSessionExecutionMode` functions to set the options required by the DirectML execution provider.
 
-See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](..\..\include\onnxruntime\core\session\onnxruntime_c_api.h).
+See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](../../include/onnxruntime/core/session/onnxruntime_c_api.h).
 
     OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
@@ -104,6 +104,21 @@ Additionally, as the DirectML execution provider does not support parallel execu
 ## Samples
 
 A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../../samples/c_cxx/fns_candy_style_transfer).
+
+## Performance best practices
+The DirectML execution provider works most efficiently when tensor shapes are known at the time a session is created.  This provides a few performance benefits:
+1) Because constant folding can occur more often, there may be fewer CPU / GPU copies and stalls during evaluations.
+2) More initialization work occurs when sessions are created rather than during the first evaluation.
+3) Weights may be pre-processed within DirectML, enabling more efficient algorithms to be used.
+4) Graph optimization occurs within DirectML. For example, Concat operators may be removed, and more optimal tensor layouts may be used for the input and output of operators.
+
+Normally when the shapes of model inputs are known during session creation, the shapes for the rest of the model are inferred by OnnxRuntime when a session is created.  However if a model input contains a free dimension (such as for batch size), steps must be taken to retain the above performance benefits.
+
+In this case, there are three options:
+- Edit the model to replace an input's free dimension (specified through ONNX using "dim_param") with a fixed size (specified through ONNX using "dim_value").
+- Specify values of named dimensions within model inputs when creating the session using the OnnxRuntime *AddFreeDimensionOverrideByName* ABI.
+- Edit the model to ensure that an input's free dimension has a [denotation](https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md) (such as "DATA_BATCH," or a custom denotation).  Then when creating the session, specify the dimension size for each denotation.  This can be done using the OnnxRuntime *AddFreeDimensionOverride* ABI.
+
 
 ## See also
 

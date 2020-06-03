@@ -98,16 +98,16 @@ TanhKernelFrame ENDS
 
         alloc_stack (TanhKernelFrame.ReturnAddress)
 
-        save_xmm128_avx xmm6,TanhKernelFrame.SavedXmm6
-        save_xmm128_avx xmm7,TanhKernelFrame.SavedXmm7
-        save_xmm128_avx xmm8,TanhKernelFrame.SavedXmm8
-        save_xmm128_avx xmm9,TanhKernelFrame.SavedXmm9
-        save_xmm128_avx xmm10,TanhKernelFrame.SavedXmm10
-        save_xmm128_avx xmm11,TanhKernelFrame.SavedXmm11
-        save_xmm128_avx xmm12,TanhKernelFrame.SavedXmm12
-        save_xmm128_avx xmm13,TanhKernelFrame.SavedXmm13
-        save_xmm128_avx xmm14,TanhKernelFrame.SavedXmm14
-        save_xmm128_avx xmm15,TanhKernelFrame.SavedXmm15
+        save_xmm128 xmm6,TanhKernelFrame.SavedXmm6
+        save_xmm128 xmm7,TanhKernelFrame.SavedXmm7
+        save_xmm128 xmm8,TanhKernelFrame.SavedXmm8
+        save_xmm128 xmm9,TanhKernelFrame.SavedXmm9
+        save_xmm128 xmm10,TanhKernelFrame.SavedXmm10
+        save_xmm128 xmm11,TanhKernelFrame.SavedXmm11
+        save_xmm128 xmm12,TanhKernelFrame.SavedXmm12
+        save_xmm128 xmm13,TanhKernelFrame.SavedXmm13
+        save_xmm128 xmm14,TanhKernelFrame.SavedXmm14
+        save_xmm128 xmm15,TanhKernelFrame.SavedXmm15
 
         END_PROLOGUE
 
@@ -177,16 +177,16 @@ ProcessRemainingCount:
 
 ExitKernel:
         vzeroupper
-        vmovaps xmm6,TanhKernelFrame.SavedXmm6[rsp]
-        vmovaps xmm7,TanhKernelFrame.SavedXmm7[rsp]
-        vmovaps xmm8,TanhKernelFrame.SavedXmm8[rsp]
-        vmovaps xmm9,TanhKernelFrame.SavedXmm9[rsp]
-        vmovaps xmm10,TanhKernelFrame.SavedXmm10[rsp]
-        vmovaps xmm11,TanhKernelFrame.SavedXmm11[rsp]
-        vmovaps xmm12,TanhKernelFrame.SavedXmm12[rsp]
-        vmovaps xmm13,TanhKernelFrame.SavedXmm13[rsp]
-        vmovaps xmm14,TanhKernelFrame.SavedXmm14[rsp]
-        vmovaps xmm15,TanhKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,TanhKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,TanhKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,TanhKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,TanhKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,TanhKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,TanhKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,TanhKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,TanhKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,TanhKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,TanhKernelFrame.SavedXmm15[rsp]
         add     rsp,(TanhKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

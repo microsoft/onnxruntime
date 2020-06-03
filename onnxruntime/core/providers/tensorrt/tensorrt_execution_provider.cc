@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include "core/graph/onnx_protobuf.h"
 
 #include "tensorrt_execution_provider.h"
@@ -26,7 +27,12 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
-
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  Status st;
+};
+}  // namespace
 namespace onnxruntime {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -54,27 +60,29 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-static void RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
+static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kTensorrtExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
-    kernel_registry.Register(function_table_entry());
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
+  return Status::OK();
 }
 
-std::shared_ptr<KernelRegistry> GetTensorrtKernelRegistry() {
-  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterTensorrtKernels(*kernel_registry);
-
-  return kernel_registry;
+KernelRegistryAndStatus GetTensorrtKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterTensorrtKernels(*ret.kernel_registry);
+  return ret;
 }
 
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetTensorrtKernelRegistry();
-  return kernel_registry;
+  static KernelRegistryAndStatus k = onnxruntime::GetTensorrtKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.
@@ -116,6 +124,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const std::string fp16_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+  }
+
+  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
+  if (!dump_subgraphs_env.empty()) {
+    dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
   }
 }
 
@@ -245,7 +258,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Find inputs and outputs of the subgraph
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -311,7 +324,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
-  std::multimap<int, const NodeArg *> inputs, outputs;
+  std::multimap<int, const NodeArg*> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
     inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
@@ -322,7 +335,8 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Assign inputs and outputs to subgraph's meta_def
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = "TRTKernel_" + std::to_string(kernels_index++);
+  const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
+  meta_def->name = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + std::to_string(kernels_index++);
   meta_def->domain = kMSDomain;
 
   for (const auto& input : inputs) {
@@ -377,7 +391,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::NodeArg *> inputs, outputs;
+          std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
@@ -441,6 +455,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::string string_buf;
         model_proto.SerializeToString(&string_buf);
 
+        if (dump_subgraphs_) {
+          // Dump TensorRT subgraph for debugging if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+          std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+          model_proto.SerializeToOstream(&dump);
+        }
+	
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
@@ -654,6 +674,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     std::string string_buf;
     model_proto.SerializeToString(&string_buf);
 
+    if (dump_subgraphs_) {
+      // Dump the TensorRT subgraph if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+      std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto.SerializeToOstream(&dump);
+    }
+
     // Create TensorRT engine
     TensorrtLogger& trt_logger = GetTensorrtLogger();
     auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
@@ -669,9 +695,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     for (unsigned int i = 0, end = trt_network->getNbInputs(); i < end; ++i) {
       auto input = trt_network->getInput(i);
       nvinfer1::Dims dims = input->getDimensions();
-      nvinfer1::Dims dims_min = dims;
-      nvinfer1::Dims dims_opt = dims;
-      nvinfer1::Dims dims_max = dims;
+      nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
 
       int nb_dims = dims.nbDims;
       if (input->isShapeTensor()) {  // Shape tensor
@@ -825,16 +849,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       auto trt_builder = trt_state->builder;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
-        // TODO: check if getInput indexing is same with binding index
-        auto input = trt_state->network->getInput(i);
-        nvinfer1::Dims dims = input->getDimensions();
-        nvinfer1::Dims dims_min = dims;
-        nvinfer1::Dims dims_opt = dims;
-        nvinfer1::Dims dims_max = dims;
-
         // Check and update shape ranges for dynamic shape inputs
         auto& shape_ranges = trt_state->input_shape_ranges;
         if (shape_ranges.find(i) != shape_ranges.end()) {
+          // TODO: check if getInput indexing is same with binding index
+          auto input = trt_state->network->getInput(i);
+          nvinfer1::Dims dims = input->getDimensions();
+          nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
+
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_indexes[i]);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shape = ort.GetTensorShape(tensor_info);
@@ -844,10 +866,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           for (int j = 0, end = nb_dims; j < end; ++j) {
             auto& shape_range = shape_ranges[i];
             if (shape_range.find(j) != shape_range.end()) {
+              dims_min.d[j] = shape_range[j].first;
+              dims_opt.d[j] = shape_range[j].second;
+              dims_max.d[j] = shape_range[j].second;
+
               // Update minimum dimension
               if (tensor_shape[j] < shape_range[j].first) {
                 shape_range[j].first = tensor_shape[j];
                 dims_min.d[j] = tensor_shape[j];
+                dims_opt.d[j] = tensor_shape[j];
                 dimension_update = true;
               }
               // Update maximum dimension

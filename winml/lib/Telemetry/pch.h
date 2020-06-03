@@ -5,3 +5,4 @@
 
 #include "common.h"
 #include "TraceLoggingConfig.h"
+#include "NamespaceAliases.h"

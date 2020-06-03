@@ -539,7 +539,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     void ComputeFilterCount(void)
     {
-        FilterCount = (std::min)(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
+        FilterCount = std::min(FilterSetSize, (OutputChannels / BlockSize) - FilterSet * FilterSetSize);
     }
 
     void PrepareWork(int32_t Index)
@@ -686,7 +686,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             // Compute the number of output lines to process in this iteration.
             //
 
-            size_t WorkThisIteration = (std::min)(WorkRemaining, OutputHeight - ph);
+            size_t WorkThisIteration = std::min(WorkRemaining, OutputHeight - ph);
 
             //
             // Walk over each input image organized as a set of NCHWc blocks.
@@ -898,7 +898,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             size_t WorkThisIteration;
 
             if (StrideHeight == 1 && StrideWidth == 1) {
-                WorkThisIteration = (std::min)(WorkRemaining, OutputHeight - ph);
+                WorkThisIteration = std::min(WorkRemaining, OutputHeight - ph);
             } else {
                 WorkThisIteration = 1;
             }
@@ -923,7 +923,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
                 constexpr size_t MaximumInputChannelBatch = 128;
 
-                InputChannelBatch = (std::min)(InputChannels - ic, MaximumInputChannelBatch);
+                InputChannelBatch = std::min(InputChannels - ic, MaximumInputChannelBatch);
 
                 unsigned KernelFlags = ComputeKernelFlags(ic, InputChannelBatch);
 

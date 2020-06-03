@@ -4,14 +4,13 @@
 #include "model.h"
 #include "SqueezeNetValidator.h"
 #include "threadPool.h"
-#include "windows.ai.machinelearning.native.internal.h"
 
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
 
-using namespace winrt::Windows::AI::MachineLearning;
+using namespace winml;
 using namespace winrt;
 
 namespace {
@@ -26,10 +25,10 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
     for (const auto& instance : {"1", "2", "3", "4"}) {
         threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::Cpu);
     }
-    if (GPUTEST_ENABLED) {
-        for (const auto& instance : {"GPU_1", "GPU_2", "GPU_3", "GPU_4"}) {
-            threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::DirectX);
-        }
+    if (SkipGpuTests()) {} else {
+      for (const auto& instance : {"GPU_1", "GPU_2", "GPU_3", "GPU_4"}) {
+        threads.emplace_back(load_test_model, instance, LearningModelDeviceKind::DirectX);
+      }
     }
 
     for (auto& thread : threads) {
@@ -37,7 +36,7 @@ void LoadBindEvalSqueezenetRealDataWithValidationConcurrently() {
     }
 }
 
-void ConcurrencyTestsApiSetup() {
+void ConcurrencyTestsClassSetup() {
     init_apartment();
     std::srand(static_cast<unsigned>(std::time(nullptr)));
 }
@@ -46,7 +45,7 @@ struct EvaluationUnit {
     LearningModel model;
     LearningModelSession session;
     LearningModelBinding binding;
-    winrt::Windows::Foundation::IAsyncOperation<LearningModelEvaluationResult> operation;
+    wf::IAsyncOperation<LearningModelEvaluationResult> operation;
     LearningModelEvaluationResult result;
 
     EvaluationUnit() : model(nullptr), session(nullptr), binding(nullptr), result(nullptr) {}
@@ -156,7 +155,7 @@ void EvalAsyncDifferentBindings() {
     VerifyEvaluation(evaluation_units, { TABBY_CAT_INDEX, TENCH_INDEX });
 }
 
-winrt::Windows::AI::MachineLearning::ILearningModelFeatureDescriptor UnusedCreateFeatureDescriptor(
+winml::ILearningModelFeatureDescriptor UnusedCreateFeatureDescriptor(
     std::shared_ptr<onnxruntime::Model> model,
     const std::wstring& name,
     const std::wstring& description,
@@ -249,12 +248,11 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
 }
 
 void MultiThreadMultiSession() {
-    MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::Cpu);
+    MultiThreadMultiSessionOnDevice(LearningModelDevice(LearningModelDeviceKind::Cpu));
 }
 
 void MultiThreadMultiSessionGpu() {
-    GPUTEST
-    MultiThreadMultiSessionOnDevice(LearningModelDeviceKind::DirectX);
+    MultiThreadMultiSessionOnDevice(LearningModelDevice(LearningModelDeviceKind::DirectX));
 }
 
 // Create different sessions for each thread, and evaluate
@@ -319,18 +317,17 @@ void MultiThreadSingleSessionOnDevice(const LearningModelDevice& device) {
 }
 
 void MultiThreadSingleSession() {
-    MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::Cpu);
+    MultiThreadSingleSessionOnDevice(LearningModelDevice(LearningModelDeviceKind::Cpu));
 }
 
 void MultiThreadSingleSessionGpu() {
-    GPUTEST
-    MultiThreadSingleSessionOnDevice(LearningModelDeviceKind::DirectX);
+    MultiThreadSingleSessionOnDevice(LearningModelDevice(LearningModelDeviceKind::DirectX));
 }
 }
 
 const ConcurrencyTestsApi& getapi() {
-  static constexpr ConcurrencyTestsApi api = {
-    ConcurrencyTestsApiSetup,
+  static ConcurrencyTestsApi api = {
+    ConcurrencyTestsClassSetup,
     LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
     MultiThreadLoadModel,
     MultiThreadMultiSession,
@@ -341,5 +338,10 @@ const ConcurrencyTestsApi& getapi() {
     EvalAsyncDifferentSessions,
     EvalAsyncDifferentBindings
   };
+
+  if (SkipGpuTests()) {
+    api.MultiThreadMultiSessionGpu = SkipTest;
+    api.MultiThreadSingleSessionGpu = SkipTest;
+  }
   return api;
 }

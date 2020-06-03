@@ -96,23 +96,31 @@ static void RunGruTest(const std::vector<float>& X_data,
   } else {
     test.AddMissingOptionalOutput<float>();
   }
-  
+
   // TensorRT failed on GRU tests
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 void DefaultActivationsSimpleWeightsNoBias(std::string direction,
                                            const std::vector<float>& Y_data,
-                                           const std::vector<float>& Y_h_data) {
+                                           const std::vector<float>& Y_h_data,
+                                           bool linear_before_reset = false) {
   int64_t seq_length = 2;
-  int batch_size = 2;
+  int batch_size = linear_before_reset ? 3 : 2;  // extra row to validate usage of linear_output_
   int64_t input_size = 1;
   int64_t hidden_size = 3;
 
   int num_directions = direction == "bidirectional" ? 2 : 1;
 
-  std::vector<float> X_data{1.f, 2.f,
-                            10.f, 11.f};
+  std::vector<float> X_data;
+
+  if (linear_before_reset) {
+    X_data = {1.f, 2.f, 3.f,
+              10.f, 11.f, 12.f};
+  } else {
+    X_data = {1.f, 2.f,
+              10.f, 11.f};
+  }
 
   std::vector<float> W_data{0.1f, 0.2f, 0.3f,   // wz
                             1.f, 2.f, 3.f,      // wr
@@ -127,13 +135,13 @@ void DefaultActivationsSimpleWeightsNoBias(std::string direction,
   std::vector<float> R_data(num_directions * 3 * hidden_size * hidden_size, 0.1f);
 
   RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
-             nullptr, nullptr, nullptr, direction);
+             nullptr, nullptr, nullptr, direction, 9999.0, true, linear_before_reset);
 
   // if Y_h_data is empty that tests Y_h not being returned. we need to have at least one output or
   // the node will get removed, so only test with output_sequence == false (no Y as output) if Y_h is not optional
   if (!Y_h_data.empty())
     RunGruTest(X_data, W_data, R_data, Y_data, Y_h_data, input_size, batch_size, hidden_size, seq_length,
-               nullptr, nullptr, nullptr, direction, 9999.0, /* output_sequence*/ false);
+               nullptr, nullptr, nullptr, direction, 9999.0, /* output_sequence*/ false, linear_before_reset);
 }
 
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
@@ -169,7 +177,7 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
   DefaultActivationsSimpleWeightsNoBias("reverse", Y_data, Y_h_data);
 }
 
-TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows) {
+TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBias) {
   std::vector<float> Y_data{
       // forward output for input sequence 0
       0.4750208f, 0.450166f, 0.4255575f,
@@ -197,6 +205,42 @@ TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows) {
       0.5803454f, 0.4527356f, 0.36886263f};
 
   DefaultActivationsSimpleWeightsNoBias("bidirectional", Y_data, Y_h_data);
+}
+
+TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasLinearBeforeReset) {
+  std::vector<float> Y_data{
+      // forward output for input sequence 0
+      0.4750208f, 0.450166f, 0.4255575f,
+      0.45016602f, 0.40131235f, 0.35434368f,
+      0.42555748f, 0.35434369f, 0.28905049f,
+
+      // reverse output for input sequence 0 [sequence 1 in reversed input]
+      0.6082785f, 0.50623393f, 0.4426924f,
+      0.5803454f, 0.4527356f, 0.36886263f,
+      0.5521325f, 0.40092295f, 0.30118297f,
+
+      // forward output for input sequence 1
+      0.6027093f, 0.5083023f, 0.44950223f,
+      0.5754369f, 0.45485455f, 0.3747841f,
+      0.54791767f, 0.40301081f, 0.30608854f,
+
+      // reverse output for input sequence 1 [sequence 0 in reversed input]
+      0.26894143f, 0.11920292f, 0.04742587f,
+      0.24973989f, 0.09975048f, 0.03557118f,
+      0.23147521f, 0.08317269f, 0.02659699f};
+
+  std::vector<float> Y_h_data{
+      // we did the forward processing of input[1] last
+      0.6027093f, 0.5083023f, 0.44950223f,
+      0.5754369f, 0.45485455f, 0.3747841f,
+      0.54791767f, 0.40301081f, 0.30608854f,
+
+      // and the reverse processing of input[0] last as the input order was reversed
+      0.6082785f, 0.50623393f, 0.4426924f,
+      0.5803454f, 0.4527356f, 0.36886263f,
+      0.5521325f, 0.40092295f, 0.30118297f};
+
+  DefaultActivationsSimpleWeightsNoBias("bidirectional", Y_data, Y_h_data, true);
 }
 
 void DefaultActivationsSimpleWeightsWithBias(std::string direction,
@@ -305,7 +349,7 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
 }
 
 /*******************
-* Tests from ONNXRuntime
+* Legacy tests from LotusRT
 */
 class DeepCpuGruOpTestContext {
  public:
@@ -464,33 +508,33 @@ void DeepCpuGruOpTestContext::RunTest(const std::vector<float>& X,
                                       const std::vector<float>& expected_Y_h,
                                       const bool linear_before_reset) {
   //run with and without output_sequence
-  ::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
-                                  expected_Y, expected_Y_h,
-                                  input_size_, batch_size, hidden_dim_, seq_length,
-                                  use_bias_ ? &gru_bias_ : nullptr,
-                                  initial_h,
-                                  &sequence_lens,
-                                  direction_,
-                                  9999999999.f,
-                                  /*output_sequence*/ true,
-                                  linear_before_reset,
-                                  activation_func_names_,
-                                  alphas_,
-                                  betas_);
+  RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
+             expected_Y, expected_Y_h,
+             input_size_, batch_size, hidden_dim_, seq_length,
+             use_bias_ ? &gru_bias_ : nullptr,
+             initial_h,
+             &sequence_lens,
+             direction_,
+             9999999999.f,
+             /*output_sequence*/ true,
+             linear_before_reset,
+             activation_func_names_,
+             alphas_,
+             betas_);
 
-  ::onnxruntime::test::RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
-                                  expected_Y, expected_Y_h,
-                                  input_size_, batch_size, hidden_dim_, seq_length,
-                                  use_bias_ ? &gru_bias_ : nullptr,
-                                  initial_h,
-                                  &sequence_lens,
-                                  direction_,
-                                  9999999999.f,
-                                  /*output_sequence*/ false,
-                                  linear_before_reset,
-                                  activation_func_names_,
-                                  alphas_,
-                                  betas_);
+  RunGruTest(X, gru_input_weights_, gru_recurrent_weights_,
+             expected_Y, expected_Y_h,
+             input_size_, batch_size, hidden_dim_, seq_length,
+             use_bias_ ? &gru_bias_ : nullptr,
+             initial_h,
+             &sequence_lens,
+             direction_,
+             9999999999.f,
+             /*output_sequence*/ false,
+             linear_before_reset,
+             activation_func_names_,
+             alphas_,
+             betas_);
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBasic) {

@@ -15,8 +15,9 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/tensor/onehot.h"
-#include "core/util/eigen_common_wrapper.h"
+#include "core/common/eigen_common_wrapper.h"
 #include "core/platform/env.h"
+#include "core/providers/common.h"
 
 #ifndef EIGEN_USE_THREADS
 #define EIGEN_USE_THREADS
@@ -67,8 +68,7 @@ REG_ONE_HOT_OP(int64_t, int32_t, float);  // added this to satisfy onnx model te
 REG_ONE_HOT_OP(int64_t, float, float);    // added this to satisfy onnx model tests
 REG_ONE_HOT_OP(int64_t, float, int32_t);  // added this to satisfy onnx model tests
 
-Status ValidateInputs(const Tensor* depth,
-                      const Tensor* values) {
+Status ValidateInputs(const Tensor* depth, const Tensor* values) {
   // validation scenarios
   // depth should be scalar and > 0
   if (!depth->Shape().IsScalar()) {
@@ -81,6 +81,30 @@ Status ValidateInputs(const Tensor* depth,
                   "Invalid argument for values; either it's rank is more than 1"
                   " or it has more than 2 elements");
   }
+
+  return Status::OK();
+}
+
+Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
+                          int64_t& prefix_dim_size, int64_t& suffix_dim_size,
+                          std::vector<int64_t>& output_shape) {
+  const auto& indices_shape = indices->Shape();
+  const auto& indices_dims = indices_shape.GetDims();
+  const auto indices_num_dims = indices_shape.NumDimensions();
+  output_shape = indices_dims;
+
+  // output rank is always 1 more than the input rank as a new dimension is added to the input shape
+  const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
+
+  auto true_axis = HandleNegativeAxis(axis, output_rank);
+
+  output_shape.insert(output_shape.begin() + true_axis, depth_val);
+
+  prefix_dim_size = 1;
+  for (int64_t i = 0; i < true_axis; ++i) {
+    prefix_dim_size *= indices_dims[i];
+  }
+  suffix_dim_size = indices_shape.Size() / prefix_dim_size;
 
   return Status::OK();
 }
@@ -127,7 +151,6 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   ORT_RETURN_IF_ERROR(ValidateInputs(depth, values));
 
-  // prepare output shape
   const auto* depth_data = depth->Data<depth_type>();
   const auto depth_val = static_cast<int64_t>(
       *depth_data);  // As per spec in case 'depth' is of non-integer type, it will be casted to int64 before use.
@@ -135,25 +158,10 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Depth is negative.");
   }
 
-  const auto& indices_shape = indices->Shape();
-  const auto& indices_dims = indices_shape.GetDims();
-  const auto indices_num_dims = indices_shape.NumDimensions();
-  std::vector<int64_t> output_shape(indices_shape.GetDims());
-
-  // output rank is always 1 more than the input rank as a new dimension is added to the input shape
-  const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
-  if (axis_ >= output_rank || axis_ < -output_rank) {
-    std::ostringstream oss;
-    oss << "'axis' attribute must have a value in the range [" << -output_rank
-        << "," << indices_num_dims << "]";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, oss.str());
-  }
-
-  auto true_axis = axis_;
-  if (true_axis < 0)
-    true_axis += output_rank;
-
-  output_shape.insert(output_shape.begin() + true_axis, depth_val);
+  // prepare output shape
+  int64_t prefix_dim_size, suffix_dim_size;
+  std::vector<int64_t> output_shape;
+  ORT_RETURN_IF_ERROR(PrepareOutputShape(indices, depth_val, axis_, prefix_dim_size, suffix_dim_size, output_shape));
 
   // allocate output
   const auto* values_data = values->Data<out_type>();
@@ -163,12 +171,6 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   if (output->Shape().Size() == 0)
     return Status::OK();
 
-  int64_t prefix_dim_size = 1;
-  for (int64_t i = 0; i < true_axis; ++i) {
-    prefix_dim_size *= indices_dims[i];
-  }
-  const int64_t suffix_dim_size = indices_shape.Size() / prefix_dim_size;
-
   // Split indices into matrix of size prefix_dim_size x suffix_dim_size
   Eigen::array<Eigen::DenseIndex, 2> indices_dims_e = {
       {static_cast<Eigen::DenseIndex>(prefix_dim_size), static_cast<Eigen::DenseIndex>(suffix_dim_size)}};
@@ -176,7 +178,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
   // Handle negative indices. It's faster to create a new indices instead of comparing in generator
   // since generator has much larger loops.
   const auto* indices_data = indices->Data<in_type>();
-  const auto indices_size = indices_shape.Size();
+  const auto indices_size = indices->Shape().Size();
   std::vector<in_type> adjusted_indices;
   adjusted_indices.reserve(indices_size);
   for (int64_t i = 0; i < indices_size; ++i) {

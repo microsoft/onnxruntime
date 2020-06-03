@@ -19,9 +19,45 @@
 #include "core/framework/data_types.h"
 #include "core/platform/path_lib.h"
 #include "core/session/ort_apis.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
+
+// Provide template specializations for onnxruntime-specific types.
+namespace ONNX_NAMESPACE {
+template <>
+TensorProto ToTensor<onnxruntime::MLFloat16>(const onnxruntime::MLFloat16& value) {
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_FLOAT16);
+  t.add_int32_data(value.val);
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFloat16>& values) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(TensorProto_DataType_FLOAT16);
+  for (const onnxruntime::MLFloat16& val : values) {
+    t.add_int32_data(val.val);
+  }
+  return t;
+}
+
+bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
+                const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
+  if (l.has_dim_value()) {
+    return r.has_dim_value() && l.dim_value() == r.dim_value();
+  } else if (l.has_dim_param()) {
+    return r.has_dim_param() && l.dim_param() == r.dim_param() && !l.dim_param().empty();
+  } else {
+    // l is unknown - has neither dim_value nor dim_param
+  }
+
+  return false;
+}
+}  // namespace ONNX_NAMESPACE
 
 namespace {
 
@@ -265,26 +301,6 @@ struct UnInitializeParam {
   ONNXTensorElementDataType ele_type;
 };
 
-// In the future, we may make these two function as public C API
-/**
- *  Initialize a buffer for being used with the OrtCreateTensorWithDataAsOrtValue function
- *
- */
-ORT_API_STATUS(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
-               enum ONNXTensorElementDataType type);
-
-/**
- * Uninitialize the buffer that was initialized by the OrtInitializeBufferForTensor function
- *
- */
-ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enum ONNXTensorElementDataType type);
-
-static void UnInitTensor(void* param) noexcept {
-  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
-  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
-  delete p;
-}
-
 ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
                     enum ONNXTensorElementDataType type) {
   try {
@@ -308,6 +324,12 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   for (size_t i = 0, n = tensor_size; i < n; ++i) {
     ptr[i].~string();
   }
+}
+
+static void UnInitTensor(void* param) noexcept {
+  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
+  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
+  delete p;
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \
@@ -368,7 +390,10 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
   from.f = nullptr;
   from.param = nullptr;
 }
-
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 6239)
+#endif
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
@@ -486,7 +511,10 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
              ml_tensor->GetDeleteFunc());
   return Status::OK();
 }
-
+#ifdef _MSC_VER
+#pragma warning(pop)
+#pragma warning(disable : 6239)
+#endif
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;

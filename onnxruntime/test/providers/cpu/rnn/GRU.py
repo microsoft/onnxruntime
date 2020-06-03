@@ -260,16 +260,20 @@ class GRU_ONNXRuntimeUnitTests():
         print_results(fw_output)
 
     @staticmethod
-    def BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows():
+    def BidirectionalDefaultActivationsSimpleWeightsNoBias(linear_before_reset=0):
 
-        print(GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows.__name__)
+        print(GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias.__name__ +
+              '.linear_before_reset=' + str(linear_before_reset))
 
         seq_length = 2
-        batch_size = 2
+        batch_size = 3 if linear_before_reset else 2
         input_size = 1
         hidden_size = 3
 
-        input = np.array([[[1.], [2.]], [[10.], [11.]]]).astype(np.float32)
+        if linear_before_reset:
+            input = np.array([[[1.], [2.], [3.]], [[10.], [11.], [12.]]]).astype(np.float32)
+        else:
+            input = np.array([[[1.], [2.]], [[10.], [11.]]]).astype(np.float32)
 
         W = np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
 
@@ -280,7 +284,8 @@ class GRU_ONNXRuntimeUnitTests():
         gru = GRU_Helper(X=input,
                          W=np.tile(W, (2, 1)).reshape(2, 3 * hidden_size, input_size),
                          R=np.tile(R, (2, 1)).reshape(2, 3 * hidden_size, hidden_size),
-                         direction='bidirectional')
+                         direction='bidirectional',
+                         linear_before_reset=linear_before_reset)
 
         fw_output = gru.run()
         print_results(fw_output)
@@ -328,7 +333,7 @@ class GRU_ONNXRuntimeUnitTests():
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(linear_before_reset=1)
 
     @staticmethod
-    def ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset(linear_before_reset=0):
+    def ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset():
 
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(direction="reverse", linear_before_reset=1)
 
@@ -338,7 +343,7 @@ class GRU_ONNXRuntimeUnitTests():
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(rows=1, linear_before_reset=1)
 
     @staticmethod
-    def ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset(linear_before_reset=0):
+    def ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset():
 
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(rows=1,
                                                                          direction="reverse",
@@ -382,7 +387,8 @@ class GRU_ONNXRuntimeUnitTests():
 
 GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows()
 GRU_ONNXRuntimeUnitTests.ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows()
-GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows()
+GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias()
+GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias(linear_before_reset=1)
 
 GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallel()
 GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset()

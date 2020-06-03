@@ -1,0 +1,56 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_GPU_Training_E2E_Test
+
+  timeoutInMinutes: 60
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - script: |
+      orttraining/tools/ci_test/download_e2e_test_data.py $(Build.BinariesDirectory)/training_e2e_test_data
+    displayName: 'Download training end-to-end test data'
+
+  - script: |
+      tools/ci_build/github/linux/run_dockerbuild.sh \
+        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -x " \
+          --config RelWithDebInfo \
+          --enable_training \
+          --update --build \
+          "
+    displayName: 'Build'
+
+  - script: |
+      docker run \
+        --gpus all \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume $(Build.BinariesDirectory)/training_e2e_test_data:/training_e2e_test_data:ro \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /onnxruntime_src/orttraining/tools/ci_test/run_batch_size_test.py \
+            --binary_dir /build/RelWithDebInfo \
+            --model_root /training_e2e_test_data/models
+    displayName: 'Run batch size test'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - script: |
+      docker run \
+        --gpus all \
+        --rm \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume $(Build.BinariesDirectory)/training_e2e_test_data:/training_e2e_test_data:ro \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
+          /onnxruntime_src/orttraining/tools/ci_test/run_convergence_test.py \
+            --binary_dir /build/RelWithDebInfo \
+            --model_root /training_e2e_test_data/models \
+            --training_data_root /training_e2e_test_data/data
+    displayName: 'Run convergence test'
+    condition: succeededOrFailed() # ensure all tests are run
+
+  - template: templates/clean-agent-build-directory-step.yml

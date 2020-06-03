@@ -21,6 +21,7 @@
 
 #include "core/platform/env.h"
 #include "core/graph/schema_registry.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
@@ -194,7 +195,7 @@ Version Model::ModelVersion() const {
   return kNoVersion;
 }
 
-void Model::SetModelversion(onnxruntime::Version version) {
+void Model::SetModelVersion(onnxruntime::Version version) {
   model_proto_.set_model_version(version);
 }
 
@@ -236,7 +237,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream, 1 << 20);
   const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
@@ -269,7 +270,9 @@ Status Model::Load(const ModelProto& model_proto,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
   return Status::OK();
 }
@@ -299,7 +302,9 @@ Status Model::Load(ModelProto&& model_proto,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
 
-  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(options));
 
   return Status::OK();
 }
@@ -425,7 +430,9 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
 
   p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger);
 
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(options));
 
   return Status::OK();
 }
@@ -440,7 +447,8 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  const bool result = model_proto.ParseFromFileDescriptor(fd);
+  FileInputStream input(fd, 1 << 20);
+  const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
@@ -474,7 +482,9 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
 
   p_model = std::make_shared<Model>(std::move(model_proto), model_path, local_registries, logger);
 
-  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
+  Graph::ResolveOptions options;
+  options.no_proto_sync_required = true;
+  ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(options));
 
   return Status::OK();
 }

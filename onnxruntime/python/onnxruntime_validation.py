@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 """
 Check OS requirements for ONNX Runtime Python Bindings.
 """
@@ -26,11 +26,12 @@ def check_distro_info():
             warnings.warn('Unsupported Windows version (%s). ONNX Runtime supports Windows 10 and above, only.' %
                           __my_distro_ver__)
     elif __my_system__ == 'linux':
-        ''' Although the 'platform' python module for getting Distro information works well on standard OS images running on real
-        hardware, it is not acurate when running on Azure VMs, Git Bash, Cygwin, etc. The returned values for release and version
-        are unpredictable for virtualized or emulated environments.
-        /etc/os-release and /etc/lsb_release files, on the other hand, are guaranteed to exist and have standard values in all
-        OSes supported by onnxruntime. The former is the current standard file to check OS info and the latter is its antecessor.
+        ''' Although the 'platform' python module for getting Distro information works well on standard OS images
+        running on real hardware, it is not accurate when running on Azure VMs, Git Bash, Cygwin, etc.
+        The returned values for release and version are unpredictable for virtualized or emulated environments.
+        /etc/os-release and /etc/lsb_release files, on the other hand, are guaranteed to exist and have standard values
+        in all OSes supported by onnxruntime. The former is the current standard file to check OS info and the latter
+        is its predecessor.
         '''
         # Newer systems have /etc/os-release with relevant distro info
         __my_distro__ = linecache.getline(__OS_RELEASE_FILE__, 3)[3:-1]

@@ -5,10 +5,8 @@
 
 #include "inc/ImageConversionTypes.h"
 
-using namespace Windows::AI::MachineLearning::Internal;
-using namespace winrt::Windows::Graphics::Imaging;
+namespace _winml {
 
-namespace Windows::AI::MachineLearning::Internal {
 class CpuTensorizer {
  public:
   template <typename T>
@@ -17,7 +15,7 @@ class CpuTensorizer {
       _In_ ImageTensorChannelType formatTo,
       _In_ BYTE* pBuffer,
       _In_ UINT32 bufferWidth,
-      _In_ const BitmapBounds& inputBounds,
+      _In_ const wgi::BitmapBounds& inputBounds,
       _Inout_ T* pCPUTensor) {
 #pragma warning(push)
 #pragma warning(disable : 26014)  // warning about possible out of bounds accesing pData, but input is checked for BGRA8 format, so uiCapacity should be in multiples of 4
@@ -263,4 +261,4 @@ class CpuTensorizer {
   }
 #endif
 };
-}  // namespace Windows::AI::MachineLearning::Internal
+}  // namespace _winml

@@ -27,12 +27,16 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
     std::wstring_view name{ WindowsGetStringRawBuffer(classId_hstring, nullptr), WindowsGetStringLen(classId_hstring) };
     HMODULE library{ nullptr };
 
-    std::wstring winmlDllPath = FileHelpers::GetWinMLPath() + L"Windows.AI.MachineLearning.dll";
+    std::wostringstream dll;
+    dll << BINARY_NAME;
 
-    if (starts_with(name, L"Windows.AI.MachineLearning."))
+    std::wstring winml_dll_name =  dll.str();
+    std::wstring winml_dll_path = FileHelpers::GetWinMLPath() + winml_dll_name;
+    std::wstring winml_dll_prefix = winml_dll_name.substr(0, winml_dll_name.size() - 3);
+    if (starts_with(name, winml_dll_prefix))
     {
-        const wchar_t* libPath = winmlDllPath.c_str();
-        library = LoadLibraryExW(libPath, nullptr, 0);
+        const wchar_t* lib_path = winml_dll_path.c_str();
+        library = LoadLibraryExW(lib_path, nullptr, 0);
     }
     else
     {
@@ -54,7 +58,7 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
         return hr;
     }
 
-    winrt::com_ptr<winrt::Windows::Foundation::IActivationFactory> activation_factory;
+    winrt::com_ptr<wf::IActivationFactory> activation_factory;
     HRESULT const hr = call(classId_hstring, activation_factory.put_void());
 
     if (FAILED(hr))
@@ -63,7 +67,7 @@ HRESULT __stdcall WINRT_RoGetActivationFactory(HSTRING classId_hstring, GUID con
         return hr;
     }
 
-    if (winrt::guid(iid) != winrt::guid_of<winrt::Windows::Foundation::IActivationFactory>())
+    if (winrt::guid(iid) != winrt::guid_of<wf::IActivationFactory>())
     {
         return activation_factory->QueryInterface(iid, factory);
     }

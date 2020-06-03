@@ -147,35 +147,19 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const uint8_t* A,
+    const AType* A,
     size_t lda,
-    uint8_t offa,
-    const int8_t* B,
+    AType offa,
+    const BType* B,
     size_t ldb,
-    int8_t offb,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
+    BType offb,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
@@ -284,6 +268,22 @@ MlasPool(
 
 void
 MLASCALL
+MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeExp(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
 MlasComputeLogistic(
     const float* Input,
     float* Output,
@@ -292,15 +292,18 @@ MlasComputeLogistic(
 
 void
 MLASCALL
-MlasComputeTanh(
+MlasComputeSoftmax(
     const float* Input,
     float* Output,
-    size_t N
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
 MLASCALL
-MlasComputeErf(
+MlasComputeTanh(
     const float* Input,
     float* Output,
     size_t N

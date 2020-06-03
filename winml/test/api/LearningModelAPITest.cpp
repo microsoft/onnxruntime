@@ -1,28 +1,19 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "testPch.h"
 #include "LearningModelAPITest.h"
 #include "APITest.h"
-#include <winrt/Windows.Graphics.Imaging.h>
-#include <winrt/Windows.Media.h>
-#include <winrt/Windows.Storage.h>
-#include <winrt/Windows.Storage.Streams.h>
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+using namespace winml;
+using namespace wfc;
+using namespace wgi;
+using namespace wm;
+using namespace ws;
+using namespace wss;
 
-static void LearningModelAPITestSetup() {
-  init_apartment();
-}
-
-static void LearningModelAPITestGpuSetup() {
-  GPUTEST;
+static void LearningModelAPITestsClassSetup() {
   init_apartment();
 }
 
@@ -31,9 +22,37 @@ static void CreateModelFromFilePath() {
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
 }
 
+static void CreateModelFromUnicodeFilePath() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"UnicodePath\\こんにちは maçã\\foo.onnx", learningModel));
+}
+
+static void CreateModelFileNotFound() {
+  LearningModel learningModel = nullptr;
+
+  WINML_EXPECT_THROW_SPECIFIC(
+    APITest::LoadModel(L"missing_model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool {
+          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+    });
+}
+
+static void CreateCorruptModel() {
+  LearningModel learningModel = nullptr;
+
+  WINML_EXPECT_THROW_SPECIFIC(
+    APITest::LoadModel(L"corrupt-model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool {
+        auto f = __HRESULT_FROM_WIN32(e.code());
+          return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
+    });
+}
+
 static void CreateModelFromIStorage() {
   std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStorageFileAsync(storageFile).get());
   WINML_EXPECT_TRUE(learningModel != nullptr);
@@ -45,7 +64,7 @@ static void CreateModelFromIStorage() {
 
 static void CreateModelFromIStorageOutsideCwd() {
   std::wstring path = FileHelpers::GetModulePath() + L"ModelSubdirectory\\ModelInSubdirectory.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStorageFileAsync(storageFile).get());
   WINML_EXPECT_TRUE(learningModel != nullptr);
@@ -57,8 +76,8 @@ static void CreateModelFromIStorageOutsideCwd() {
 
 static void CreateModelFromIStream() {
   std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
-  auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
-  winrt::Windows::Storage::Streams::IRandomAccessStreamReference streamref;
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
+  ws::Streams::IRandomAccessStreamReference streamref;
   storageFile.as(streamref);
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStreamAsync(streamref).get());
@@ -247,19 +266,28 @@ static void CloseModelNoNewSessions() {
   WINML_EXPECT_NO_THROW(learningModel.Close());
   LearningModelSession session = nullptr;
   WINML_EXPECT_THROW_SPECIFIC(
-      session = LearningModelSession(learningModel);,
+      session = LearningModelSession(learningModel),
       winrt::hresult_error,
       [](const winrt::hresult_error& e) -> bool {
             return e.code() == E_INVALIDARG;
       });
 }
 
-const LearningModelApiTestApi& getapi() {
-  static constexpr LearningModelApiTestApi api =
+static void CheckMetadataCaseInsensitive() {
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"modelWithMetaData.onnx", learningModel));
+  IMapView metadata = learningModel.Metadata();
+  WINML_EXPECT_TRUE(metadata.HasKey(L"tHiSiSaLoNgKeY"));
+  WINML_EXPECT_EQUAL(metadata.Lookup(L"tHiSiSaLoNgKeY"), L"thisisalongvalue");
+}
+
+const LearningModelApiTestsApi& getapi() {
+  static LearningModelApiTestsApi api =
   {
-    LearningModelAPITestSetup,
-    LearningModelAPITestGpuSetup,
+    LearningModelAPITestsClassSetup,
     CreateModelFromFilePath,
+    CreateModelFromUnicodeFilePath,
+    CreateModelFileNotFound,
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
     CreateModelFromIStream,
@@ -272,7 +300,13 @@ const LearningModelApiTestApi& getapi() {
     EnumerateOutputs,
     CloseModelCheckMetadata,
     CloseModelCheckEval,
-    CloseModelNoNewSessions
+    CloseModelNoNewSessions,
+    CheckMetadataCaseInsensitive,
+    CreateCorruptModel
   };
+
+  if (RuntimeParameterExists(L"noVideoFrameTests")) {
+    api.CloseModelCheckEval = SkipTest;
+  }
   return api;
 }

@@ -199,6 +199,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
   char* GetGraphName(OrtAllocator* allocator) const;
   char* GetDomain(OrtAllocator* allocator) const;
   char* GetDescription(OrtAllocator* allocator) const;
+  char** GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const;
   char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
   int64_t GetVersion() const;
 };

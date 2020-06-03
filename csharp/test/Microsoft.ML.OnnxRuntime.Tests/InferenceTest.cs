@@ -38,7 +38,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal("onnxruntime_profile_", opt.ProfileOutputPathPrefix);
                 Assert.True(opt.EnableCpuMemArena);
                 Assert.Equal("", opt.LogId);
-                Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
+                Assert.Equal(0, opt.LogVerbosityLevel);
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
                 Assert.Equal(0, opt.IntraOpNumThreads);
                 Assert.Equal(0, opt.InterOpNumThreads);
                 Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
@@ -63,8 +64,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.LogId = "MyLogId";
                 Assert.Equal("MyLogId", opt.LogId);
 
-                opt.LogVerbosityLevel = LogLevel.Error;
-                Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
+                opt.LogVerbosityLevel = 1;
+                Assert.Equal(1, opt.LogVerbosityLevel);
+
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
 
                 opt.IntraOpNumThreads = 4;
                 Assert.Equal(4, opt.IntraOpNumThreads);
@@ -88,10 +92,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_NGraph("CPU");  //TODO: this API should be refined
 #endif
 #if USE_OPENVINO
-                opt.AppendExecutionProvider_OpenVINO(null);  //TODO: this won't work, because the native side copies the const char*
+                opt.AppendExecutionProvider_OpenVINO();
 #endif
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
+#endif
+#if USE_MIGRAPHX
+                opt.AppendExecutionProvider_MIGraphX(0);
 #endif
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi();
@@ -110,15 +117,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 //verify default options
                 Assert.False(opt.Terminate);
-                Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
+                Assert.Equal(0, opt.LogVerbosityLevel);
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, opt.LogSeverityLevel);
                 Assert.Equal("", opt.LogId);
 
                 // try setting options
                 opt.Terminate = true;
                 Assert.True(opt.Terminate);
 
-                opt.LogVerbosityLevel = LogLevel.Error;
-                Assert.Equal(LogLevel.Error, opt.LogVerbosityLevel);
+                opt.LogVerbosityLevel = 1;
+                Assert.Equal(1, opt.LogVerbosityLevel);
+
+                opt.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
+                Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR, opt.LogSeverityLevel);
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
@@ -201,7 +212,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     runOptions.LogId = "CsharpTest";
                     runOptions.Terminate = false;  // TODO: Test terminate = true, it currently crashes
-                    runOptions.LogVerbosityLevel = LogLevel.Error;
+                    runOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR;
                     IReadOnlyCollection<string> outputNames = session.OutputMetadata.Keys.ToList();
 
                     using (var results = session.Run(container, outputNames, runOptions))  // results is an IReadOnlyList<NamedOnnxValue> container
@@ -281,6 +292,47 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     validateRunResultData(outputTensor);
                 }
             }
+        }
+
+        [Fact]
+        public void InferenceSessionManualDisposeAfterUse()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            // Set the graph optimization level for this session.
+            SessionOptions options = new SessionOptions();
+            options.ProfileOutputPathPrefix = "Ort_P_";
+            options.EnableProfiling = true;
+            var session = new InferenceSession(modelPath, options);
+
+
+            var inputMeta = session.InputMetadata;
+            var container = new List<NamedOnnxValue>();
+
+            float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+
+            foreach (var name in inputMeta.Keys)
+            {
+                Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                Assert.True(inputMeta[name].IsTensor);
+                var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+            }
+
+            // Run inference with named inputs and outputs created with in Run()
+            using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+            {
+                validateRunResults(results);
+            }
+
+            string profile_file = session.EndProfiling();
+
+            // Profile file should have the output path prefix in it
+            Assert.Contains("Ort_P_", profile_file);
+
+            // Should be able to dispose the session manually
+            session.Dispose();
+
         }
 
         private void validateRunResults(IReadOnlyCollection<NamedOnnxValue> results)
@@ -503,6 +555,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
             };
 
@@ -567,7 +620,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-
 
         [Theory]
         [MemberData(nameof(GetModelsForTest))]
@@ -1419,6 +1471,65 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(0.40904793, map["1"], 6);
                     Assert.Equal(0.33156919, map["2"], 6);
                 }
+
+            }
+        }
+
+        [Fact]
+        private void TestModelSequenceOfTensors()
+        {
+
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_sequence_tensors.onnx");
+
+            using (var session = new InferenceSession(modelPath))
+            {
+                var outMeta = session.OutputMetadata;
+                Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outMeta["output_sequence"].OnnxValueType);
+
+                var container = new List<NamedOnnxValue>();
+                var firstInputTensor = new DenseTensor<Int64>(new Int64[] { 1, 2, 3, 4, 5, 6 }, new int[] { 2, 3 });
+                var secondInputTensor = new DenseTensor<Int64>(new Int64[] { 7, 8, 9, 10, 11, 12 }, new int[] { 2, 3 });
+
+                var firstNov = NamedOnnxValue.CreateFromTensor("tensor1", firstInputTensor);
+                var secondNov = NamedOnnxValue.CreateFromTensor("tensor2", secondInputTensor);
+
+                container.Add(firstNov);
+                container.Add(secondNov);
+
+                using (var outputs = session.Run(container))
+                {
+                    // output is a sequence<tensors>
+                    // try-cast to an sequence of NOV
+                    var outNode = outputs.ElementAtOrDefault(0);
+                    Assert.Equal("output_sequence", outNode.Name);
+
+                    // try-cast to an sequence of NOV
+                    var seq = outNode.AsEnumerable<NamedOnnxValue>();
+
+                    // make sure that the sequence holds only 2 elements (tensors)
+                    Assert.True(seq.Count() == 2);
+
+                    // try-cast the elements in sequence to tensor type
+                    var firstTensorInOuputSequence = seq.First().AsTensor<Int64>();
+                    var secondTensorInOuputSequence = seq.Last().AsTensor<Int64>();
+
+                    // make sure the tensors in the output sequence hold the correct values
+                    Assert.True(firstTensorInOuputSequence.GetValue(0) == 1);
+                    Assert.True(firstTensorInOuputSequence.GetValue(1) == 2);
+                    Assert.True(firstTensorInOuputSequence.GetValue(2) == 3);
+                    Assert.True(firstTensorInOuputSequence.GetValue(3) == 4);
+                    Assert.True(firstTensorInOuputSequence.GetValue(4) == 5);
+                    Assert.True(firstTensorInOuputSequence.GetValue(5) == 6);
+
+                    Assert.True(secondTensorInOuputSequence.GetValue(0) == 7);
+                    Assert.True(secondTensorInOuputSequence.GetValue(1) == 8);
+                    Assert.True(secondTensorInOuputSequence.GetValue(2) == 9);
+                    Assert.True(secondTensorInOuputSequence.GetValue(3) == 10);
+                    Assert.True(secondTensorInOuputSequence.GetValue(4) == 11);
+                    Assert.True(secondTensorInOuputSequence.GetValue(5) == 12);
+
+
+                }
             }
         }
 
@@ -1506,6 +1617,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 #if USE_TENSORRT
             ,"OrtSessionOptionsAppendExecutionProvider_Tensorrt"
+#endif
+#if USE_MIGRAPHX
+            ,"OrtSessionOptionsAppendExecutionProvider_MIGraphX"
 #endif
 #if USE_NNAPI
             ,"OrtSessionOptionsAppendExecutionProvider_Nnapi"
@@ -1835,5 +1949,45 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+    }
+
+    // A Disposable list is a list of IDisposable objects. All elements will be disposed when the container is disposed.
+    internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
+    where T : IDisposable
+    {
+        public DisposableList() { }
+        public DisposableList(int count) : base(count) { }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    for (int i = 0; i < this.Count; i++)
+                    {
+                        this[i]?.Dispose();
+                    }
+                    this.Clear();
+                }
+
+                disposedValue = true;
+            }
+        }
+
+        ~DisposableList()
+        {
+            Dispose(false);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        #endregion
     }
 }

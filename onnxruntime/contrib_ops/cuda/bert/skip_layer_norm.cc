@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "skip_layer_norm.h"
@@ -30,6 +30,8 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ORT_ENFORCE(epsilon_ >= 0);
 }
 
 template <typename T>
@@ -84,6 +86,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
                              "Last dimension of bias and input does not match");
     }
   }
+
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
@@ -96,6 +99,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           gamma->template Data<T>(),
           beta->template Data<T>(),
           bias != nullptr ? bias->template Data<T>() : nullptr,
+          epsilon_,
           hidden_size,
           static_cast<int>(element_count),  //TODO: check range
           element_size)) {

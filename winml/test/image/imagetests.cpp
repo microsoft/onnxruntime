@@ -3,9 +3,6 @@
 #include "filehelpers.h"
 #include "imageTestHelper.h"
 #include "robuffer.h"
-#include "windows.ai.machinelearning.native.internal.h"
-#include "winrt/Windows.Storage.h"
-#include "winrt/Windows.Storage.Streams.h"
 
 #include <d3dx12.h>
 #include <MemoryBuffer.h>
@@ -17,13 +14,13 @@
 #endif
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Graphics::DirectX;
-using namespace winrt::Windows::Storage;
-using namespace winrt::Windows::Storage::Streams;
+using namespace winml;
+using namespace wfc;
+using namespace wm;
+using namespace wgi;
+using namespace wgdx;
+using namespace ws;
+using namespace wss;
 
 enum BindingLocation {
     CPU,
@@ -32,14 +29,14 @@ enum BindingLocation {
 
 class ImageTests : public ::testing::Test {
 protected:
-    winrt::Windows::AI::MachineLearning::LearningModel m_model = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelDevice m_device = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelSession m_session = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelBinding m_model_binding = nullptr;
-    winrt::Windows::AI::MachineLearning::LearningModelEvaluationResult m_result = nullptr;
+    winml::LearningModel m_model = nullptr;
+    winml::LearningModelDevice m_device = nullptr;
+    winml::LearningModelSession m_session = nullptr;
+    winml::LearningModelBinding m_model_binding = nullptr;
+    winml::LearningModelEvaluationResult m_result = nullptr;
 
-    void SetUp() override {
-        init_apartment();
+    static void SetUpTestSuite() {
+      init_apartment();
     }
 
     void LoadModel(const std::wstring& model_path) {
@@ -454,6 +451,12 @@ TEST_P(BatchTest, BatchSupport) {
     if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source && LearningModelDeviceKind::Cpu == param.device_kind) {
         return;
     }
+    if (LearningModelDeviceKind::Cpu != param.device_kind ||
+        VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
+        VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
+        VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
+        GPUTEST;
+    }
 
     // create model, device and session
     PrepareModelSessionBinding(param.model_file_name, param.device_kind, optimized_batch_size);
@@ -529,7 +532,24 @@ TEST_P(BatchTest, BatchSupport) {
         }
     }
 }
-
+INSTANTIATE_TEST_SUITE_P(BatchTest, BatchTest,
+    testing::Combine(
+        testing::Values(
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720.png", L"fish_720.png"}), 2, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720.png"}), 2, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720_Gray.png", L"fish_720.png"}), 2, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"kitten_224.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8_tensor_Batch3.onnx", Tensor, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8_freeDimInput_Batch10.onnx", Image, std::vector<std::wstring>({}), 10, false),
+            std::make_tuple(L"fns-candy_Bgr8.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, true)),
+        testing::Values(Bound, Unbound),
+        testing::Values(Async, Sync),
+        testing::Values(FromSoftwareBitmap, FromDirect3DSurface),
+        testing::Values(FromSoftwareBitmap, FromDirect3DSurface, FromUnsupportedD3DSurface),
+        testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
+    ));
 TEST_F(ImageTests, LoadBindEvalModelWithoutImageMetadata) {
     GPUTEST;
 
@@ -690,8 +710,8 @@ static void RunImageBindingInputAndOutput(bool bindInputAsIInspectable) {
 
     BYTE* data = nullptr;
     UINT32 ui_capacity = 0;
-    winrt::Windows::Graphics::Imaging::BitmapBuffer bitmap_buffer(output_image.SoftwareBitmap().LockBuffer(winrt::Windows::Graphics::Imaging::BitmapBufferAccessMode::Read));
-    winrt::Windows::Foundation::IMemoryBufferReference reference = bitmap_buffer.CreateReference();
+    wgi::BitmapBuffer bitmap_buffer(output_image.SoftwareBitmap().LockBuffer(wgi::BitmapBufferAccessMode::Read));
+    wf::IMemoryBufferReference reference = bitmap_buffer.CreateReference();
     auto spByteAccess = reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
     WINML_EXPECT_HRESULT_SUCCEEDED(spByteAccess->GetBuffer(&data, &ui_capacity));
     WINML_EXPECT_NOT_EQUAL(data[0], 0);

@@ -24,6 +24,7 @@ class OrtValueNameIdxMap {
     if (it == map_.end()) {
       int idx = next_idx_++;
       map_.insert(it, {name, idx});
+      idx_name_map_[idx] = name;
       return idx;
     }
     return it->second;
@@ -41,6 +42,16 @@ class OrtValueNameIdxMap {
     return common::Status::OK();
   }
 
+  common::Status GetName(int idx, std::string& name) const {
+    auto it = idx_name_map_.find(idx);
+    if (it == idx_name_map_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find OrtValue with idx '", idx, "'");
+    }
+
+    name = it->second;
+    return common::Status::OK();
+  }
+
   size_t Size() const { return map_.size(); };
   int MaxIdx() const { return next_idx_ - 1; }
 
@@ -52,5 +63,6 @@ class OrtValueNameIdxMap {
 
   int next_idx_ = 0;
   std::unordered_map<std::string, int> map_;
+  std::unordered_map<int, std::string> idx_name_map_;
 };
 }  // namespace onnxruntime

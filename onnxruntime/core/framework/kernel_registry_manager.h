@@ -31,7 +31,7 @@ class KernelRegistryManager {
   KernelRegistryManager() = default;
 
   // Register kernels from providers
-  Status RegisterKernels(const ExecutionProviders& execution_providers);
+  Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
 
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
   // and anything registered from RegisterKernels
@@ -44,10 +44,9 @@ class KernelRegistryManager {
 
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
-  Status CreateKernel(const onnxruntime::Node& node,
-                      const IExecutionProvider& execution_provider,
+  Status CreateKernel(const onnxruntime::Node& node, const IExecutionProvider& execution_provider,
                       const SessionState& session_state,
-                      /*out*/ std::unique_ptr<OpKernel>& op_kernel) const;
+                      /*out*/ std::unique_ptr<OpKernel>& op_kernel) const ORT_MUST_USE_RESULT;
 
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
@@ -57,7 +56,7 @@ class KernelRegistryManager {
   /**
    * Whether this node can be run on this provider
    */
-  bool HasImplementationOf(const Node& node, const std::string& provider_type) const;
+  static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
 
   /**
    * Search kernel registry by provider type.

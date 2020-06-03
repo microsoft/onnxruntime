@@ -8,6 +8,12 @@
 
 namespace onnxruntime {
 
+Status ValidateInputs(const Tensor* depth, const Tensor* values);
+
+Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
+                          int64_t& prefix_dim_size, int64_t& suffix_dim_size,
+                          std::vector<int64_t>& output_shape);
+
 template <typename in_type, typename out_type, typename depth_type>
 class OneHotOp final : public OpKernel {
  public:

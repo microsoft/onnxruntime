@@ -1,23 +1,9 @@
 jobs:
 - job: Linux_CI_GPU_TENSORRT_Dev
   pool: Linux-GPU-CUDA10
+  timeoutInMinutes: 90
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - task: CmdLine@2
-      displayName: 'Download azcopy'
-      inputs:
-        script: |
-          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
-          tar -zxvf azcopy.tar.gz --strip 1
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-        workingDirectory: $(Build.BinariesDirectory)
     
     # Latest TensorRT container only supports ubuntu18.04
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.6 -x "--build_wheel"'

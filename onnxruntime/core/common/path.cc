@@ -68,7 +68,6 @@ Status ParsePathRoot(
     root = path.substr(0, 2);
     has_root_dir = root_dir_begin != root_dir_end;
     num_parsed_chars = std::distance(path.begin(), root_dir_end);
-
     return Status::OK();
   }
 

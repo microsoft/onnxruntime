@@ -5,7 +5,7 @@
 
 #include "TensorFeatureDescriptor.g.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
 struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
                                      TensorFeatureDescriptor,
                                      ILearningModelFeatureDescriptorNative> {
@@ -59,4 +59,4 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   bool is_required_;
   bool has_unsupported_image_metadata_;
 };
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace WINMLP

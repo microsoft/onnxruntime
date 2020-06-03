@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
@@ -57,10 +58,15 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
 // Add2 is the 2nd add of the to be fused sub-graph
 // The 1st input should be a 3D tensor
 // The 2nd input should be a 1D constant value
-static bool CheckSecondAdd(Node& add, ProviderType providertype) {
+static bool CheckSecondAdd(Graph& graph, Node& add, ProviderType providertype) {
   if (providertype != add.GetExecutionProviderType() ||
       !IsSupportedDataType(add) ||
       add.GetOutputEdgesCount() != 1) {
+    return false;
+  }
+
+  // The 2nd input should be a constant value
+  if (!graph_utils::NodeArgIsConstant(graph, *(add.MutableInputDefs()[1]))) {
     return false;
   }
 
@@ -84,8 +90,8 @@ Skip Layer Normalization will fuse Add + LayerNormalization into one node, and a
 
 Before fusion:
 Format 1:
-      [Sub1]   [Sub2]
-         \       /
+    [Sub1]  C    [Sub2]
+        \  /     /
         Add2    /
            \   /
             Add1
@@ -93,10 +99,10 @@ Format 1:
      LayerNormalization
 
 Format 2:
-      [Sub1]   [Sub2]
-         \       /
-          \    Add2
-           \   /
+      [Sub1] [Sub2]  C
+         \      \   /
+          \     Add2
+           \    /
             Add1
              |
      LayerNormalization
@@ -131,10 +137,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
-    nodes_to_remove.clear();
     Node* p_layernorm = graph.GetNode(node_index);
     if (p_layernorm == nullptr)
-      continue;  // we removed the node as part of an earlier fusion.
+      continue;  // node was removed in an earlier fusion.
 
     Node& ln_node = *p_layernorm;
     ORT_RETURN_IF_ERROR(Recurse(ln_node, modified, graph_level, logger));
@@ -167,7 +172,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
       if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-          CheckSecondAdd(*p_add2, ln_node.GetExecutionProviderType())) {
+          CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
+          graph.GetNodeOutputsInGraphOutputs(*p_add1).empty() &&
+          graph.GetNodeOutputsInGraphOutputs(*p_add2).empty()) {
         matched_format = Format::Format1;
       }
     }
@@ -183,7 +190,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-            CheckSecondAdd(*p_add2, ln_node.GetExecutionProviderType())) {
+            CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
+            graph.GetNodeOutputsInGraphOutputs(*p_add1).empty() &&
+            graph.GetNodeOutputsInGraphOutputs(*p_add2).empty()) {
           matched_format = Format::Format2;
         }
       }
@@ -197,7 +206,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
 
-        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType())) {
+        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
+            graph.GetNodeOutputsInGraphOutputs(*p_add1).empty()) {
           matched_format = Format::Format3;
         }
       }
@@ -230,18 +240,27 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                "SkipLayerNormalization",
                                                "fused SkipLayerNorm subgraphs ",
                                                skip_layer_norm_input_defs,
-                                               {}, {}, kMSDomain);
+                                               ln_node.MutableOutputDefs(), {}, kMSDomain);
 
+    // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
+    // will be used.
+    NodeAttributes ln_attrs = ln_node.GetAttributes();
+    NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
+    if (epsilon != ln_attrs.end()) {
+      skip_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    } else {
+      skip_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
+    }
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
-
-    // move input edges to add (first in list) across to the layer_norm_node.
-    // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
-    // remove all the other nodes.
-    graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, skip_layer_norm_node);
-
-    modified = true;
   }
+  for (const auto& node : nodes_to_remove) {
+    graph_utils::RemoveNodeOutputEdges(graph, node);
+    graph.RemoveNode(node.get().Index());
+  }
+
+  modified = true;
+
   return Status::OK();
 }
 }  // namespace onnxruntime

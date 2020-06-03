@@ -34,8 +34,6 @@ namespace Dml
     void FlushContext(onnxruntime::IExecutionProvider* provider);    
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
-    void TrimUploadHeap(onnxruntime::IExecutionProvider * provider);
-    void WaitForGpuCompletion(onnxruntime::IExecutionProvider * provider);
     
     onnxruntime::common::Status CopyTensor(
         onnxruntime::IExecutionProvider* provider, 
