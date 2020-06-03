@@ -272,21 +272,21 @@ def generate_files(list, args):
 
     # Process props and targets files
     if is_windowsai_package:
-        # Process props file
-        windowsai_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
+        # Process native props, targets, and rules files
+        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
                                        'Microsoft.AI.MachineLearning.props')
-        files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\native" />')
-        files_list.append('<file src=' + '"' + windowsai_props + '" target="build\\netstandard2.0" />')
-        # Process targets files
-        windowsai_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
-                                         'Microsoft.AI.MachineLearning.targets')
-        files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\native" />')
-        files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\netstandard2.0" />')
-        # Process rules files
-        windowsai_rules = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
+        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
+                                       'Microsoft.AI.MachineLearning.targets')
+        windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
                                        'Microsoft.AI.MachineLearning.Rules.Project.xml')
-        files_list.append('<file src=' + '"' + windowsai_rules + '" target="build\\native" />')
-        files_list.append('<file src=' + '"' + windowsai_targets + '" target="build\\netstandard2.0" />')
+        files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
+        files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
+
+        # Process .net standard 2.0 props, targets, and rules files
+        windowsai_net20_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning.Interop',
+                                         'Microsoft.AI.MachineLearning.targets')
+        files_list.append('<file src=' + '"' + windowsai_net20_targets + '" target="build\\netstandard2.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process props file
