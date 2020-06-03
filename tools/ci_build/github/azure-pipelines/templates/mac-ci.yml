@@ -2,8 +2,10 @@ parameters:
   JobName: 'MacOS_CI_Dev'
   SubmoduleCheckoutMode: ''
   BuildCommand: ''
+  DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
+  ArtifactName: 'drop-osx'
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -38,14 +40,43 @@ jobs:
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      # Esrp signing
+      # - template: esrp_dll.yml
+      #  parameters:
+      #    #
+      #    # TBD
+      #    DoEsrp: ${{ parameters.DoEsrp }}
       - script: |
          ${{ parameters.NuPackScript }}
         displayName: 'Copy MacOS libs to Artifact Staging'
       - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact'
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
-          artifactName: 'drop-osx'
+          artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
+      # Esrp signing
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\nodejs\bin\napi-v3\darwin\x64'
+          DisplayName: 'ESRP - Sign Node.js binding binaries'
+          DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: '*.dylib,*.node'
+
+      - script: |
+         npm pack
+         cp $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\nodejs'
+        displayName: 'Create NPM Package'
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

@@ -7,14 +7,25 @@ jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2019'
-    ArtifactName: 'drop-nodejs'
-    JobName: 'Windows_CI_Dev'
+    ArtifactName: 'drop-nodejs-win32'
+    JobName: 'Windows_CI_RelWithDebInfo'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_nodejs --enable_onnx_tests --enable_wcos --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNodejsPack : 'true'
+    DoNugetPack: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
     DoCompliance: ${{ parameters.DoCompliance }}
     BuildCSharp: ${{ parameters.BuildCSharp }}
+
+- template: ../../templates/mac-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolMacOS)
+    ArtifactName: 'drop-nodejs-darwin'
+    JobName: 'Mac_CI_Release'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_featurizers --parallel --build_nodejs --config Release'
+    DoNodejsPack : 'true'
+    DoNugetPack: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
