@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <WindowsAI-Platform Condition="'$(Platform)' == 'AnyCPU'">x64</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(Platform)' == 'Win32'">x86</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(WindowsAI-Platform)' == ''">$(Platform)</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">x64</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(WindowsAI-Platform)' == ''">$(PlatformTarget)</WindowsAI-Platform>
   </PropertyGroup>
 
   <PropertyGroup>
