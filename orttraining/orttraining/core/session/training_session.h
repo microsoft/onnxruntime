@@ -427,6 +427,8 @@ class TrainingSession : public InferenceSession {
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
   std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+  std::unordered_set<std::string> GetTrainableModelInitializersFromReverseDFS(const ImmutableWeights& immutable_weights, const std::string& loss_name, const int rank) const;
+
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 
