@@ -43,14 +43,11 @@ void DropoutGradientKernelImpl(
     const float ratio,
     const bool training_mode,
     T* dX_data) {
-  if (ratio == 0.0f or !training_mode) {
-    std::cout << "CUDA INFERENCE MODE (" << ratio << "/" << training_mode << ") " << std::endl;
+  if (ratio == 0.0f || !training_mode) {
     if (dY_data != dX_data) {
       CUDA_CALL_THROW(cudaMemcpyAsync(dX_data, dY_data, N * sizeof(T), cudaMemcpyDeviceToDevice));
     }
   } else {
-    std::cout << "CUDA TRAINING MODE (" << ratio << "/" << training_mode << ") "  << std::endl;
-
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = (N + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock;
     DropoutGradientKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(N, dY_data, mask_data, T(scale), dX_data);

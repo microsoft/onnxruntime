@@ -174,7 +174,7 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
         mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data),
         [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
   } else {
-    dx_data.resize(input_shape.Size(), input_constant);
+    dx_data.assign(input_shape.Size(), input_constant);
   }
 
   test.AddInput<float>("dy", input_shape.GetDims(), dy_data);

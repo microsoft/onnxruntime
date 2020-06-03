@@ -108,13 +108,11 @@ Status DropoutGrad<T1, T2>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(mask->Shape() == dY_shape, "dY and mask should have the same shape");
   ORT_ENFORCE(dX->Shape() == dY_shape, "dY and dX should have the same shape");
 
-  if (ratio_value == 0.0f or !training_mode_value) {
-    std::cout << "CPU INFERENCE MODE (" << ratio_value << "/" << training_mode_value << ") " << std::endl;
+  if (ratio_value == 0.0f || !training_mode_value) {
     if (dY_span.data() != dX_span.data()) {
       std::copy(dY_span.begin(), dY_span.end(), dX_span.begin());
     }
   } else if (ratio_value < 1.0f) {
-    std::cout << "CPU TRAINING MODE (" << ratio_value << "/" << training_mode_value << ") " << std::endl;
 
     ConstEigenVectorArrayMap<T1> dY_arr(dY_span.data(), dY_span.size());
     ConstEigenVectorArrayMap<bool> mask_arr(mask_span.data(), mask_span.size());
