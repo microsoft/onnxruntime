@@ -628,7 +628,6 @@ void addObjectMethods(py::module& m, Environment& env) {
         io_binding->Get()->ClearOutputs();
       })
       .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
-        io_binding->Get()->SynchronizeOutputs();
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
@@ -899,9 +898,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return *(res.second);
       })
       .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
-        Status status;
-        io_binding.Get()->SynchronizeInputs();
-        
+        Status status;        
         if (!run_options)
           status = sess->Run(*io_binding.Get());
         else
