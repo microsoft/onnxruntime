@@ -320,6 +320,10 @@ mask_index shall not be provided.)DOC";
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Quantization of Multi-Head Self Attention.")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("unidirectional",
+            "Whether every token can only attend to previous tokens. Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Input(
           0,
           "input",
@@ -2078,7 +2082,7 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
       });
 
-  const char* QLinearLeakyReluDoc_ver1 =  R"DOC(
+  const char* QLinearLeakyReluDoc_ver1 = R"DOC(
 QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
 and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
 `f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
@@ -2643,45 +2647,45 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-        .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
-        .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
-        .TypeConstraint(
-            "T",
-            {"tensor(float16)",
-             "tensor(float)",
-             "tensor(double)"},
-            "Constrain input and output types to float tensors.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-            // Type inference
-            using namespace ONNX_NAMESPACE;
-            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
+      .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
-            // Shape inference
-            if (hasInputShape(ctx, 0)) {
-              const TensorShapeProto& input_shape =
-                  ctx.getInputType(0)->tensor_type().shape();
-              const int rank = static_cast<int>(input_shape.dim_size());
+        // Shape inference
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
 
-              if (rank < 2) {
-                fail_shape_inference("Input rank must be >= 2.")
-              }
+          if (rank < 2) {
+            fail_shape_inference("Input rank must be >= 2.")
+          }
 
-              const auto mat_w = input_shape.dim(rank - 1);
-              const auto mat_h = input_shape.dim(rank - 2);
-              if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
-                  (mat_w.dim_value() != mat_h.dim_value())) {
-                fail_shape_inference(
-                    "The inner-most 2 dimensions must have the same size (mat_w:",
-                    mat_w.dim_value(),
-                    " != mat_h:",
-                    mat_h.dim_value(),
-                    ").");
-              }
+          const auto mat_w = input_shape.dim(rank - 1);
+          const auto mat_h = input_shape.dim(rank - 2);
+          if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
+              (mat_w.dim_value() != mat_h.dim_value())) {
+            fail_shape_inference(
+                "The inner-most 2 dimensions must have the same size (mat_w:",
+                mat_w.dim_value(),
+                " != mat_h:",
+                mat_h.dim_value(),
+                ").");
+          }
 
-              // Shape inference
-              propagateShapeFromInputToOutput(ctx, 0, 0);
-            }
-        });
+          // Shape inference
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
+      });
 
   RegisterBertSchemas();
 }
