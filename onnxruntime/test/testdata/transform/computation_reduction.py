@@ -98,4 +98,4 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name='onnx-example', **kwargs)
 
-onnx.save(model_def, "bert_vocab_transformer.onnx")
+onnx.save(model_def, "computation_reduction_transformer.onnx")

@@ -2120,20 +2120,54 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
 
 #endif
 
-TEST_F(GraphTransformationTests, BERT_VOCAB_TRANSFORMER) {
-  auto model_uri = MODEL_FOLDER "bert_vocab_transformer.onnx";
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
+  auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  //ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "pengwa_test.onnx";
-  Model::Save(*model, model_uri2);
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  Node* gathernd_node;
+  for (auto node_index : node_topology_list) {
+    Node* p_node = graph.GetNode(node_index);
+    ASSERT_FALSE(p_node == nullptr);
+    if (p_node->OpType().compare("GatherND") == 0) {
+      gathernd_node = p_node;
+      const Node* layer_norm_node = graph.GetProducerNode(gathernd_node->MutableInputDefs()[0]->Name());
+      EXPECT_EQ(layer_norm_node->OpType(), "LayerNormalization");
+      EXPECT_EQ(layer_norm_node->Name(), "layer_norm_1");
+      const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
+      EXPECT_EQ(consumers[0]->OpType(), "MatMul");
+      EXPECT_EQ(consumers[0]->Name(), "matmul_1");
+      break;
+    }
+  }
+
+  ASSERT_FALSE(gathernd_node == nullptr);
+}
+
+// We only tested on CUDA run.
+#if defined(USE_CUDA)
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) {
+  auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  auto new_model_uri = "computation_reduction_transformer_after.onnx";
+  Model::Save(*model, new_model_uri);
 
   float scale = 1.f;
   float mean = 0.f;
@@ -2204,7 +2238,7 @@ TEST_F(GraphTransformationTests, BERT_VOCAB_TRANSFORMER) {
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
     Status st;
-    ASSERT_TRUE((st = session_object.Load(model_uri2)).IsOK()) << st;
+    ASSERT_TRUE((st = session_object.Load(new_model_uri)).IsOK()) << st;
     ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
 
     OrtValue input1;
@@ -2238,6 +2272,7 @@ TEST_F(GraphTransformationTests, BERT_VOCAB_TRANSFORMER) {
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

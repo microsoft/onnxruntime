@@ -8,20 +8,77 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-typedef std::function<Status(Graph&, Node*, Node*)> Handler;
+typedef std::function<Status(Graph&, Node&, Node&)> Handler;
 
-static Status SwapGatherNDWithInputNode(Graph& graph, Node* gathernd_node, Node* gathernd_input_node, int producer_input_index = 0) {
-  graph_utils::ReplaceDownstreamNodeInput(graph, *gathernd_node, 0, *gathernd_input_node, 0);
-  graph_utils::ReplaceNodeInput(*gathernd_node, 0, *gathernd_input_node->MutableInputDefs()[producer_input_index]);
-  graph_utils::ReplaceNodeInput(*gathernd_input_node, producer_input_index, *gathernd_node->MutableOutputDefs()[0]);
-  gathernd_node->MutableOutputDefs()[0]->ClearShape();
-  gathernd_input_node->MutableOutputDefs()[0]->ClearShape();
+static const int GATHERND_BATCH_DIM = 1;
+
+static bool IsLeadingDimsEqual(const TensorShapeProto* input_shape, const TensorShapeProto* output_shape,
+                               int num_dim_to_check) {
+  if (output_shape->dim_size() < num_dim_to_check || input_shape->dim_size() < num_dim_to_check) {
+    return false;
+  }
+
+  for (int i = 0; i < num_dim_to_check; i++) {
+    auto& output_dim = output_shape->dim(i);
+    auto& input_dim = input_shape->dim(i);
+    if (output_dim.has_dim_value() && input_dim.has_dim_value()) {
+      if (output_dim.dim_value() != input_dim.dim_value()) {
+        return false;
+      }
+    } else if (output_dim.has_dim_param() && input_dim.has_dim_param()) {
+      if (output_dim.dim_param() != input_dim.dim_param()) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static int GetInputNodeToReplace(const Node& gathernd_input_node) {
+  // If gathernd_input_node's some input tensor have exactly same shape with
+  // gathernd_input_node output tensor shape, then it is safe to gather using
+  // original slice ranges.
+  int gathernd_input_index = -1;
+  auto output_shape = gathernd_input_node.OutputDefs()[0]->Shape();
+  const int output_rank = output_shape->dim_size();
+  for (size_t i = 0; i < gathernd_input_node.InputDefs().size(); i++) {
+    auto input_shape = gathernd_input_node.InputDefs()[i]->Shape();
+    const int input_rank = input_shape->dim_size();
+    if (input_rank != output_rank) {
+      continue;
+    }
+
+    // We compare the first GATHERND_BATCH_DIM + 1 to make sure this input node
+    // (of gathernd_input_node) can be input of GatherND.
+    if (IsLeadingDimsEqual(input_shape, output_shape, GATHERND_BATCH_DIM + 1)) {
+      gathernd_input_index = i;
+      break;
+    }
+  }
+
+  return gathernd_input_index;
+}
+
+static Status SwapGatherNDWithInputNode(Graph& graph, Node& gathernd_node, Node& gathernd_input_node,
+                                        int gathernd_input_index = 0) {
+  auto gathernd_input_arg = gathernd_input_node.MutableInputDefs()[gathernd_input_index];
+  const auto old_gathernd_input_shape = *(gathernd_input_arg->Shape());
+  graph_utils::ReplaceDownstreamNodeInput(graph, gathernd_node, 0, gathernd_input_node, 0);
+  graph_utils::ReplaceNodeInput(gathernd_node, 0, *gathernd_input_arg);
+  graph_utils::ReplaceNodeInput(gathernd_input_node, gathernd_input_index, *gathernd_node.MutableOutputDefs()[0]);
+  gathernd_node.MutableOutputDefs()[0]->ClearShape();
+  gathernd_input_node.MutableOutputDefs()[0]->ClearShape();
+
+  // Todo in this PR: reduce Resolve as less as possible.
   auto ret = graph.Resolve();
   ORT_ENFORCE(ret.IsOK());
   return Status::OK();
 }
 
-static Status SimpleHandler(Graph& graph, Node* gathernd_node, Node* gathernd_input_node) {
+static Status SimpleHandler(Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
   return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, 0);
 }
 
@@ -45,37 +102,10 @@ static Status SimpleHandler(Graph& graph, Node* gathernd_node, Node* gathernd_in
                             <subsquent graphs>
   Note: b: batch, s: sequence_length, h: hidden_size, p_s: dynamic_prediction_count
 */
-static Status AddHandler(Graph& graph, Node* gathernd_node, Node* gathernd_input_node) {
-  int non_weight_input_index = -1;
-  for (size_t i = 0; i < gathernd_input_node->MutableInputDefs().size(); i++) {
-    if (!graph_utils::IsGraphInput(graph, gathernd_input_node->MutableInputDefs()[i]) &&
-        !graph_utils::IsInitializer(graph, gathernd_input_node->MutableInputDefs()[i]->Name(), false)) {
-      non_weight_input_index = i;
-    }
-  }
-
-  ORT_RETURN_IF_NOT(non_weight_input_index != -1);
-  auto output_shape = gathernd_input_node->MutableOutputDefs()[0]->Shape();
-  auto input_shape = gathernd_input_node->MutableInputDefs()[non_weight_input_index]->Shape();
-
-  ORT_RETURN_IF_NOT(output_shape != nullptr && input_shape != nullptr);
-  const int output_rank = output_shape->dim_size();
-  const int input_rank = input_shape->dim_size();
-  ORT_RETURN_IF_NOT(input_rank == output_rank);
-
-  // Only hande cases where input share exactly equal with output shape.
-  // otherwise, it might not be safe to move GatherND upward.
-  for (int i = 0; i < input_rank; i++) {
-    auto& output_dim = output_shape->dim(output_rank - 1 - i);
-    auto& input_dim = input_shape->dim(input_rank - 1 - i);
-    if (output_dim.has_dim_value() && input_dim.has_dim_value()) {
-      ORT_RETURN_IF_NOT(output_dim.dim_value() == input_dim.dim_value());
-    } else if (output_dim.has_dim_param() && input_dim.has_dim_param()) {
-      ORT_RETURN_IF_NOT(output_dim.dim_param() == input_dim.dim_param());
-    }
-  }
-
-  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, non_weight_input_index);
+static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
+  int gathernd_input_index = GetInputNodeToReplace(gathernd_input_node);
+  ORT_RETURN_IF_NOT(gathernd_input_index != -1);
+  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, gathernd_input_index);
 }
 
 /*
@@ -83,7 +113,7 @@ static Status AddHandler(Graph& graph, Node* gathernd_node, Node* gathernd_input
     Before:
       input_1[b,s,h]    weight_2[h, 2h]
                   \         /
-                  MatMul[b,s,2h]    indices[b,p_s,1]
+                  Gemm[b,s,2h]    indices[b,p_s,1]
                       |            /
                   GatherND[b,p_s,2h]
                       |
@@ -93,51 +123,26 @@ static Status AddHandler(Graph& graph, Node* gathernd_node, Node* gathernd_input
                        |            /
                     GatherND[b,p_s,h]    weight_2[h,2h]
                               \              /
-                              Add[b,p_s,2h]
+                              Gemm[b,p_s,2h]
                                     |
                             <subsquent graphs>
   Note: b: batch, s: sequence_length, h: hidden_size, p_s: dynamic_prediction_count
 */
-static Status MatMulHandler(Graph& graph, Node* gathernd_node, Node* gathernd_input_node) {
-  int non_weight_input_index = -1;
-  for (size_t i = 0; i < gathernd_input_node->MutableInputDefs().size(); i++) {
-    if (!graph_utils::IsGraphInput(graph, gathernd_input_node->MutableInputDefs()[i]) &&
-        !graph_utils::IsInitializer(graph, gathernd_input_node->MutableInputDefs()[i]->Name(), false)) {
-      non_weight_input_index = i;
-    }
-  }
-
-  ORT_RETURN_IF_NOT(non_weight_input_index == 0);
-  auto output_shape = gathernd_input_node->MutableOutputDefs()[0]->Shape();
-  auto input_shape = gathernd_input_node->MutableInputDefs()[non_weight_input_index]->Shape();
-
-  ORT_RETURN_IF_NOT(output_shape != nullptr && input_shape != nullptr);
-  const int output_rank = output_shape->dim_size();
-  const int input_rank = input_shape->dim_size();
-  ORT_RETURN_IF_NOT(input_rank == output_rank);
-  // Only hande cases where input share exactly equal with output shape on the first two dims (
-  // because GatherND's batch_dims be 1).
-  // otherwise, it might not be safe to move GatherND upward.
-  for (int i = 0; i < 2; i++) {
-    auto& output_dim = output_shape->dim(i);
-    auto& input_dim = input_shape->dim(i);
-    if (output_dim.has_dim_value() && input_dim.has_dim_value()) {
-      ORT_RETURN_IF_NOT(output_dim.dim_value() == input_dim.dim_value());
-    } else if (output_dim.has_dim_param() && input_dim.has_dim_param()) {
-      ORT_RETURN_IF_NOT(output_dim.dim_param() == input_dim.dim_param());
-    }
-  }
-  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, 0);
+static Status GemmHandler(Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
+  int gathernd_input_index = GetInputNodeToReplace(gathernd_input_node);
+  ORT_RETURN_IF_NOT(gathernd_input_index == 0);
+  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, gathernd_input_index);
 }
 
 static std::unordered_map<std::string, Handler> handlers = {
-    {"Add", AddHandler},
+    {"Add", BinaryElementwiseHandler},
+    {"Div", BinaryElementwiseHandler},
     {"Gelu", SimpleHandler},
+    {"Gemm", GemmHandler},
     {"LayerNormalization", SimpleHandler},
-    {"MatMul", MatMulHandler},
-};
+    {"MatMul", GemmHandler}};
 
-static Status Delegate(std::string op_type, Graph& graph, Node* gathernd_node, Node* gathernd_input_node) {
+static Status Delegate(std::string op_type, Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
   if (handlers.count(op_type)) {
     return handlers[op_type](graph, gathernd_node, gathernd_input_node);
   } else {
@@ -159,6 +164,8 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     auto& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
+    // Same ideas might apply for Gather, GatherElements, Slice, Split, etc.
+    // Todo: let's review the real cases to make the logic more generic.
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1}, kOnnxDomain) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
@@ -166,7 +173,7 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     }
 
     auto batch_dims = static_cast<int64_t>(node.GetAttributes().at("batch_dims").i());
-    if (batch_dims != 1) {
+    if (batch_dims != GATHERND_BATCH_DIM) {
       continue;
     }
 
@@ -178,14 +185,14 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     const auto indices_rank = indices_shape->dim_size();
     auto& indices_last_dim = indices_shape->dim(indices_rank - 1);
     // Since GatherND is assumed to have batch_dims=1, if the input data's shape is [batch, sequence, ..., ... ],
-    // limiting indices_rank = 3 will make sure produced output is in shape [batch, sliced_sequence, ..., ...]
+    // limiting indices_rank=3 will make sure produced output is in shape [batch, sliced_sequence, ..., ...]
     // and the rank did not change.
     if (!(indices_last_dim.has_dim_value() && indices_last_dim.dim_value() == 1 && indices_rank == 3)) {
       continue;
     }
 
     // Todo: check whether we want to move GatherND up, for example, if GatherND's outputs are larger
-    // than inputs, we should probably bring it ahead.
+    // than inputs, we should NOT probably bring it ahead.
     bool stop = false;
     while (!stop) {
       Node* input_node = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
@@ -195,7 +202,7 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
         break;
       }
 
-      auto ret = Delegate(input_node->OpType(), graph, &node, input_node);
+      auto ret = Delegate(input_node->OpType(), graph, node, *input_node);
       if (ret.IsOK()) {
         LOGS_DEFAULT(WARNING) << "node " << node.Name() << " up across node "
                               << input_node->Name() << std::endl;
@@ -212,6 +219,9 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     }
   }
 
+  if (modified) {
+    graph.SetGraphResolveNeeded();
+  }
   return Status::OK();
 }
 

@@ -174,8 +174,8 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   if (config.optimize_gathernd) {
-    std::cout << "Enabling gathernd optimization.!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
-    ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
+    LOGS(*session_logger_, INFO) << "ReduceComputation Transformer is enabled.\n";
+    ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
   }
 
   ORT_ENFORCE(
