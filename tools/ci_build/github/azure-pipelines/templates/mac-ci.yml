@@ -67,7 +67,7 @@ jobs:
       - script: |
          npm pack
          cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
         workingDirectory: '$(Build.SourcesDirectory)/nodejs'
         displayName: 'Create NPM Package'
 

@@ -237,7 +237,7 @@ jobs:
          del /Q $(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64\CodeSignSummary-*.*
          call npm pack
          copy $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         copy $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)
+         xcopy /E /I $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
         workingDirectory: '$(Build.SourcesDirectory)\nodejs'
         displayName: 'Create NPM Package'
 
