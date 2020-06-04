@@ -17,7 +17,7 @@ ENV MIGRAPHX_DISABLE_FAST_GELU=1
 # Install rocm
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
   curl -sL http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add - && \
-  sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main > /etc/apt/sources.list.d/rocm.list'
+  sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.3/ xenial main > /etc/apt/sources.list.d/rocm.list'
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash build-essential cmake libpython3.5-dev python3-pip miopen-hip rocblas half

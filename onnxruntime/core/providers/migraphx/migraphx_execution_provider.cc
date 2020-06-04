@@ -10,6 +10,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
+#include "core/platform/env.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "migraphx_inc.h"
@@ -108,6 +109,15 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   t_ = migraphx::target(info.target_device.c_str());
+
+  // Get environment variables
+  const Env& env_instance = Env::Default();
+
+  // whether fp16 is enable
+  const std::string fp16_enable_env = env_instance.GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
+  if (!fp16_enable_env.empty()) {
+    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+  }
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -1167,6 +1177,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     if (!no_input_shape)
     {
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
+      if (fp16_enable_)
+      {
+        migraphx::quantization_fp16(prog);
+      }
       prog.compile(t_);
 
       auto prog_output_shapes = prog.get_output_shapes();
@@ -1188,7 +1202,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       std::unique_ptr<MIGraphXFuncState> p = onnxruntime::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name], 
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_, 
-            map_no_input_shape_[context->node_name]};
+            map_no_input_shape_[context->node_name], fp16_enable_};
       *state = p.release();
       return 0;
     };
@@ -1207,6 +1221,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       std::string& onnx_string = mgx_state->onnx_string;
       migraphx::onnx_options& cmp_options = mgx_state->options;
       bool &no_input_shape = mgx_state->no_input_shape;
+      bool fp16_enable = mgx_state->fp16_enable;
 
       // mean no program at all, so need to get the input shape info
       // from input data
@@ -1268,6 +1283,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       if (!input_shape_match)
       {
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
+        if (fp16_enable)
+        {
+          migraphx::quantization_fp16(prog);
+        }
+
         prog.compile(t);
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();

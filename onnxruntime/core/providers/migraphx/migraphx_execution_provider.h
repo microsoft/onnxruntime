@@ -10,6 +10,10 @@
 
 namespace onnxruntime {
 
+namespace migraphx_env_vars {
+static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
+};
+
 // Information needed to construct amdmigraphx execution providers.
 struct MIGraphXExecutionProviderInfo {
   std::string target_device;
@@ -28,6 +32,7 @@ struct MIGraphXFuncState {
   std::unordered_map<std::string, std::size_t> input_name_indexes;
   OrtMutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
+  bool fp16_enable = false;
 };
 
 // Logical device representation.
@@ -48,6 +53,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
 private:
+  std::size_t max_allowed_unsupported_operators_ = 6;
+  bool fp16_enable_ = false;
   int device_id_;
   migraphx::target t_; 
   OrtMutex mgx_mu_;
