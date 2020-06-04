@@ -712,6 +712,7 @@ void OpTester::Run(
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
         kAclExecutionProvider,
+        kArmNNExecutionProvider,
     };
 
     bool has_run = false;
@@ -778,6 +779,8 @@ void OpTester::Run(
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
           execution_provider = DefaultAclExecutionProvider();
+        else if (provider_type == onnxruntime::kArmNNExecutionProvider)
+          execution_provider = DefaultArmNNExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

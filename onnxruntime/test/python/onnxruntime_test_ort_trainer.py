@@ -178,11 +178,13 @@ class MNISTWrapper():
             self.fc1 = nn.Linear(input_size, hidden_size)
             self.relu = nn.ReLU()
             self.fc2 = nn.Linear(hidden_size, num_classes)
+            self.register_buffer("bias_buffer", torch.tensor(1e-6))
 
         def forward(self, x):
             out = self.fc1(x)
             out = self.relu(out)
             out = self.fc2(out)
+            out = torch.add(out, self.bias_buffer.to(out.dtype))
             return out
 
     def my_loss(x, target):
@@ -387,7 +389,7 @@ class TestOrtTrainer(unittest.TestCase):
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
         state_dict = trainer.state_dict()
-        assert state_dict.keys() == {'fc1.bias', 'fc1.weight', 'fc2.bias', 'fc2.weight'}
+        assert state_dict.keys() == {'fc1.bias', 'fc1.weight', 'fc2.bias', 'fc2.weight', 'bias_buffer'}
 
     def testMNISTSaveAsONNX(self):
         torch.manual_seed(1)
@@ -454,7 +456,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
-        assert set([n.name for n in trainer.onnx_model_.graph.initializer]) \
+        assert (set([n.name for n in trainer.onnx_model_.graph.initializer])-set(['bias_buffer'])) \
             == set([n for n, t in model.named_parameters()])
 
     def testMNISTFrozenWeight(self):
@@ -485,6 +487,35 @@ class TestOrtTrainer(unittest.TestCase):
         fc2_trainstep_2 = trainer.state_dict()['fc2.weight']
         assert np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and \
             not np.array_equal(fc2_trainstep_1, fc2_trainstep_2)
+
+    def testMNISTTorchBuffer(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device)
+
+        learningRate = 0.02
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        fc1_trainstep_1 = trainer.state_dict()['fc1.weight']
+        bias_buffer_trainstep_1 = trainer.state_dict()['bias_buffer']
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        fc1_trainstep_2 = trainer.state_dict()['fc1.weight']
+        bias_buffer_trainstep_2 = trainer.state_dict()['bias_buffer']
+        assert not np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and \
+            np.array_equal(bias_buffer_trainstep_1, bias_buffer_trainstep_2)
 
     def testMNISTFrozenWeightCheckpoint(self):
         torch.manual_seed(1)

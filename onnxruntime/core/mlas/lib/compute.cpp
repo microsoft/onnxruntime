@@ -552,7 +552,7 @@ Return Value:
 
     while (N > 0) {
 
-        Maximum = (std::max)(Maximum, *Input);
+        Maximum = std::max(Maximum, *Input);
 
         Input += 1;
         N -= 1;
