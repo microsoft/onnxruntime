@@ -41,7 +41,7 @@ jobs:
       condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       # Esrp signing
-      # - template: esrp_dll.yml
+      # - template: mac-esrp-dll.yml
       #  parameters:
       #    #
       #    # TBD
@@ -57,7 +57,7 @@ jobs:
 
     - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
       # Esrp signing
-      - template: esrp_dll.yml
+      - template: mac-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)/nodejs/bin/napi-v3/darwin/x64'
           DisplayName: 'ESRP - Sign Node.js binding binaries'
