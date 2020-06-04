@@ -94,7 +94,7 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo
   return session_state.GetExecutionProviders().GetAllocator(memory_info);
 }
     
-void* GetProviderRunOptions(const unordered_map<string, void*>& provider_run_options, const string& provider) {
+void* GetProviderRunOptions(const std::unordered_map<std::string, void*>& provider_run_options, const std::string& provider) {
   void* run_options = nullptr;
   const auto& entry = provider_run_options.find(provider);
   if (entry != provider_run_options.cend()) {
@@ -467,7 +467,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, const std::unordered_map<string, void*>& provider_run_options,
+                                       const logging::Logger& logger, const std::unordered_map<std::string, void*>& provider_run_options,
                                        const AllocatorPtr custom_allocator, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
@@ -542,7 +542,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger, 
-                            const std::unordered_map<string, void*>& provider_run_options, 
+                            const std::unordered_map<std::string, void*>& provider_run_options, 
                             const AllocatorPtr custom_allocator, bool only_execute_path_to_fetches) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
@@ -560,7 +560,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, 
-                               const std::unordered_map<string, void*>& provider_run_options,
+                               const std::unordered_map<std::string, void*>& provider_run_options,
                                const AllocatorPtr custom_allocator) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger, provider_run_options,

@@ -25,7 +25,7 @@ class IExecutor {
 
   IExecutor(const bool& terminate_flag) : terminate_flag_{terminate_flag} {};
 
-  IExecutor(const bool& terminate_flag, const std::unordered_map<string, void*>& provider_run_options)
+  IExecutor(const bool& terminate_flag, const std::unordered_map<std::string, void*>& provider_run_options)
       : terminate_flag_{terminate_flag}, provider_run_options_{provider_run_options} {};
 
   virtual ~IExecutor() = default;
@@ -56,6 +56,6 @@ class IExecutor {
                                  
  protected:
   const bool& terminate_flag_;
-  const std::unordered_map<string, void*> provider_run_options_;
+  const std::unordered_map<std::string, void*> provider_run_options_;
 };
 }  // namespace onnxruntime

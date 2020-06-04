@@ -22,7 +22,7 @@ class ExecutionFrame;
 class ParallelExecutor : public IExecutor {
  public:
   ParallelExecutor(const SessionState& session_state, const bool& terminate_flag,
-                   const std::unordered_map<string, void*>& provider_run_options);
+                   const std::unordered_map<std::string, void*>& provider_run_options);
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -35,7 +35,7 @@ class ParallelExecutor : public IExecutor {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
 
   Status RunNodeAsync(size_t p_node_index, const SessionState& session_state,
-                      const logging::Logger& logger, const std::unordered_map<string, void*>& provider_run_options);
+                      const logging::Logger& logger, const std::unordered_map<std::string, void*>& provider_run_options);
 
   void EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
 

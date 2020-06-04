@@ -19,7 +19,7 @@
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag,
-                                   const std::unordered_map<string, void*>& provider_run_options)
+                                   const std::unordered_map<std::string, void*>& provider_run_options)
     : out_standings_(0), executor_pool_(session_state.GetInterOpThreadPool()), IExecutor{terminate_flag, provider_run_options} {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
@@ -112,7 +112,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
 Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                       const SessionState& session_state,
                                       const logging::Logger& logger,
-                                      const std::unordered_map<string, void*>& provider_run_options) {
+                                      const std::unordered_map<std::string, void*>& provider_run_options) {
   LOGS(logger, INFO) << "Begin execution";
 
   Status status = Status::OK();

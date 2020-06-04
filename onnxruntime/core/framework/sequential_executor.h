@@ -18,7 +18,7 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(const bool& terminate_flag, const unordered_map<string, void*>& provider_run_options, const bool only_execute_path_to_fetches = false)
+  SequentialExecutor(const bool& terminate_flag, const std::unordered_map<std::string, void*>& provider_run_options, const bool only_execute_path_to_fetches = false)
       : only_execute_path_to_fetches_(only_execute_path_to_fetches), IExecutor{terminate_flag, provider_run_options} {}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,

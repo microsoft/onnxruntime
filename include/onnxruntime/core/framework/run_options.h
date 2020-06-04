@@ -9,8 +9,6 @@
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_c_api.h"
 
-using namespace std;
-
 /**
  * Configuration information for a Run call.
  */
@@ -23,7 +21,7 @@ struct OrtRunOptions {
 
   // An execution provider specific run option is required for some execution providers, 
   // each of which has its own resources shared within its platform.
-  unordered_map<string, void*> provider_run_options;
+  std::unordered_map<std::string, void*> provider_run_options;
 
   // Override the default CPU allocator with a custom allocator passed from the hosting service during each run. 
   onnxruntime::AllocatorPtr custom_cpu_allocator;
