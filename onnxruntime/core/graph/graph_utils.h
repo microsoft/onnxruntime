@@ -186,7 +186,8 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
     The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
     All nodes in 'nodes' will be removed.
 */
-void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, 
+                        Node& replacement_node, bool move_input_edges = true, bool move_output_edges = true);
 
 /** Find the input edge of a node for a specified input index.
 @returns nullptr when not found.

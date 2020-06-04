@@ -654,9 +654,14 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   graph.RemoveNode(second_node.Index());
 }
 
-void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
-  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
-  MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, 
+                        Node& replacement_node, bool move_input_edges, bool move_output_edges) {
+  if (move_input_edges) {
+    MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
+  }
+  if (move_output_edges) {
+    MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
+  }
 
   for (Node& node : nodes) {
     RemoveNodeOutputEdges(graph, node);
