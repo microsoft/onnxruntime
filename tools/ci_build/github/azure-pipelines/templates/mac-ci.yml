@@ -40,12 +40,6 @@ jobs:
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-      # Esrp signing
-      # - template: mac-esrp-dll.yml
-      #  parameters:
-      #    #
-      #    # TBD
-      #    DoEsrp: ${{ parameters.DoEsrp }}
       - script: |
          ${{ parameters.NuPackScript }}
         displayName: 'Copy MacOS libs to Artifact Staging'
@@ -57,12 +51,15 @@ jobs:
 
     - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
       # Esrp signing
-      - template: mac-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.SourcesDirectory)/nodejs/bin/napi-v3/darwin/x64'
-          DisplayName: 'ESRP - Sign Node.js binding binaries'
-          DoEsrp: ${{ parameters.DoEsrp }}
-          Pattern: '*.dylib,*.node'
+      #
+      # TODO: ESRP team is working on enable signing workflow on Mac. Should enable the following step when it's ready.
+      #
+      # - template: mac-esrp-dll.yml
+      #   parameters:
+      #     FolderPath: '$(Build.SourcesDirectory)/nodejs/bin/napi-v3/darwin/x64'
+      #     DisplayName: 'ESRP - Sign Node.js binding binaries'
+      #     DoEsrp: ${{ parameters.DoEsrp }}
+      #     Pattern: '*.dylib,*.node'
 
       - script: |
          npm pack
