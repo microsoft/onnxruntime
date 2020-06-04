@@ -44,11 +44,12 @@ static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodea
                                              std::vector<ArgDef>& gradient_argdefs,
                                              GraphAugmenter::GraphDefs& graph_defs,
                                              const float scale) {
+  TypeProto* scale_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  ArgDef gradient_scale_argdef("adasum_gradient_scaling_divisor", scale_type_proto);
+  graph_defs.AddInitializers({CreateTensorProto<float>(gradient_scale_argdef.name, scale, {})});
+
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
     ArgDef& gradient_argdef = gradient_argdefs[i];
-    TypeProto* scale_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
-    ArgDef gradient_scale_argdef(gradient_argdef.name + "_reduced_gradient_scaling_divisor", scale_type_proto);
-    graph_defs.AddInitializers({CreateTensorProto<float>(gradient_scale_argdef.name, scale, {})});
     TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
     ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_reduced_scaled"),
                                            scaled_gradient_type_proto);
@@ -93,8 +94,7 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
       opt_configs, graph_defs,
       new_initializers,
       output_weight_argdefs, output_gradient_argdefs,
-      // Always enable grad clipping for Adasum
-      true /*enable_grad_clipping*/));
+      opt_graph_config_.enable_grad_norm_clip));
 
   return Status::OK();
 }
@@ -107,7 +107,6 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     std::unordered_set<std::string>& optimizer_state_initializer_names,
     OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   
-  std::cout<<"Using Adasum for reduction."<<std::endl;
   // Set weight update to false for optimizer
   for (auto& opt_config : opt_configs_) {
     opt_config.update_weight = false;
@@ -118,6 +117,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   };
 
   const int64_t horovod_reduce_op = opt_graph_config_.horovod_reduce_op;
+
+  std::cout<<"Using Adasum for reduction with reduction op = "<<horovod_reduce_op<<std::endl;
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;
@@ -133,11 +134,11 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ArgDef global_grad_norm_argdef;
   ArgDef global_grad_norm_finite_argdef;
 
-  if (opt_graph_config_.use_mixed_precision) {
-      ORT_RETURN_IF_ERROR(AddGradientNorm(
-      nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
+  ORT_RETURN_IF_ERROR(AddGradientNorm(
+    nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
+  optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
+  if (opt_graph_config_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
