@@ -52,14 +52,12 @@ jobs:
          cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
         workingDirectory: '$(Build.SourcesDirectory)/nodejs'
         displayName: 'Create NPM Package'
-
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
-
-  - template: component-governance-component-detection-steps.yml
+    - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
     - template: clean-agent-build-directory-step.yml
