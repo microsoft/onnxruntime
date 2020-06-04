@@ -641,6 +641,14 @@ class ORTTrainer():
                 *self.model_desc_.outputs_,
                 IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
+        #bugbug
+        global_norm = [x for x in self.session._outputs_meta if 'global_gradient_norm' in x.name]
+        if len(global_norm) > 0:
+            if self.use_mixed_precision:
+                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(global_norm[0].name, [1], torch.float32))
+            else:
+                self.model_desc_.outputs_.append(IODescription(global_norm[0].name, [1], torch.float32))
+
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
         self.state_dict_ = None
@@ -859,6 +867,10 @@ class ORTTrainer():
             results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
         else:
             results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+        
+        #bugbug
+        if 'global_gradient_norm' in session_run_results:
+            print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
 
         return results[0] if len(results) == 1 else results
 

@@ -152,13 +152,14 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       opt_configs_, graph_defs,
       optimizer_state_initializer_names));
 
-  // Perform allreduce on deltas after step() for Adasum
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
-  // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
+  // If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
     const float adasum_scale = 1.0f / opt_graph_config_.local_size;
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
+
+  // Perform allreduce on deltas after step() for Adasum
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
 
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
