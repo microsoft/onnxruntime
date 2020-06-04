@@ -555,6 +555,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
             };
 

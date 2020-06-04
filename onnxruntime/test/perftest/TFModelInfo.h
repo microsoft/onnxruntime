@@ -20,7 +20,7 @@ class TFModelInfo : public TestModelInfo {
   const std::string& GetOutputName(size_t i) const override;
   ~TFModelInfo() override = default;
 
-  static TestModelInfo* Create(_In_ const PATH_CHAR_TYPE* model_url);
+  static std::unique_ptr<TestModelInfo> Create(_In_ const PATH_CHAR_TYPE* model_url);
 
  private:
   TFModelInfo() = default;

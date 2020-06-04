@@ -333,6 +333,12 @@ def parse_arguments():
         "--use_acl", nargs="?", const="ACL_1905",
         choices=["ACL_1902", "ACL_1905", "ACL_1908"],
         help="Build with ACL for ARM architectures.")
+    parser.add_argument(
+        "--use_armnn", action='store_true',
+        help="Enable ArmNN Execution Provider.")
+    parser.add_argument(
+        "--armnn_relu", action='store_true',
+        help="Use the Relu operator implementation from the ArmNN EP.")
     return parser.parse_args()
 
 
@@ -523,7 +529,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + (
-            "OFF" if args.android or args.use_acl or
+            "OFF" if args.android or args.use_acl or args.use_armnn or
             (args.ios and is_macOS()) else "ON"),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
@@ -612,6 +618,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             "ON" if args.use_acl == "ACL_1905" else "OFF"),
         "-Donnxruntime_USE_ACL_1908=" + (
             "ON" if args.use_acl == "ACL_1908" else "OFF"),
+        "-Donnxruntime_USE_ARMNN=" + (
+            "ON" if args.use_armnn else "OFF"),
+        "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
+            "OFF" if args.armnn_relu else "ON"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
             "ON" if args.enable_nvtx_profile else "OFF"),
@@ -1082,7 +1092,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
             if args.use_dnnlibrary:
                 adb_shell(
-                    'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi -o 0 /data/local/tmp/test')  # noqa
+                    'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
             else:
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
@@ -1197,9 +1207,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
         else:
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
-        # Temporarily disable optimizers because some
-        # of them are failing
-        cmd = ["-o", "0"]
+
+        cmd = []
         if provider:
             cmd += ["-e", provider]
         if num_parallel_tests != 0:
@@ -1234,7 +1243,7 @@ def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
 
-        cmd_base = ['-o', '0']
+        cmd_base = []
         if provider:
             cmd_base += ["-e", provider]
 
@@ -1324,7 +1333,7 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
             exe = os.path.join(cwd, 'onnx_test_runner')
             model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-o', '0', '-e', 'dnnl', '-c', '1', '-j', '1']
+        cmd_base = ['-e', 'dnnl', '-c', '1', '-j', '1']
         if os.path.exists(onnx_test_data_dir):
             onnxdata_cmd = cmd_base + [onnx_test_data_dir]
             # /data/onnx
@@ -1659,7 +1668,7 @@ def main():
                     "Only Windows ARM(64) cross-compiled builds supported "
                     "currently through this script")
             install_ubuntu_deps(args)
-            if not is_docker():
+            if not is_docker() and not args.use_armnn:
                 install_python_deps()
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
