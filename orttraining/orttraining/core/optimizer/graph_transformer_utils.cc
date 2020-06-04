@@ -5,6 +5,7 @@
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
+#include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -130,6 +131,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(l1_execution_providers));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
