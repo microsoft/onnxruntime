@@ -95,6 +95,23 @@ void PrepareMask(const int32_t* mask_index,
   }
 }
 
+// Concatenate a past state chunk S'xH with input state chunk SxH into present state chunk S*xH
+// Returns a pointer to the start of present state chunk.
+template<typename T>
+T* ConcatStateChunk(const T* past, const T* chunk, T* present, size_t past_chunk_length, size_t present_chunk_length, std::ptrdiff_t i) {
+  T* start = present + i * present_chunk_length;
+
+  T* p = start;
+  if (nullptr != past) {
+    const T* src_past = past + i * past_chunk_length;
+    memcpy(p, src_past, past_chunk_length * sizeof(T));
+    p += past_chunk_length;
+  }
+
+  memcpy(p, chunk, (present_chunk_length - past_chunk_length) * sizeof(T));
+  return start;
+}
+
 // Helper function to compute the attention probs. It does 2 things:
 //  I. attention_probs(B, N, S, S*) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S*, H -> B, N, H, S*) +
 //                                    1 x mask_data(B, N, S, S*)
@@ -114,7 +131,11 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
                            const T* past,              // past state
                            T* present,                 // present state
                            ThreadPool* tp) {
-  const int all_sequence_length = past_sequence_length + sequence_length;
+  const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
+  const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * head_size);  // S' x H
+  const size_t input_chunk_length = static_cast<size_t>(sequence_length * head_size);      // S x H
+  const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // S* x H
+
   {
     if (mask_data != nullptr) {
       PrepareMask(mask_index, mask_data, is_unidirectional, batch_size, sequence_length, past_sequence_length);
@@ -126,8 +147,8 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
     const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
 
     // The cost of Gemm
-    const double cost =
-        static_cast<double>(head_size) * static_cast<double>(sequence_length) * static_cast<double>(all_sequence_length);
+    const double cost = static_cast<double>(head_size * sequence_length * all_sequence_length);
+
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const std::ptrdiff_t batch_index = i / num_heads;
@@ -139,17 +160,10 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
           memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * all_sequence_length * sizeof(T));
         }
 
-        const T* k = K + sequence_length * head_size * i;
+        const T* k = K + input_chunk_length * i;
         if (nullptr != present) {
           // concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
-          T* present_k = present + i * all_sequence_length * head_size;
-          if (nullptr != past) {
-            const T* src_past_k = past + i * past_sequence_length * head_size;
-            memcpy(present_k, src_past_k, past_sequence_length * head_size * sizeof(T));
-          }
-          const T* src_k = K + i * sequence_length * head_size;
-          memcpy(present_k + past_sequence_length * head_size, src_k, sequence_length * head_size * sizeof(T));
-          k = present_k;
+          k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
         }
 
         // gemm
@@ -158,7 +172,7 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
         // B: K'               (B x N x) S* x H         (B x N x) H x S*       H x S*
         // C: attention_probs  (B x N x) S x S*         (B x N x) S x S*       S x S*
         math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, all_sequence_length, head_size, alpha,
-                                  Q + sequence_length * head_size * i, k, 1.0,
+                                  Q + input_chunk_length * i, k, 1.0,
                                   reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i, nullptr);
       }
     });
@@ -186,29 +200,32 @@ void ComputeVxAttentionScore(T* output,                 // buffer for the result
                              const T* past,             // past state
                              T* present,                // present state
                              ThreadPool* tp) {
-  const int all_sequence_length = past_sequence_length + sequence_length;
-  T* start_present_v = nullptr != present ? (present + batch_size * num_heads * all_sequence_length * head_size) : nullptr;
-  const T* start_past_v = nullptr != past ? (past + batch_size * num_heads * past_sequence_length * head_size) : nullptr;
-  
+  const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
+  const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * head_size);  // S' x H
+  const size_t input_chunk_length = static_cast<size_t>(sequence_length * head_size);      // S x H
+  const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // S* x H
+
+  // Move the pointer of past and present to start of v values.
+  if (nullptr != past) {
+    past += batch_size * num_heads * past_sequence_length * head_size;
+  }
+  if (nullptr != present) {
+    present += batch_size * num_heads * all_sequence_length * head_size;
+  }
+
   const double cost =
       static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(sequence_length);
+
   ThreadPool::TryParallelFor(tp, batch_size * num_heads, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    const int sequence_length_mul_head_size = sequence_length * head_size;
     for (std::ptrdiff_t i = begin; i != end; ++i) {
-      const T* v = V + sequence_length_mul_head_size * i;
+      
+      const T* v = V + input_chunk_length * i;
       if (nullptr != present) {
         // concatenate past_V and V: (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
-        T* present_v = start_present_v + i * all_sequence_length * head_size;
-        if (nullptr != past) {
-          const T* src_past_v = start_past_v + i * past_sequence_length * head_size;
-          memcpy(present_v, src_past_v, past_sequence_length * head_size * sizeof(T));
-        }
-        const T* src_v = V + i * sequence_length_mul_head_size;
-        memcpy(present_v + past_sequence_length * head_size, src_v, sequence_length_mul_head_size * sizeof(T));
-        v = present_v;
+        v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
       }
 
-      T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + sequence_length_mul_head_size * i;
+      T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + input_chunk_length * i;
       math::MatMul<T>(sequence_length, head_size, all_sequence_length,
                       attention_probs + sequence_length * all_sequence_length * i,
                       v, current_tmp_data, nullptr);
