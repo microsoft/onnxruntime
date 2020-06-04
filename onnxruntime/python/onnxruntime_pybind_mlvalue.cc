@@ -141,39 +141,40 @@ TensorShape GetArrayShape(PyArrayObject* pyObject) {
 //
 // This is a stateful allocator. It will always return the same pre-allocated
 // buffer pointer and will own references to underlying objects.
-class OrtPybindAllocator : public IAllocator {
+class OrtPybindSingleUseAllocator : public IAllocator {
  public:
    // This constructor is used when we create numpy array from python list
-  OrtPybindAllocator(PyArrayObject* pyObject, const std::string& value_name, const OrtMemoryInfo& mem_info)
+  OrtPybindSingleUseAllocator(PyArrayObject* pyObject, const std::string& value_name, const OrtMemoryInfo& mem_info)
       : pyObject_(pyObject, DecRefFn<PyArrayObject>()),
-        pyObjectContinuous_(PyArray_GETCONTIGUOUS(pyObject), DecRefFn<PyArrayObject>()),
+        pyObjectContiguous_(PyArray_GETCONTIGUOUS(pyObject), DecRefFn<PyArrayObject>()),
         mem_info_(mem_info) {
-    ORT_ENFORCE(pyObjectContinuous_ != nullptr, "The object must be a contiguous array for input :", value_name);
+    ORT_ENFORCE(pyObjectContiguous_ != nullptr, "The object must be a contiguous array for input :", value_name);
   }
 
-  // Constructor to use when a continuous array had to be copied. Instead of creating yet another copy
+  // Constructor to use when a contiguous array had to be copied. Instead of creating yet another copy
   // we are still able to use it directly for primitive types
-  OrtPybindAllocator(UniqueDecRefPtr<PyArrayObject>&& pyContinuous, const std::string& value_name, const OrtMemoryInfo& mem_info) 
+  OrtPybindSingleUseAllocator(UniqueDecRefPtr<PyArrayObject>&& pyContiguous, const std::string& value_name, const OrtMemoryInfo& mem_info) 
     : pyObject_(nullptr, DecRefFn<PyArrayObject>()),
-      pyObjectContinuous_(std::move(pyContinuous)),
+      pyObjectContiguous_(std::move(pyContiguous)),
       mem_info_(mem_info){
-    ORT_ENFORCE(pyObjectContinuous_ != nullptr, "Expecting a valid contiguous array:", value_name);
+    ORT_ENFORCE(pyObjectContiguous_ != nullptr, "Expecting a valid contiguous array:", value_name);
   }
 
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtPybindAllocator);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtPybindSingleUseAllocator);
 
   // Always return pre-allocated buffer
   // which actually contains the array data
   void* Alloc(size_t) override {
-    return static_cast<void*>(PyArray_DATA(pyObjectContinuous_.get()));
+    return static_cast<void*>(PyArray_DATA(pyObjectContiguous_.get()));
   }
 
   void Free(void*) override {
     // Free when requested, do not wait for
     // destruction of the allocator which may
-    // be non-deterministic. We do not anticipate
-    // true shared ownership of the allocator object
-    pyObjectContinuous_.reset();
+    // be non-deterministic. However, we do not anticipate
+    // true shared ownership of the allocator object except
+    // at the creation stack.
+    pyObjectContiguous_.reset();
     pyObject_.reset();
   }
 
@@ -182,24 +183,24 @@ class OrtPybindAllocator : public IAllocator {
   }
 
   int GetNumpyType() const {
-    return PyArray_TYPE(pyObjectContinuous_.get());
+    return PyArray_TYPE(pyObjectContiguous_.get());
   }
 
   onnxruntime::TensorShape GetShape() const {
-    return GetArrayShape(pyObjectContinuous_.get());
+    return GetArrayShape(pyObjectContiguous_.get());
   }
 
-  PyArrayObject* GetContinuous() const {
-    return pyObjectContinuous_.get();
+  PyArrayObject* GetContiguous() const {
+    return pyObjectContiguous_.get();
   }
 
  private:
   UniqueDecRefPtr<PyArrayObject> pyObject_;
-  UniqueDecRefPtr<PyArrayObject> pyObjectContinuous_;
+  UniqueDecRefPtr<PyArrayObject> pyObjectContiguous_;
   OrtMemoryInfo mem_info_;
 };
 
-using OrtPybindAllocatorPtr = std::shared_ptr<OrtPybindAllocator>;
+using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocator>;
 
 bool PyObjectCheck_Array(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
@@ -280,13 +281,13 @@ std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::strin
       npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
     if (pyObject == darray) {
       // Use the memory of numpy array directly. The ownership belongs to the calling
-      // python code. In this case, the incoming pyObject must itself be continuous (pyObject == darray).
+      // python code. In this case, the incoming pyObject must itself be contiguous (pyObject == darray).
       // darray reference will be decremented but the original array is still alive
       p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
     } else {
-      // This is the case when a continuous array is a copy. We still can re-used it with OrtPybindAllocator
+      // This is the case when a contiguous array is a copy. We still can use it directly with OrtPybindSingleUseAllocator
       // which takes ownership of the array.
-      auto pybind_alloc = std::make_shared<OrtPybindAllocator>(std::move(darray_guard), name_input, alloc->Info());
+      auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(std::move(darray_guard), name_input, alloc->Info());
       p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pybind_alloc);
      }
   } else {
@@ -362,7 +363,7 @@ void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_inpu
 
 // This function will create a Tensor that owns the python array memory. This is done to properly
 // release python arrays allocated within the pybind code.
-void CreateTensorMLValueOwned(const OrtPybindAllocatorPtr& pybind_alloc, const AllocatorPtr& alloc, OrtValue* p_mlvalue) {
+void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybind_alloc, const AllocatorPtr& alloc, OrtValue* p_mlvalue) {
   auto npy_type = pybind_alloc->GetNumpyType();
   auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
 
@@ -370,13 +371,13 @@ void CreateTensorMLValueOwned(const OrtPybindAllocatorPtr& pybind_alloc, const A
 
   if (npy_type != NPY_UNICODE && npy_type != NPY_STRING &&
       npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
-    // We are able to reuse the memory of the continuous python buffer and avoid
+    // We are able to reuse the memory of the contiguous python buffer and avoid
     // extra copy using OrtPybindAllocator which will take care of the memory
     p_tensor = onnxruntime::make_unique<Tensor>(element_type, pybind_alloc->GetShape(), pybind_alloc);
   } else {
-    // We still need to copy elements properly from the continuous buffer
+    // We still need to copy elements properly from the contiguous buffer
     p_tensor = onnxruntime::make_unique<Tensor>(element_type, pybind_alloc->GetShape(), alloc);
-    CopyDataToTensor(pybind_alloc->GetContinuous(), npy_type, p_tensor);
+    CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, p_tensor);
   }
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -614,7 +615,7 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
 
     // The allocator will own the array memory and will decrement the reference on Free()
     // or when destroyed
-    auto pybind_allloc = std::make_shared<OrtPybindAllocator>(arr, name_input, alloc->Info());
+    auto pybind_allloc = std::make_shared<OrtPybindSingleUseAllocator>(arr, name_input, alloc->Info());
     CreateTensorMLValueOwned(pybind_allloc, alloc, p_mlvalue);
   } else if (PyList_Check(value.ptr())) {
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
