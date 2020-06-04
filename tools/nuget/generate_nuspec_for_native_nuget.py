@@ -278,16 +278,16 @@ def generate_files(list, args):
     if is_windowsai_package:
         windowsai_src = 'Microsoft.AI.MachineLearning';
         # Process native props
-        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
         windowsai_props = 'Microsoft.AI.MachineLearning.props';
+        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
         files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
         # Process native targets
-        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
         windowsai_targets = 'Microsoft.AI.MachineLearning.targets';
+        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
         files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
         # Process native rules
-        windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
         windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml';
+        windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
         files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
         # Process .net standard 2.0 targets
         interop_src = 'Microsoft.AI.MachineLearning.Interop';
