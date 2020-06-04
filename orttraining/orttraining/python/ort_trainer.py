@@ -647,7 +647,7 @@ class ORTTrainer():
             if self.use_mixed_precision:
                 self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(global_norm[0].name, [1], torch.float32))
             else:
-                self.model_desc_.outputs_.append(IODescription(global_norm[0].name, [1], torch.float32))
+                self.model_desc_.outputs_.append(IODescription(global_norm[0].name, [], torch.float32))
 
         if self.state_dict_:
             self.load_state_dict(self.state_dict_, self.strict_)
