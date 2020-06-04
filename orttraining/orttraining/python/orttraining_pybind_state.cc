@@ -53,6 +53,7 @@ struct TrainingParameters {
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
   bool use_adasum = false;
+  bool perform_fp16_allreduce = true;
 };
 
 struct TrainingConfigurationResult {
@@ -135,7 +136,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       return it->second;
     };
     opt.use_fp16_moments = parameters.use_fp16_moments;
-    opt.do_all_reduce_in_fp16 = true;
+    opt.do_all_reduce_in_fp16 = parameters.perform_fp16_allreduce;
     // TODO: this mapping is temporary.
     // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
     // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
@@ -189,7 +190,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_adasum", &TrainingParameters::use_adasum);
+      .def_readwrite("use_adasum", &TrainingParameters::use_adasum)
+      .def_readwrite("use_adasum", &TrainingParameters::perform_fp16_allreduce);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())

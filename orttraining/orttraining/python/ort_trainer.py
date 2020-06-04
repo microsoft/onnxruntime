@@ -358,7 +358,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                partition_optimizer=False,
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
-                                               use_adasum=False):
+                                               use_adasum=False, perform_fp16_allreduce=True):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -372,7 +372,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_adasum = use_adasum
-
+    ort_parameters.perform_fp16_allreduce = perform_fp16_allreduce
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -510,7 +510,8 @@ class ORTTrainer():
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION, use_adasum=False):
+                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION, use_adasum=False,
+                 perform_fp16_allreduce=True):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -561,7 +562,7 @@ class ORTTrainer():
         self.world_rank = world_rank
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
-
+        self.perform_fp16_allreduce = perform_fp16_allreduce
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
@@ -611,7 +612,8 @@ class ORTTrainer():
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
                 partition_optimizer=self.partition_optimizer_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_, use_adasum=self.use_adasum)
+                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_, use_adasum=self.use_adasum,
+                perform_fp16_allreduce=self.perform_fp16_allreduce)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
