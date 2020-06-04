@@ -94,14 +94,29 @@ __device__ inline void Softmax(const int sequence_length, const int valid_length
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, cub::Sum());
+  bool is_sum_zero = false;
+
   if (threadIdx.x == 0) {
-    sum_reverse_block = 1.f / sum;
+    if (sum != 0) {
+      sum_reverse_block = 1.f / sum;
+    } else {
+      is_sum_zero = true;
+    }
   }
   __syncthreads();
 
   for (int i = threadIdx.x; i < sequence_length; i += TPB) {
     const int index = offset + i;
-    const float val = (i < num_valid) ? expf(float(input[index]) - max_block) * sum_reverse_block : 0.f;
+    float val = 0.f;
+    if (i < num_valid) {
+      if (!is_sum_zero) {
+        val = expf(float(input[index]) - max_block) * sum_reverse_block;      
+      } else {
+        val = (1.f) / sequence_length;
+      }
+    
+    }
+
     output[index] = T(val);
   }
 }
@@ -143,16 +158,25 @@ __device__ inline void SoftmaxSmall(const int sequence_length, const int valid_l
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), num_valid);
+  bool is_sum_zero = false;
 
   // Store max value
   if (threadIdx.x == 0) {
-    sum_reverse_block = (1.f) / sum;
+    if (sum != 0) {
+      sum_reverse_block = (1.f) / sum;
+    } else {
+      is_sum_zero = true;
+    }
   }
   __syncthreads();
 
   if (threadIdx.x < sequence_length) {
     // this will be 0 for threadIdx.x >= num_valid
-    output[index] = T(thread_data_exp * sum_reverse_block);
+    if (!is_sum_zero) {
+      output[index] = T(thread_data_exp * sum_reverse_block);
+    } else {
+      output[index] = T(0.f);
+    }
   }
 }
 
