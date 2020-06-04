@@ -1391,7 +1391,7 @@ def build_python_wheel(
         use_acl, nightly_build=False, featurizers_build=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
+        if is_windows() and not os.path.exists(os.path.join(cwd, 'build.ninja')):
             cwd = os.path.join(cwd, config)
 
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
