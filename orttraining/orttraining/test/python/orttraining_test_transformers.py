@@ -198,7 +198,7 @@ class BertModelTest(unittest.TestCase):
 
     def test_for_pretraining_mixed_precision_all(self):
         # It would be better to test both with/without mixed precision and allreduce_post_accumulation.
-        # However, stress test of all the 4 cases is not stable at lease on the test machine.
+        # However, stress test of all the 4 cases is not stable at least on the test machine.
         # There we only test mixed precision and allreduce_post_accumulation because it is the most useful use cases.
         option_fp16 = [True]
         option_allreduce_post_accumulation = [True]
