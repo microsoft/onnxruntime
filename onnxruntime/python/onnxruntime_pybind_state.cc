@@ -109,6 +109,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cuda_device_options.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 OrtDevice::DeviceId cuda_device_id = 0;
@@ -374,6 +375,45 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
   }
 }
 
+#ifdef USE_CUDA
+bool is_cuda_device_id_valid(int id) {
+    
+    int num_devices = 0;
+    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+
+    if (0 == num_devices)
+    {
+        printf("your system does not have a CUDA capable device.\n");
+        return false;
+    }
+
+    if (id < 0 || id >= num_devices)
+    {
+        printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", id, num_devices - 1);
+        return false;
+    }
+
+    return true;
+}
+
+void set_cuda_device_options(std::map<std::string, std::string> m) {
+
+    // currently hardcode here.
+    // should we use struct CudaDeviceOptions to know which option we provide for cuda device?
+    std::map<std::string, std::string>::iterator it;
+    it = m.find("device_id");
+    
+    if (it != m.end()) {
+        int device_id = std::stoi(it->second);
+        if (!is_cuda_device_id_valid(device_id)) {
+            return;
+        }
+        printf("set cuda device id: %d\n", device_id);
+        cuda_device_id = device_id; 
+    }
+}
+#endif
+
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   if (provider_types.empty()) {
     // use default registration priority.
@@ -477,26 +517,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
-  m.def("set_cuda_device_id", [](const int id) { 
-    
-    int num_devices = 0;
-    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
-
-    if (0 == num_devices)
-    {
-        printf("your system does not have a CUDA capable device.\n");
-        return;
-    }
-
-    if (id < 0 || id >= num_devices)
-    {
-        printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", id, num_devices - 1);
-        return;
-    }
-
-    cuda_device_id = static_cast<OrtDevice::DeviceId>(id); 
-
-  });
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
@@ -940,6 +961,39 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         auto res = sess->GetModelMetadata();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
+      })
+      .def("config_device_options", [](InferenceSession* sess, std::string provider, py::list & list) -> void {
+        if (sess == nullptr) {
+          return;
+        }
+
+        if (py::len(list) % 2 != 0) {
+          return; 
+        }
+
+        // device options is stored in python list
+        // first, convert contents of list to std::string
+        // and then save to c++ map
+        int cnt = 0;
+        std::map<std::string, std::string> deviceOptionsMap;
+        std::string key;
+        std::string val;
+        for (py::handle o : list) {
+
+          if (cnt % 2 == 0) {
+            key = py::cast<std::string>(py::str(o));
+          }
+          else {
+            val = py::cast<std::string>(py::str(o));
+            deviceOptionsMap[key] = val;
+          }
+
+          cnt += 1;
+        }
+
+        if (provider == kCudaExecutionProvider) {
+            set_cuda_device_options(deviceOptionsMap);
+        }
       })
       .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
