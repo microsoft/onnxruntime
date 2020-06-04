@@ -17,6 +17,12 @@ using std::vector;
 #define HAS(map, key) \
   (map.find(key) != map.end())
 
+const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
+  return tensor.float_data().empty()
+             ? reinterpret_cast<const float*>(tensor.raw_data().data())
+             : tensor.float_data().data();
+}
+
 ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
     : nnapi_(NnApiImplementation()), model_proto_(model_proto) {}
 
@@ -86,16 +92,16 @@ std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
     const auto& b_name = node.input(2);
     const auto& mean_name = node.input(3);
     const auto& var_name = node.input(4);
-    if (HAS(initializers_, scale_name)) {
+    if (!HAS(initializers_, scale_name)) {
       return {false, "Scale of BN must be known"};
     }
-    if (HAS(initializers_, b_name)) {
+    if (!HAS(initializers_, b_name)) {
       return {false, "B of BN must be known"};
     }
-    if (HAS(initializers_, mean_name)) {
+    if (!HAS(initializers_, mean_name)) {
       return {false, "Mean of BN must be known"};
     }
-    if (HAS(initializers_, var_name)) {
+    if (!HAS(initializers_, var_name)) {
       return {false, "Var of BN must be known"};
     }
   }
@@ -392,6 +398,7 @@ void ModelBuilder::AddOperations() {
   for (const auto& node : model_proto_.graph().node()) {
     const auto& op = node.op_type();
 
+    NodeAttrHelper helper(node);
     // process skips (already used as activation)
     if (op == "Add") {
       const auto input1 = node.input(0);
@@ -434,8 +441,6 @@ void ModelBuilder::AddOperations() {
       const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
       AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
     } else if (op == "Conv") {
-      NodeAttrHelper helper(node);
-
       // onnx strides are in the order height, width
       // while nnapi strides are in the order width, height
       const auto onnx_strides = helper.get("strides", vector<int>{1, 1});
@@ -506,6 +511,79 @@ void ModelBuilder::AddOperations() {
         // TODO: Support it
         throw std::invalid_argument("group != 1 is not supported");
       }
+    } else if (op == "BatchNormalization") {
+      if (node.output_size() != 1) {
+        throw std::invalid_argument(
+            "Your onnx model may be in training mode, \
+            please export it in test mode.");
+      }
+
+      const auto input = node.input(0);
+      const auto output = node.output(0);
+
+      const auto& scale_tensor = initializers_.at(node.input(1));
+      const auto& bias_tensor = initializers_.at(node.input(2));
+      const auto& mean_tensor = initializers_.at(node.input(3));
+      const auto& var_tensor = initializers_.at(node.input(4));
+      const auto eps = helper.get("epsilon", 1e-5f);
+
+      const auto size = static_cast<uint32_t>(scale_tensor.dims()[0]);
+      vector<float> a, b;
+      a.reserve(size);
+      b.reserve(size);
+
+      const float* scale_data = GetTensorFloatData(scale_tensor);
+      const float* bias_data = GetTensorFloatData(bias_tensor);
+      const float* mean_data = GetTensorFloatData(mean_tensor);
+      const float* var_data = GetTensorFloatData(var_tensor);
+
+      for (int64_t i = 0; i < size; i++) {
+        a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
+        b.push_back((scale_data[i] * -mean_data[i]) / sqrt(var_data[i] + eps) +
+                    bias_data[i]);
+      }
+
+      const auto tensor_a_name = input + "_imm_a";
+      const auto tensor_b_name = input + "_imm_b";
+      const auto tensor_imm_product_name = input + "_imm_mul";
+      const Shape tensor_a_dimen{size, 1, 1};
+
+      shaper_.AddShape(tensor_a_name, tensor_a_dimen);
+      shaper_.AddShape(tensor_b_name, tensor_a_dimen);
+      const OperandType operandType_a(operand_types_.at(input).type, tensor_a_dimen);
+      const auto tensor_a_idx = AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), operandType_a);
+      const OperandType operandType_b(operand_types_.at(input).type, tensor_a_dimen);
+      const auto tensor_b_idx = AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), operandType_b);
+
+      // mul
+      {
+        IndexSeq input_indices;
+        input_indices.push_back(operand_indexes_.at(input));  // input 1
+        input_indices.push_back(tensor_a_idx);                // input 2
+        int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+        input_indices.push_back(
+            SetOperandFromScalar(Type::INT32,
+                                 static_cast<const void*>(&fuse_code),
+                                 sizeof(fuse_code)));  // fusecode
+        shaper_.Eltwise(input, tensor_a_name, tensor_imm_product_name);
+        const OperandType output_operand_type(operand_types_.at(input).type, shaper_[tensor_imm_product_name]);
+        AddOperation(ANEURALNETWORKS_MUL, input_indices, {tensor_imm_product_name}, {output_operand_type});
+      }
+      // add
+      {
+        IndexSeq input_indices;
+        input_indices.push_back(operand_indexes_.at(tensor_imm_product_name));  // input 1
+        input_indices.push_back(tensor_b_idx);                                  // input 2
+        int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+        input_indices.push_back(
+            SetOperandFromScalar(Type::INT32,
+                                 static_cast<const void*>(&fuse_code),
+                                 sizeof(fuse_code)));  // fusecode
+        shaper_.Eltwise(tensor_imm_product_name, tensor_b_name, output);
+        const OperandType output_operand_type(operand_types_.at(tensor_imm_product_name).type, shaper_[output]);
+        AddOperation(ANEURALNETWORKS_ADD, input_indices, {output}, {output_operand_type});
+      }
+
     } else {
       throw std::invalid_argument("Unsupported operator " + op);
     }
