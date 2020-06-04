@@ -23,7 +23,7 @@ class QAttention<T, int8_t> final : public CudaKernel, public AttentionBase {
 
  public:
   QAttention(const OpKernelInfo& info) : CudaKernel(info),
-                                         AttentionBase(info, false) {
+                                         AttentionBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

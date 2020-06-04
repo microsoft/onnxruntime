@@ -32,11 +32,9 @@ static void RunAttentionTest(
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16;
 
   if (enable_cpu || enable_cuda) {
-    OpTester tester(use_past_state ? "GptAttention" : "Attention", 1, onnxruntime::kMSDomain);
+    OpTester tester("Attention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
-    if (!use_past_state) {
-      tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
-    }
+    tester.AddAttribute<int64_t>("unidirectional", static_cast<int64_t>(is_unidirectional ? 1 : 0));
 
     std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
     std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
@@ -58,6 +56,13 @@ static void RunAttentionTest(
       tester.AddOutput<float>("output", output_dims, output_data);
     }
 
+    if (mask_index_data.size() > 0) {  // mask index is optional.
+      tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+    } else {
+      std::vector<int64_t> dims = {static_cast<int64_t>(mask_index_data.size())};
+      tester.AddInput<int32_t>("", dims, mask_index_data);
+    }
+
     if (use_past_state) {
       if (use_float16) {
         if (past_sequence_length > 0) {
@@ -69,10 +74,6 @@ static void RunAttentionTest(
           tester.AddInput<float>("past", past_dims, *past_data);
         }
         tester.AddOutput<float>("present", present_dims, *present_data);
-      }
-    } else {
-      if (mask_index_data.size() > 0) {  // mask index is optional.
-        tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
       }
     }
 
@@ -359,7 +360,7 @@ TEST(AttentionTest, AttentionUnidirectional) {
                    batch_size, sequence_length, hidden_size, number_of_heads, false, is_unidirectional);
 }
 
-TEST(GptAttentionTest, GptAttentionEmptyPastState) {
+TEST(AttentionTest, AttentionEmptyPastState) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -456,7 +457,7 @@ TEST(GptAttentionTest, GptAttentionEmptyPastState) {
                    use_past_state, past_sequence_length, head_size, &past_data, &present_data);
 }
 
-TEST(GptAttentionTest, GptAttentionBatch1) {
+TEST(AttentionTest, AttentionPastStateBatch1) {
   int batch_size = 1;
   int sequence_length = 1;
   int hidden_size = 4;
@@ -555,7 +556,7 @@ TEST(GptAttentionTest, GptAttentionBatch1) {
                    use_past_state, past_sequence_length, head_size, &past_data, &present_data);
 }
 
-TEST(GptAttentionTest, GptAttentionBatch2) {
+TEST(AttentionTest, AttentionPastStateBatch2) {
   int batch_size = 2;
   int sequence_length = 1;
   int hidden_size = 4;

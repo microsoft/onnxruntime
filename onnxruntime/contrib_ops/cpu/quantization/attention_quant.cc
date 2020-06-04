@@ -34,7 +34,7 @@ REGISTER_KERNEL_TYPED(float, uint8_t, int8_t)
 REGISTER_KERNEL_TYPED(float, uint8_t, uint8_t)
 
 template <typename T, typename QInput, typename QWeight>
-QAttention<T, QInput, QWeight>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info, false) {
+QAttention<T, QInput, QWeight>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {
 }
 
 template <typename T, typename QInput, typename QWeight>

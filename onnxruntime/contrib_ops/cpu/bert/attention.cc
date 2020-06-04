@@ -19,24 +19,16 @@ namespace contrib {
 #define REGISTER_KERNEL_TYPED(T)                                                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(Attention, kMSDomain, 1, T, kCpuExecutionProvider,                        \
                                 KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-                                Attention<T, false>);                                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(GptAttention, kMSDomain, 1, T, kCpuExecutionProvider,                     \
-                                KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-                                Attention<T, true>);
+                                Attention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 
-AttentionBase::AttentionBase(const OpKernelInfo& info, bool use_past) {
+AttentionBase::AttentionBase(const OpKernelInfo& info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 
-  use_past_ = use_past;
-  if (use_past) {
-    is_unidirectional_ = true;
-  } else {
-    is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-  }
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 }
 
 Status AttentionBase::CheckInputs(const Tensor* input,
@@ -103,45 +95,43 @@ Status AttentionBase::CheckInputs(const Tensor* input,
   }
 
   if (past != nullptr) {  // past is optional
+    if (!is_unidirectional_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 4 (past) is only allowed for unidirectional");
+    }
+
     const auto past_dims = past->Shape().GetDims();
     if (past_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 5 dimension, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 4 is expected to have 5 dimension, got ",
                              past_dims.size());
     }
     if (static_cast<int>(past_dims[0]) != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 0 shall have length of 2");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 4 dimension 0 shall have length of 2");
     }
     if (static_cast<int>(past_dims[1]) != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 1 shall have same length as dimension 0 of input 0");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 4 dimension 1 shall have same length as dimension 0 of input 0");
     }
     if (static_cast<int>(past_dims[2]) != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 2 shall have length of num_heads", num_heads_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 4 dimension 2 shall have length of num_heads", num_heads_);
     }
     if (static_cast<int>(past_dims[4]) != hidden_size / num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 2 shall have length of ", hidden_size / num_heads_);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 4 dimension 2 shall have length of ", hidden_size / num_heads_);
     }
   }
 
   return Status::OK();
 }
 
-template <typename T, bool use_past_state>
-Attention<T, use_past_state>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info, use_past_state) {
+template <typename T>
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {
 }
 
-template <typename T, bool use_past_state>
-Status Attention<T, use_past_state>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
-  const Tensor* mask_index = nullptr;
-  const Tensor* past = nullptr;
-
-  if (use_past_state) {
-    past = context->Input<Tensor>(3);
-  } else {
-    mask_index = context->Input<Tensor>(3);
-  }
+  const Tensor* mask_index = context->Input<Tensor>(3);
+  const Tensor* past = context->Input<Tensor>(4);
 
   ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index, past));
 
@@ -155,28 +145,28 @@ Status Attention<T, use_past_state>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   int past_sequence_length = 0;
-  Tensor* present = nullptr;
-  if (use_past_state) {
-    std::vector<int64_t> present_dims;
-    if (nullptr != past) {
-      const auto past_dims = past->Shape().GetDims();
-      past_sequence_length = static_cast<int>(past_dims[3]);
+  std::vector<int64_t> present_dims;
+  if (nullptr != past) {
+    const auto past_dims = past->Shape().GetDims();
+    past_sequence_length = static_cast<int>(past_dims[3]);
 
-      present_dims.push_back(past_dims[0]);
-      present_dims.push_back(past_dims[1]);
-      present_dims.push_back(past_dims[2]);
-      present_dims.push_back(static_cast<int64_t>(past_sequence_length + sequence_length));
-      present_dims.push_back(past_dims[4]);
-    } else {
-      present_dims.push_back(static_cast<int64_t>(2));
-      present_dims.push_back(static_cast<int64_t>(batch_size));
-      present_dims.push_back(static_cast<int64_t>(num_heads_));
-      present_dims.push_back(static_cast<int64_t>(sequence_length));
-      present_dims.push_back(static_cast<int64_t>(head_size));
-    }
+    present_dims.push_back(past_dims[0]);
+    present_dims.push_back(past_dims[1]);
+    present_dims.push_back(past_dims[2]);
+    present_dims.push_back(static_cast<int64_t>(past_sequence_length + sequence_length));
+    present_dims.push_back(past_dims[4]);
+  } else {
+    present_dims.push_back(static_cast<int64_t>(2));
+    present_dims.push_back(static_cast<int64_t>(batch_size));
+    present_dims.push_back(static_cast<int64_t>(num_heads_));
+    present_dims.push_back(static_cast<int64_t>(sequence_length));
+    present_dims.push_back(static_cast<int64_t>(head_size));
+  }
 
-    TensorShape present_shape(present_dims);
-    present = context->Output(1, present_shape);
+  TensorShape present_shape(present_dims);
+  Tensor* present = context->Output(1, present_shape);
+  if (nullptr != past && nullptr == present) {
+    ORT_THROW("Expect to have present state output when past state input is given");
   }
 
   // Total sequence length including that of past state: S* = S' + S

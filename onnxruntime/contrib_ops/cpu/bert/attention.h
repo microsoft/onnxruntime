@@ -11,7 +11,7 @@ namespace contrib {
 
 class AttentionBase {
  protected:
-  AttentionBase(const OpKernelInfo& info, bool use_past);
+  AttentionBase(const OpKernelInfo& info);
   Status CheckInputs(const Tensor* input,
                      const Tensor* weights,
                      const Tensor* bias,
@@ -20,10 +20,9 @@ class AttentionBase {
 
   int num_heads_;           // number of attention heads
   bool is_unidirectional_;  // whether every token can only attend to previous tokens.
-  bool use_past_;           // use past state in operator definition or not
 };
 
-template <typename T, bool use_past_state>
+template <typename T>
 class Attention : public OpKernel, public AttentionBase {
  public:
   explicit Attention(const OpKernelInfo& info);
