@@ -260,7 +260,7 @@ static void CreateSessionWithCastToFloat16InModel()
     CreateSession(learningModel);
 }
 
-static void DISABLED_CreateSessionWithFloat16InitializersInModel()
+static void CreateSessionWithFloat16InitializersInModel()
 {
     // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
     // Model fails to resolve due to ORT using incorrect IR version within partition
@@ -414,7 +414,7 @@ const LearningModelSesssionAPITestsApi& getapi() {
     EvaluateFeaturesAsync,
     EvaluationProperties,
     CreateSessionWithCastToFloat16InModel,
-    DISABLED_CreateSessionWithFloat16InitializersInModel,
+    CreateSessionWithFloat16InitializersInModel,
     EvaluateSessionAndCloseModel,
     CloseSession,
   };

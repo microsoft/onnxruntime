@@ -47,6 +47,8 @@ using namespace WEX::TestExecution;
     getapi().test_name();                 \
   }
 
+#define WINML_DISABLED_TEST(group_name, test_name)
+
 #define WINML_SKIP_TEST(message)                                                                 \
   WINML_SUPRESS_UNREACHABLE_BELOW(                                                               \
     Log::Result(TestResults::Skipped,                                                            \

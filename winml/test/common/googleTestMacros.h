@@ -12,6 +12,11 @@
     getapi().test_name();                 \
   }
 
+#define WINML_DISABLED_TEST(group_name, test_name)  \
+  TEST_F(group_name, DISABLED_##test_name) {         \
+    getapi().test_name();                           \
+  }
+
 #define WINML_TEST_CLASS_BEGIN(test_class_name)      \
   namespace {                                        \
     class test_class_name : public ::testing::Test {
