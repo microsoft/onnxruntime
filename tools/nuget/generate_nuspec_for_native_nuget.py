@@ -105,6 +105,7 @@ def generate_dependencies(list, package_name, version):
 
         list.append('</dependencies>')
 
+
 def get_env_var(key):
     return os.environ.get(key)
 
@@ -201,11 +202,11 @@ def generate_files(list, args):
         files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config,
                                                             'microsoft.ai.machinelearning.winmd') +
                           '" target="lib\\uap10.0\\Microsoft.AI.MachineLearning.winmd" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
-                                                            'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll') +
+        interop_dll = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll'
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
-                                                            'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb') +
+        interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb'
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
     # Process runtimes
@@ -275,20 +276,23 @@ def generate_files(list, args):
 
     # Process props and targets files
     if is_windowsai_package:
-        # Process native props, targets, and rules files
-        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
-                                       'Microsoft.AI.MachineLearning.props')
-        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
-                                       'Microsoft.AI.MachineLearning.targets')
-        windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning',
-                                       'Microsoft.AI.MachineLearning.Rules.Project.xml')
+        windowsai_src = 'Microsoft.AI.MachineLearning';
+        # Process native props
+        windowsai_native_props = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_props)
+        windowsai_props = 'Microsoft.AI.MachineLearning.props';
         files_list.append('<file src=' + '"' + windowsai_native_props + '" target="build\\native" />')
+        # Process native targets
+        windowsai_native_targets = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_targets)
+        windowsai_targets = 'Microsoft.AI.MachineLearning.targets';
         files_list.append('<file src=' + '"' + windowsai_native_targets + '" target="build\\native" />')
+        # Process native rules
+        windowsai_native_rules = os.path.join(args.sources_path, 'csharp', 'src', windowsai_src, windowsai_rules)
+        windowsai_rules = 'Microsoft.AI.MachineLearning.Rules.Project.xml';
         files_list.append('<file src=' + '"' + windowsai_native_rules + '" target="build\\native" />')
-
-        # Process .net standard 2.0 props, targets, and rules files
-        windowsai_net20_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.AI.MachineLearning.Interop',
-                                         'Microsoft.AI.MachineLearning.targets')
+        # Process .net standard 2.0 targets
+        interop_src = 'Microsoft.AI.MachineLearning.Interop';
+        interop_targets = 'Microsoft.AI.MachineLearning.targets';
+        windowsai_net20_targets = os.path.join(args.sources_path, 'csharp', 'src', interop_src, interop_targets)
         files_list.append('<file src=' + '"' + windowsai_net20_targets + '" target="build\\netstandard2.0" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
