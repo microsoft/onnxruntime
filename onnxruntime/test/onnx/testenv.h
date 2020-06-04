@@ -19,7 +19,7 @@ class TestEnv {
   std::vector<ITestCase*> tests;
   std::atomic_int next_test_to_run;
   TestResultStat& stat;
-  FixedCountFinishCallback* finished;
+  std::unique_ptr<FixedCountFinishCallback> finished;
   Ort::Env& env;
   const Ort::SessionOptions& sf;
   TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, Ort::Env& env, Ort::SessionOptions& sf1);

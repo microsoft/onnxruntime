@@ -923,6 +923,15 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ++epoch;
   }
 
+  const double e2e_throughput = [&]() {
+    if (end_to_end_perf_start_step >= params_.num_train_steps) return 0.0;
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_seconds = end - end_to_end_start;
+    const double total_e2e_time = duration_seconds.count();
+    const size_t end_to_end_step_count = params_.num_train_steps - std::max(step_start, end_to_end_perf_start_step);
+    return params_.batch_size * end_to_end_step_count / total_e2e_time;
+  }();
+
   const size_t number_of_batches = step_ - step_start;
   const size_t weight_update_steps = weight_update_step_count_ - weight_update_step_count_start;
   const double avg_time_per_batch = total_time / (step_ - step_start) * 1000;
@@ -937,17 +946,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
     ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps,
-                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, mapped_dimensions,
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, 
+                                        e2e_throughput, mapped_dimensions,
                                         average_cpu_usage, peak_workingset_size));
-  }
-
-  double e2e_throughput{0};
-  if (end_to_end_perf_start_step < params_.num_train_steps) {
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration_seconds = end - end_to_end_start;
-    const double total_e2e_time = duration_seconds.count();
-    const size_t end_to_end_step_count = params_.num_train_steps - std::max(step_start, end_to_end_perf_start_step);
-    e2e_throughput = params_.batch_size * end_to_end_step_count / total_e2e_time;
   }
 
   std::cout << "Round: " << round_ << "\n"
@@ -967,7 +968,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const size_t gradient_accumulation_steps,
                                        const size_t weight_update_steps, const double total_time,
                                        const double avg_time_per_batch, const double throughput, const double stabilized_throughput,
-                                       const MapStringToString& mapped_dimensions,
+                                       const double e2e_throughput, const MapStringToString& mapped_dimensions,
                                        const short average_cpu_usage, const size_t peak_workingset_size) {
   // populate metrics for reporting
   json perf_metrics;
@@ -991,6 +992,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   perf_metrics["AvgTimePerBatch"] = avg_time_per_batch;
   perf_metrics["Throughput"] = throughput;
   perf_metrics["StabilizedThroughput"] = stabilized_throughput;
+  perf_metrics["EndToEndThroughput"] = e2e_throughput;
   perf_metrics["UseMixedPrecision"] = params_.use_mixed_precision;
 
   std::string optimizer = params_.training_optimizer_name;

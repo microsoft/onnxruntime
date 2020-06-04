@@ -4,6 +4,7 @@
 #pragma once
 
 #include "tree_ensemble_aggregator.h"
+#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -137,10 +138,10 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
     node.falsenode = nullptr;  // nodes_falsenodeids[i];
     node.missing_tracks = i < static_cast<size_t>(nodes_missing_value_tracks_true.size())
                               ? (nodes_missing_value_tracks_true[i] == 1
-                                     ? MissingTrack::TRUE
-                                     : MissingTrack::FALSE)
-                              : MissingTrack::NONE;
-    node.is_missing_track_true = node.missing_tracks == MissingTrack::TRUE;
+                                     ? MissingTrack::kTrue
+                                     : MissingTrack::kFalse)
+                              : MissingTrack::kNone;
+    node.is_missing_track_true = node.missing_tracks == MissingTrack::kTrue;
     if (idi.find(node.id) != idi.end()) {
       ORT_THROW("Node ", node.id.node_id, " in tree ", node.id.tree_id, " is already there.");
     }
@@ -326,7 +327,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
         // split the work into one block per thread so we can re-use the 'private_scores' vector as much as possible
         // TODO: Refine the number of threads used
         auto num_threads = std::min<int32_t>(concurrency::ThreadPool::NumThreads(ttp), SafeInt<int32_t>(n_trees_));
-        std::mutex merge_mutex;
+        OrtMutex merge_mutex;
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
@@ -337,7 +338,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
                 agg.ProcessTreeNodePrediction(private_scores, *ProcessTreeNodeLeave(roots_[j], x_data));
               }
 
-              std::lock_guard<std::mutex> lock(merge_mutex);
+              std::lock_guard<OrtMutex> lock(merge_mutex);
               agg.MergePrediction(scores, private_scores);
             });
       }

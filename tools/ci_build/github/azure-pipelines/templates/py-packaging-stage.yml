@@ -97,7 +97,7 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              sudo docker run \
+              sudo --preserve-env docker run \
                 --rm \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
@@ -164,7 +164,7 @@ stages:
         - task: CmdLine@2
           inputs:
             script: |
-              sudo docker run \
+              sudo --preserve-env docker run \
                 --gpus all \
                 --rm \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
