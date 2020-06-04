@@ -113,8 +113,7 @@ __device__ inline void Softmax(const int sequence_length, const int valid_length
         val = expf(float(input[index]) - max_block) * sum_reverse_block;      
       } else {
         val = (1.f) / sequence_length;
-      }
-    
+      }   
     }
 
     output[index] = T(val);
@@ -175,7 +174,7 @@ __device__ inline void SoftmaxSmall(const int sequence_length, const int valid_l
     if (!is_sum_zero) {
       output[index] = T(thread_data_exp * sum_reverse_block);
     } else {
-      output[index] = T(0.f);
+      output[index] = T((1.f) / sequence_length);
     }
   }
 }
