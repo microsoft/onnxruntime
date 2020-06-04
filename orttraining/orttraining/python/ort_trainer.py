@@ -340,12 +340,12 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
             if name in replace_name_dict:
                 n.input[i] = replace_name_dict[name]
 
-    # onnx model initializer may contain non-trainable registered buffers that are not part
-    # of pytorch model named parameteres.
-    assert set([n for n, t in model.model_.named_parameters()]).issubset(
-        set([n.name for n in onnx_model.graph.initializer])), \
-        "Initializer names do not match between PyTorch model and ONNX model, " \
-        "please report a bug to ONNX Runtime."
+    # # onnx model initializer may contain non-trainable registered buffers that are not part
+    # # of pytorch model named parameteres.
+    # assert set([n for n, t in model.model_.named_parameters()]).issubset(
+    #     set([n.name for n in onnx_model.graph.initializer])), \
+    #     "Initializer names do not match between PyTorch model and ONNX model, " \
+    #     "please report a bug to ONNX Runtime."
 
     onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
 

@@ -1,4 +1,5 @@
 from onnx import numpy_helper
+import warnings
 
 def add_name(model):
     i = 0
@@ -99,7 +100,7 @@ def add_expand_shape(model):
 
     expand_node = [n for n in model.graph.node if n.op_type == 'Expand']
     if len(expand_node) != 1:
-        raise "cannot find the single expand node in the BERT model."
+        warnings.warn("cannot find the single expand node in the BERT model.")
         return
     expand_out = model.graph.value_info.add()
     expand_out.name = expand_node[0].output[0] # base: '421' # tiny: '85'

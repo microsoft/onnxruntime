@@ -19,3 +19,15 @@ def nll_loss(g, self, target, weight=None, reduction='mean', ignore_index=-100):
         return g.op("nll_loss", self, target_, weight_)
 
 symbolic_opset10.nll_loss = nll_loss
+
+@parse_args('v', 'v', 'v', 'i', 'none')
+def kl_div(g, self, target, reduction='mean', log_target=False):
+    return g.op("kl_div", self, target) # , reduction=reduction, log_target=log_target)
+
+symbolic_opset10.kl_div = kl_div
+
+@parse_args('v', 'v', 'v', 'v', 'v', 'i', 'none')
+def cosine_embedding_loss(g, self, input1, input2, target, margin=0, reduction='mean'):
+    return g.op("cosine_embedding_loss", self, input1, input2, target)
+
+symbolic_opset10.cosine_embedding_loss = cosine_embedding_loss
