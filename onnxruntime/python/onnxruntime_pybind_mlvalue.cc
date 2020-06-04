@@ -182,14 +182,6 @@ class OrtPybindSingleUseAllocator : public IAllocator {
     return mem_info_;
   }
 
-  int GetNumpyType() const {
-    return PyArray_TYPE(pyObjectContiguous_.get());
-  }
-
-  onnxruntime::TensorShape GetShape() const {
-    return GetArrayShape(pyObjectContiguous_.get());
-  }
-
   PyArrayObject* GetContiguous() const {
     return pyObjectContiguous_.get();
   }
@@ -288,8 +280,8 @@ std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std::strin
       // This is the case when a contiguous array is a copy. We still can use it directly with OrtPybindSingleUseAllocator
       // which takes ownership of the array.
       auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(std::move(darray_guard), name_input, alloc->Info());
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pybind_alloc);
-     }
+      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
+    }
   } else {
     p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(darray, npy_type, p_tensor);
@@ -364,7 +356,8 @@ void CreateTensorMLValue(const AllocatorPtr& alloc, const std::string& name_inpu
 // This function will create a Tensor that owns the python array memory. This is done to properly
 // release python arrays allocated within the pybind code.
 void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybind_alloc, const AllocatorPtr& alloc, OrtValue* p_mlvalue) {
-  auto npy_type = pybind_alloc->GetNumpyType();
+  auto npy_type = PyArray_TYPE(pybind_alloc->GetContiguous());
+  TensorShape shape = GetArrayShape(pybind_alloc->GetContiguous());
   auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
 
   std::unique_ptr<Tensor> p_tensor;
@@ -373,10 +366,10 @@ void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybind_alloc
       npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
     // We are able to reuse the memory of the contiguous python buffer and avoid
     // extra copy using OrtPybindAllocator which will take care of the memory
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, pybind_alloc->GetShape(), pybind_alloc);
+    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pybind_alloc);
   } else {
     // We still need to copy elements properly from the contiguous buffer
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, pybind_alloc->GetShape(), alloc);
+    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, p_tensor);
   }
 
