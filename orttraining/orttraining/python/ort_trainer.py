@@ -863,10 +863,11 @@ class ORTTrainer():
         if fetches is not None:
             results = [session_run_results[fetch] for fetch in fetches]
         elif has_if_all_finite and self.loss_scaler_ is None:
-            # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
-            results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
-        else:
-            results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
+            results = [session_run_results[output.name_] for output in output_desc]
+        #     # return descripted outputs plus the all_finite flag so that the training script can handle loss scaling.
+        #     results = [session_run_results[output_desc.name_] for output_desc in self.output_desc_with_all_fp_16_or_fp32_gradients_finite]
+        # else:
+        #     results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
         
         #bugbug
         if 'global_gradient_norm' in session_run_results:
