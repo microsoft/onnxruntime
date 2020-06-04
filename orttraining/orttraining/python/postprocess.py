@@ -10,11 +10,16 @@ from onnx import numpy_helper
 
 
 def run_postprocess(model):
+    # this post pass is not required for pytorch >= 1.5
+    # where add_node_name in torch.onnx.export is default to True
+    model = add_name(model)
+
     # this post pass is not required for pytorch > 1.6
     model = fuse_softmaxNLL_to_softmaxCE(model)
 
     model = layer_norm_transform(model)
     model = fix_expand_shape(model)
+    model = fix_expand_shape_pt_1_5(model)
     return model
 
 def find_input_node(model, arg):
@@ -33,6 +38,12 @@ def find_output_node(model, arg):
                 result.append(node)
     return result[0] if len(result) == 1 else result
 
+def add_name(model):
+    i = 0
+    for node in model.graph.node:
+       node.name = '%s_%d' %(node.op_type, i)
+       i += 1
+    return model
 
 # Expand Shape PostProcess
 
@@ -63,6 +74,108 @@ def fix_expand_shape(model):
                 expand_out.type.CopyFrom(model.graph.input[index].type)
     return model
 
+def fix_expand_shape_pt_1_5(model):
+    # expand subgraph
+    #                      Constant
+    #                        +
+    #                     ConstantOfShape
+    #                      | +  |
+    #                      | +  |
+    # (Reshape subgraph)   Mul  |
+    #       |___   _________|   |
+    #       +   | |             |
+    #       +  Equal            |
+    #       +++++|++++++++++++++|++
+    #            |____________  | +
+    #                         | | +
+    #   (subgraph)            Where
+    #       |                   |
+    #       |_____   ___________|
+    #             | |
+    #           Expand
+    #             |
+    #           output
+    #
+    # where the Reshape subgraph is
+    #
+    #  Input
+    #   | |
+    #   | |___________________
+    #   |                     |
+    #  Shape   Constant      Shape   Constant
+    #   |  ______|            |  ______|
+    #   | |                   | |
+    #  Gather                Gather
+    #   |                     |
+    # Unsqueeze             Unsqueeze
+    #   |                     |
+    #   |  ..Number of dims.. |
+    #   |    _________________|
+    #   |...|
+    #  Concat                       Constant
+    #     |                            |
+    #     |______    __________________|
+    #            |  |
+    #           Reshape
+    #             |
+    #           output
+    #
+    # This pass will copy Input's shape to the output of Expand.
+    expand_nodes = [n for n in model.graph.node if n.op_type == 'Expand']
+    model_inputs_names = [i.name for i in model.graph.input]
+
+    for expand_node in expand_nodes:
+        n_where = find_input_node(model, expand_node.input[1])
+        if n_where.op_type != 'Where':
+            continue
+
+        n_equal = find_input_node(model, n_where.input[0])
+        n_cos = find_input_node(model, n_where.input[1])
+        n_reshape = find_input_node(model, n_where.input[2])
+
+        if n_equal.op_type != 'Equal' or n_cos.op_type != 'ConstantOfShape' or n_reshape.op_type != 'Reshape':
+            continue
+
+        n_reshape_e = find_input_node(model, n_equal.input[0])
+        n_mul = find_input_node(model, n_equal.input[1])
+        if n_reshape_e != n_reshape or n_mul.op_type != 'Mul':
+            continue
+
+        n_cos_m = find_input_node(model, n_mul.input[0])
+        n_constant = find_input_node(model, n_mul.input[1])
+        if n_cos_m != n_cos or n_constant.op_type != 'Constant':
+            continue
+
+        n_concat = find_input_node(model, n_reshape.input[0])
+        n_constant_r = find_input_node(model, n_reshape.input[1])
+        if n_concat.op_type != 'Concat' or n_constant_r.op_type != 'Constant':
+            continue
+
+        n_input_candidates = []
+        for concat_in in n_concat.input:
+            n_unsqueeze = find_input_node(model, concat_in)
+            if n_unsqueeze.op_type != 'Unsqueeze':
+                break
+            n_gather = find_input_node(model, n_unsqueeze.input[0])
+            if n_gather.op_type != 'Gather':
+                break
+            n_shape = find_input_node(model, n_gather.input[0])
+            n_constant_g = find_input_node(model, n_gather.input[1])
+            if n_shape.op_type != 'Shape' or n_constant_g.op_type != 'Constant':
+                break
+            n_input = n_shape.input[0]
+            if not n_input in model_inputs_names:
+                break
+            n_input_candidates.append(n_input)
+
+        if not n_input_candidates or not all(elem == n_input_candidates[0] for elem in n_input_candidates):
+            continue
+
+        index = model_inputs_names.index(n_input_candidates[0])
+        expand_out = model.graph.value_info.add()
+        expand_out.name = expand_node.output[0]
+        expand_out.type.CopyFrom(model.graph.input[index].type)
+    return model
 
 # LayerNorm PostProcess
 
@@ -94,6 +207,49 @@ def add_const(model, name, output, t_value = None, f_value = None):
     return const_node
 
 def layer_norm_transform(model):
+    # Converting below subgraph
+    #
+    # input
+    #   |
+    # ReduceMean
+    #  __|_____
+    # |        |
+    # Sub      Sub
+    # |        |
+    # |   (optional) Cast
+    # |        |
+    # |        Pow
+    # |        |
+    # |   (optional) Cast
+    # |        |
+    # |       ReduceMean
+    # |        |
+    # |        Add
+    # |        |
+    # |__    __Sqrt
+    #    |  |
+    #     Div  (weight)
+    #     |       |
+    #     |  _____|
+    #     | |
+    #     Mul   (bias)
+    #     |       |
+    #     |  _____|
+    #     | |
+    #     Add
+    #     |
+    #     output
+    #
+    # to the below subgraph
+    #
+    # input    (weight)    (bias)
+    #   |         |          |
+    #   |  _______|          |
+    #   | |  ________________|
+    #   | | |
+    # LayerNormalization
+    #   |
+    # output
     graph = model.graph
 
     nodes_ReduceMean = find_nodes(graph, "ReduceMean")
@@ -226,6 +382,24 @@ def layer_norm_transform(model):
 # Fuse SoftmaxCrossEntropy
 
 def fuse_softmaxNLL_to_softmaxCE(onnx_model):
+    # Converting below subgraph
+    #
+    #    (subgraph)
+    #        |
+    #    LogSoftmax     (target)    (optional weight)
+    #        |             |             |
+    #   nll_loss/NegativeLogLikelihoodLoss
+    #                   |
+    #                output
+    #
+    # to the following
+    #
+    #    (subgraph)     (target)    (optional weight)
+    #        |             |        _____|
+    #        |             |       |
+    #       SparseSoftmaxCrossEntropy
+    #                   |
+    #                output
     nll_count = 0
     while True:
         nll_count = nll_count + 1

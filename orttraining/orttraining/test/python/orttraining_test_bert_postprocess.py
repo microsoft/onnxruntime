@@ -3,5 +3,3 @@ from orttraining_test_layer_norm_transform import layer_norm_transform
 
 def postprocess_model(model):
     add_name(model)
-
-    add_expand_shape(model)

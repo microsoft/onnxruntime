@@ -56,7 +56,7 @@ def run_test(model, model_desc, device, args, gradient_accumulation_steps, fp16,
     model = ORTTrainer(model, None, model_desc, "LambOptimizer",
         map_optimizer_attributes=map_optimizer_attributes,
         learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
-        device=device, _extra_postprocess=postprocess_model,
+        device=device,
         _enable_internal_postprocess=True,
         gradient_accumulation_steps=gradient_accumulation_steps,
         # BertLAMB default initial settings: b1=0.9, b2=0.999, e=1e-6
