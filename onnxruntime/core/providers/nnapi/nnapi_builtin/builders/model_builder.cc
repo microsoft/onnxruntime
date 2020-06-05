@@ -23,6 +23,43 @@ const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
              : tensor.float_data().data();
 }
 
+const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor) {
+  return tensor.int64_data().empty()
+             ? reinterpret_cast<const int64_t*>(tensor.raw_data().data())
+             : tensor.int64_data().data();
+}
+
+Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
+                       const std::string& name) {
+  Shaper::Shape emptyShape;
+  for (const auto& value_info : model_proto.graph().value_info()) {
+    if (value_info.name() == name) {
+      if (!value_info.has_type()) {
+        return emptyShape;
+      } else if (!value_info.type().has_tensor_type()) {
+        return emptyShape;
+      } else if (!value_info.type().tensor_type().has_shape()) {
+        return emptyShape;
+      } else if (value_info.type().tensor_type().shape().dim_size() == 0) {
+        return emptyShape;
+      }
+
+      Shaper::Shape shape;
+      for (const auto& dim : value_info.type().tensor_type().shape().dim()) {
+        if (dim.has_dim_value()) {
+          shape.push_back(dim.dim_value());
+        } else {
+          return emptyShape;
+        }
+      }
+
+      return shape;
+    }
+  }
+
+  return emptyShape;
+}
+
 ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
     : nnapi_(NnApiImplementation()), model_proto_(model_proto) {}
 
@@ -45,10 +82,12 @@ std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
           {"Conv", 29},
           {"BatchNormalization", 27},
           {"Mul", 27},
+          {"GlobalAveragePool", 29},
+          {"GlobalMaxPool", 29},
+          {"Reshape", 27},
       };
 
   if (supported_ops.find(op) == supported_ops.end()) {
-    LOGI("Unsupported operator %s", op.c_str());
     return {false, "Unsupported operator " + op};
   }
 
@@ -67,19 +106,15 @@ std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
     if (HAS(initializers_, weight_name)) {
       const auto& tensor = initializers_.at(weight_name);
       if (tensor.dims().size() != 4) {
-        LOGI("1 Unsupported operator %s", op.c_str());
         return {false, "Only conv 2d is supported."};
       }
       if (group != 1 && tensor.dims()[1] != 1) {
-        LOGI("2 Unsupported operator %s", op.c_str());
         return {false, "group != 1 is not supported"};
       }
     } else {
-      LOGI("3 Unsupported operator %s", op.c_str());
       return {false, "The weight of convolution must be known"};
     }
     if (helper.get("auto_pad", "NOTSET") != "NOTSET") {
-      LOGI("4 Unsupported operator %s", op.c_str());
       return {false, "SAME_LOWER auto_pad is not supported"};
     }
   } else if (op == "BatchNormalization") {
@@ -104,9 +139,18 @@ std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
     if (!HAS(initializers_, var_name)) {
       return {false, "Var of BN must be known"};
     }
+  } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
+    const auto& input_shape = GetShape(model_proto_, node.input(0));
+    if (input_shape.size() != 4) {
+      return {false,
+              "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in " + op};
+    }
+  } else if (op == "Reshape") {
+    if (!HAS(initializers_, node.input(1))) {
+      return {false, "shape of reshape must be known"};
+    }
   }
 
-  LOGI("Supported operator %s", op.c_str());
   return {true, ""};
 }
 
@@ -136,6 +180,10 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
     bool supported;
     std::string error_msg;
     std::tie(supported, error_msg) = IsNodeSupported(model_proto_.graph().node(i));
+    LOGV("Node %s, name %s, supported %d, message: %s",
+         model_proto_.graph().node(i).op_type().c_str(),
+         model_proto_.graph().node(i).name().c_str(),
+         supported, error_msg.c_str());
     if (supported) {
       supported_node_vec.push_back(i);
     } else {
@@ -221,6 +269,9 @@ void ModelBuilder::PreprocessIntializers() {
       skipped_initializers_.insert(b_name);
       skipped_initializers_.insert(mean_name);
       skipped_initializers_.insert(var_name);
+    } else if (op == "Reshape") {
+      // skip the shape for reshape
+      skipped_initializers_.insert(node.input(1));
     }
   }
 }
@@ -231,7 +282,8 @@ void ModelBuilder::RegisterInitializers() {
   initializers.reserve(model_proto_.graph().initializer_size());
   size_t sizeAll = 0;
 
-  for (const auto& tensor : model_proto_.graph().initializer()) {
+  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
+    const auto& tensor = model_proto_.graph().initializer(i);
     const auto& name = tensor.name();
     if (HAS(skipped_initializers_, name))
       continue;
@@ -253,6 +305,7 @@ void ModelBuilder::RegisterInitializers() {
         // TODO: support other type
         throw std::invalid_argument(
             "The initializer of graph doesn't have valid type: " + name);
+        break;
     }
 
     OperandType operand_type(type, shape);
@@ -261,7 +314,7 @@ void ModelBuilder::RegisterInitializers() {
     const size_t size = operand_type.GetOperandByteSize();
     const size_t paddedSize = getPaddedByteSize(size);
     sizeAll += paddedSize;
-    initializers.push_back(std::make_tuple(index, size, paddedSize));
+    initializers[i] = std::make_tuple(index, size, paddedSize);
   }
 
   // 2nd pass copies all the initializer data into NNAPI shared memory
@@ -272,7 +325,7 @@ void ModelBuilder::RegisterInitializers() {
   size_t offset = 0;
   for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
     const auto& tensor = model_proto_.graph().initializer(i);
-    if (skipped_initializers_.find(tensor.name()) != skipped_initializers_.end())
+    if (HAS(skipped_initializers_, tensor.name()))
       continue;
 
     Index index;
@@ -394,6 +447,90 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
   return index;
 }
 
+uint32_t ModelBuilder::AddNHWCInitializer(const std::string& name) {
+  const auto& tensor = initializers_.at(name);
+  Shape shape;
+  for (auto dim : tensor.dims())
+    shape.push_back(static_cast<uint32_t>(dim));
+
+  if (shape.size() != 4)
+    throw std::invalid_argument(
+        "The initializer is not 4D: " + name +
+        " actual dim " + std::to_string(shape.size()));
+
+  // TODO support other data types
+  Type type = Type::TENSOR_FLOAT32;
+  if (tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
+    throw std::invalid_argument(
+        "The initializer of graph doesn't have valid type: " + name);
+  const float* src = GetTensorFloatData(tensor);
+  float buffer[Product(shape)];
+  auto out_t = shape[0], in_t = shape[1],
+       h_t = shape[2], w_t = shape[3];
+  Shape dest_shape = {out_t, h_t, w_t, in_t};
+  const OperandType operandType(type, dest_shape);
+
+  for (uint32_t out = 0; out < out_t; out++) {
+    for (uint32_t in = 0; in < in_t; in++) {
+      for (uint32_t h = 0; h < h_t; h++) {
+        for (uint32_t w = 0; w < w_t; w++) {
+          auto onnx_idx = out * in_t * h_t * w_t +
+                          in * h_t * w_t + h * w_t +
+                          w;
+          auto nnapi_idx = out * h_t * w_t * in_t +
+                           h * w_t * in_t + w * in_t +
+                           in;
+          buffer[nnapi_idx] = src[onnx_idx];
+        }
+      }
+    }
+  }
+
+  return AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+}
+
+uint32_t ModelBuilder::Add1230Initializer(const std::string& name) {
+  const auto& tensor = initializers_.at(name);
+  Shape shape;
+  for (auto dim : tensor.dims())
+    shape.push_back(static_cast<uint32_t>(dim));
+
+  if (shape.size() != 4)
+    throw std::invalid_argument(
+        "The initializer is not 4D: " + name +
+        " actual dim " + std::to_string(shape.size()));
+
+  // TODO support other data types
+  Type type = Type::TENSOR_FLOAT32;
+  if (tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
+    throw std::invalid_argument(
+        "The initializer of graph doesn't have valid type: " + name);
+  const float* src = GetTensorFloatData(tensor);
+  float buffer[Product(shape)];
+  auto out_t = shape[0], in_t = shape[1],
+       h_t = shape[2], w_t = shape[3];
+  Shape dest_shape = {in_t, h_t, w_t, out_t};
+  const OperandType operandType(type, dest_shape);
+
+  for (uint32_t out = 0; out < out_t; out++) {
+    for (uint32_t in = 0; in < in_t; in++) {
+      for (uint32_t h = 0; h < h_t; h++) {
+        for (uint32_t w = 0; w < w_t; w++) {
+          auto onnx_idx = out * in_t * h_t * w_t +
+                          in * h_t * w_t + h * w_t +
+                          w;
+          auto nnapi_idx = h * w_t * out_t +
+                           w * out_t +
+                           out;
+          buffer[nnapi_idx] = src[onnx_idx];
+        }
+      }
+    }
+  }
+
+  return AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+}
+
 void ModelBuilder::AddOperations() {
   for (const auto& node : model_proto_.graph().node()) {
     const auto& op = node.op_type();
@@ -457,9 +594,23 @@ void ModelBuilder::AddOperations() {
       const auto input = node.input(0);
       const auto weight = node.input(1);
 
+      // TODO: Support it
+      bool conv2d = group == 1;
+      const auto& weight_tensor = initializers_.at(weight);
+      bool depthwiseConv2D = weight_tensor.dims()[1] == 1;
+
+      if (!conv2d && !depthwiseConv2D)
+        throw std::invalid_argument(
+            "Conv group != 1 and not depthwise is not supported");
+
       IndexSeq input_indices;
       input_indices.push_back(operand_indexes_.at(input));
-      input_indices.push_back(operand_indexes_.at(weight));
+      if (conv2d)
+        input_indices.push_back(AddNHWCInitializer(weight));
+      else  // depthwiseConv2D
+        input_indices.push_back(Add1230Initializer(weight));
+
+      bool nchw = true;
 
       bool hasBias = (node.input_size() >= 3);
       std::string bias;
@@ -468,49 +619,69 @@ void ModelBuilder::AddOperations() {
       }
 
       uint32_t bias_idx_val;
-      if (group == 1) {
-        if (hasBias) {
-          bias_idx_val = operand_indexes_.at(bias);
-        } else {
-          bias = weight + "_bias";
-          const auto weight_dimen = shaper_[weight];
-          const Shape bias_dimen{weight_dimen[0]};
-          const auto& weight_type = operand_types_.at(weight).type;
-          if (weight_type == Type::TENSOR_FLOAT32) {
-            float buffer[bias_dimen[0]];
-            for (uint32_t i = 0; i < bias_dimen[0]; i++) {
-              buffer[i] = 0.f;
-            }
-            OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
-            bias_idx_val = AddOperandFromPersistMemoryBuffer(bias, &buffer[0], operandType);
-          } else {
-            throw std::invalid_argument("Unknown type " + typeToStr(weight_type));
-          }
-        }
-        input_indices.push_back(bias_idx_val);
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[0]), sizeof(int)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[2]), sizeof(int)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[1]), sizeof(int)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[0]), sizeof(int)));
-        int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(fuse_code)));
-        bool nchw = true;
-        input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[1]), sizeof(int)));
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[0]), sizeof(int)));
-
-        const auto output = node.output(0);
-        shaper_.Conv(input, weight, onnx_pads[1], onnx_pads[3], onnx_pads[0],
-                     onnx_pads[2], onnx_strides[1], onnx_strides[0], nchw, onnx_dilations[1],
-                     onnx_dilations[0], output);
-        const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
-        AddOperation(ANEURALNETWORKS_CONV_2D, input_indices, {output}, {output_operand_type});
+      if (hasBias) {
+        bias_idx_val = operand_indexes_.at(bias);
       } else {
-        // TODO: Support it
-        throw std::invalid_argument("group != 1 is not supported");
+        bias = weight + "_bias";
+        const auto weight_dimen = shaper_[weight];
+        Shape bias_dimen;
+        if (conv2d)
+          bias_dimen = {weight_dimen[0]};
+        else
+          bias_dimen = {weight_dimen[3]};
+
+        const auto& weight_type = operand_types_.at(weight).type;
+        if (weight_type == Type::TENSOR_FLOAT32) {
+          float buffer[bias_dimen[0]];
+          for (uint32_t i = 0; i < bias_dimen[0]; i++) {
+            buffer[i] = 0.f;
+          }
+          OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
+          bias_idx_val = AddOperandFromPersistMemoryBuffer(bias, &buffer[0], operandType);
+        } else {
+          throw std::invalid_argument("Unknown type " + typeToStr(weight_type));
+        }
       }
+      input_indices.push_back(bias_idx_val);
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[0]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[2]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[1]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[0]), sizeof(int32_t)));
+      if (!conv2d && depthwiseConv2D) {
+        int32_t depthwiseMultiplier = shaper_[weight][3] / group;
+        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&depthwiseMultiplier), sizeof(int32_t)));
+      }
+      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[1]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[0]), sizeof(int32_t)));
+
+      const auto output = node.output(0);
+      int32_t operationCode = ANEURALNETWORKS_CONV_2D;
+      if (conv2d) {
+        operationCode = ANEURALNETWORKS_CONV_2D;
+        shaper_.Conv(input, weight,
+                     onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
+                     onnx_strides[1], onnx_strides[0],
+                     nchw,
+                     onnx_dilations[1], onnx_dilations[0],
+                     output);
+      } else if (depthwiseConv2D) {
+        operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
+        shaper_.DepthwiseConv(input, weight,
+                              onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
+                              onnx_strides[1], onnx_strides[0],
+                              nchw,
+                              onnx_dilations[1], onnx_dilations[0],
+                              output);
+      }
+
+      const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
+      AddOperation(operationCode, input_indices, {output}, {output_operand_type});
+
     } else if (op == "BatchNormalization") {
       if (node.output_size() != 1) {
         throw std::invalid_argument(
@@ -546,7 +717,7 @@ void ModelBuilder::AddOperations() {
       const auto tensor_a_name = input + "_imm_a";
       const auto tensor_b_name = input + "_imm_b";
       const auto tensor_imm_product_name = input + "_imm_mul";
-      const Shape tensor_a_dimen{size, 1, 1};
+      const Shape tensor_a_dimen{size, 1, 1};  // {C, H, W}
 
       shaper_.AddShape(tensor_a_name, tensor_a_dimen);
       shaper_.AddShape(tensor_b_name, tensor_a_dimen);
@@ -584,7 +755,90 @@ void ModelBuilder::AddOperations() {
         AddOperation(ANEURALNETWORKS_ADD, input_indices, {output}, {output_operand_type});
       }
 
-    } else {
+    } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
+      const auto input = node.input(0);
+      int32_t operationCode = ANEURALNETWORKS_CONV_2D;
+      bool nchw = true;
+
+      vector<int> onnx_strides, onnx_pads, kernel_shape;
+      if (op == "AveragePool" || op == "MaxPool") {
+        if (op == "AveragePool")
+          operationCode = ANEURALNETWORKS_AVERAGE_POOL_2D;
+        else  //MaxPool
+          operationCode = ANEURALNETWORKS_MAX_POOL_2D;
+
+        kernel_shape = helper.get("kernel_shape", vector<int>{0, 0});
+        if (helper.get("count_include_pad", 0) == 1)
+          throw std::invalid_argument("count_include_pad == 1 is not supported");
+
+        onnx_strides = helper.get("strides", vector<int>{1, 1});
+        onnx_pads = helper.get("pads", vector<int>{0, 0, 0, 0});
+
+        if (helper.get("storage_order", 0) == 1)
+          throw std::invalid_argument("storage_order == 1 is not supported");
+
+        if (helper.get("auto_pad", "NOTSET") != "NOTSET")
+          throw std::invalid_argument("auto_pad is not supported");
+      } else {
+        if (op == "GlobalAveragePool")
+          operationCode = ANEURALNETWORKS_AVERAGE_POOL_2D;
+        else  //GlobalMaxPool
+          operationCode = ANEURALNETWORKS_MAX_POOL_2D;
+
+        onnx_strides = vector<int>{1, 1};
+        onnx_pads = vector<int>{0, 0, 0, 0};
+
+        if (nchw)
+          kernel_shape = vector<int>{static_cast<int32_t>(shaper_[input][2]),
+                                     static_cast<int32_t>(shaper_[input][3])};
+        else
+          kernel_shape = vector<int>{static_cast<int32_t>(shaper_[input][1]),
+                                     static_cast<int32_t>(shaper_[input][2])};
+      }
+
+      IndexSeq input_indices;
+      input_indices.push_back(operand_indexes_.at(input));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[0]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[2]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[1]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[0]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[1]), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[0]), sizeof(int32_t)));
+      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
+      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
+
+      const auto output = node.output(0);
+      shaper_.Pool(input,
+                   onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
+                   onnx_strides[1], onnx_strides[0],
+                   nchw,
+                   kernel_shape[1], kernel_shape[0],
+                   output);
+      const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
+      AddOperation(operationCode, input_indices, {output}, {output_operand_type});
+    } else if (op == "Reshape") {
+      const auto input = node.input(0);
+      const auto shape_name = node.input(1);
+      const auto output = node.output(0);
+
+      const auto& shape_tensor = initializers_.at(shape_name);
+      const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
+      const auto size = static_cast<uint32_t>(shape_tensor.dims()[0]);
+      std::vector<int32_t> shape(size);
+      for (uint32_t i = 0; i < size; i++) {
+        shape[i] = static_cast<int32_t>(rawShape[i]);
+        LOGV("Reshape ith [%d] dim is %d", i, shape[i]);
+      }
+
+      shaper_.Reshape(input, shape, output);
+      const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
+      RegisterOperand(output, operand_indexes_.at(input), output_operand_type);
+    }
+
+    else {
       throw std::invalid_argument("Unsupported operator " + op);
     }
   }
@@ -613,6 +867,11 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
   Prepare();
 
   THROW_ON_ERROR_WITH_NOTE(
+      nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+          nnapi_model_->model_, true),
+      "Set fp16");
+
+  THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
           nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),
           &input_index_vec_[0],
@@ -627,6 +886,11 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
       "on create");
+
+  THROW_ON_ERROR_WITH_NOTE(
+      nnapi_->ANeuralNetworksCompilation_setPreference(
+          nnapi_model_->compilation_, ANEURALNETWORKS_PREFER_SUSTAINED_SPEED),
+      "on setPreference");
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),

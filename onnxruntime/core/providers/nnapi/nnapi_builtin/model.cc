@@ -114,8 +114,6 @@ void Model::Predict(const std::vector<InputOutputInfo>& inputs) {
 }
 
 NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
-  LOGI("NNMemory ctor name %s size %zu", name, size);
-
   if (name && size > 0) {
     nnapi_ = nnapi;
     byte_size_ = size;

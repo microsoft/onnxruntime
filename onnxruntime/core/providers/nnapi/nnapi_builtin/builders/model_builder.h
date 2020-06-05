@@ -58,6 +58,9 @@ class ModelBuilder {
       const std::string& name, const void* buffer,
       const android::nn::wrapper::OperandType& operand_type);
 
+  uint32_t AddNHWCInitializer(const std::string& name);
+  uint32_t Add1230Initializer(const std::string& name);
+
   uint32_t SetOperandFromScalar(android::nn::wrapper::Type type, const void* value, size_t size);
   uint32_t AddNewOperand(const android::nn::wrapper::OperandType& type);
   void RegisterOperand(const std::string& name,
