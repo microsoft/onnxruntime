@@ -55,11 +55,13 @@ __global__ void _AdamOptimizer_mode0(
   // Compute the new gradient.
   if (grads_out) {
     //bugbug
-    grads_out[id] = -T_GRAD(delta);
+    printf("grad out: %f\n",delta);
+    grads_out[id] = T_GRAD(delta);
   }
 
   // Compute the new weight.
   if (weights_out) {
+    printf("Weights out");
     weights_out[id] = weights[id] + T3(delta);
 
     if (fp16_weights_out) {
