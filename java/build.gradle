@@ -99,6 +99,11 @@ if (cmakeBuildDir != null) {
 
 	// Overwrite jar location
 	task allJar(type: Jar) {
+		manifest {
+			attributes('Automatic-Module-Name': project.group,
+					'Implementation-Title': 'onnxruntime',
+					'Implementation-Version': project.version)
+		}
 		into("META-INF/maven/$project.group/$project.name") {
 			from { generatePomFileForMavenPublication }
 			rename ".*", "pom.xml"
