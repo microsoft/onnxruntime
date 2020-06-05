@@ -115,6 +115,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   TensorShape output_shape(dims);
   Tensor* output = context->Output(0, output_shape);
 
+  // If the given batch of sequences is empty, stop processing right here
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
   constexpr size_t element_size = sizeof(T);
 
   AllocatorPtr allocator;

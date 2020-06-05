@@ -41,22 +41,23 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
         sum += x[i];
       }
 
-      if (sum == 0) {
-        for (int i = 0; i < D; i++) {
-          y[i] = 1.0f / (float)D;
-        }
-      } else {
+      // `sum` (which we are dividing by below) will never be 0 as long as there is atleast one element in the sequence
+      // (i.e.) D > 0 (sequence_length > 0). If we reach this line of code, we have already ensured that
+      // sequence_length > 0, when we check if the input tensor is non-empty
+      // TODO: Account for cases where mask == 0 and sequence_length > 0 when "masked" softmax is eventually implemented
+      // as sum will be zero in the case
+      for (int i = 0; i < D; i++) {
+        y[i] = x[i] / (float)sum;
         for (int i = 0; i < D; i++) {
           y[i] = x[i] / (float)sum;
         }
       }
-    }
-  });
+    });
 }
 
 template <>
 inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, tp);
+    MlasComputeSoftmax(score, score, N, D, false, tp);
 }
 
 // Helper function to compute the attention probs. It does 2 things:
@@ -75,73 +76,75 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
                            int num_heads,              // number of heads of self-attention
                            bool is_unidirectional,     // indicate if it is unidrectional.
                            ThreadPool* tp) {
-  {
-    if (mask_data != nullptr) {
-      if (is_unidirectional) {
-        for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-          for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
-            mask_data[s_i * sequence_length + m_i] = static_cast<T>(-10000.0);
+    {
+      if (mask_data != nullptr) {
+        if (is_unidirectional) {
+          for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+            for (int m_i = s_i + 1; m_i < sequence_length; m_i++) {
+              mask_data[s_i * sequence_length + m_i] = static_cast<T>(-10000.0);
+            }
+          }
+        } else {
+          ORT_ENFORCE(mask_index, "mask index should not be null.");
+          T* p_mask = mask_data;
+          for (int b_i = 0; b_i < batch_size; b_i++) {
+            // TODO: mask_index can be used in softmax to save some calculation.
+            // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS
+            int valid_length = mask_index[b_i];
+            for (int m_i = valid_length; m_i < sequence_length; m_i++) {
+              p_mask[m_i] = static_cast<T>(-10000.0);
+            }
+
+            // Broadcast mask from BxS to BxSxS
+            for (int s_i = 1; s_i < sequence_length; s_i++) {
+              memcpy(p_mask + s_i * sequence_length, p_mask, sequence_length * sizeof(T));
+            }
+            p_mask += sequence_length * sequence_length;
           }
         }
-      } else {
-        ORT_ENFORCE(mask_index, "mask index should not be null.");
-        T* p_mask = mask_data;
-        for (int b_i = 0; b_i < batch_size; b_i++) {
-          // TODO: mask_index can be used in softmax to save some calculation.
-          // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS
-          int valid_length = mask_index[b_i];
-          for (int m_i = valid_length; m_i < sequence_length; m_i++) {
-            p_mask[m_i] = static_cast<T>(-10000.0);
+      } else {  // no any mask
+        memset(attention_probs, 0, batch_size * num_heads * sequence_length * sequence_length * sizeof(T));
+      }
+
+      const int loop_len = batch_size * num_heads;
+      const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
+
+      // The cost of Gemm
+      const double cost =
+          static_cast<double>(head_size) * static_cast<double>(sequence_length) * static_cast<double>(sequence_length);
+      ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const std::ptrdiff_t batch_index = i / num_heads;
+
+          // broadcast mask data: SxS or (Bx)SxS -> (BxNx)SxS
+          if (mask_data != nullptr) {
+            const T* broadcast_data_src = is_unidirectional ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * sequence_length;
+            T* broadcast_data_dest = reinterpret_cast<T*>(attention_probs) + sequence_length * sequence_length * i;
+            memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sequence_length * sizeof(T));
           }
 
-          // Broadcast mask from BxS to BxSxS
-          for (int s_i = 1; s_i < sequence_length; s_i++) {
-            memcpy(p_mask + s_i * sequence_length, p_mask, sequence_length * sizeof(T));
-          }
-          p_mask += sequence_length * sequence_length;
+          // gemm
+
+          //                     original           transposed            iteration
+          // A: Q                (BxNxSxH)          (B.N.)S x H            S x H
+          // B: K'               (BxNxSxH)          (B.N.)H x S            H x S
+          // C: attention_probs   (BxNxSxS)          (B.N.)S x S            S x S
+
+          math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, sequence_length, head_size, alpha,
+                                    Q + sequence_length * head_size * i, K + sequence_length * head_size * i, 1.0,
+                                    reinterpret_cast<T*>(attention_probs) + sequence_length * sequence_length * i, nullptr);
         }
-      }
-    } else {  // no any mask
-      memset(attention_probs, 0, batch_size * num_heads * sequence_length * sequence_length * sizeof(T));
+      });
     }
 
-    const int loop_len = batch_size * num_heads;
-    const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
-
-    // The cost of Gemm
-    const double cost =
-        static_cast<double>(head_size) * static_cast<double>(sequence_length) * static_cast<double>(sequence_length);
-    ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const std::ptrdiff_t batch_index = i / num_heads;
-
-        // broadcast mask data: SxS or (Bx)SxS -> (BxNx)SxS
-        if (mask_data != nullptr) {
-          const T* broadcast_data_src = is_unidirectional ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * sequence_length;
-          T* broadcast_data_dest = reinterpret_cast<T*>(attention_probs) + sequence_length * sequence_length * i;
-          memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sequence_length * sizeof(T));
-        }
-
-        // gemm
-
-        //                     original           transposed            iteration
-        // A: Q                (BxNxSxH)          (B.N.)S x H            S x H
-        // B: K'               (BxNxSxH)          (B.N.)H x S            H x S
-        // C: attention_probs   (BxNxSxS)          (B.N.)S x S            S x S
-
-        math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, sequence_length, head_size, alpha,
-                                  Q + sequence_length * head_size * i, K + sequence_length * head_size * i, 1.0,
-                                  reinterpret_cast<T*>(attention_probs) + sequence_length * sequence_length * i, nullptr);
-      }
-    });
-  }
-
-  //  attention_probs(B, N, S, S) = Softmax(attention_probs)
-  {
-    const int N = batch_size * num_heads * sequence_length;
-    const int D = sequence_length;
-    ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
-  }
+    //  attention_probs(B, N, S, S) = Softmax(attention_probs)
+    {
+      const int N = batch_size * num_heads * sequence_length;
+      const int D = sequence_length;
+      // TODO: Perform "masked" softmax by accounting for provided masks (if any) to be on par with the
+      // CUDA implementation which currently performs "masked" softmax whens masks are provided
+      ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
+    }
 }
 
 template <typename T>
@@ -155,30 +158,30 @@ void ComputeVxAttentionScore(T* output,                 // buffer for the result
                              int num_heads,             // number of heads
                              int hidden_size,           // hidden size
                              ThreadPool* tp) {
-  const double cost =
-      static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(sequence_length);
-  ThreadPool::TryParallelFor(tp, batch_size * num_heads, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    const int sequence_length_mul_head_size = sequence_length * head_size;
-    for (std::ptrdiff_t i = begin; i != end; ++i) {
-      T* current_tmp_data = tmp_buffer + sequence_length_mul_head_size * i;
-      math::MatMul<T>(sequence_length, head_size, sequence_length,
-                      attention_probs + sequence_length * sequence_length * i,
-                      V + sequence_length_mul_head_size * i, current_tmp_data, nullptr);
+    const double cost =
+        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(sequence_length);
+    ThreadPool::TryParallelFor(tp, batch_size * num_heads, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+      const int sequence_length_mul_head_size = sequence_length * head_size;
+      for (std::ptrdiff_t i = begin; i != end; ++i) {
+        T* current_tmp_data = tmp_buffer + sequence_length_mul_head_size * i;
+        math::MatMul<T>(sequence_length, head_size, sequence_length,
+                        attention_probs + sequence_length * sequence_length * i,
+                        V + sequence_length_mul_head_size * i, current_tmp_data, nullptr);
 
-      // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
-      const int batch_index = static_cast<int>(i / num_heads);
-      const int head_index = static_cast<int>(i % num_heads);
-      T* src = current_tmp_data;
-      T* dest = output + (batch_index * sequence_length * num_heads + head_index) * head_size;
-      const auto bytes_to_copy = SafeInt<size_t>(head_size) * sizeof(T);
-      for (int j = 0; j < sequence_length; j++) {
-        memcpy(dest, src, bytes_to_copy);
-        src += head_size;
-        dest += hidden_size;
+        // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
+        const int batch_index = static_cast<int>(i / num_heads);
+        const int head_index = static_cast<int>(i % num_heads);
+        T* src = current_tmp_data;
+        T* dest = output + (batch_index * sequence_length * num_heads + head_index) * head_size;
+        const auto bytes_to_copy = SafeInt<size_t>(head_size) * sizeof(T);
+        for (int j = 0; j < sequence_length; j++) {
+          memcpy(dest, src, bytes_to_copy);
+          src += head_size;
+          dest += hidden_size;
+        }
       }
-    }
-  });
+    });
 }
 
 }  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace contrib
