@@ -551,10 +551,6 @@ void setup_training_params(BertParameters& params) {
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
 
-  params.weights_not_to_train = {
-      "position_01",            // Slice's dat input
-      "op_min_ends_expand_10",  //op_min_ends_expand_10
-  };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
   if (params.EnableTensorboard()) {
