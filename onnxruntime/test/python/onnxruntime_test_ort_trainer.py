@@ -727,12 +727,18 @@ class TestOrtTrainer(unittest.TestCase):
         model_desc = ModelDescription([input_desc, label_desc], [loss_desc, output_desc])
         def loss_fn(x, label):
             return F.nll_loss(F.log_softmax(x, dim=1), label)
+        
+        def get_lr_this_step(global_step):
+            learningRate = 0.02
+            return torch.tensor([learningRate])
+
         ort_trainer = ORTTrainer(
             pt_model, loss_fn, model_desc, "SGDOptimizer", None,
             IODescription('Learning_Rate', [1, ], torch.float32), device,
+            get_lr_this_step=get_lr_this_step,
             _opset_version=10)
         learningRate = 0.02
-        ort_trainer.train_step(x=data, label=label, Learning_Rate=torch.tensor([learningRate]))
+        ort_trainer.train_step(x=data, label=label)
         state_dict = ort_trainer.state_dict()
         assert state_dict.keys() == {'linear.bias', 'linear.weight'}
 
