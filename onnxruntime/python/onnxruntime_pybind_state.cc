@@ -585,12 +585,12 @@ void addObjectMethods(py::module& m, Environment& env) {
         std::string device_name = GetDeviceName(device);
 
         OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
-
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
+
         mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -603,19 +603,18 @@ void addObjectMethods(py::module& m, Environment& env) {
         Py_DECREF(dtype);
 
         std::string device_name = GetDeviceName(device);
-
         OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
-
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
-      .def("bind_output_name", [](SessionIOBinding* io_binding, const std::string& name) -> void {
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name) -> void {
         OrtValue mlvalue;
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
@@ -898,7 +897,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return *(res.second);
       })
       .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
-        Status status;        
+        Status status;
         if (!run_options)
           status = sess->Run(*io_binding.Get());
         else

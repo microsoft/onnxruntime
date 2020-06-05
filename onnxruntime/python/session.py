@@ -191,25 +191,48 @@ class InferenceSession(Session):
 
 
 class IOBinding:
+'''This class provides API to bind input/output to a specified device, e.g. GPU'''
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+        '''
+        :param name: input name
+        :param device_type: e.g. CPU, CUDA
+        :param device_id: device id, e.g. 0
+        :param element_type: input element type
+        :param shape: input shape
+        :param buffer_ptr: memory pointer to input data
+        '''
         self._iobinding.bind_input(name,
                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                device_id),
                                    element_type, shape, buffer_ptr)
 
-    def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
-        self._iobinding.bind_output(name,
+    def bind_output(self, name, device_type=None, device_id=0, element_type=None, shape=None, buffer_ptr=None):
+        '''
+        :param name: output name
+        :param device_type: e.g. CPU, CUDA
+        :param device_id: device id, e.g. 0
+        :param element_type: output element type
+        :param shape: output shape
+        :param buffer_ptr: memory pointer to output data
+        '''
+        if (device_type is None):
+            if (device_type is None)  or (device_type == 'CPU'):
+                self._iobinding.bind_output(name)
+            else:
+                raise Exception ("Cannot bind output to device other than CPU without output shape, element type or buffer pointer")
+        elif (element_type is None) or (shape is None) or (buffer_ptr is None):
+            raise Exception("For bind_output, element_type, shape and buffer_ptr have to be all provided when device_type is provided.")
+        else:
+            self._iobinding.bind_output(name,
                                     C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                 device_id),
                                     element_type, shape, buffer_ptr)
 
-    def bind_output_name(self, name):
-        self._iobinding.bind_output_name(name)
-
     def get_outputs(self):
+        '''Obtain outputs.'''
         return self._iobinding.get_outputs()
 
     def clear_binding_inputs(self):
