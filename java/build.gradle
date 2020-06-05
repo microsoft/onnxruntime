@@ -63,6 +63,7 @@ spotless {
 
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
+def useCUDA = System.properties['USE_CUDA']
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
@@ -157,7 +158,11 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			artifactId = project.name
+			if (useCUDA != null) {
+				artifactId = project.name + "_gpu"
+			} else {
+				artifactId = project.name
+			}
 
 			from components.java
 			pom {
