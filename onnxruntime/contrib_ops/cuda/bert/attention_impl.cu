@@ -161,13 +161,13 @@ __device__ inline void SoftmaxSmall(const int sequence_length, const int valid_l
 
   // Store max value
   if (threadIdx.x == 0) {
-      sum_reverse_block = (1.f) / sum;
+    sum_reverse_block = (1.f) / sum;
   }
   __syncthreads();
 
   if (threadIdx.x < sequence_length) {
     // the output val will be 0 for threadIdx.x >= num_valid
-      output[index] = T(thread_data_exp * sum_reverse_block);
+    output[index] = T(thread_data_exp * sum_reverse_block);
   }
 }
 
