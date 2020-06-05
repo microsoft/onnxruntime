@@ -37,7 +37,6 @@
 #pragma warning(pop)
 #endif
 
-
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
@@ -90,7 +89,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
         std::ostringstream oss;
         oss << std::hex << "expected " << expected_output[di] << " (" << expected_int << "), got " << real_value << " ("
             << real_int << ")"
-            << ", diff: " << diff << ", tol=" << tol << ".";
+            << ", diff: " << diff << ", tol=" << tol << std::dec << " idx=" << di << ".";
         res.second = oss.str();
         max_diff = diff;
       }
