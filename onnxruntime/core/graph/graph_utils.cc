@@ -656,8 +656,11 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   graph.RemoveNode(second_node.Index());
 }
 
-void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
-  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node,
+                        bool move_input_edges) {
+  if (move_input_edges) {
+    MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
+  }
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
 
   for (Node& node : nodes) {
@@ -705,7 +708,7 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
     const Node::EdgeEnd* edge_found = nullptr;
 #ifndef NDEBUG
     LOGS(logger, VERBOSE) << (is_input_edge ? "I:" : "O:") << edge.src_arg_index << "," << edge.dst_arg_index
-                           << "," << edge.op_type << "," << edge.domain << "," << ToString(edge.versions);
+                          << "," << edge.op_type << "," << edge.domain << "," << ToString(edge.versions);
 #endif
     auto edges_begin = is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
     auto edges_end = is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
@@ -749,17 +752,17 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   std::queue<const Node*> q;
   std::vector<NodeIndex> nodes_to_remove;
   q.push(&start_node);
-  // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output. 
+  // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output.
   while (q.size() != 0) {
     const Node& cur_node = *(q.front());
     q.pop();
-    // Each eligible node in the subgraph must have less than one output edge and no output should be 
+    // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
     if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
       continue;
     }
     nodes_to_remove.push_back(cur_node.Index());
-    // push the parents of current node to the queue. 
+    // push the parents of current node to the queue.
     for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
       const std::string& input_name = GetNodeInputName(cur_node, i);
       if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
@@ -776,7 +779,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   // Remove nodes that are not used anymore.
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
-    RemoveNodeOutputEdges(graph, *node);  
+    RemoveNodeOutputEdges(graph, *node);
     graph.RemoveNode(node->Index());
   }
   return true;

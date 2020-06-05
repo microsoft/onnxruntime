@@ -89,7 +89,7 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 }
 
 /** Find the first child of the specified op type. */
-const Node* FirstChildByType(Node& node, const std::string& child_type); 
+const Node* FirstChildByType(Node& node, const std::string& child_type);
 /** Find the first parent of the specified op type. */
 const Node* FirstParentByType(Node& node, const std::string& parent_type);
 
@@ -183,11 +183,14 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
     Conceptually multiple nodes are being combined into one, and post-fusion will produce output/s with the same names 
     as the last node in 'nodes', and be connected to the same downstream nodes.
 
-    The input edges to the first node in 'nodes' will be moved to replacement_node. No other input edges are moved.
+    If 'move_input_edges' is true, the input edges to the first node in 'nodes' will be moved to replacement_node.
+    No other input edges are moved.
+
     The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
     All nodes in 'nodes' will be removed.
 */
-void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node,
+                        bool move_input_edges = true);
 
 /** Find the input edge of a node for a specified input index.
 @returns nullptr when not found.
@@ -198,7 +201,6 @@ const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 @returns nullptr when not found.
 */
 const Node* GetInputNode(const Node& node, int arg_index);
-
 
 /** Expected edge end information for matching input or output edge.
     For input edge, the node in the edge end refers to the source node, otherwise the destination node.
