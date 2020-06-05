@@ -184,7 +184,7 @@ Status TrainingSession::ConfigureForTraining(
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   if (config.weight_names_to_not_train.size() > 0)
   {
-    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:\n"
+    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:\n";
     for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
       trainable_initializers.erase(weight_name_to_not_train);
       LOGS(*session_logger_, INFO) << weight_name_to_not_train;
