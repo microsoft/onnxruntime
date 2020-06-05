@@ -106,7 +106,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
 
-  const auto dims = input->Shape().GetDims();
+  const auto& dims = input->Shape().GetDims();
   const int batch_size = static_cast<int>(dims[0]);
   const int sequence_length = static_cast<int>(dims[1]);
   const int hidden_size = static_cast<int>(dims[2]);
