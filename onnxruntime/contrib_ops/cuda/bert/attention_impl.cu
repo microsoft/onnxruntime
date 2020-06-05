@@ -94,14 +94,9 @@ __device__ inline void Softmax(const int sequence_length, const int valid_length
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, cub::Sum());
-  bool is_sum_zero = false;
 
   if (threadIdx.x == 0) {
-    if (sum != 0) {
       sum_reverse_block = 1.f / sum;
-    } else {
-      is_sum_zero = true;
-    }
   }
   __syncthreads();
 
@@ -109,11 +104,7 @@ __device__ inline void Softmax(const int sequence_length, const int valid_length
     const int index = offset + i;
     float val = 0.f;
     if (i < num_valid) {
-      if (!is_sum_zero) {
         val = expf(float(input[index]) - max_block) * sum_reverse_block;      
-      } else {
-        val = (1.f) / sequence_length;
-      }   
     }
 
     output[index] = T(val);
@@ -132,6 +123,21 @@ __device__ inline void SoftmaxSmall(const int sequence_length, const int valid_l
   const int index = offset + threadIdx.x;
 
   const int num_valid = is_unidirectional ? (blockIdx.x % sequence_length) + 1 : valid_length;
+
+  // If `num_valid` is 0, it means that mask for this sample in the batch is 0 
+  // (valid_length is 0 in the step above)
+  // If we reach this step, sequence_length is guaranteed to be > 0 
+  // (we ensure this in the beginning of the op computation).
+  // Hence, we stop at this stage to prevent unnecessary steps below given that there are no 
+  // values to compute softmax over. We assign the output an arbitrary value of 0
+  // which is the best we can do considering that it is hard to perform attention by considering
+  // 0 entities in the given sequence
+  // This guard is primarily being added to avoid bad out-of-the-box experience like seeing NaNs
+  // like in Github issue #3977
+  if (num_valid == 0) {
+    output[index] = T(0);
+    return;
+  }
 
   // e^x is represented as infinity if x is large enough, like 100.f.
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
@@ -157,25 +163,16 @@ __device__ inline void SoftmaxSmall(const int sequence_length, const int valid_l
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), num_valid);
-  bool is_sum_zero = false;
 
   // Store max value
   if (threadIdx.x == 0) {
-    if (sum != 0) {
       sum_reverse_block = (1.f) / sum;
-    } else {
-      is_sum_zero = true;
-    }
   }
   __syncthreads();
 
   if (threadIdx.x < sequence_length) {
-    // this will be 0 for threadIdx.x >= num_valid
-    if (!is_sum_zero) {
+    // the output val will be 0 for threadIdx.x >= num_valid
       output[index] = T(thread_data_exp * sum_reverse_block);
-    } else {
-      output[index] = T((1.f) / sequence_length);
-    }
   }
 }
 

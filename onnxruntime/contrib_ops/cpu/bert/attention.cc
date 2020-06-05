@@ -105,7 +105,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index));
 
-  const auto dims = input->Shape().GetDims();
+  const auto& dims = input->Shape().GetDims();
   const int batch_size = static_cast<int>(dims[0]);
   const int sequence_length = static_cast<int>(dims[1]);
   const int hidden_size = static_cast<int>(dims[2]);
@@ -113,6 +113,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   TensorShape output_shape(dims);
   Tensor* output = context->Output(0, output_shape);
+
+  // If the given batch of sequences is empty, stop processing right here
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   constexpr size_t element_size = sizeof(T);
 
@@ -260,6 +265,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // STEP.3: P(B, N, S, S) = Softmax(scratch)
+  // TODO: Perform "masked" softmax by accounting for provided masks (if any) to be on par with the
+  // CUDA implementation which currently performs "masked" softmax
   {
     const int N = batch_size * num_heads_ * sequence_length;
     const int D = sequence_length;
@@ -293,14 +300,13 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
             sum += x[i];
           }
 
-          if (sum == 0) {
-            for (int i = 0; i < D; i++) {
-              y[i] = 1.0f / (float)D;
-            }
-          } else {
-            for (int i = 0; i < D; i++) {
-              y[i] = x[i] / (float)sum;
-            }
+          // `sum` (which we are dividing by below) will never be 0 as long as there is atleast one element in the sequence
+          // (i.e.) D > 0 (sequence_length > 0). If we reach this line of code, we have already ensured that
+          // sequence_length > 0, when we check if the input tensor is non-empty
+          // TODO: Account for cases where mask == 0 when sequence_length > 0 when "masked" softmax is implemented
+          // as sum will be zero in the case where mask is 0 for the given sample in the batch
+          for (int i = 0; i < D; i++) {
+            y[i] = x[i] / (float)sum;
           }
         }
       });
