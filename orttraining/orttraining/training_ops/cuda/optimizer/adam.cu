@@ -54,8 +54,6 @@ __global__ void _AdamOptimizer_mode0(
 
   // Compute the new gradient.
   if (grads_out) {
-    //bugbug
-    printf("grad out: %f\n",delta);
     grads_out[id] = T_GRAD(delta);
   }
 
