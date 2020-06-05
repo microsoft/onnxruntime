@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
+
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "core/optimizer/identity_elimination.h"
@@ -35,7 +36,7 @@
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {
-
+namespace training {
 namespace transformer_utils {
 
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(TransformerLevel level,
@@ -182,4 +183,5 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 }
 
 }  // namespace transformer_utils
+}  // namespace training
 }  // namespace onnxruntime
