@@ -159,7 +159,7 @@ class InferenceSession(Session):
         self._enable_fallback = True
         Session.__init__(self, self._sess)
 
-    def _load_model(self, providers=None):
+    def _load_model(self, providers):
         if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
                 self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
@@ -174,7 +174,7 @@ class InferenceSession(Session):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
 
-        self._sess.load_model(providers or [])
+        self._sess.load_model(providers)
 
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
