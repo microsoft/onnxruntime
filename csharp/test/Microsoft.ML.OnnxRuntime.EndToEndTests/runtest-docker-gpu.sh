@@ -35,6 +35,6 @@ sudo --preserve-env docker run -h $HOSTNAME \
         -e "PackageName=$PackageName" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
-        "onnxruntime-$IMAGE" \
+        onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
         /bin/bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
         /home/onnxruntimedev/$NUGET_REPO_DIRNAME /onnxruntime_src /home/onnxruntimedev $CurrentOnnxRuntimeVersion
