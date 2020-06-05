@@ -32,7 +32,6 @@ Status HorovodAllReduce::Compute(OpKernelContext* context) const {
   //bugbug
   //auto allocator = training::TrainingUtil::GetCpuAllocator();
   auto allocator = Info().GetAllocator(0, OrtMemTypeDefault);
-  std::cout<<"Horovod kernel cpu, device id is:"<<device_id<<std::endl;
   const Tensor* input_tensor = context->Input<Tensor>(0);
   auto hvd_input = std::make_shared<ORTTensor>(input_tensor);
   auto hvd_context = std::make_shared<ORTOpContext>(allocator);
