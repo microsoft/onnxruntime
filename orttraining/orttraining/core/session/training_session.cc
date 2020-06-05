@@ -178,15 +178,21 @@ Status TrainingSession::ConfigureForTraining(
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
-  std::unordered_set<std::string> excluded_initializers =
+  std::unordered_set<std::string> trainable_initializers =
       !config.weight_names_to_train.empty()
           ? config.weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
-  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    excluded_initializers.erase(weight_name_to_not_train);
+  if (config.weight_names_to_not_train.size() > 0)
+  {
+    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:\n"
+    for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
+      trainable_initializers.erase(weight_name_to_not_train);
+      LOGS(*session_logger_, INFO) << weight_name_to_not_train;
+    }
+    LOGS(*session_logger_, INFO) << std::endl;
   }
   
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers));
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -943,7 +949,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
   std::unordered_set<std::string> trainable_initializers;
 
-  auto add_valid_initializers = [&](const Node* node) { 
+  auto add_trainable_initializers = [&](const Node* node) { 
       for (auto input : node->InputDefs()) {
         std::string initializer_name = input->Name();
         if (initialized_tensors.count(initializer_name) == 0)
@@ -976,7 +982,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   };
 
   // perform reverse dfs from output node to discover trainable parameters
-  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_valid_initializers, {}, {}, stop_at_untrainable);
+  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 

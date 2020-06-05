@@ -737,7 +737,7 @@ class Graph {
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
 
-    /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
+  /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
   up to their source node/s.
   @param from Set of Nodes to traverse from.
   @param enter Visit function that will be invoked on a node when it is visited but its parents haven't been.
