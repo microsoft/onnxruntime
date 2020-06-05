@@ -266,7 +266,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   // STEP.3: P(B, N, S, S) = Softmax(scratch)
   // TODO: Perform "masked" softmax by accounting for provided masks (if any) to be on par with the
-  // CUDA implementation which currently performs "masked" softmax
+  // CUDA implementation which currently performs "masked" softmax whens masks are provided
   {
     const int N = batch_size * num_heads_ * sequence_length;
     const int D = sequence_length;
@@ -303,8 +303,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
           // `sum` (which we are dividing by below) will never be 0 as long as there is atleast one element in the sequence
           // (i.e.) D > 0 (sequence_length > 0). If we reach this line of code, we have already ensured that
           // sequence_length > 0, when we check if the input tensor is non-empty
-          // TODO: Account for cases where mask == 0 when sequence_length > 0 when "masked" softmax is implemented
-          // as sum will be zero in the case where mask is 0 for the given sample in the batch
+          // TODO: Account for cases where mask == 0 and sequence_length > 0 when "masked" softmax is eventually implemented
+          // as sum will be zero in the case
           for (int i = 0; i < D; i++) {
             y[i] = x[i] / (float)sum;
           }

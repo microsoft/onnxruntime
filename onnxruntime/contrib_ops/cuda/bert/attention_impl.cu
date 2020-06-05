@@ -94,19 +94,14 @@ __device__ inline void Softmax(const int sequence_length, const int valid_length
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, cub::Sum());
-
   if (threadIdx.x == 0) {
-      sum_reverse_block = 1.f / sum;
+    sum_reverse_block = 1.f / sum;
   }
   __syncthreads();
 
   for (int i = threadIdx.x; i < sequence_length; i += TPB) {
     const int index = offset + i;
-    float val = 0.f;
-    if (i < num_valid) {
-        val = expf(float(input[index]) - max_block) * sum_reverse_block;      
-    }
-
+    const float val = (i < num_valid) ? expf(float(input[index]) - max_block) * sum_reverse_block : 0.f;
     output[index] = T(val);
   }
 }
