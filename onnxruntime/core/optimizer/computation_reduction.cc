@@ -4,6 +4,7 @@
 #include "core/common/safeint.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
 #include "core/optimizer/computation_reduction.h"
 
 using namespace ONNX_NAMESPACE;
@@ -15,9 +16,7 @@ static const int GATHERND_BATCH_DIM = 1;
 
 static bool IsLeadingDimsEqual(const TensorShapeProto* input_shape, const TensorShapeProto* output_shape,
                                int num_dim_to_check) {
-  if (output_shape->dim_size() < num_dim_to_check || input_shape->dim_size() < num_dim_to_check) {
-    return false;
-  }
+  ORT_ENFORCE(output_shape->dim_size() >= num_dim_to_check && input_shape->dim_size() >= num_dim_to_check);
 
   for (int i = 0; i < num_dim_to_check; i++) {
     auto& output_dim = output_shape->dim(i);
@@ -38,49 +37,92 @@ static bool IsLeadingDimsEqual(const TensorShapeProto* input_shape, const Tensor
   return true;
 }
 
-static int GetInputNodeToReplace(const Node& gathernd_input_node) {
-  // If gathernd_input_node's some input tensor have exactly same shape with
-  // gathernd_input_node output tensor shape, then it is safe to gather using
+static int GetValidInputForGatherND(const Node& target_node) {
+  // If target_node's some input tensor have exactly same shape with
+  // target_node output tensor shape, then it is safe to gather using
   // original slice ranges.
-  int gathernd_input_index = -1;
-  auto output_shape = gathernd_input_node.OutputDefs()[0]->Shape();
+  int candidate_input_index = -1;
+  auto output_shape = target_node.OutputDefs()[0]->Shape();
   const int output_rank = output_shape->dim_size();
-  for (size_t i = 0; i < gathernd_input_node.InputDefs().size(); i++) {
-    auto input_shape = gathernd_input_node.InputDefs()[i]->Shape();
+  for (size_t i = 0; i < target_node.InputDefs().size(); i++) {
+    auto input_shape = target_node.InputDefs()[i]->Shape();
     const int input_rank = input_shape->dim_size();
     if (input_rank != output_rank) {
       continue;
     }
 
-    // We compare the first GATHERND_BATCH_DIM + 1 to make sure this input node
-    // (of gathernd_input_node) can be input of GatherND.
     if (IsLeadingDimsEqual(input_shape, output_shape, GATHERND_BATCH_DIM + 1)) {
-      gathernd_input_index = SafeInt<int>(i);
+      candidate_input_index = SafeInt<int>(i);
       break;
     }
   }
 
-  return gathernd_input_index;
+  return candidate_input_index;
 }
 
-static Status SwapGatherNDWithInputNode(Graph& graph, Node& gathernd_node, Node& gathernd_input_node,
-                                        int gathernd_input_index = 0) {
-  auto gathernd_input_arg = gathernd_input_node.MutableInputDefs()[gathernd_input_index];
-  const auto old_gathernd_input_shape = *(gathernd_input_arg->Shape());
-  graph_utils::ReplaceDownstreamNodeInput(graph, gathernd_node, 0, gathernd_input_node, 0);
-  graph_utils::ReplaceNodeInput(gathernd_node, 0, *gathernd_input_arg);
-  graph_utils::ReplaceNodeInput(gathernd_input_node, gathernd_input_index, *gathernd_node.MutableOutputDefs()[0]);
-  gathernd_node.MutableOutputDefs()[0]->ClearShape();
-  gathernd_input_node.MutableOutputDefs()[0]->ClearShape();
+static TensorShapeProto ReplaceSymbolicDimValue(const TensorShapeProto* shape, int replacement_axis,
+                                                std::string replacement_dim_value) {
+  ORT_ENFORCE(replacement_axis >= 0 && replacement_axis < shape->dim_size());
+  TensorShapeProto output_shape;
+  for (int i = 0; i < shape->dim_size(); i++) {
+    auto& dim = shape->dim(i);
+    if (i == replacement_axis) {
+      output_shape.add_dim()->set_dim_param(replacement_dim_value);
+      continue;
+    }
 
-  // Todo in this PR: reduce Resolve as less as possible.
-  auto ret = graph.Resolve();
-  ORT_ENFORCE(ret.IsOK());
+    if (dim.has_dim_value()) {
+      output_shape.add_dim()->set_dim_value(dim.dim_value());
+    } else if (dim.has_dim_param()) {
+      output_shape.add_dim()->set_dim_param(dim.dim_param());
+    } else {
+      ORT_THROW("Invalid dim found in ReplaceSymbolicDimValue");
+    }
+  }
+
+  return output_shape;
+}
+
+static Status SwapGatherNDWithTargetNode(Graph& graph, Node& gathernd_node, Node& target_node,
+                                         int target_node_input_index = 0) {
+  auto new_input_arg_for_gathernd = target_node.MutableInputDefs()[target_node_input_index];
+  auto target_node_out_arg = target_node.MutableOutputDefs()[0];
+  auto gathernd_out_arg = gathernd_node.MutableOutputDefs()[0];
+  auto gathernd_old_consumers = graph.GetConsumerNodes(gathernd_out_arg->Name());
+
+  const std::string gathered_dim_param = gathernd_out_arg->Shape()->dim(GATHERND_BATCH_DIM).dim_param();
+  TensorShapeProto new_output_shape_for_gathernd =
+      ReplaceSymbolicDimValue(new_input_arg_for_gathernd->Shape(), GATHERND_BATCH_DIM, gathered_dim_param);
+
+  TensorShapeProto new_output_shape_for_target_node =
+      ReplaceSymbolicDimValue(target_node_out_arg->Shape(), GATHERND_BATCH_DIM, gathered_dim_param);
+
+  // update input/output definitions.
+  int output_index = optimizer_utils::IndexOfNodeOutput(target_node, *gathernd_node.MutableInputDefs()[0]);
+  graph.RemoveEdge(target_node.Index(), gathernd_node.Index(), output_index, 0);
+  const Node* target_node_input_node = graph.GetProducerNode(new_input_arg_for_gathernd->Name());
+  output_index = optimizer_utils::IndexOfNodeOutput(*target_node_input_node, *new_input_arg_for_gathernd);
+  graph.AddEdge(target_node_input_node->Index(), gathernd_node.Index(), output_index, 0);
+
+  graph_utils::ReplaceDownstreamNodeInput(graph, gathernd_node, 0 /*output_idx*/,
+                                          target_node, 0 /*replacement_output_idx*/);
+
+  graph.RemoveEdge(target_node_input_node->Index(), target_node.Index(), output_index, target_node_input_index);
+  graph.AddEdge(gathernd_node.Index(), target_node.Index(), 0, target_node_input_index);
+
+  // update consumer relation ship
+  graph.UpdateConsumerNodes(target_node_out_arg->Name(), {const_cast<Node*>(gathernd_old_consumers[0])});
+  graph.UpdateConsumerNodes(gathernd_out_arg->Name(), {&target_node});
+
+  // update shapes
+  gathernd_out_arg->SetShape(new_output_shape_for_gathernd);
+  target_node_out_arg->SetShape(new_output_shape_for_target_node);
+
   return Status::OK();
 }
 
-static Status SimpleHandler(Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
-  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, 0);
+static Status SimpleHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
+  return SwapGatherNDWithTargetNode(graph, gathernd_node, target_node, 0);
 }
 
 /*
@@ -103,10 +145,10 @@ static Status SimpleHandler(Graph& graph, Node& gathernd_node, Node& gathernd_in
                             <subsquent graphs>
   Note: b: batch, s: sequence_length, h: hidden_size, p_s: dynamic_prediction_count
 */
-static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
-  int gathernd_input_index = GetInputNodeToReplace(gathernd_input_node);
-  ORT_RETURN_IF_NOT(gathernd_input_index != -1);
-  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, gathernd_input_index);
+static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
+  int target_node_input_index = GetValidInputForGatherND(target_node);
+  ORT_RETURN_IF_NOT(target_node_input_index != -1);
+  return SwapGatherNDWithTargetNode(graph, gathernd_node, target_node, target_node_input_index);
 }
 
 /*
@@ -129,10 +171,10 @@ static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& 
                             <subsquent graphs>
   Note: b: batch, s: sequence_length, h: hidden_size, p_s: dynamic_prediction_count
 */
-static Status GemmHandler(Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
-  int gathernd_input_index = GetInputNodeToReplace(gathernd_input_node);
-  ORT_RETURN_IF_NOT(gathernd_input_index == 0);
-  return SwapGatherNDWithInputNode(graph, gathernd_node, gathernd_input_node, gathernd_input_index);
+static Status GemmHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
+  int target_node_input_index = GetValidInputForGatherND(target_node);
+  ORT_RETURN_IF_NOT(target_node_input_index == 0);
+  return SwapGatherNDWithTargetNode(graph, gathernd_node, target_node, target_node_input_index);
 }
 
 static std::unordered_map<std::string, Handler> handlers = {
@@ -143,9 +185,9 @@ static std::unordered_map<std::string, Handler> handlers = {
     {"LayerNormalization", SimpleHandler},
     {"MatMul", GemmHandler}};
 
-static Status Delegate(std::string op_type, Graph& graph, Node& gathernd_node, Node& gathernd_input_node) {
+static Status Delegate(std::string op_type, Graph& graph, Node& gathernd_node, Node& target_node) {
   if (handlers.count(op_type)) {
-    return handlers[op_type](graph, gathernd_node, gathernd_input_node);
+    return handlers[op_type](graph, gathernd_node, target_node);
   } else {
     return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, op_type + " handler is not implemented");
   }
@@ -198,23 +240,23 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     while (!stop) {
       Node* input_node = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
       if (graph.GetConsumerNodes(input_node->MutableOutputDefs()[0]->Name()).size() > 1) {
-        LOGS_DEFAULT(WARNING) << "node " << node.Name() << " stopped at node "
-                              << input_node->Name();
+        LOGS_DEFAULT(INFO) << "node " << node.Name() << " stopped at node "
+                           << input_node->Name();
         break;
       }
 
       auto ret = Delegate(input_node->OpType(), graph, node, *input_node);
       if (ret.IsOK()) {
-        LOGS_DEFAULT(WARNING) << "node " << node.Name() << " up across node "
-                              << input_node->Name() << std::endl;
+        LOGS_DEFAULT(INFO) << "node " << node.Name() << " up across node "
+                           << input_node->Name() << std::endl;
         modified = true;
       } else if (ret.Code() == common::NOT_IMPLEMENTED) {
-        LOGS_DEFAULT(WARNING) << "node " << node.Name() << " stopped at node "
-                              << input_node->Name();
+        LOGS_DEFAULT(INFO) << "node " << node.Name() << " stopped at node "
+                           << input_node->Name();
         break;
       } else {
-        LOGS_DEFAULT(WARNING) << " terminate due to unexpected error, node names:" << node.Name()
-                              << ", " << input_node->Name() << ", error " << ret.ErrorMessage() << std::endl;
+        LOGS_DEFAULT(INFO) << " terminate due to unexpected error, node names:" << node.Name()
+                           << ", " << input_node->Name() << ", error " << ret.ErrorMessage() << std::endl;
         stop = true;
       }
     }

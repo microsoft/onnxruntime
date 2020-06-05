@@ -2128,7 +2128,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -2153,6 +2153,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
 
   ASSERT_FALSE(gathernd_node == nullptr);
 }
+
+#ifdef USE_CUDA
 
 TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) {
   auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
@@ -2193,14 +2195,11 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
                 [&distr, &eng](int64_t& value) { value = distr(eng); });
 
   static const std::string all_provider_types[] = {
-    onnxruntime::kCpuExecutionProvider,
-#if USE_CUDA
-    onnxruntime::kCudaExecutionProvider,
-#endif
+      onnxruntime::kCudaExecutionProvider,
+      // we cannot enable CPU excution provider because we don't have GatherND opset 1 CPU kernel
   };
 
   for (auto& provider_type : all_provider_types) {
-    std::cout << "dffffffffffffff" << provider_type << std::endl;
     std::vector<OrtValue> expected_ort_values;
     {
       SessionOptions so;
@@ -2294,6 +2293,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
     }
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
