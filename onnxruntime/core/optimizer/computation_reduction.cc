@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/computation_reduction.h"
-#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -54,7 +55,7 @@ static int GetInputNodeToReplace(const Node& gathernd_input_node) {
     // We compare the first GATHERND_BATCH_DIM + 1 to make sure this input node
     // (of gathernd_input_node) can be input of GatherND.
     if (IsLeadingDimsEqual(input_shape, output_shape, GATHERND_BATCH_DIM + 1)) {
-      gathernd_input_index = i;
+      gathernd_input_index = SafeInt<int>(i);
       break;
     }
   }
@@ -166,7 +167,7 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
 
     // Same ideas might apply for Gather, GatherElements, Slice, Split, etc.
     // Todo: let's review the real cases to make the logic more generic.
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1}, kOnnxDomain) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1, 12, 13}, kOnnxDomain) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;

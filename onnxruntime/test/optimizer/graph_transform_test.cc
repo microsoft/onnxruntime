@@ -5,6 +5,7 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include <random>
 #include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
@@ -2134,7 +2135,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  Node* gathernd_node;
+  Node* gathernd_node = nullptr;
   for (auto node_index : node_topology_list) {
     Node* p_node = graph.GetNode(node_index);
     ASSERT_FALSE(p_node == nullptr);
@@ -2153,8 +2154,6 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
   ASSERT_FALSE(gathernd_node == nullptr);
 }
 
-// We only tested on CUDA run.
-#if defined(USE_CUDA)
 TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) {
   auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
   std::shared_ptr<Model> model;
@@ -2193,86 +2192,108 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
   std::for_each(values_unsqueezed_masked_lm_positions.begin(), values_unsqueezed_masked_lm_positions.end(),
                 [&distr, &eng](int64_t& value) { value = distr(eng); });
 
-  std::vector<OrtValue> expected_ort_values;
-  {
-    SessionOptions so;
-    so.session_logid = "RawGraphRun";
+  static const std::string all_provider_types[] = {
+    onnxruntime::kCpuExecutionProvider,
+#if USE_CUDA
+    onnxruntime::kCudaExecutionProvider,
+#endif
+  };
 
-    InferenceSession session_object{so, GetEnvironment()};
-    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  for (auto& provider_type : all_provider_types) {
+    std::cout << "dffffffffffffff" << provider_type << std::endl;
+    std::vector<OrtValue> expected_ort_values;
+    {
+      SessionOptions so;
+      // we don't want any transformation here.
+      so.graph_optimization_level = TransformerLevel::Default;
+      so.session_logid = "RawGraphRun";
 
-    Status st;
-    ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
-    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+      InferenceSession session_object{so, GetEnvironment()};
+      std::unique_ptr<IExecutionProvider> execution_provider;
+      if (provider_type == onnxruntime::kCpuExecutionProvider)
+        execution_provider = DefaultCpuExecutionProvider();
+      else if (provider_type == onnxruntime::kCudaExecutionProvider)
+        execution_provider = DefaultCudaExecutionProvider();
 
-    OrtValue input1;
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
-    OrtValue input2;
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
-                           values_unsqueezed_masked_lm_positions, &input2);
+      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("input", input1));
-    feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
+      Status st;
+      ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
+      ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
 
-    // prepare outputs
-    std::vector<std::string> output_names;
-    output_names.push_back("output");
-    output_names.push_back("gather_output");
+      OrtValue input1;
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
+      OrtValue input2;
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
+                             values_unsqueezed_masked_lm_positions, &input2);
 
-    // Now run
-    RunOptions run_options;
-    st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
+      NameMLValMap feeds;
+      feeds.insert(std::make_pair("input", input1));
+      feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
 
-    EXPECT_TRUE(st.IsOK());
-  }
+      // prepare outputs
+      std::vector<std::string> output_names;
+      output_names.push_back("output");
+      output_names.push_back("gather_output");
 
-  std::vector<OrtValue> actual_ort_values;
-  {
-    SessionOptions so;
-    so.session_logid = "OptimizedGraphRun";
+      // Now run
+      RunOptions run_options;
+      st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
 
-    InferenceSession session_object{so, GetEnvironment()};
-    std::unique_ptr<IExecutionProvider> execution_provider = DefaultCudaExecutionProvider();
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+      EXPECT_TRUE(st.IsOK());
+    }
 
-    Status st;
-    ASSERT_TRUE((st = session_object.Load(new_model_uri)).IsOK()) << st;
-    ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+    std::vector<OrtValue> actual_ort_values;
+    {
+      SessionOptions so;
+      // we don't want any transformation here.
+      so.graph_optimization_level = TransformerLevel::Default;
+      so.session_logid = "OptimizedGraphRun";
 
-    OrtValue input1;
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
-    OrtValue input2;
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
-                           values_unsqueezed_masked_lm_positions, &input2);
+      InferenceSession session_object{so, GetEnvironment()};
+      std::unique_ptr<IExecutionProvider> execution_provider;
+      if (provider_type == onnxruntime::kCpuExecutionProvider)
+        execution_provider = DefaultCpuExecutionProvider();
+      else if (provider_type == onnxruntime::kCudaExecutionProvider)
+        execution_provider = DefaultCudaExecutionProvider();
+      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-    NameMLValMap feeds;
-    feeds.insert(std::make_pair("input", input1));
-    feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
+      Status st;
+      ASSERT_TRUE((st = session_object.Load(new_model_uri)).IsOK()) << st;
+      ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
 
-    // prepare outputs
-    std::vector<std::string> output_names;
-    output_names.push_back("output");
-    output_names.push_back("gather_output");
+      OrtValue input1;
+      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
+      OrtValue input2;
+      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
+                             values_unsqueezed_masked_lm_positions, &input2);
 
-    // Now run
-    RunOptions run_options;
-    st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
+      NameMLValMap feeds;
+      feeds.insert(std::make_pair("input", input1));
+      feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
 
-    EXPECT_TRUE(st.IsOK());
-  }
+      // prepare outputs
+      std::vector<std::string> output_names;
+      output_names.push_back("output");
+      output_names.push_back("gather_output");
 
-  ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
-  const double per_sample_tolerance = 1e-4;
-  const double relative_per_sample_tolerance = 1e-4;
-  for (size_t i = 0; i < expected_ort_values.size(); i++) {
-    auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
-                               per_sample_tolerance, relative_per_sample_tolerance, false);
-    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+      // Now run
+      RunOptions run_options;
+      st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
+
+      EXPECT_TRUE(st.IsOK());
+    }
+
+    ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
+    const double per_sample_tolerance = 1e-4;
+    const double relative_per_sample_tolerance = 1e-4;
+    for (size_t i = 0; i < expected_ort_values.size(); i++) {
+      auto ret = CompareOrtValue(actual_ort_values[i], expected_ort_values[i],
+                                 per_sample_tolerance, relative_per_sample_tolerance, false);
+      EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+    }
   }
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
