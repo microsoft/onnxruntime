@@ -820,6 +820,8 @@ void ModelBuilder::AddOperations() {
       const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
       AddOperation(operationCode, input_indices, {output}, {output_operand_type});
     } else if (op == "Reshape") {
+      // For reshape we are not really doing anything but
+      // register a new operand with new shape
       const auto input = node.input(0);
       const auto shape_name = node.input(1);
       const auto output = node.output(0);
@@ -830,7 +832,6 @@ void ModelBuilder::AddOperations() {
       std::vector<int32_t> shape(size);
       for (uint32_t i = 0; i < size; i++) {
         shape[i] = static_cast<int32_t>(rawShape[i]);
-        LOGV("Reshape ith [%d] dim is %d", i, shape[i]);
       }
 
       shaper_.Reshape(input, shape, output);
