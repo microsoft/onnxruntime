@@ -1105,11 +1105,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         if args.use_mklml:
             dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
-        
+
         dll_path = None
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
-            
+
         if ctest_path is None:
             # Get the "Google Test Adapter" for vstest.
             if not os.path.exists(os.path.join(cwd,
