@@ -70,14 +70,17 @@ void ComputeBroadcastBackwardAxes(
     --j;
   }
 
-  if (A_axes && i < 0) {
-    for (; k >= 0; --k) {
-      A_axes->push_back(gsl::narrow_cast<int64_t>(k));
+  if (i < 0) {
+    if (A_axes) {
+      for (; k >= 0; --k) {
+        A_axes->push_back(gsl::narrow_cast<int64_t>(k));
+      }
     }
-
-  } else if (B_axes) {
-    for (; k >= 0; --k) {
-      B_axes->push_back(gsl::narrow_cast<int64_t>(k));
+  } else {
+    if (B_axes) {
+      for (; k >= 0; --k) {
+        B_axes->push_back(gsl::narrow_cast<int64_t>(k));
+      }
     }
   }
 }
