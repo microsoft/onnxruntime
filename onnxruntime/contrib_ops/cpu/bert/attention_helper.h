@@ -43,7 +43,7 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
 
       // `sum` (which we are dividing by below) will never be 0 as long as there is atleast one element in the sequence
       // (i.e.) D > 0 (sequence_length > 0). If we reach this line of code, we have already ensured that
-      // sequence_length > 0, when we check if the input tensor is non-empty
+      // sequence_length > 0, when we checked if the input tensor to the Attention operator is non-empty
       // TODO: Account for cases where mask == 0 and sequence_length > 0 when "masked" softmax is eventually implemented
       // as sum will be zero in the case
       for (int i = 0; i < D; i++) {
