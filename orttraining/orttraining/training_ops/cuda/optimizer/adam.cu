@@ -54,7 +54,8 @@ __global__ void _AdamOptimizer_mode0(
 
   // Compute the new gradient.
   if (grads_out) {
-    grads_out[id] = T_GRAD(delta);
+    //bugbug
+    grads_out[id] = -T_GRAD(delta);
   }
 
   // Compute the new weight.
