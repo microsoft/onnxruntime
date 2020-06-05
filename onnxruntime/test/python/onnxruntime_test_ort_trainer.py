@@ -735,9 +735,7 @@ class TestOrtTrainer(unittest.TestCase):
         ort_trainer = ORTTrainer(
             pt_model, loss_fn, model_desc, "SGDOptimizer", None,
             IODescription('Learning_Rate', [1, ], torch.float32), device,
-            get_lr_this_step=get_lr_this_step,
-            _opset_version=10)
-        learningRate = 0.02
+            get_lr_this_step=get_lr_this_step)
         ort_trainer.train_step(x=data, label=label)
         state_dict = ort_trainer.state_dict()
         assert state_dict.keys() == {'linear.bias', 'linear.weight'}
