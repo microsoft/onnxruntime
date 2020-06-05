@@ -575,6 +575,13 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
       .def(py::init<InferenceSession*>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name) -> void {
+        OrtValue mlvalue;
+
+        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
@@ -585,12 +592,12 @@ void addObjectMethods(py::module& m, Environment& env) {
         std::string device_name = GetDeviceName(device);
 
         OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
-
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
+
         mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -603,19 +610,18 @@ void addObjectMethods(py::module& m, Environment& env) {
         Py_DECREF(dtype);
 
         std::string device_name = GetDeviceName(device);
-
         OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
-
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
-      .def("bind_output_name", [](SessionIOBinding* io_binding, const std::string& name) -> void {
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name) -> void {
         OrtValue mlvalue;
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())

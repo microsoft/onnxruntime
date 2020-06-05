@@ -194,20 +194,27 @@ class IOBinding:
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
-    def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
-        self._iobinding.bind_input(name,
+    def bind_input(self, name, device_type=None, device_id=None, element_type=None, shape=None, buffer_ptr=None):
+        if device_type is None:
+            self._iobinding.bind_input(name)
+        elif  (device_id is None) or (element_type is None) or (shape is None) or (buffer_ptr is None):
+            raise Exception("For bind_input, device_id, element_type, shape and buffer_ptr have to be all provided when device_type is provided.")
+        else:
+            self._iobinding.bind_input(name,
                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                device_id),
                                    element_type, shape, buffer_ptr)
 
-    def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
-        self._iobinding.bind_output(name,
+    def bind_output(self, name, device_type=None, device_id=None, element_type=None, shape=None, buffer_ptr=None):
+        if device_type is None:
+            self._iobinding.bind_output(name)
+        elif  (device_id is None) or (element_type is None) or (shape is None) or (buffer_ptr is None):
+            raise Exception("For bind_output, device_id, element_type, shape and buffer_ptr have to be all provided when device_type is provided.")
+        else:
+            self._iobinding.bind_output(name,
                                     C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                 device_id),
                                     element_type, shape, buffer_ptr)
-
-    def bind_output_name(self, name):
-        self._iobinding.bind_output_name(name)
 
     def get_outputs(self):
         return self._iobinding.get_outputs()
