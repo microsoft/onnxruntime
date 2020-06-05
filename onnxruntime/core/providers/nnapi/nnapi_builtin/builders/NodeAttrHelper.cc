@@ -12,7 +12,8 @@ using std::string;
 using std::vector;
 
 void CheckValidIntCast(int64_t val) {
-  if (val < 0x80000000 || val > 0x7FFFFFFF)
+  if (val < std::numeric_limits<int32_t>::min() ||
+      val > std::numeric_limits<int32_t>::max())
     throw std::invalid_argument(
         "The int64_t cannot be casted to int32_t " + std::to_string(val));
 }
