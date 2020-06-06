@@ -45,7 +45,8 @@ REGISTER_TRAINABLE_KERNEL_TYPED(double, double)
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())    \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())   \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
-          .InputMemoryType<OrtMemTypeCPUInput>(2),                   \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                    \
+          .InputMemoryType<OrtMemTypeCPUInput>(3),                   \
       DropoutGrad<T1, T2>);
 
 REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, MLFloat16, MLFloat16)
