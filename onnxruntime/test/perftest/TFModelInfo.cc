@@ -48,7 +48,7 @@ std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* mo
     }
   }
 
-  return std::move(ret);
+  return ret;
 }
 
 int TFModelInfo::GetInputCount() const { return static_cast<int>(input_names_.size()); }
