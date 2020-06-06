@@ -61,6 +61,11 @@ jobs:
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
       env:
         TELEMETRYGUID: $(TELEMETRYGUID)
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '12.x'
+
     - task: UsePythonVersion@0
       inputs: 
         versionSpec: '3.7' 
