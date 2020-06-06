@@ -33,6 +33,8 @@ class ModelBuilder {
   std::map<std::string, android::nn::wrapper::OperandType> operand_types_;
 
   std::unordered_set<std::string> operands_;
+  std::unordered_set<std::string> skipped_activations_;
+
   std::map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
@@ -54,6 +56,9 @@ class ModelBuilder {
   void RegisterModelOutputs();
   void ClearData();
 
+  void SetOperandValue(ModelBuilder::Index index,
+                       NNMemory* memory,
+                       size_t size, size_t offset);
   uint32_t AddOperandFromPersistMemoryBuffer(
       const std::string& name, const void* buffer,
       const android::nn::wrapper::OperandType& operand_type);
@@ -68,6 +73,8 @@ class ModelBuilder {
 
   void AddOperation(int op, IndexSeq input_indices, std::vector<std::string> output_names,
                     std::vector<android::nn::wrapper::OperandType> types);
+
+  int32_t FindActivation(const std::string& output);
 };
 
 }  // namespace nnapi

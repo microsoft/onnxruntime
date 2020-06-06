@@ -113,6 +113,7 @@ void Model::Predict(const std::vector<InputOutputInfo>& inputs) {
   PredictAfterSetInputBuffer();
 }
 
+#ifdef USENNSHAREDMEM
 NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
   if (name && size > 0) {
     nnapi_ = nnapi;
@@ -135,6 +136,13 @@ NNMemory::~NNMemory() {
 
   if (fd_ > 0) close(fd_);
 }
+#else
+NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {
+  if (name && size > 0) {
+    data_ = std::make_unique<std::vector<uint8_t> >(size);
+  }
+}
+#endif
 
 }  // namespace nnapi
 }  // namespace onnxruntime

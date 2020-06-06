@@ -14,6 +14,9 @@ struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
 
+//#define USENNAPISHAREDMEM 1
+
+#ifdef USENNAPISHAREDMEM
 // Manage NNAPI shared memory handle
 class NNMemory {
  public:
@@ -31,6 +34,17 @@ class NNMemory {
   uint8_t* data_ptr_{nullptr};
   ANeuralNetworksMemory* nn_memory_handle_{nullptr};
 };
+#else
+class NNMemory {
+ public:
+  NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size);
+  ~NNMemory() = default;
+  uint8_t* get_data_ptr() { return data_->data(); }
+
+ private:
+  std::unique_ptr<std::vector<uint8_t>> data_;
+};
+#endif
 
 struct InputOutputInfo {
   void* buffer{nullptr};
@@ -66,7 +80,7 @@ class Model {
   ANeuralNetworksExecution* execution_{nullptr};
 
   std::unique_ptr<NNMemory> mem_initializers_;
-  std::vector<std::unique_ptr<NNMemory> > mem_persist_buffers_;
+  std::vector<std::unique_ptr<NNMemory>> mem_persist_buffers_;
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

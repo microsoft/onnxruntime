@@ -232,6 +232,7 @@ void ModelBuilder::ClearData() {
   operand_types_.clear();
 
   operands_.clear();
+  skipped_activations_.clear();
 
   input_index_vec_.clear();
   output_index_vec_.clear();
@@ -343,11 +344,7 @@ void ModelBuilder::RegisterInitializers() {
 
     uint8_t* dest = nnapi_model_->mem_initializers_->get_data_ptr() + offset;
     memcpy(dest, src, size);
-    THROW_ON_ERROR(
-        nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
-            nnapi_model_->model_, index,
-            nnapi_model_->mem_initializers_->get_handle(),
-            offset, size));
+    SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset);
     offset += paddedSize;
   }
 }
@@ -427,6 +424,24 @@ void ModelBuilder::RegisterOperand(const std::string& name,
   operands_.insert(name);
 }
 
+void ModelBuilder::SetOperandValue(ModelBuilder::Index index,
+                                   NNMemory* memory,
+                                   size_t size, size_t offset) {
+#ifdef USENNAPISHAREDMEM
+  THROW_ON_ERROR(
+      nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
+          nnapi_model_->model_, index,
+          memory->get_handle(),
+          offset, size));
+#else
+  THROW_ON_ERROR(
+      nnapi_->ANeuralNetworksModel_setOperandValue(
+          nnapi_model_->model_, index,
+          memory->get_data_ptr() + offset,
+          size));
+#endif
+}
+
 uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
@@ -438,11 +453,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
   RegisterOperand(name, index, operand_type);
   uint8_t* dest = persist_buffer->get_data_ptr();
   memcpy(dest, buffer, size);
-  THROW_ON_ERROR(
-      nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
-          nnapi_model_->model_, index,
-          persist_buffer->get_handle(),
-          0, size));
+  SetOperandValue(index, persist_buffer.get(), size, 0);
   nnapi_model_->mem_persist_buffers_.push_back(std::move(persist_buffer));
   return index;
 }
@@ -535,6 +546,7 @@ void ModelBuilder::AddOperations() {
   for (const auto& node : model_proto_.graph().node()) {
     const auto& op = node.op_type();
 
+    bool nchw = true;
     NodeAttrHelper helper(node);
     // process skips (already used as activation)
     if (op == "Add") {
@@ -545,7 +557,7 @@ void ModelBuilder::AddOperations() {
       IndexSeq input_indices;
       input_indices.push_back(operand_indexes_.at(input1));  // input 1
       input_indices.push_back(operand_indexes_.at(input2));  // input 2
-      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      int32_t fuse_code = FindActivation(output);
       input_indices.push_back(
           SetOperandFromScalar(Type::INT32,
                                static_cast<const void*>(&fuse_code),
@@ -561,7 +573,7 @@ void ModelBuilder::AddOperations() {
       IndexSeq input_indices;
       input_indices.push_back(operand_indexes_.at(input1));  // input 1
       input_indices.push_back(operand_indexes_.at(input2));  // input 2
-      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      int32_t fuse_code = FindActivation(output);
       input_indices.push_back(
           SetOperandFromScalar(Type::INT32,
                                static_cast<const void*>(&fuse_code),
@@ -570,13 +582,19 @@ void ModelBuilder::AddOperations() {
       const OperandType output_operand_type(operand_types_.at(input1).type, shaper_[output]);
       AddOperation(ANEURALNETWORKS_MUL, input_indices, {output}, {output_operand_type});
     } else if (op == "Relu") {
-      const auto input = node.input(0);
-      const auto output = node.output(0);
-      IndexSeq input_indices;
-      input_indices.push_back(operand_indexes_.at(input));
+      const auto& input = node.input(0);
+      const auto& output = node.output(0);
       shaper_.Identity(input, output);
       const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
-      AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
+
+      // skip this relu if it is some op's fuse output
+      if (HAS(skipped_activations_, node.name())) {
+        RegisterOperand(output, operand_indexes_.at(input), output_operand_type);
+      } else {
+        IndexSeq input_indices;
+        input_indices.push_back(operand_indexes_.at(input));
+        AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
+      }
     } else if (op == "Conv") {
       // onnx strides are in the order height, width
       // while nnapi strides are in the order width, height
@@ -591,8 +609,8 @@ void ModelBuilder::AddOperations() {
       const auto onnx_dilations = helper.get("dilations", vector<int>{1, 1});
 
       const auto group = helper.get("group", 1);
-      const auto input = node.input(0);
-      const auto weight = node.input(1);
+      const auto& input = node.input(0);
+      const auto& weight = node.input(1);
 
       // TODO: Support it
       bool conv2d = group == 1;
@@ -609,8 +627,6 @@ void ModelBuilder::AddOperations() {
         input_indices.push_back(AddNHWCInitializer(weight));
       else  // depthwiseConv2D
         input_indices.push_back(Add1230Initializer(weight));
-
-      bool nchw = true;
 
       bool hasBias = (node.input_size() >= 3);
       std::string bias;
@@ -642,6 +658,7 @@ void ModelBuilder::AddOperations() {
           throw std::invalid_argument("Unknown type " + typeToStr(weight_type));
         }
       }
+      const auto& output = node.output(0);
       input_indices.push_back(bias_idx_val);
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int32_t)));
@@ -653,13 +670,12 @@ void ModelBuilder::AddOperations() {
         int32_t depthwiseMultiplier = shaper_[weight][3] / group;
         input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&depthwiseMultiplier), sizeof(int32_t)));
       }
-      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      int32_t fuse_code = FindActivation(output);
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[1]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[0]), sizeof(int32_t)));
 
-      const auto output = node.output(0);
       int32_t operationCode = ANEURALNETWORKS_CONV_2D;
       if (conv2d) {
         operationCode = ANEURALNETWORKS_CONV_2D;
@@ -717,7 +733,11 @@ void ModelBuilder::AddOperations() {
       const auto tensor_a_name = input + "_imm_a";
       const auto tensor_b_name = input + "_imm_b";
       const auto tensor_imm_product_name = input + "_imm_mul";
-      const Shape tensor_a_dimen{size, 1, 1};  // {C, H, W}
+      Shape tensor_a_dimen;
+      if (nchw)
+        tensor_a_dimen = {size, 1, 1};  // {C, H, W}
+      else
+        tensor_a_dimen = {size};
 
       shaper_.AddShape(tensor_a_name, tensor_a_dimen);
       shaper_.AddShape(tensor_b_name, tensor_a_dimen);
@@ -731,7 +751,7 @@ void ModelBuilder::AddOperations() {
         IndexSeq input_indices;
         input_indices.push_back(operand_indexes_.at(input));  // input 1
         input_indices.push_back(tensor_a_idx);                // input 2
-        int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+        int32_t fuse_code = FindActivation(tensor_imm_product_name);
         input_indices.push_back(
             SetOperandFromScalar(Type::INT32,
                                  static_cast<const void*>(&fuse_code),
@@ -745,7 +765,7 @@ void ModelBuilder::AddOperations() {
         IndexSeq input_indices;
         input_indices.push_back(operand_indexes_.at(tensor_imm_product_name));  // input 1
         input_indices.push_back(tensor_b_idx);                                  // input 2
-        int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+        int32_t fuse_code = FindActivation(output);
         input_indices.push_back(
             SetOperandFromScalar(Type::INT32,
                                  static_cast<const void*>(&fuse_code),
@@ -758,7 +778,6 @@ void ModelBuilder::AddOperations() {
     } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
       const auto input = node.input(0);
       int32_t operationCode = ANEURALNETWORKS_CONV_2D;
-      bool nchw = true;
 
       vector<int> onnx_strides, onnx_pads, kernel_shape;
       if (op == "AveragePool" || op == "MaxPool") {
@@ -798,6 +817,8 @@ void ModelBuilder::AddOperations() {
 
       IndexSeq input_indices;
       input_indices.push_back(operand_indexes_.at(input));
+      const auto& output = node.output(0);
+
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[0]), sizeof(int32_t)));
@@ -806,11 +827,10 @@ void ModelBuilder::AddOperations() {
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[0]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[1]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[0]), sizeof(int32_t)));
-      int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+      int32_t fuse_code = FindActivation(output);
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
 
-      const auto output = node.output(0);
       shaper_.Pool(input,
                    onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                    onnx_strides[1], onnx_strides[0],
@@ -899,6 +919,27 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
 
   ClearData();
   return std::move(nnapi_model_);
+}
+
+int32_t ModelBuilder::FindActivation(const std::string& output) {
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  std::string node_name;
+  for (const auto& _node : model_proto_.graph().node()) {
+    if (_node.op_type() == "Relu" && output == _node.input(0)) {
+      // If there are two branches after a conv/pool and both branches has
+      // a relu on the top, we have to add two normal relu layers
+      if (fuse_code != ANEURALNETWORKS_FUSED_NONE)
+        return ANEURALNETWORKS_FUSED_NONE;
+
+      fuse_code = ANEURALNETWORKS_FUSED_RELU;
+      node_name = _node.name();
+    }
+  }
+
+  if (fuse_code != ANEURALNETWORKS_FUSED_NONE)
+    skipped_activations_.insert(node_name);
+
+  return fuse_code;
 }
 }  // namespace nnapi
 }  // namespace onnxruntime
