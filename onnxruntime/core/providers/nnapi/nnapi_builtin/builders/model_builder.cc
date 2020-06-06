@@ -887,10 +887,10 @@ void ModelBuilder::AddOperation(int op, IndexSeq input_indices,
 std::unique_ptr<Model> ModelBuilder::Compile() {
   Prepare();
 
-  THROW_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
-          nnapi_model_->model_, true),
-      "Set fp16");
+  // THROW_ON_ERROR_WITH_NOTE(
+  //     nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+  //         nnapi_model_->model_, true),
+  //     "Set fp16");
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
@@ -908,10 +908,10 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
       nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
       "on create");
 
-  THROW_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksCompilation_setPreference(
-          nnapi_model_->compilation_, ANEURALNETWORKS_PREFER_SUSTAINED_SPEED),
-      "on setPreference");
+  // THROW_ON_ERROR_WITH_NOTE(
+  //     nnapi_->ANeuralNetworksCompilation_setPreference(
+  //         nnapi_model_->compilation_, ANEURALNETWORKS_PREFER_SUSTAINED_SPEED),
+  //     "on setPreference");
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),
@@ -923,21 +923,30 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
 
 int32_t ModelBuilder::FindActivation(const std::string& output) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  const ONNX_NAMESPACE::NodeProto* activationNode{nullptr};
   std::string node_name;
   for (const auto& _node : model_proto_.graph().node()) {
     if (_node.op_type() == "Relu" && output == _node.input(0)) {
-      // If there are two branches after a conv/pool and both branches has
-      // a relu on the top, we have to add two normal relu layers
-      if (fuse_code != ANEURALNETWORKS_FUSED_NONE)
-        return ANEURALNETWORKS_FUSED_NONE;
-
       fuse_code = ANEURALNETWORKS_FUSED_RELU;
-      node_name = _node.name();
+      activationNode = &_node;
     }
   }
 
-  if (fuse_code != ANEURALNETWORKS_FUSED_NONE)
-    skipped_activations_.insert(node_name);
+  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
+    for (const auto& _node : model_proto_.graph().node()) {
+      if (&_node == activationNode)
+        continue;
+
+      // if there is any other node using the output
+      // will add relu separately
+      for (int i = 0; i < _node.input_size(); i++) {
+        if (output == _node.input(i))
+          return ANEURALNETWORKS_FUSED_NONE;
+      }
+    }
+
+    skipped_activations_.insert(activationNode->name());
+  }
 
   return fuse_code;
 }
