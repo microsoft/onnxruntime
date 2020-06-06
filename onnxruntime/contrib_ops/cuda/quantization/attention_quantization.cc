@@ -116,7 +116,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                   i_zp_tensor,
                                   w_zp_tensor));
 
-  const auto dims = input->Shape().GetDims();
+  const auto& dims = input->Shape().GetDims();
   int batch_size = static_cast<int>(dims[0]);
   int sequence_length = static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
@@ -124,6 +124,10 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   TensorShape output_shape(dims);
   Tensor* output = context->Output(0, output_shape);
+  // If the given batch of sequences is empty, stop processing right here
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   cublasHandle_t cublas = CublasHandle();
   const size_t element_size = sizeof(T);

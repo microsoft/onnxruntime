@@ -86,7 +86,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
     weight_zero_point = *w_zp_tensor->template Data<QWeight>();
   }
 
-  const auto dims = input->Shape().GetDims();
+  const auto& dims = input->Shape().GetDims();
   const int batch_size = static_cast<int>(dims[0]);
   const int sequence_length = static_cast<int>(dims[1]);
   const int hidden_size = static_cast<int>(dims[2]);
@@ -94,6 +94,10 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   TensorShape output_shape(dims);
   Tensor* output = context->Output(0, output_shape);
+  // If the given batch of sequences is empty, stop processing right here
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -153,7 +157,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
               qkv_dest + qkv_offset,          // C
               head_size,                      // ldc
               nullptr                         // use single-thread
-              );
+        );
 
         // dequantize and add bias
         // broadcast 3NH -> (3.B.N.S.H)
