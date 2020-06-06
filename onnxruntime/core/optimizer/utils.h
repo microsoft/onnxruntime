@@ -66,5 +66,12 @@ int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg);
 */
 bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types);
 
+/** Check whether node's output edges count is expected.
+@remarks graph output is not included in output edges, and this node shall not have graph output.
+        A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.
+@returns false when the node has graph output, or number of output edges are not expected.
+*/
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime
