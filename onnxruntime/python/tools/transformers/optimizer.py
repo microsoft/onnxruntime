@@ -29,6 +29,7 @@ import os
 import sys
 import argparse
 import numpy as np
+from typing import Dict
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, load_model
 from BertOnnxModel import BertOnnxModel, BertOptimizationOptions
@@ -47,7 +48,7 @@ MODEL_CLASSES = {
 }
 
 
-def optimize_by_onnxruntime(onnx_model_path, use_gpu=False, optimized_model_path=None, opt_level=99):
+def optimize_by_onnxruntime(onnx_model_path:str, use_gpu:bool=False, optimized_model_path:str=None, opt_level:int=99) -> str:
     """
     Use onnxruntime package to optimize model. It could support models exported by PyTorch.
 
@@ -90,8 +91,21 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu=False, optimized_model_path
     logger.info("Save optimized model by onnxruntime to {}".format(optimized_model_path))
     return optimized_model_path
 
+def get_fusion_statistics(optimized_model_path:str) -> Dict[str,int]:
+    """
+    Get counter of fused operators in optimized model.
 
-def parse_arguments():
+    Args:
+        optimized_model_path (str): th path of onnx model.
+
+    Returns:
+        A dictionary with operator type as key, and count as value
+    """
+    model = load_model(optimized_model_path, format=None, load_external_data=True)
+    optimizer = BertOnnxModel(model, num_heads=12, hidden_size=768)
+    return optimizer.get_fused_operator_statistics()
+
+def _parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', required=True, type=str, help="input onnx model path")
 
@@ -192,7 +206,7 @@ def parse_arguments():
     return args
 
 
-def get_optimization_options(args):
+def _get_optimization_options(args):
     optimization_options = BertOptimizationOptions(args.model_type)
     if args.disable_gelu:
         optimization_options.enable_gelu = False
@@ -214,13 +228,33 @@ def get_optimization_options(args):
 
 
 def optimize_model(input,
-                   model_type,
-                   num_heads,
-                   hidden_size,
-                   opt_level=0,
+                   model_type='bert',
+                   num_heads=12,
+                   hidden_size=768,
                    optimization_options=None,
+                   opt_level=0,
                    use_gpu=False,
                    only_onnxruntime=False):
+    """ Optimize Model by OnnxRuntime and/or offline fusion logic.
+
+    The following optimizes model by OnnxRuntime only, and no offline fusion logic:
+        optimize_model(input, opt_level=1, use_gpu=False, only_onnxruntime=True)
+    If you want to optimize model by offline fusion logic.
+        optimize_model(input, model_type, num_heads=12, hidden_size=768, optimization_options=your_options)
+
+    Args:
+        input (str): input model path.
+        model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
+        num_heads (int): number of attention heads.
+        hidden_size (int): hidden size.
+        optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
+        opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
+        use_gpu (bool): use gpu or not for onnxruntime.
+        only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
+
+     Returns:
+        object of an optimizer class.
+    """
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
@@ -242,15 +276,15 @@ def optimize_model(input,
     if optimization_options is None:
         optimization_options = BertOptimizationOptions(model_type)
 
-    bert_model = optimizer_class(model, num_heads, hidden_size)
+    optimizer = optimizer_class(model, num_heads, hidden_size)
 
     if not only_onnxruntime:
-        bert_model.optimize(optimization_options)
+        optimizer.optimize(optimization_options)
 
-    return bert_model
+    return optimizer
 
 
-def setup_logger(verbose):
+def _setup_logger(verbose):
     if verbose:
         coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
     else:
@@ -258,33 +292,33 @@ def setup_logger(verbose):
 
 
 def main():
-    args = parse_arguments()
+    args = _parse_arguments()
 
-    setup_logger(args.verbose)
+    _setup_logger(args.verbose)
 
-    optimization_options = get_optimization_options(args)
+    optimization_options = _get_optimization_options(args)
 
-    bert_model = optimize_model(args.input,
-                                args.model_type,
-                                args.num_heads,
-                                args.hidden_size,
-                                opt_level=args.opt_level,
-                                optimization_options=optimization_options,
-                                use_gpu=args.use_gpu,
-                                only_onnxruntime=args.only_onnxruntime)
+    optimizer = optimize_model(args.input,
+                               args.model_type,
+                               args.num_heads,
+                               args.hidden_size,
+                               opt_level=args.opt_level,
+                               optimization_options=optimization_options,
+                               use_gpu=args.use_gpu,
+                               only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
-        bert_model.convert_model_float32_to_float16()
+        optimizer.convert_model_float32_to_float16()
 
     if args.input_int32:
-        bert_model.change_input_to_int32()
+        optimizer.change_input_to_int32()
 
-    bert_model.save_model_to_file(args.output)
+    optimizer.save_model_to_file(args.output)
 
-    if bert_model.is_fully_optimized():
+    if optimizer.is_fully_optimized():
         logger.info("The output model is fully optimized.")
     else:
-        logger.warning("The output model is not fully optimized. It might not be usable.")
+        logger.warning("The output model is not fully optimized.")
 
 
 if __name__ == "__main__":

@@ -38,9 +38,10 @@ class FusionEmbedLayerNoMask(Fusion):
     """
     def __init__(self,
                  model: OnnxModel,
-                 name: str = "EmbedLayerNormalization(no mask)",
-                 search_op_types="SkipLayerNormalization"):
-        super().__init__(model, name, search_op_types)
+                 name: str = "EmbedLayerNormalization",
+                 search_op_types="SkipLayerNormalization",
+                 description = 'no mask'):
+        super().__init__(model, name, search_op_types, description)
         self.utils = FusionUtils(model)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
@@ -187,7 +188,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
 class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
     def __init__(self, model: OnnxModel, mask_indice: Dict, mask_casted: Dict):
-        super().__init__(model, "EmbedLayerNormalization(with mask)", "SkipLayerNormalization")
+        super().__init__(model, "EmbedLayerNormalization", "SkipLayerNormalization", "with mask")
         self.mask_indice: Dict = mask_indice
         self.mask_casted: Dict = mask_casted
         self.mask_input_name = None

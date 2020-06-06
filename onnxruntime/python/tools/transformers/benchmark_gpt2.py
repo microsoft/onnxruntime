@@ -244,6 +244,8 @@ def setup_logger(verbose=True):
 
 
 def export_onnx(model, config, tokenizer, device, output_dir):
+    """ Export GPT-2 model with past state to ONNX model
+    """
     model.to(device)
 
     inputs = tokenizer.encode_plus("Here is an example input for GPT2 model",
@@ -251,56 +253,48 @@ def export_onnx(model, config, tokenizer, device, output_dir):
                                    return_tensors='pt')
     input_ids = inputs['input_ids'].to(device)
     logger.debug(f"input_ids={input_ids}")
+
+    # Use example input to generate an example of past state.
     outputs = model(input_ids=input_ids, past=None)
     assert len(outputs) == 2
     logger.debug(f"output 0 shape={outputs[0].shape}")
     logger.debug(f"outputs[1][0] shape={outputs[1][0].shape}")
 
     num_layer = model.config.n_layer
+    past_names = [f'past_{i}' for i in range(num_layer)]
     present_names = [f'present_{i}' for i in range(num_layer)]
     output_names = ["last_state"] + present_names
 
-    input_names = ['input_ids']
-
-    # input_ids has only one word for model with past state.
     # Shape of input tensors:
-    #    input_ids: (batch_size, 1)
-    #    past_{i}:  (2, batch_size, num_heads, seq_len, hidden_size/num_heads)
+    #    input_ids: (batch_size, seq_len)
+    #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
     # Shape of output tensors:
-    #    last_state: (batch_size, seq_len + 1, hidden_size)
-    #    present_{i}:  (2, batch_size, num_heads, seq_len + 1, hidden_size/num_heads)
-    dynamic_axes = {'input_ids': {0: 'batch_size'}, 'last_state': {0: 'batch_size', 1: 'seq_len_plus_1'}}
-
-    for name in present_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len_plus_1'}
-
-    past_names = [f'past_{i}' for i in range(num_layer)]
-    input_names = ['input_ids'] + past_names
-    dummy_past = [torch.zeros(list(outputs[1][0].shape), dtype=torch.float32, device=device) for _ in range(num_layer)]
+    #    last_state: (batch_size, past_seq_len + seq_len, hidden_size)
+    #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
+    dynamic_axes = {'input_ids': {0: 'batch_size', 1 : 'seq_len'}, 'last_state': {0: 'batch_size', 1: 'all_seq_len'}}
     for name in past_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len'}
-    logger.debug(f"vocab_size:{model.config.vocab_size}")
+        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len'}
+    for name in present_names:
+        dynamic_axes[name] = {1: 'batch_size', 3: 'all_seq_len'}
 
     dummy_input_ids = torch.randint(low=0,
                                     high=model.config.vocab_size - 1,
                                     size=(1, 1),
                                     dtype=torch.int64,
                                     device=device)
-    logger.debug(f"dummy_input_ids={dummy_input_ids}")
-    export_inputs = (dummy_input_ids, tuple(dummy_past))
+    # Use the example past state to create dummy past state inputs.
+    dummy_past = [torch.zeros(list(outputs[1][0].shape), dtype=torch.float32, device=device) for _ in range(num_layer)]
 
     export_model_path = os.path.join(output_dir, 'gpt2_past.onnx')
 
-    # Let's run performance test on PyTorch before updating environment variable.
     with torch.no_grad():
         outputs = model(input_ids=dummy_input_ids, past=dummy_past)
-
     logger.debug(f"present_0 shape={outputs[1][0].shape}")
 
     torch.onnx.export(model,
-                      args=export_inputs,
+                      args=(dummy_input_ids, tuple(dummy_past)),
                       f=export_model_path,
-                      input_names=input_names,
+                      input_names=['input_ids'] + past_names,
                       output_names=output_names,
                       example_outputs=outputs,
                       dynamic_axes=dynamic_axes,
