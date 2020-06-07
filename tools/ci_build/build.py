@@ -1075,8 +1075,7 @@ def run_training_python_frontend_e2e_tests(cwd):
         'BertModelTest.test_for_pretraining_full_precision_all'], cwd=cwd)
 
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                          enable_tvm=False, enable_tensorrt=False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -1113,13 +1112,19 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
             continue
-        if enable_tvm:
-            dll_path = os.path.join(
-                build_dir, config, "external", "tvm", config)
-        elif enable_tensorrt:
-            dll_path = os.path.join(args.tensorrt_home, 'lib')
-        else:
-            dll_path = None
+        dll_path_list = []
+        if args.use_tvm:
+            dll_path_list.append(os.path.join(
+                build_dir, config, "external", "tvm", config))
+        if args.use_tensorrt:
+            dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
+        if args.use_mklml:
+            dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
+
+        dll_path = None
+        if len(dll_path_list) > 0:
+            dll_path = os.pathsep.join(dll_path_list)
+
         if ctest_path is None:
             # Get the "Google Test Adapter" for vstest.
             if not os.path.exists(os.path.join(cwd,
@@ -1148,7 +1153,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
         if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
-            if enable_tensorrt:
+            if args.use_tensorrt:
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
@@ -1700,8 +1705,7 @@ def main():
         build_targets(args, cmake_path, build_dir, configs, args.parallel)
 
     if args.test:
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.use_tvm, args.use_tensorrt)
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
