@@ -1,8 +1,11 @@
 #pragma once
 
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
+
 #ifdef USE_HOROVOD
 #include "orttraining/core/graph/horovod_adapters.h"
-#include <mpi.h>
 #endif
 
 namespace onnxruntime {
@@ -16,9 +19,10 @@ struct MPIContext {
   int local_size;
 };
 
-#ifdef USE_HOROVOD
-MPIContext setup_horovod();
-void shutdown_horovod();
+#ifdef USE_MPI
+MPIContext setup_mpi();
+void shutdown_mpi();
 #endif
+
 }  // namespace training
 }  // namespace onnxruntime

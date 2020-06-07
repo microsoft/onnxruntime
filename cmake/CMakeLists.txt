@@ -107,6 +107,8 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+option(onnxruntime_USE_MPI "Build with MPI support" ON)
+option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
@@ -917,28 +919,93 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
-  if (onnxruntime_USE_HOROVOD)
+
+  if (onnxruntime_USE_MPI)
     if (WIN32)
       message( FATAL_ERROR "Horovod is not supported on Windows." )
     elseif (UNIX)
+      add_definitions(-DUSE_MPI=1)
+
       find_package(MPI REQUIRED)
-      add_definitions(-DUSE_HOROVOD=1)
-      set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
-      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common" ${MPI_CXX_INCLUDE_PATH})
-      add_subdirectory(horovod EXCLUDE_FROM_ALL)
-      # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
-      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
-      find_package(nccl REQUIRED)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+      set(MPI_INCLUDE_DIRS ${MPI_CXX_INCLUDE_PATH})
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+      #message( FATAL_ERROR "MPI is not found. Please use --mpi_home to specify the path of mpi" )
     endif()
   endif()
 
   if (onnxruntime_USE_CUDA)
+    if (onnxruntime_USE_NCCL)
+      if (WIN32)
+        message( FATAL_ERROR "Horovod is not supported on Windows." )
+      elseif (UNIX)
+        message( "NCCL is enabled in Linux GPU Build." )
+        add_definitions(-DUSE_NCCL=1)
+
+        find_path(NCCL_INCLUDE_DIR
+          NAMES nccl.h
+          HINTS
+          ${NCCL_HOME}/include
+          $ENV{CUDA_ROOT}/include)
+
+        if ($ENV{USE_STATIC_NCCL})
+          message(STATUS "USE_STATIC_NCCL detected. Linking against static NCCL library")
+          set(NCCL_LIBNAME "libnccl_static.a")
+        else()
+          set(NCCL_LIBNAME "nccl")
+        endif()
+
+        find_library(NCCL_LIBRARY
+          NAMES ${NCCL_LIBNAME}
+          HINTS
+          ${NCCL_HOME}/lib/x86_64-linux-gnu
+          $ENV{CUDA_ROOT}/lib64)
+
+        include(FindPackageHandleStandardArgs)
+        find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
+
+        if (NCCL_FOUND)
+          set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+          message(STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}")
+          file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
+                REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+          if (NCCL_MAJOR_VERSION_DEFINED)
+            string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+                    NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
+            message(STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}")
+          endif()
+          file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
+                REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+          if (NCCL_MINOR_VERSION_DEFINED)
+            string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+                    NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
+            message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
+          endif()
+
+          set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
+          set(NCCL_LIBRARIES ${NCCL_LIBRARY})
+          message(STATUS "Found NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})")
+          mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
+
+          list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
+        else ()
+          message( FATAL_ERROR "NCCL is not found. Please use --nccl_home to specify the path of nccl" )
+        endif()
+      endif()
+    endif()
+  endif()
+
+  if (onnxruntime_USE_HOROVOD)
     if (WIN32)
-      message(WARNING "NCCL is not supported on Windows GPU Build." )
+      message( FATAL_ERROR "Horovod is not supported on Windows." )
     elseif (UNIX)
-      message( "NCCL is enabled in Linux GPU Build." )
-      add_definitions(-DUSE_NCCL=1)
+      add_definitions(-DUSE_HOROVOD=1)
+      set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
+      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common")
+      add_subdirectory(horovod EXCLUDE_FROM_ALL)
+      # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
+      list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
+      find_package(nccl REQUIRED)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod)
     endif()
   endif()
 

@@ -641,10 +641,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # temp turn on only for linux gpu build
     if not is_windows():
         if args.use_cuda:
-            if "-Donnxruntime_USE_HOROVOD=OFF" in cmake_args:
-                cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
             cmake_args += [
-                "-Donnxruntime_USE_HOROVOD=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     # nGraph, TensorRT and OpenVINO providers currently only supports
