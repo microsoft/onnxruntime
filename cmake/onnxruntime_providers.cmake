@@ -147,12 +147,10 @@ target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${e
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING)
-  target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
+  target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS})
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  if (onnxruntime_USE_MPI)
-    target_include_directories(onnxruntime_providers PRIVATE ${MPI_INCLUDE_DIRS})
-  endif()
+
   if (onnxruntime_USE_HOROVOD)
     target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
   endif()
@@ -235,10 +233,8 @@ if (onnxruntime_USE_CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
 
   if (onnxruntime_ENABLE_TRAINING)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT})
-    if (onnxruntime_USE_MPI)
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${MPI_INCLUDE_DIRS})
-    endif()
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS})
+
     if (onnxruntime_USE_HOROVOD)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
     endif()

@@ -22,15 +22,10 @@ if(WIN32)
   target_compile_options(onnxruntime_training PRIVATE /wd4100)
 endif()
 
-target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR} PUBLIC ${onnxruntime_graph_header})
+target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR} PUBLIC ${onnxruntime_graph_header})
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-endif()
-
-if (onnxruntime_USE_MPI)
-  message(${MPI_INCLUDE_DIRS})
-  target_include_directories(onnxruntime_training PUBLIC ${MPI_INCLUDE_DIRS})
 endif()
 
 if (onnxruntime_USE_HOROVOD)
@@ -140,11 +135,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
-target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-if (onnxruntime_USE_MPI)
-  target_include_directories(onnxruntime_training_bert PUBLIC ${MPI_INCLUDE_DIRS})
-endif()
+target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_training_bert PUBLIC ${HOROVOD_INCLUDE_DIRS})
@@ -165,11 +156,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
-target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-if (onnxruntime_USE_MPI)
-  target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${MPI_INCLUDE_DIRS})
-endif()
+target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${HOROVOD_INCLUDE_DIRS})
@@ -188,11 +175,7 @@ if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_gpt2 PUBLIC "-Wno-maybe-uninitialized")
 endif()
 onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
-target_include_directories(onnxruntime_training_gpt2 PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-if (onnxruntime_USE_MPI)
-  target_include_directories(onnxruntime_training_gpt2 PUBLIC ${MPI_INCLUDE_DIRS})
-endif()
+target_include_directories(onnxruntime_training_gpt2 PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_training_gpt2 PUBLIC ${HOROVOD_INCLUDE_DIRS})

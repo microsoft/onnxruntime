@@ -107,8 +107,6 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
-option(onnxruntime_USE_MPI "Build with MPI support" ON)
-option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
@@ -920,76 +918,109 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
 
-  if (onnxruntime_USE_MPI)
-    if (WIN32)
-      message( FATAL_ERROR "Horovod is not supported on Windows." )
-    elseif (UNIX)
+  if (UNIX)
+    # Find MPI
+    find_path(MPI_INCLUDE_DIR
+      NAMES mpi.h
+      HINTS
+      ${onnxruntime_MPI_HOME}/include
+      /bert_ort/openmpi/include)
+
+    set(MPI_LIBNAME "mpi")
+
+    find_library(MPI_LIBRARY
+      NAMES ${MPI_LIBNAME}
+      HINTS
+      ${onnxruntime_MPI_HOME}/lib
+      /bert_ort/openmpi/lib)
+
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
+
+    if (MPI_FOUND)
+      set(MPI_HEADER_FILE "${MPI_INCLUDE_DIR}/mpi.h")
+      message( STATUS "Determining MPI version from the header file: ${MPI_HEADER_FILE}" )
+      file (STRINGS ${MPI_HEADER_FILE} MPI_MAJOR_VERSION_DEFINED
+            REGEX "^[ \t]*#define[ \t]+OMPI_MAJOR_VERSION[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+      if (MPI_MAJOR_VERSION_DEFINED)
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+                MPI_MAJOR_VERSION ${MPI_MAJOR_VERSION_DEFINED})
+        message( STATUS "MPI_MAJOR_VERSION: ${MPI_MAJOR_VERSION}" )
+      endif()
+      file (STRINGS ${MPI_HEADER_FILE} MPI_MINOR_VERSION_DEFINED
+            REGEX "^[ \t]*#define[ \t]+OMPI_MINOR_VERSION[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+      if (MPI_MINOR_VERSION_DEFINED)
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+                MPI_MINOR_VERSION ${MPI_MINOR_VERSION_DEFINED})
+        message(STATUS "MPI_MINOR_VERSION: ${MPI_MINOR_VERSION}")
+      endif()
+
+      set(MPI_INCLUDE_DIRS ${MPI_INCLUDE_DIR})
+      set(MPI_LIBRARIES ${MPI_LIBRARY})
+      message( STATUS "Found MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
+      mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
+
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+
       add_definitions(-DUSE_MPI=1)
-
-      find_package(MPI REQUIRED)
-      set(MPI_INCLUDE_DIRS ${MPI_CXX_INCLUDE_PATH})
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-      #message( FATAL_ERROR "MPI is not found. Please use --mpi_home to specify the path of mpi" )
+      message( STATUS "MPI is enabled in Linux GPU Build." )
+    else ()
+      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, MPI is disabled." )
     endif()
-  endif()
 
-  if (onnxruntime_USE_CUDA)
-    if (onnxruntime_USE_NCCL)
-      if (WIN32)
-        message( FATAL_ERROR "Horovod is not supported on Windows." )
-      elseif (UNIX)
-        message( "NCCL is enabled in Linux GPU Build." )
+    # Find NCCL
+    if (onnxruntime_USE_CUDA)
+      find_path(NCCL_INCLUDE_DIR
+        NAMES nccl.h
+        HINTS
+        ${onnxruntime_NCCL_HOME}/include
+        $ENV{CUDA_ROOT}/include)
+
+      if ($ENV{USE_STATIC_NCCL})
+        message( STATUS "USE_STATIC_NCCL detected. Linking against static NCCL library" )
+        set(NCCL_LIBNAME "libnccl_static.a")
+      else()
+        set(NCCL_LIBNAME "nccl")
+      endif()
+
+      find_library(NCCL_LIBRARY
+        NAMES ${NCCL_LIBNAME}
+        HINTS
+        ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+        $ENV{CUDA_ROOT}/lib64)
+
+      include(FindPackageHandleStandardArgs)
+      find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
+
+      if (NCCL_FOUND)
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+        message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
+        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
+              REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+        if (NCCL_MAJOR_VERSION_DEFINED)
+          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+                  NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
+          message( STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}" )
+        endif()
+        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
+              REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+        if (NCCL_MINOR_VERSION_DEFINED)
+          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+                  NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
+          message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
+        endif()
+
+        set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
+        set(NCCL_LIBRARIES ${NCCL_LIBRARY})
+        message( STATUS "Found NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
+        mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
+
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
+
         add_definitions(-DUSE_NCCL=1)
-
-        find_path(NCCL_INCLUDE_DIR
-          NAMES nccl.h
-          HINTS
-          ${NCCL_HOME}/include
-          $ENV{CUDA_ROOT}/include)
-
-        if ($ENV{USE_STATIC_NCCL})
-          message(STATUS "USE_STATIC_NCCL detected. Linking against static NCCL library")
-          set(NCCL_LIBNAME "libnccl_static.a")
-        else()
-          set(NCCL_LIBNAME "nccl")
-        endif()
-
-        find_library(NCCL_LIBRARY
-          NAMES ${NCCL_LIBNAME}
-          HINTS
-          ${NCCL_HOME}/lib/x86_64-linux-gnu
-          $ENV{CUDA_ROOT}/lib64)
-
-        include(FindPackageHandleStandardArgs)
-        find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
-
-        if (NCCL_FOUND)
-          set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
-          message(STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}")
-          file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
-                REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-          if (NCCL_MAJOR_VERSION_DEFINED)
-            string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
-                    NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
-            message(STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}")
-          endif()
-          file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
-                REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-          if (NCCL_MINOR_VERSION_DEFINED)
-            string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
-                    NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
-            message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
-          endif()
-
-          set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
-          set(NCCL_LIBRARIES ${NCCL_LIBRARY})
-          message(STATUS "Found NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})")
-          mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
-
-          list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
-        else ()
-          message( FATAL_ERROR "NCCL is not found. Please use --nccl_home to specify the path of nccl" )
-        endif()
+        message( STATUS "NCCL is enabled in Linux GPU Build." )
+      else ()
+        message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
       endif()
     endif()
   endif()

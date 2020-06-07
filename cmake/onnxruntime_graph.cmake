@@ -60,10 +60,8 @@ onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 
 if (onnxruntime_ENABLE_TRAINING)
-    target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT})
-    if (onnxruntime_USE_MPI)
-        target_include_directories(onnxruntime_graph PRIVATE ${MPI_INCLUDE_DIRS})
-    endif()
+    target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS})
+
     if (onnxruntime_USE_HOROVOD)
         target_include_directories(onnxruntime_graph PRIVATE ${HOROVOD_INCLUDE_DIRS})
     endif()
