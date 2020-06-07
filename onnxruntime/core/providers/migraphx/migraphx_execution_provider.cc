@@ -1179,7 +1179,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
       if (fp16_enable_)
       {
-        migraphx::quantization_fp16(prog);
+        migraphx::quantize_fp16(prog);
       }
       prog.compile(t_);
 
@@ -1285,7 +1285,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
         if (fp16_enable)
         {
-          migraphx::quantization_fp16(prog);
+          migraphx::quantize_fp16(prog);
         }
 
         prog.compile(t);
