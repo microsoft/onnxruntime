@@ -316,9 +316,9 @@ def main():
     optimizer.save_model_to_file(args.output)
 
     if optimizer.is_fully_optimized():
-        logger.info("The output model is fully optimized.")
+        logger.info("The model has been fully optimized.")
     else:
-        logger.warning("The output model is not fully optimized.")
+        logger.info("The model has been optimized.")
 
 
 if __name__ == "__main__":
