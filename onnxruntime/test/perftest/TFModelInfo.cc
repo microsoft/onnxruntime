@@ -48,7 +48,12 @@ std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* mo
     }
   }
 
+// To avoid breaking CentOS build
+#if defined(__GNUC__) && (__GNUC__ == 4)
+  return std::move(ret);
+#else
   return ret;
+#endif
 }
 
 int TFModelInfo::GetInputCount() const { return static_cast<int>(input_names_.size()); }
