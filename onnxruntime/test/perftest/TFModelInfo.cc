@@ -7,7 +7,7 @@
 
 #include <core/platform/env.h>
 
-TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
+std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
   auto ret = std::unique_ptr<TFModelInfo>(new TFModelInfo{});
   ret->model_url_ = model_url;
   std::basic_string<PATH_CHAR_TYPE> meta_file_path = model_url;
@@ -44,11 +44,11 @@ TestModelInfo* TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
     } else if (line.compare(0, 7, "output=") == 0) {
       ret->output_names_.push_back(line.substr(7));
     } else {
-      ORT_THROW("unknow line:", line.size());
+      ORT_THROW("unknown line:", line.size());
     }
   }
 
-  return ret.release();
+  return std::move(ret);
 }
 
 int TFModelInfo::GetInputCount() const { return static_cast<int>(input_names_.size()); }

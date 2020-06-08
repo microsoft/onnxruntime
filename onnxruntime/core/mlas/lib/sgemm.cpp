@@ -422,29 +422,15 @@ Return Value:
         t1 = o0.val[1];
         t2 = o1.val[0];
         t3 = o1.val[1];
-#elif defined(MLAS_SSE2_INTRINSICS)
-        // N.B. The MSVC version of _MM_TRANSPOSE4_PS uses shufps which is
-        // slightly larger than the below sequence, so manually expand the
-        // matrix transpose.
-        __m128 z0 = _mm_unpacklo_ps(t0, t1);
-        __m128 z1 = _mm_unpackhi_ps(t0, t1);
-        __m128 z2 = _mm_unpacklo_ps(t2, t3);
-        __m128 z3 = _mm_unpackhi_ps(t2, t3);
-        t0 = _mm_movelh_ps(z0, z2);
-        t1 = _mm_movehl_ps(z2, z0);
-        t2 = _mm_movelh_ps(z1, z3);
-        t3 = _mm_movehl_ps(z3, z1);
-#elif defined(MLAS_VSX_INTRINSICS)
-        __vector float z0 = vec_mergeh(t0, t2);
-        __vector float z1 = vec_mergel(t0, t2);
-        __vector float z2 = vec_mergeh(t1, t3);
-        __vector float z3 = vec_mergel(t1, t3);
-        t0 = vec_mergeh(z0, z2);
-        t1 = vec_mergel(z0, z2);
-        t2 = vec_mergeh(z1, z3);
-        t3 = vec_mergel(z1, z3);
 #else
-#error Unsupported architecture.
+        MLAS_FLOAT32X4 z0 = MlasInterleaveLowFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z1 = MlasInterleaveHighFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z2 = MlasInterleaveLowFloat32x4(t1, t3);
+        MLAS_FLOAT32X4 z3 = MlasInterleaveHighFloat32x4(t1, t3);
+        t0 = MlasInterleaveLowFloat32x4(z0, z2);
+        t1 = MlasInterleaveHighFloat32x4(z0, z2);
+        t2 = MlasInterleaveLowFloat32x4(z1, z3);
+        t3 = MlasInterleaveHighFloat32x4(z1, z3);
 #endif
 
         MlasStoreAlignedFloat32x4(&D[0], t0);
@@ -639,7 +625,14 @@ Return Value:
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
                 MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
 
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
+                __m128 v0 = _mm_unpacklo_ps(t0, t1);
+                __m128 v1 = _mm_unpackhi_ps(t0, t1);
+                _mm_storel_pi((__m64*)&d[0], v0);
+                _mm_storeh_pi((__m64*)&d[16], v0);
+                _mm_storel_pi((__m64*)&d[32], v1);
+                _mm_storeh_pi((__m64*)&d[48], v1);
+#else
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<0>(&d[1], t1);
                 MlasStoreLaneFloat32x4<1>(&d[16], t0);
@@ -648,15 +641,6 @@ Return Value:
                 MlasStoreLaneFloat32x4<2>(&d[33], t1);
                 MlasStoreLaneFloat32x4<3>(&d[48], t0);
                 MlasStoreLaneFloat32x4<3>(&d[49], t1);
-#elif defined(MLAS_SSE2_INTRINSICS)
-                __m128 v0 = _mm_unpacklo_ps(t0, t1);
-                __m128 v1 = _mm_unpackhi_ps(t0, t1);
-                _mm_storel_pi((__m64*)&d[0], v0);
-                _mm_storeh_pi((__m64*)&d[16], v0);
-                _mm_storel_pi((__m64*)&d[32], v1);
-                _mm_storeh_pi((__m64*)&d[48], v1);
-#else
-#error Unsupported architecture.
 #endif
 
                 d += 2;

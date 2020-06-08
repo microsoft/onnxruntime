@@ -15,12 +15,14 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment ve
 
 # Project
 project(onnxruntime C CXX)
+# Needed for Java
+set (CMAKE_C_STANDARD 99)
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
 # CentOS compiler is old but it does allow certain C++14 features
-# such as lambda captures and they are convinient
+# such as lambda captures and they are convenient
 # On the other hand it does not allow some others.
 # So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
@@ -90,6 +92,8 @@ option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_USE_ACL_1902 "Build with ACL version 1902 support" OFF)
 option(onnxruntime_USE_ACL_1905 "Build with ACL version 1905 support" OFF)
 option(onnxruntime_USE_ACL_1908 "Build with ACL version 1908 support" OFF)
+option(onnxruntime_USE_ARMNN "Build with ArmNN support" OFF)
+option(onnxruntime_ARMNN_RELU_USE_CPU "Use the CPU implementation for the Relu operator for the ArmNN EP" ON)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
@@ -114,6 +118,9 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
+endif()
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 # General C# properties
@@ -506,6 +513,15 @@ if (onnxruntime_USE_ACL OR onnxruntime_USE_ACL_1902 OR onnxruntime_USE_ACL_1905 
   endif()
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute arm_compute_graph arm_compute_core)
+endif()
+
+# ArmNN
+if (onnxruntime_USE_ARMNN)
+  if (NOT onnxruntime_ARMNN_RELU_USE_CPU)
+    add_definitions(-DRELU_ARMNN=1)
+  endif()
+
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES armnn pthread arm_compute_core arm_compute arm_compute_graph)
 endif()
 
 # MKLML
