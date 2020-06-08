@@ -784,7 +784,7 @@ Example 4:
       .Output(0, "output", "Tensor graident of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
