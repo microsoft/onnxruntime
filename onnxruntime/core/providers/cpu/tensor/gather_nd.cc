@@ -102,13 +102,15 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
                         : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
 }
 
-template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape& input_shape,
-                                                         const Tensor* indices_tensor,
-                                                         const int64_t bytes_per_value, Prepare& p,
+template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,
+                                                         const Tensor*,
+                                                         const int64_t,
+                                                         Prepare&,
                                                          concurrency::ThreadPool*) const;
-template Status GatherNDBase::PrepareForCompute<int64_t>(const TensorShape& input_shape,
-                                                         const Tensor* indices_tensor,
-                                                         const int64_t bytes_per_value, Prepare& p,
+template Status GatherNDBase::PrepareForCompute<int64_t>(const TensorShape&,
+                                                         const Tensor*,
+                                                         const int64_t,
+                                                         Prepare&,
                                                          concurrency::ThreadPool*) const;
 
 Status GatherND::Compute(OpKernelContext* context) const {
