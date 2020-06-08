@@ -11,6 +11,7 @@ namespace concurrency {
 class ThreadPool;
 }
 class GatherNDBase {
+ public:
   struct Prepare {
     const uint8_t* input_base;
     const std::string* input_str_base;
