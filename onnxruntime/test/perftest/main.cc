@@ -6,6 +6,7 @@
 #include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
+#include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
@@ -66,5 +67,8 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+
+  ::google::protobuf::ShutdownProtobufLibrary();
+
   return retval;
 }

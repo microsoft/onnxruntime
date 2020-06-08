@@ -83,6 +83,10 @@ if(onnxruntime_USE_ACL)
   set(PROVIDERS_ACL onnxruntime_providers_acl)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
 endif()
+if(onnxruntime_USE_ARMNN)
+  set(PROVIDERS_ARMNN onnxruntime_providers_armnn)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -653,4 +657,21 @@ if (onnxruntime_USE_ACL)
   target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_ARMNN)
+  add_definitions(-DUSE_ARMNN=1)
+  file(GLOB_RECURSE onnxruntime_providers_armnn_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_armnn_cc_srcs})
+  add_library(onnxruntime_providers_armnn ${onnxruntime_providers_armnn_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ARMNN_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
 endif()

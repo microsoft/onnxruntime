@@ -76,10 +76,9 @@ class NupharKernelState {
   NUPHAR_OP(Abs, 6, DataTypeImpl::AllFixedSizeTensorTypes())                                \
   NUPHAR_OP(Add, 7, DataTypeImpl::AllFixedSizeTensorTypes())                                \
   NUPHAR_VERSIONED_OP(ArgMax, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())               \
-  NUPHAR_OP(ArgMax, 11, DataTypeImpl::AllFixedSizeTensorTypes())                            \
-  NUPHAR_OP(ArgMax, 1, DataTypeImpl::AllFixedSizeTensorTypes())                             \
+  NUPHAR_VERSIONED_OP(ArgMax, 11, 11, DataTypeImpl::AllFixedSizeTensorTypes())              \
   NUPHAR_VERSIONED_OP(ArgMin, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())               \
-  NUPHAR_OP(ArgMin, 11, DataTypeImpl::AllFixedSizeTensorTypes())                            \
+  NUPHAR_VERSIONED_OP(ArgMin, 11, 11, DataTypeImpl::AllFixedSizeTensorTypes())              \
   NUPHAR_VERSIONED_OP(AveragePool, 7, 9, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes()) \
   NUPHAR_OP(AveragePool, 10, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())             \
   NUPHAR_OP(AveragePool, 11, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())             \

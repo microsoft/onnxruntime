@@ -3,6 +3,7 @@
 
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
+#include "core/platform/ort_mutex.h"
 
 #include <core/common/make_unique.h>
 
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <memory>
 #include <functional>
-#include <mutex>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -24,7 +24,7 @@ struct TestData {
   explicit TestData(int num) : data(num, 0) {
   }
   std::vector<int> data;
-  std::mutex mutex;
+  onnxruntime::OrtMutex mutex;
 };
 
 // This unittest tests ThreadPool function by counting the number of calls to function with each index.
@@ -35,7 +35,7 @@ std::unique_ptr<TestData> CreateTestData(int num) {
 }
 
 void IncrementElement(TestData& test_data, ptrdiff_t i) {
-  std::lock_guard<std::mutex> lock(test_data.mutex);
+  std::lock_guard<onnxruntime::OrtMutex> lock(test_data.mutex);
   test_data.data[i]++;
 }
 

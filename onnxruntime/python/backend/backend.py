@@ -21,6 +21,7 @@ class OnnxRuntimeBackend(Backend):
     multiple runtimes with the same API.
     `Importing models from ONNX to Caffe2 <https://github.com/onnx/tutorials/blob/master/tutorials/OnnxCaffe2Import.ipynb>`_
     shows how to use *caffe2* as a backend for a converted model.
+    Note: This is not the official Python API.
     """  # noqa: E501
 
     @classmethod

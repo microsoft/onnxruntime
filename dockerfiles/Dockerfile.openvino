@@ -30,7 +30,7 @@ ENV LANG en_US.UTF-8
 
 RUN apt update && \
     apt -y install git sudo wget locales \
-    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev autoconf automake libtool && \
+    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev autoconf automake libtool libudev-dev libjson-c-dev && \
     cd ${MY_ROOT} && \
     git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO onnxruntime && \
     cp onnxruntime/docs/Privacy.md /code/Privacy.md && \
