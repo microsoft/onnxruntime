@@ -56,22 +56,17 @@ ORT_API_STATUS_IMPL(OrtApis::RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* op
 }
 
 ORT_API_STATUS_IMPL(OrtRunOptionsSetProviderRunOptions, _In_ OrtRunOptions* options, _In_ const char* const* keys,
-                    _In_ void* const* provider_run_options, size_t length) {
+                    _In_ void* const* extra_options, size_t length) {
   for (size_t i = 0; i != length; ++i) {
     if (keys[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input provider options key cannot be null");
     }
-    if (provider_run_options[i] == nullptr) {
+    if (extra_options[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input provider options value cannot be null");
     }
     std::string key = keys[i];
-    options->provider_run_options.insert({key, provider_run_options[i]});
+    options->extra_options.insert({key, extra_options[i]});
   }
-  return nullptr;
-}
-
-ORT_API_STATUS_IMPL(OrtRunOptionsSetCustomDefaultAllocator, _In_ OrtRunOptions* options, _In_ OrtAllocator* custom_cpu_allocator) {
-  options->custom_cpu_allocator = std::make_shared<onnxruntime::AllocatorWrapper>(custom_cpu_allocator);
   return nullptr;
 }
 

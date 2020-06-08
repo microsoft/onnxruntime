@@ -19,12 +19,11 @@ struct OrtRunOptions {
   int run_log_verbosity_level = 0;  ///< VLOG level if debug build and run_log_severity_level is 0 (VERBOSE).
   std::string run_tag;              ///< A tag for the Run() calls using this.
 
-  // An execution provider specific run option is required for some execution providers, 
+  // More per run level context can be added here, for example:
+  // 1) An execution provider specific run option is required for some execution providers, 
   // each of which has its own resources shared within its platform.
-  std::unordered_map<std::string, void*> provider_run_options;
-
-  // Override the default CPU allocator with a custom allocator passed from the hosting service during each run. 
-  onnxruntime::AllocatorPtr custom_cpu_allocator;
+  // 2) A custom allocator for each memory info
+  std::unordered_map<std::string, void*> extra_options;
 
   // Set to 'true' to ensure the termination of all the outstanding Run() calls
   // that use this OrtRunOptions instance. Some of the outstanding Run() calls may

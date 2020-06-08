@@ -27,12 +27,14 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const RunO
   }
 }
 
-Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+Status ParallelExecutor::Execute(const SessionState& session_state, 
+                                 const std::vector<int>& feed_mlvalue_idxs,
+                                 const std::vector<OrtValue>& feeds,
+                                 const std::vector<int>& fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches,
-                                 const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                 const logging::Logger& logger,
-                                 const AllocatorPtr custom_cpu_allocator) {
+                                 const std::unordered_map<size_t,
+                                 CustomAllocator>& fetch_allocators,
+                                 const logging::Logger& logger) {
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {
@@ -40,7 +42,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   }
 
   root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                 fetch_allocators, session_state, custom_cpu_allocator);
+                                                 fetch_allocators, session_state, run_options_);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
     auto p_op_kernel = session_state.GetKernel(node_index);

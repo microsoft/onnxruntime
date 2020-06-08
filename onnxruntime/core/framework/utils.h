@@ -40,7 +40,7 @@ void DefaultFree(void* p);
 
 AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info);
 
-void* GetProviderRunOptions(const std::unordered_map<std::string, void*>& provider_run_options, const std::string& provider);
+void* GetProviderRunOptions(const std::unordered_map<std::string, void*>& extra_options, const std::string& provider);
 
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue);

@@ -17,14 +17,17 @@ struct ProviderContextMock {
   const char* val;
 };
 
-class DummyExecutionProvider : public IExecutionProvider {
+class DummyProvider : public IExecutionProvider {
  public:
-  static constexpr const char* kDummyExecutionProviderType = "DummyExecutionProvider";
-  DummyExecutionProvider() : IExecutionProvider{kDummyExecutionProviderType}, run_context(nullptr) {
+  static constexpr const char* kDummyProviderType = "DummyProvider";
+  DummyProvider() : IExecutionProvider{kDummyProviderType}, run_context(nullptr) {
     InsertAllocator(std::make_unique<DummyAllocator>());
   }
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    static std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+    return kernel_registry;
+  };
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
@@ -57,8 +60,8 @@ class DummyExecutionProvider : public IExecutionProvider {
     // Create compute function
     compute_info.compute_func = [this](FunctionState, const OrtCustomOpApi*, OrtKernelContext* context) {
       auto internal_context = reinterpret_cast<OpKernelContextInternal*>(context);
-      auto provider_run_options = internal_context->GetRunOptions().provider_run_options;
-      run_context = utils::GetProviderRunOptions(provider_run_options, kDummyExecutionProviderType);
+      auto extra_options = internal_context->GetRunOptions().extra_options;
+      run_context = utils::GetProviderRunOptions(extra_options, kDummyProviderType);
       return Status::OK();
     };
 
@@ -88,13 +91,13 @@ TEST(ProviderRunOptionsTest, BasicTest) {
   unordered_map<string, void*> provider_run_options_map;
 
   // Insert different provider specific contexts and the correct one reaches to the dummy provider
-  ProviderContextMock dummy_provider_context = {"Hi I'm a DummyExecutionProvider context"};
+  ProviderContextMock dummy_provider_context = {"Hi I'm a DummyProvider context"};
   provider_run_options_map.insert(
-      std::make_pair(DummyExecutionProvider::kDummyExecutionProviderType, &dummy_provider_context));
+      std::make_pair(DummyProvider::kDummyProviderType, &dummy_provider_context));
   string cpu_context = "Hi I'm a CpuExecutionProvider context";
   provider_run_options_map.insert(
       std::make_pair(kCpuExecutionProvider, &cpu_context));
-  run_options.provider_run_options = provider_run_options_map;
+  run_options.extra_options = provider_run_options_map;
     
   auto logger = DefaultLoggingManager().CreateLogger("GraphTest");
   onnxruntime::Model model("graph_1", false, *logger);
@@ -122,7 +125,7 @@ TEST(ProviderRunOptionsTest, BasicTest) {
   status = onnxruntime::Model::Save(model, model_file_name);
 
   InferenceSession session_object{so, GetEnvironment()};
-  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
+  auto dummy_provider = std::make_unique<DummyProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   session_object.RegisterExecutionProvider(std::move(dummy_provider));
 

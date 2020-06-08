@@ -22,12 +22,10 @@ namespace onnxruntime {
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
-                                 const std::vector<int>& fetch_mlvalue_idxs,
-                                 const AllocatorPtr custom_allocator)
+                                 const std::vector<int>& fetch_mlvalue_idxs)
     : node_index_info_(node_index_info),
       all_values_size_(static_cast<size_t>(ort_value_idx_map.MaxIdx()) + 1),
-      fetch_mlvalue_idxs_(fetch_mlvalue_idxs),
-      custom_cpu_allocator_{custom_allocator} {
+      fetch_mlvalue_idxs_(fetch_mlvalue_idxs) {
   ORT_ENFORCE(node_index_info_.GetMaxMLValueIdx() == ort_value_idx_map.MaxIdx(),
               "node_index_info and ort_value_idx_map are out of sync and cannot be used");
 }
@@ -76,9 +74,6 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
 }
 
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
-  if (custom_cpu_allocator_ != nullptr && std::strncmp(info.name, onnxruntime::CPU, 3) == 0 && info.mem_type == OrtMemTypeDefault)
-    return custom_cpu_allocator_;
-      
   return GetAllocatorImpl(info);
 }
 
@@ -202,9 +197,10 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
 ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               const SessionState& session_state, const AllocatorPtr custom_allocator)
-    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs, custom_allocator),
+                               const SessionState& session_state, const RunOptions& run_options)
+    : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
+      run_options_(run_options),
       mem_patterns_(nullptr),
       planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);

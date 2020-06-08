@@ -113,12 +113,14 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+Status SequentialExecutor::Execute(const SessionState& session_state, 
+                                   const std::vector<int>& feed_mlvalue_idxs,
+                                   const std::vector<OrtValue>& feeds,
+                                   const std::vector<int>& fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
-                                   const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                   const logging::Logger& logger,
-                                   const AllocatorPtr custom_cpu_allocator) {
+                                   const std::unordered_map<size_t,
+                                   CustomAllocator>& fetch_allocators,
+                                   const logging::Logger& logger) {
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
@@ -131,7 +133,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     tp = session_state.Profiler().StartTime();
   }
 
-  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, custom_cpu_allocator};
+  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, run_options_};
 
   const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
   const bool only_execute_path_to_fetches = run_options_.only_execute_path_to_fetches && (to_be_executed_nodes != nullptr);

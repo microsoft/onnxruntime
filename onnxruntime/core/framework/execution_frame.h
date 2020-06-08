@@ -30,8 +30,7 @@ class IExecutionFrame {
   // initialized until the derived class is constructed.
   IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                   const NodeIndexInfo& node_index_info,
-                  const std::vector<int>& fetch_mlvalue_idxs,
-                  const AllocatorPtr custom_allocator);
+                  const std::vector<int>& fetch_mlvalue_idxs);
 
   void Init(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
             const std::unordered_map<int, OrtValue>& initializers,
@@ -76,8 +75,6 @@ class IExecutionFrame {
   // returns true if the ort_value_idx is an output from the graph
   bool IsOutput(int ort_value_idx) const;
 
-  const AllocatorPtr custom_cpu_allocator_;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IExecutionFrame);
 
@@ -111,7 +108,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 const SessionState& session_state, const AllocatorPtr custom_allocator);
+                 const SessionState& session_state, const RunOptions& run_options);
 
   ~ExecutionFrame() override;
 
@@ -157,6 +154,7 @@ class ExecutionFrame final : public IExecutionFrame {
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
 
   const SessionState& session_state_;
+  const RunOptions& run_options_;
 
   // map of index to custom allocator
   std::unordered_map<int, IExecutor::CustomAllocator> custom_allocators_;

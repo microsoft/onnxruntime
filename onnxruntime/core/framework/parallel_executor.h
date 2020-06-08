@@ -22,12 +22,14 @@ class ParallelExecutor : public IExecutor {
  public:
   ParallelExecutor(const SessionState& session_state, const RunOptions& run_options);
 
-  common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                         const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+  common::Status Execute(const SessionState& session_state,
+                         const std::vector<int>& feed_mlvalue_idxs,
+                         const std::vector<OrtValue>& feeds,
+                         const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
-                         const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                         const logging::Logger& logger,
-                         const AllocatorPtr custom_cpu_allocator) override;
+                         const std::unordered_map<size_t,
+                         CustomAllocator>& fetch_allocators,
+                         const logging::Logger& logger) override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
@@ -60,7 +62,6 @@ class ParallelExecutor : public IExecutor {
   OrtMutex complete_mutex_;
   OrtCondVar complete_cv_;
   std::vector<Status> errors_;
-
   const RunOptions& run_options_;
   // TODO: Temporary threadpool for the executor.  This is a costly way to handle the problem.
   onnxruntime::concurrency::ThreadPool* const executor_pool_{};

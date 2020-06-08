@@ -34,7 +34,7 @@ class IExecutor {
                          std::vector<OrtValue>& fetches,
                          const logging::Logger& logger) {
     std::unordered_map<size_t, CustomAllocator> fetch_allocators;
-    return Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, nullptr);
+    return Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
   }
 
   // TODO: as fetch_allocators is optional, it should be a pointer instead of reference
@@ -45,7 +45,6 @@ class IExecutor {
                                  std::vector<OrtValue>& fetches,
                                  // optional custom allocators. key is index in fetches
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                 const logging::Logger& logger,
-                                 const AllocatorPtr custom_cpu_allocator) = 0;
+                                 const logging::Logger& logger) = 0;
 };
 }  // namespace onnxruntime

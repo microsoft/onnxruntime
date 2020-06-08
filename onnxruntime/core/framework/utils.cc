@@ -94,10 +94,10 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo
   return session_state.GetExecutionProviders().GetAllocator(memory_info);
 }
     
-void* GetProviderRunOptions(const std::unordered_map<std::string, void*>& provider_run_options, const std::string& provider) {
+void* GetProviderRunOptions(const std::unordered_map<std::string, void*>& extra_options, const std::string& provider) {
   void* run_options = nullptr;
-  const auto& entry = provider_run_options.find(provider);
-  if (entry != provider_run_options.cend()) {
+  const auto& entry = extra_options.find(provider);
+  if (entry != extra_options.cend()) {
     run_options = entry->second;
   }
 
@@ -487,10 +487,10 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, 
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                        logger, run_options.custom_cpu_allocator));
+                                        logger));
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -523,10 +523,10 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       p_fetches = &device_fetches;
     }
 
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
+    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state, 
                                         feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                        logger, run_options.custom_cpu_allocator));
+                                        logger));
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
