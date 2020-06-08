@@ -364,44 +364,6 @@ MlasQLinearAddKernelHelper(
     }
 }
 
-template<typename DataType>
-void
-MLASCALL
-MlasQLinearAddKernel(
-    const DataType* InputA,
-    float ScaleA,
-    int32_t ZeroPointA,
-    const DataType* InputB,
-    float ScaleB,
-    int32_t ZeroPointB,
-    float ScaleC,
-    int32_t ZeroPointC,
-    DataType* OutputC,
-    size_t LengthA,
-    size_t LengthB
-    )
-{
-    size_t N = std::max(LengthA, LengthB);
-    if (N > 0) {
-        if (LengthA == 1) {
-            MlasQLinearAddKernelHelper<DataType, true, false>(
-                InputA, ScaleA, ZeroPointA,
-                InputB, ScaleB, ZeroPointB,
-                ScaleC, ZeroPointC, OutputC, N);
-        } else if (LengthB == 1) {
-            MlasQLinearAddKernelHelper<DataType, false, true>(
-                InputA, ScaleA, ZeroPointA,
-                InputB, ScaleB, ZeroPointB,
-                ScaleC, ZeroPointC, OutputC, N);
-        } else {
-            MlasQLinearAddKernelHelper<DataType, false, false>(
-                InputA, ScaleA, ZeroPointA,
-                InputB, ScaleB, ZeroPointB,
-                ScaleC, ZeroPointC, OutputC, N);
-        }
-    }
-}
-
 #else
 
 template<typename OutputType>
@@ -493,6 +455,8 @@ MlasQLinearAddKernelHelper(
     }
 }
 
+#endif
+
 template<typename DataType>
 void
 MLASCALL
@@ -530,8 +494,6 @@ MlasQLinearAddKernel(
         }
     }
 }
-
-#endif
 
 template
 void
