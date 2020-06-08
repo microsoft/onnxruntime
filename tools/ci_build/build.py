@@ -1403,10 +1403,10 @@ def nuphar_run_python_tests(build_dir, configs):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
-        use_acl, nightly_build=False, featurizers_build=False):
+        use_acl, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
+        if is_windows() and not use_ninja:
             cwd = os.path.join(cwd, config)
 
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
@@ -1796,6 +1796,7 @@ def main():
                 args.use_acl,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
+                use_ninja=(args.cmake_generator == 'Ninja')
             )
 
     if args.gen_doc and (args.build or args.test):
