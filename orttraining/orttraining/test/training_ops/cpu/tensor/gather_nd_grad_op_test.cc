@@ -44,7 +44,7 @@ TEST(GatherNDGradOpTest, GatherNDGrad_slice_double_int32_t_batch_dims_3) {
 }
 
 TEST(GatherNDGradOpTest, GatherNDGrad_slice_half_int32_t_batch_dims_3) {
-  if (NeedSkipIfCudaArchLowerThan(600)) {
+  if (HasCudaEnvironment(600)) {  // CPU GatherNDGrad did not support MLFloat16
     return;
   }
 
