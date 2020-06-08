@@ -1127,31 +1127,49 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   pipe.cut_list.emplace_back(cut0);
   pipe.cut_list.emplace_back(cut1);
 
-  for (int i = 0; i < 3; ++i) {
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_fp16_initializers = true;
+
+  // 2 test variations - full precision (m == 0) and mixed precision (m == 1)
+  for (int m = 0; m < 2; ++m) {
+    // graph is partitioned into 3 parts.
+    for (int i = 0; i < 3; ++i) {
 #ifdef _WIN32
-    auto surfix = std::to_wstring(i);
+      auto surfix = std::to_wstring(i);
 #else
-    auto surfix = std::to_string(i);
+      auto surfix = std::to_string(i);
 #endif
-    PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+      PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
 
-    auto config = MakeBasicTrainingConfig();
-    config.pipeline_config = pipe;
-    config.distributed_config.world_rank = i;
-    config.distributed_config.world_size = 3;
-    config.distributed_config.local_rank = i;
-    config.distributed_config.local_size = 3;
-    config.distributed_config.data_parallel_size = 1;
-    config.distributed_config.horizontal_parallel_size = 1;
-    config.distributed_config.pipeline_parallel_size = 3;
-    config.model_with_training_graph_path = output_file;
+      auto config = MakeBasicTrainingConfig();
+      config.pipeline_config = pipe;
+      config.distributed_config.world_rank = i;
+      config.distributed_config.world_size = 3;
+      config.distributed_config.local_rank = i;
+      config.distributed_config.local_size = 3;
+      config.distributed_config.data_parallel_size = 1;
+      config.distributed_config.horizontal_parallel_size = 1;
+      config.distributed_config.pipeline_parallel_size = 3;
+      config.model_with_training_graph_path = output_file;
 
-    PathString backprop_model_file;
-    ASSERT_STATUS_OK(BuildBackPropGraph(model_uri, config, backprop_model_file));
+      if (m >= 1) {
+        config.mixed_precision_config = mixed_precision_config;
+      }
 
-    std::shared_ptr<Model> model;
-    // Ensure the partitioned model load.
-    ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+      PathString backprop_model_file;
+      ASSERT_STATUS_OK(BuildBackPropGraph(model_uri, config, backprop_model_file));
+
+      // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
+      // which takes a const tensor input. Const cast for input in function body won't be saved in the output
+      // model so reload will run into error.
+      // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
+      // partition logic and validate the graph.
+      if (m == 0) {
+        std::shared_ptr<Model> model;
+        // Ensure the partitioned model load.
+        ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+      }
+    }
   }
 }
 

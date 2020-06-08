@@ -415,10 +415,6 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     graph.AddInitializedTensor(weight_tensor_proto);
   }
 
-  // After FP16 initializers are created and added, update the graph's initializer list,
-  // replace the old fp32 initializer with the newly created one and keep it in-sync.
-  graph.SyncWithFP16Initializer(fp32_weight_name_to_fp16_node_arg_result);
-
   // Handle pipeline case
   for (auto& node : graph.Nodes()) {
     // For send and recv node, if the tensor being sent or received is FP32, update its

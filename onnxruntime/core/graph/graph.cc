@@ -3002,15 +3002,6 @@ Status Graph::InlineFunction(Node& node) {
   return Status::OK();
 }
 
-void Graph::SyncWithFP16Initializer(const std::unordered_map<std::string, NodeArg*>& updated_input_map) {
-  for (size_t index = 0; index < graph_inputs_including_initializers_.size(); ++index) {
-    auto search = updated_input_map.find(graph_inputs_including_initializers_[index]->Name());
-    if (search != updated_input_map.end()) {
-      graph_inputs_including_initializers_[index] = search->second;
-    }
-  }
-}
-
 void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
   if (is_loaded_from_model_file_) {
     // graph loaded from model file

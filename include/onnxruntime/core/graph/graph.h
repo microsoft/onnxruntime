@@ -797,12 +797,6 @@ class Graph {
   */
   void SetInputs(const std::vector<const NodeArg*>& inputs);
 
-  /** Explicitly update specified graph initializers.
-  @param updated_input_map An map contains the name of the initializer that needs to update and the
-  corresponding new value. This function will overwrite the old NodeArg with the new value.
-  */
-  void SyncWithFP16Initializer(const std::unordered_map<std::string, NodeArg*>& updated_input_map);
-
   /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks Note that the output order matters for subgraphs.
