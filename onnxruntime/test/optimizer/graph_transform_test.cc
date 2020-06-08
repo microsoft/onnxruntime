@@ -2121,6 +2121,11 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
 
 #endif
 
+// LayerNormalization implementation is in contrib namespace (OnnxDomain 1), so
+// Without contib_ops enabled, we cannot parse the graph correctly.
+#ifndef DISABLE_CONTRIB_OPS
+
+// We used Opset 12 for testing to make sure we are not using GatherND OnnxDomain Opset 1.
 TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
   auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
   std::shared_ptr<Model> model;
@@ -2153,8 +2158,6 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
 
   ASSERT_FALSE(gathernd_node == nullptr);
 }
-
-#ifdef USE_CUDA
 
 TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) {
   auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
@@ -2195,8 +2198,8 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
                 [&distr, &eng](int64_t& value) { value = distr(eng); });
 
   static const std::string all_provider_types[] = {
+      onnxruntime::kCpuExecutionProvider,
       onnxruntime::kCudaExecutionProvider,
-      // we cannot enable CPU excution provider because we don't have GatherND opset 1 CPU kernel
   };
 
   for (auto& provider_type : all_provider_types) {

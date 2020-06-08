@@ -84,7 +84,7 @@ graph_def = helper.make_graph(nodes, 'test-model', [X, unsqueezed_masked_lm_posi
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
-onnxdomain.version = 10
+onnxdomain.version = 12
 onnxdomain.domain = ""  # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
 opsets.append(onnxdomain)
 
