@@ -18,9 +18,8 @@
 
 namespace onnxruntime {
 
-ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag,
-                                   const std::unordered_map<std::string, void*>& provider_run_options)
-    : out_standings_(0), executor_pool_(session_state.GetInterOpThreadPool()), IExecutor{terminate_flag, provider_run_options} {
+ParallelExecutor::ParallelExecutor(const SessionState& session_state, const RunOptions& run_options)
+    : out_standings_(0), executor_pool_(session_state.GetInterOpThreadPool()), run_options_(run_options) {
   auto graph_viewer = session_state.GetGraphViewer();
   node_refs_.resize(graph_viewer->MaxNodeIndex());
   for (auto& node : graph_viewer->Nodes()) {
@@ -111,8 +110,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
 
 Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                       const SessionState& session_state,
-                                      const logging::Logger& logger,
-                                      const std::unordered_map<std::string, void*>& provider_run_options) {
+                                      const logging::Logger& logger) {
   LOGS(logger, INFO) << "Begin execution";
 
   Status status = Status::OK();
@@ -129,7 +127,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
   while (keep_running) {
     // TODO: Convert RunNodeAsync return Status.
     // to also handle exception propagation
-    if (terminate_flag_) {
+    if (run_options_.terminate) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
       ORT_THROW("Exiting due to terminate flag being set to true.");
     }
@@ -147,8 +145,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                               *root_frame_,
                                               *p_op_kernel,
                                               logger,
-                                              terminate_flag_,
-                                              utils::GetProviderRunOptions(provider_run_options, execution_provider_type));
+                                              run_options_);
 
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().StartTime();
@@ -303,7 +300,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
 
     Status status;
     try {
-      status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger), std::cref(provider_run_options_));
+      status = ParallelExecutor::RunNodeAsync(p_node_index, std::cref(session_state), std::cref(logger));
     } catch (const std::exception& ex) {
       status = create_exception_message(&ex);
     } catch (...) {

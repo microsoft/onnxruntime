@@ -70,19 +70,15 @@ void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                            const std::unordered_map<std::string, void*>& provider_run_options,
-                            const AllocatorPtr custom_allocator, 
-                            bool only_execute_path_to_fetches = false);
+                            ExecutionMode execution_mode, const RunOptions& run_options,
+                            const logging::Logger& logger);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, 
-                               const std::unordered_map<std::string, void*>& provider_run_options,
-                               const AllocatorPtr custom_allocator);
+                               ExecutionMode execution_mode, const RunOptions& run_options, const logging::Logger& logger);
 
 #if defined(DEBUG_NODE_INPUTS_OUTPUTS)
 // to create a build with these enabled run the build script with 1 to dump just shapes, or 2 to dump shapes and data

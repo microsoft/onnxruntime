@@ -4,7 +4,6 @@
 #pragma once
 
 #include <vector>
-#include <unordered_map>
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -18,8 +17,8 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(const bool& terminate_flag, const std::unordered_map<std::string, void*>& provider_run_options, const bool only_execute_path_to_fetches = false)
-      : only_execute_path_to_fetches_(only_execute_path_to_fetches), IExecutor{terminate_flag, provider_run_options} {}
+  SequentialExecutor(const RunOptions& run_options)
+      : run_options_(run_options){}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -30,6 +29,6 @@ class SequentialExecutor : public IExecutor {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SequentialExecutor);
-  const bool only_execute_path_to_fetches_;
+  const RunOptions& run_options_;
 };
 }  // namespace onnxruntime

@@ -134,7 +134,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, custom_cpu_allocator};
 
   const std::unordered_set<NodeIndex>* to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
-  const bool only_execute_path_to_fetches = only_execute_path_to_fetches_ && (to_be_executed_nodes != nullptr);
+  const bool only_execute_path_to_fetches = run_options_.only_execute_path_to_fetches && (to_be_executed_nodes != nullptr);
 
   if (only_execute_path_to_fetches) {
     VLOGS(logger, 1) << to_be_executed_nodes->size() << " nodes to be executed\n";
@@ -164,7 +164,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
-    if (terminate_flag_) {
+    if (run_options_.terminate) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
     }
@@ -200,8 +200,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                               frame,
                                               *p_op_kernel,
                                               logger,
-                                              terminate_flag_, 
-                                              utils::GetProviderRunOptions(provider_run_options_, provider_type));
+                                              run_options_);
     
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {

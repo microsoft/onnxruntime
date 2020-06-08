@@ -328,10 +328,9 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
     }
   }
 
-  const std::unordered_map<std::string, void*> provider_run_options;
   status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, fetch_allocators,
-                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(),
-                                  context_.Logger(), provider_run_options, nullptr);
+                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetRunOptions(),
+                                  context_.Logger());
 
   ORT_RETURN_IF_ERROR(status);
 

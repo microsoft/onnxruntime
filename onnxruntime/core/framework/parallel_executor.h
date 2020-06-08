@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <unordered_map>
 #include <vector>
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -21,8 +20,7 @@ class ExecutionFrame;
 
 class ParallelExecutor : public IExecutor {
  public:
-  ParallelExecutor(const SessionState& session_state, const bool& terminate_flag,
-                   const std::unordered_map<std::string, void*>& provider_run_options);
+  ParallelExecutor(const SessionState& session_state, const RunOptions& run_options);
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -35,7 +33,7 @@ class ParallelExecutor : public IExecutor {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelExecutor);
 
   Status RunNodeAsync(size_t p_node_index, const SessionState& session_state,
-                      const logging::Logger& logger, const std::unordered_map<std::string, void*>& provider_run_options);
+                      const logging::Logger& logger);
 
   void EnqueueNode(size_t p_node_index, const SessionState& session_state, const logging::Logger& logger);
 
@@ -63,6 +61,7 @@ class ParallelExecutor : public IExecutor {
   OrtCondVar complete_cv_;
   std::vector<Status> errors_;
 
+  const RunOptions& run_options_;
   // TODO: Temporary threadpool for the executor.  This is a costly way to handle the problem.
   onnxruntime::concurrency::ThreadPool* const executor_pool_{};
 };

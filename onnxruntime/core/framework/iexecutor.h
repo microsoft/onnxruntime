@@ -4,7 +4,6 @@
 #pragma once
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "core/common/status.h"
@@ -22,11 +21,6 @@ class Logger;
 class IExecutor {
  public:
   using CustomAllocator = std::function<Status(const TensorShape&, const OrtMemoryInfo&, OrtValue&, bool& allocated)>;
-
-  IExecutor(const bool& terminate_flag) : terminate_flag_{terminate_flag} {};
-
-  IExecutor(const bool& terminate_flag, const std::unordered_map<std::string, void*>& provider_run_options)
-      : terminate_flag_{terminate_flag}, provider_run_options_{provider_run_options} {};
 
   virtual ~IExecutor() = default;
 
@@ -53,9 +47,5 @@ class IExecutor {
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger,
                                  const AllocatorPtr custom_cpu_allocator) = 0;
-                                 
- protected:
-  const bool& terminate_flag_;
-  const std::unordered_map<std::string, void*> provider_run_options_;
 };
 }  // namespace onnxruntime

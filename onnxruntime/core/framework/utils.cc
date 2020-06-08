@@ -466,19 +466,18 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, const std::unordered_map<std::string, void*>& provider_run_options,
-                                       const AllocatorPtr custom_allocator, const bool only_execute_path_to_fetches = false) {
+                                       ExecutionMode execution_mode, const RunOptions& run_options,
+                                       const logging::Logger& logger) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, provider_run_options, only_execute_path_to_fetches));
+    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(run_options));
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, provider_run_options, only_execute_path_to_fetches));
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(run_options));
     } else {
-      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag, provider_run_options));
+      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, run_options));
     }
   }
 
@@ -491,7 +490,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                        logger, custom_allocator));
+                                        logger, run_options.custom_cpu_allocator));
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -527,7 +526,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                        logger, custom_allocator));
+                                        logger, run_options.custom_cpu_allocator));
 
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
@@ -540,18 +539,15 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, 
-                            const std::unordered_map<std::string, void*>& provider_run_options, 
-                            const AllocatorPtr custom_allocator, bool only_execute_path_to_fetches) {
+                            ExecutionMode execution_mode, const RunOptions& run_options,
+                            const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, provider_run_options,
-                                 custom_allocator, only_execute_path_to_fetches);
+                                 execution_mode, run_options, logger);
 
   return status;
 }
@@ -559,12 +555,9 @@ common::Status ExecuteGraph(const SessionState& session_state,
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger, 
-                               const std::unordered_map<std::string, void*>& provider_run_options,
-                               const AllocatorPtr custom_allocator) {
+                               ExecutionMode execution_mode, const RunOptions& run_options, const logging::Logger& logger) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, provider_run_options,
-                                 custom_allocator);
+                                 execution_mode, run_options, logger);
   return status;
 }
 

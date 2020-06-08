@@ -268,10 +268,9 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
       }
     }
 
-    const std::unordered_map<std::string, void*> provider_run_options;
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(), provider_run_options, nullptr);
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetRunOptions(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 

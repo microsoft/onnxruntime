@@ -3,6 +3,7 @@
 #include "core/framework/compute_capability.h"
 #include <test/framework/dummy_allocator.h>
 #include <test/framework/test_utils.h>
+#include "core/framework/utils.h"
 #include <test/providers/provider_test_utils.h>
 #include <gtest/gtest.h>
 
@@ -56,7 +57,8 @@ class DummyExecutionProvider : public IExecutionProvider {
     // Create compute function
     compute_info.compute_func = [this](FunctionState, const OrtCustomOpApi*, OrtKernelContext* context) {
       auto internal_context = reinterpret_cast<OpKernelContextInternal*>(context);
-      run_context = internal_context->GetProviderRunOptions();
+      auto provider_run_options = internal_context->GetRunOptions().provider_run_options;
+      run_context = utils::GetProviderRunOptions(provider_run_options, kDummyExecutionProviderType);
       return Status::OK();
     };
 
