@@ -262,12 +262,14 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
 //--- end of local helpers ---
 //----------------------------
 
-int GetNodeInputIndexFromInputName(Node& target_node, const std::string& input_name) {
-  auto itr = std::find_if(target_node.MutableInputDefs().begin(), target_node.MutableInputDefs().end(),
-                          [&input_name](NodeArg* input) { return input->Name() == input_name; });
-  ORT_ENFORCE(itr != target_node.MutableInputDefs().end(), 
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  auto itr = std::find_if(node.InputDefs().begin(), node.InputDefs().end(),
+                          [&input_name](const NodeArg* input) { return input->Name() == input_name; });
+  ORT_ENFORCE(itr != node.InputDefs().end(), 
       "Attempting to get index for an input which does not exist.");
-  return static_cast<int>(itr - target_node.MutableInputDefs().begin());
+  auto index = std::distance(node.InputDefs().begin(), itr);
+  return static_cast<int>(index);
+
 }
 
 const std::string& GetNodeInputName(const Node& node, int index) {

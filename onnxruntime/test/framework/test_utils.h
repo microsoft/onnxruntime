@@ -104,9 +104,5 @@ void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtVa
 // Helper function to check that the graph transformations have been successfully applied.
 std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs = true);
 
-// Returns a vector of random input data with values in range [min_value, max_value]
-// Helper method to create random input data for tests
-std::vector<float> CreateRandomInputData(size_t count, int min_value, int max_value);
-
 }  // namespace test
 }  // namespace onnxruntime
