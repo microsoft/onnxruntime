@@ -118,7 +118,7 @@ struct OrtMemoryInfo {
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo: ["
-         << " name:" << name
+         << "name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
          << " alloc_type:" << alloc_type
@@ -306,9 +306,9 @@ class MiMallocAllocator : public IDeviceAllocator {
 #endif
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-  using TAllocator = MiMallocAllocator;
+using TAllocator = MiMallocAllocator;
 #else
-  using TAllocator = CPUAllocator;
+using TAllocator = CPUAllocator;
 #endif
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;

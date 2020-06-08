@@ -1042,35 +1042,49 @@ def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
 
-def run_training_python_frontend_e2e_tests(args, cwd):
+def run_training_python_frontend_tests(cwd):
+    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+    run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
+
+
+def run_training_python_frontend_e2e_tests(cwd):
     # frontend tests are to be added here:
     log.info("Running python frontend e2e tests.")
 
     # with orttraining_run_glue.py.
-    # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES) for fine-tune tests.
-    # 2. need to run test separately (not to mix between fp16 and full precision runs. this need to be investigated).
-    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
-                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
-    run_subprocess([sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
-                   cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+    # 1. we like to force to use single GPU (with CUDA_VISIBLE_DEVICES)
+    #   for fine-tune tests.
+    # 2. need to run test separately (not to mix between fp16
+    #   and full precision runs. this need to be investigated).
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
-    run_subprocess([sys.executable, 'orttraining_test_transformers.py'], cwd=cwd)
-
-    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
 
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_mixed_precision_all'], cwd=cwd)
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                          enable_tvm=False, enable_tensorrt=False):
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_all'], cwd=cwd)
+
+
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
 
         if args.enable_training and args.use_cuda and args.enable_training_python_frontend_e2e_tests:
             # run frontend tests for orttraining-linux-gpu-frontend_test-ci-pipeline.
-            # this is not a PR merge test so skip other tests.
-            run_training_python_frontend_e2e_tests(args, cwd=cwd)
+            # this is not a PR merge test so skip other non-frontend tests.
+            run_training_python_frontend_e2e_tests(cwd=cwd)
+            run_training_python_frontend_tests(cwd=cwd)
             continue
 
         android_x86_64 = args.android_abi == 'x86_64'
@@ -1098,13 +1112,19 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')  # noqa
             continue
-        if enable_tvm:
-            dll_path = os.path.join(
-                build_dir, config, "external", "tvm", config)
-        elif enable_tensorrt:
-            dll_path = os.path.join(args.tensorrt_home, 'lib')
-        else:
-            dll_path = None
+        dll_path_list = []
+        if args.use_tvm:
+            dll_path_list.append(os.path.join(
+                build_dir, config, "external", "tvm", config))
+        if args.use_tensorrt:
+            dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
+        if args.use_mklml:
+            dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
+
+        dll_path = None
+        if len(dll_path_list) > 0:
+            dll_path = os.pathsep.join(dll_path_list)
+
         if ctest_path is None:
             # Get the "Google Test Adapter" for vstest.
             if not os.path.exists(os.path.join(cwd,
@@ -1133,7 +1153,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
         if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are
             # not supported yet.
-            if enable_tensorrt:
+            if args.use_tensorrt:
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
@@ -1144,12 +1164,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
 
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
-                run_subprocess(
-                    [sys.executable, 'onnxruntime_test_ort_trainer.py'],
-                    cwd=cwd, dll_path=dll_path)
-                run_subprocess(
-                    [sys.executable, 'onnxruntime_test_training_unit_tests.py'],
-                    cwd=cwd, dll_path=dll_path)
+                run_training_python_frontend_tests(cwd=cwd)
 
             try:
                 import onnx  # noqa
@@ -1690,8 +1705,7 @@ def main():
         build_targets(args, cmake_path, build_dir, configs, args.parallel)
 
     if args.test:
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.use_tvm, args.use_tensorrt)
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
