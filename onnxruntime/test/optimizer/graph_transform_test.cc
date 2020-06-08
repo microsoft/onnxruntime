@@ -2216,7 +2216,9 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
 
   static const std::string all_provider_types[] = {
       onnxruntime::kCpuExecutionProvider,
+#ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
+#endif
   };
 
   for (auto& provider_type : all_provider_types) {
