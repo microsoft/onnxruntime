@@ -77,5 +77,16 @@ std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into
   return ops;
 }
 
+std::vector<float> CreateRandomInputData(size_t count, int min_value, int max_value) {
+  std::vector<float> random_data;
+  random_data.resize(count);
+  for (size_t n = 0; n < count; n++) {
+    random_data[n] = static_cast<float>(
+        std::min<int>(std::max<int>(rand() % max_value, min_value), max_value));
+  }
+
+  return random_data;
+}
+
 }  // namespace test
 }  // namespace onnxruntime

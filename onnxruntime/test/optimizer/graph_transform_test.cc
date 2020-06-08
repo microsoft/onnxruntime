@@ -48,6 +48,7 @@
 #include "test/capturing_sink.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
+#include "test/compare_ortvalue.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
 #include "asserts.h"
@@ -1199,7 +1200,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   ASSERT_EQ(op_to_count["Concat"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
 }
-  
+
 TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerSubgraphTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_multiple_values_in_initializer_tensor_1.onnx";
   std::shared_ptr<Model> p_model;
@@ -1398,8 +1399,6 @@ TEST_F(GraphTransformationTests, ExpandElimination) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Expand"] == 3);
 }
-
-
 
 TEST_F(GraphTransformationTests, CastElimination) {
   auto model_uri = MODEL_FOLDER "cast_elimination.onnx";
@@ -1719,6 +1718,71 @@ TEST_F(GraphTransformationTests, BiasGeluTest) {
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["Gelu"] == 0);
   ASSERT_TRUE(op_to_count["BiasGelu"] == 1);
+}
+
+TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_format_2.onnx";
+
+  NameMLValMap feeds;
+  RunOptions run_options;
+  run_options.run_tag = "session/tag";
+
+  // create inputs and outputs
+  OrtValue mlvalue_b_i;
+  std::vector<int64_t> dims_b_i = {3072};
+  int64_t num_elements = 1;
+  for (auto& dim : dims_b_i) {
+    num_elements *= dim;
+  }
+
+  int min_fill_value = -10;
+  int max_fill_value = 10;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_b_i,
+                       CreateRandomInputData(static_cast<size_t>(num_elements), min_fill_value, max_fill_value), &mlvalue_b_i);
+  feeds.insert(std::make_pair("B_I", mlvalue_b_i));
+
+  OrtValue mlvalue_a_i;
+  std::vector<int64_t> dims_a_i = {3, 512, 3072};
+  num_elements = 1;
+  for (auto& dim : dims_a_i) {
+    num_elements *= dim;
+  }
+
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_a_i,
+                       CreateRandomInputData(static_cast<size_t>(num_elements), min_fill_value, max_fill_value), &mlvalue_a_i);
+  feeds.insert(std::make_pair("A_I", mlvalue_a_i));
+
+  std::vector<std::string> output_names;
+  output_names.push_back("C");
+
+  auto run_model_test = [&](TransformerLevel level, std::vector<OrtValue>& fetches) {
+    SessionOptions session_options;
+    session_options.graph_optimization_level = level;
+    session_options.session_logid = "OptimizerTests";
+    InferenceSession session{session_options, GetEnvironment()};
+    ASSERT_TRUE(session.Load(model_uri).IsOK());
+    ASSERT_TRUE(session.Initialize().IsOK());
+
+    RunOptions run_options;
+    auto status = session.Run(run_options, feeds, output_names, &fetches);
+    if (!status.IsOK()) {
+      std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
+    }
+    ASSERT_TRUE(status.IsOK());
+  };
+
+  // run model with and w/o optimizations and compare the results
+  std::vector<OrtValue> vanilla_fetches;
+  run_model_test(TransformerLevel::Default, vanilla_fetches);
+
+  std::vector<OrtValue> optimized_fetches;
+  run_model_test(TransformerLevel::MaxLevel, optimized_fetches);
+
+  // Compare results
+  double per_sample_tolerance = 0.0;
+  double relative_per_sample_tolerance = 0.0;
+  auto ret = CompareOrtValue(optimized_fetches[0], vanilla_fetches[0], per_sample_tolerance, relative_per_sample_tolerance, false);
+  EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
 
 // Test Gelu -> FastGelu

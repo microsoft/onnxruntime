@@ -234,7 +234,8 @@ static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_nod
   auto input_edges = GetNodeInputEdges(src_node);
 
   for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
-    graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, cur->dst_arg_index);
+    auto target_arg_index = GetNodeInputIndexFromInputName(target_node, cur->arg_name);
+    graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, target_arg_index);
   }
 
   RemoveGraphEdges(graph, input_edges);
@@ -260,6 +261,14 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
+
+int GetNodeInputIndexFromInputName(Node& target_node, const std::string& input_name) {
+  auto itr = std::find_if(target_node.MutableInputDefs().begin(), target_node.MutableInputDefs().end(),
+                          [&input_name](NodeArg* input) { return input->Name() == input_name; });
+  ORT_ENFORCE(itr != target_node.MutableInputDefs().end(), 
+      "Attempting to get index for an input which does not exist.");
+  return static_cast<int>(itr - target_node.MutableInputDefs().begin());
+}
 
 const std::string& GetNodeInputName(const Node& node, int index) {
   const auto& inputs = node.InputDefs();
