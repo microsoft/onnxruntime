@@ -463,7 +463,7 @@ MlasQLinearAddKernelHelper(
     float ScaleC,
     int32_t ZeroPointC,
     DataType* OutputC,
-    size_t N,
+    size_t N
     )
 {
     constexpr int32_t MinimumValue = std::numeric_limits<DataType>::min();
@@ -476,7 +476,7 @@ MlasQLinearAddKernelHelper(
         ValueA = ScaleA * (int32_t(InputA[0]) - ZeroPointA);
     }
     if (IsScalarB) {
-        ValueB = ScaleB * (int32_t(InputB[n]) - ZeroPointB);
+        ValueB = ScaleB * (int32_t(InputB[0]) - ZeroPointB);
     }
 
     for (size_t n = 0; n < N; n++) {
