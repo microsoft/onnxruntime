@@ -823,7 +823,13 @@ if (onnxruntime_USE_CUDA)
     string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   endif()
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 11)
+  string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\1" CUDA_VERSION_MAJOR "${CMAKE_CUDA_COMPILER_VERSION}")
+  message( STATUS "CUDA_VERSION_MAJOR: ${CUDA_VERSION_MAJOR}")
+  if (CUDA_VERSION_MAJOR EQUAL 11)
+    set(CMAKE_CUDA_STANDARD 14)
+  else()
+    set(CMAKE_CUDA_STANDARD 11)
+  endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
@@ -943,14 +949,14 @@ if (onnxruntime_ENABLE_TRAINING)
       file (STRINGS ${MPI_HEADER_FILE} MPI_MAJOR_VERSION_DEFINED
             REGEX "^[ \t]*#define[ \t]+OMPI_MAJOR_VERSION[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
       if (MPI_MAJOR_VERSION_DEFINED)
-        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+OMPI_MAJOR_VERSION[ \t]+" ""
                 MPI_MAJOR_VERSION ${MPI_MAJOR_VERSION_DEFINED})
         message( STATUS "MPI_MAJOR_VERSION: ${MPI_MAJOR_VERSION}" )
       endif()
       file (STRINGS ${MPI_HEADER_FILE} MPI_MINOR_VERSION_DEFINED
             REGEX "^[ \t]*#define[ \t]+OMPI_MINOR_VERSION[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
       if (MPI_MINOR_VERSION_DEFINED)
-        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+OMPI_MINOR_VERSION[ \t]+" ""
                 MPI_MINOR_VERSION ${MPI_MINOR_VERSION_DEFINED})
         message(STATUS "MPI_MINOR_VERSION: ${MPI_MINOR_VERSION}")
       endif()
