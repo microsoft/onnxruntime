@@ -125,7 +125,7 @@ static bool MatchPositionSubgraph(
     return false;
   }
   for (size_t i = 0; i < edges.size(); i++) {
-    if (edges[i]->GetNode().GetOutputEdgesCount() != 1) {
+    if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), 1)) {
       DEBUG_LOG("Output edge count not expected for nodes in path 1 of position shape.");
       return false;
     }
@@ -151,9 +151,9 @@ static bool MatchPositionSubgraph(
     return false;
   }
 
-  if (edges[0]->GetNode().GetOutputEdgesCount() != 1 ||
-      edges[1]->GetNode().GetOutputEdgesCount() != 2 ||
-      edges[2]->GetNode().GetOutputEdgesCount() != 1) {
+  if (!optimizer_utils::CheckOutputEdges(graph, edges[0]->GetNode(), 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, edges[1]->GetNode(), 2) ||
+      !optimizer_utils::CheckOutputEdges(graph, edges[2]->GetNode(), 1)) {
     DEBUG_LOG("Output edge count not expected for nodes in path 2 of position shape.");
     return false;
   }
@@ -238,11 +238,10 @@ static bool MatchPositionEmbeddingSubgraph1(
     return false;
   }
   const size_t gather_index = 8;
-  auto gather_output_edges_count = pg_edges[gather_index]->GetNode().GetOutputEdgesCount();
   // All nodes in Path 1 must have only 1 output edge, except the gather node allowed 1 or 2 output edges
   for (size_t i = 0; i < pg_edges.size(); i++) {
-    if (pg_edges[i]->GetNode().GetOutputEdgesCount() != 1) {
-      if (i == gather_index && gather_output_edges_count == 2) {
+    if (!optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 1)) {
+      if (i == gather_index && optimizer_utils::CheckOutputEdges(graph, pg_edges[i]->GetNode(), 2)) {
         continue;
       }
       DEBUG_LOG("Output edge count not expected for nodes in path1.");
@@ -253,7 +252,7 @@ static bool MatchPositionEmbeddingSubgraph1(
   Node& expand_node = *graph.GetNode(pg_edges[0]->GetNode().Index());
   Node& gather_node = *graph.GetNode(pg_edges[gather_index]->GetNode().Index());
 
-  if (gather_output_edges_count == 1) {
+  if (gather_node.GetOutputEdgesCount() == 1) {
     // Check if the second input of the Gather node in the path has a constant input of 1
     // For gather_output_edges_count == 2, such checks are in MatchPositionSubgraph function.
     if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node.InputDefs()[1]), int64_t(1), true)) {
@@ -347,7 +346,7 @@ static bool MatchPositionEmbeddingSubgraph2(
 
   size_t last_edge = edges.size() - 1;
   for (size_t i = 0; i < edges.size(); i++) {
-    if (edges[i]->GetNode().GetOutputEdgesCount() != (i == last_edge ? 2u : 1u)) {
+    if (!optimizer_utils::CheckOutputEdges(graph, edges[i]->GetNode(), (i == last_edge ? 2u : 1u))) {
       DEBUG_LOG("Output edge count not expected for nodes in path 1.");
       return false;
     }
@@ -390,7 +389,7 @@ static bool MatchPositionEmbeddingSubgraph(
     return false;
   }
   Node& position_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
-  if (position_gather_node.GetOutputEdgesCount() != 1) {
+  if (!optimizer_utils::CheckOutputEdges(graph, position_gather_node, 1)) {
     return false;
   }
 
@@ -544,7 +543,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     Node& segment_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
-    if (segment_gather_node.GetOutputEdgesCount() != 1) {
+    if (!optimizer_utils::CheckOutputEdges(graph, segment_gather_node, 1)) {
       continue;
     }
     // The first input of segment_gather_node must be 2d.
@@ -566,7 +565,8 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     Node& add_node = *graph.GetNode(edges[0]->GetNode().Index());
     Node& word_gather_node = *graph.GetNode(edges[1]->GetNode().Index());
-    if (add_node.GetOutputEdgesCount() != 1 || word_gather_node.GetOutputEdgesCount() != 1) {
+    if (!optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
+        !optimizer_utils::CheckOutputEdges(graph, word_gather_node, 1)) {
       continue;
     }
     // The first input of word_gather_node must be 2d.
