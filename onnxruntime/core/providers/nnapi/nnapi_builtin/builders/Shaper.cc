@@ -91,6 +91,11 @@ void Shaper::Conv(const std::string& input_name,
   }
 
   shape_map_[output_name] = outputDimen;
+
+  LOGV("Conv %s nchw %d", input_name.c_str(), nchw);
+  LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
+  LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
+  LOGV("weight %d %d %d %d", weightDimen[0], weightDimen[1], weightDimen[2], weightDimen[3]);
 }
 
 void Shaper::DepthwiseConv(const std::string& input_name,
@@ -132,13 +137,13 @@ void Shaper::DepthwiseConv(const std::string& input_name,
     outputDimen =
         {
             inputDimen[0],
-            inputDimen[1]
+            inputDimen[1] == 0
                 ? 0
                 : (inputDimen[1] - ((weightDimen[1] - 1) * dilation_y + 1) +
                    padding_top + padding_bottom) /
                           stride_y +
                       1,
-            inputDimen[2]
+            inputDimen[2] == 0
                 ? 0
                 : (inputDimen[2] - ((weightDimen[2] - 1) * dilation_x + 1) +
                    padding_left + padding_right) /
@@ -148,6 +153,11 @@ void Shaper::DepthwiseConv(const std::string& input_name,
         };
   }
   shape_map_[output_name] = outputDimen;
+
+  LOGV("DepthwiseConv %s nchw %d", input_name.c_str(), nchw);
+  LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
+  LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
+  LOGV("weight %d %d %d %d", weightDimen[0], weightDimen[1], weightDimen[2], weightDimen[3]);
 }
 
 void Shaper::Reshape(const std::string& input_name,
@@ -201,32 +211,6 @@ void Shaper::Reshape(const std::string& input_name,
   shape_map_[output_name] = final_dimen;
 }
 
-void Shaper::StridedSlice(const std::string& input_name,
-                          const std::vector<int32_t>& starts,
-                          const std::vector<int32_t>& ends,
-                          const std::vector<int32_t>& strides,
-                          int32_t beginMask, int32_t endMask,
-                          int32_t shrinkAxisMask,
-                          const std::string& output_name) {
-  // NHWC
-  vector<uint32_t> inputDimen = shape_map_.at(input_name);
-  vector<uint32_t> outputDimen;
-  for (size_t i = 0; i < inputDimen.size(); i++) {
-    if (shrinkAxisMask & (1 << i)) {
-      continue;
-    }
-    int32_t start = starts[i], end = ends[i], stride = strides[i];
-    if (beginMask & (1 << i)) {
-      start = 0;
-    }
-    if (endMask & (1 << i)) {
-      end = inputDimen[i];
-    }
-    outputDimen.emplace_back((end - start) / stride);
-  }
-  shape_map_[output_name] = outputDimen;
-}
-
 void Shaper::Pool(const std::string& input_name,
                   int32_t padding_left,
                   int32_t padding_right,
@@ -234,9 +218,9 @@ void Shaper::Pool(const std::string& input_name,
                   int32_t padding_bottom,
                   int32_t stride_x,
                   int32_t stride_y,
-                  bool nchw,
                   int32_t width,
                   int32_t height,
+                  bool nchw,
                   const std::string& output_name) {
   auto inputDimen = shape_map_.at(input_name);
 
@@ -265,47 +249,10 @@ void Shaper::Pool(const std::string& input_name,
   }
 
   shape_map_[output_name] = outputDimen;
-}
 
-void Shaper::Softmax(const std::string& input_name,
-                     const std::string& output_name) {
-  shape_map_[output_name] = shape_map_.at(input_name);
-}
-
-void Shaper::Concat(const std::vector<std::string>& input_names, uint32_t axis,
-                    const std::string& output_name) {
-  vector<Shape> dimens;
-  for (const auto& input : input_names) {
-    auto& dimen = shape_map_.at(input);
-    if (!dimens.empty()) {
-      for (size_t i = 0; i < dimens[0].size(); i++) {
-        if (i == axis) continue;
-        if (dimen[i] != dimens[0][i]) {
-          throw std::invalid_argument("Wrong input for concat");
-        }
-      }
-    }
-    dimens.push_back(shape_map_.at(input));
-  }
-
-  auto outputDimen = dimens[0];
-  for (size_t i = 1; i < dimens.size(); i++) {
-    outputDimen[axis] += dimens[i][axis];
-  }
-  shape_map_[output_name] = outputDimen;
-}
-
-void Shaper::LRN(const std::string& input_name,
-                 const std::string& output_name) {
-  shape_map_[output_name] = shape_map_.at(input_name);
-}
-
-void Shaper::FC(const std::string& input_name, const std::string& weight_name,
-                const std::string& output_name) {
-  Shape weightDimen = shape_map_.at(weight_name);  // num_units, input_size
-  auto input_dimen = shape_map_.at(input_name);
-  Shape outputDimen{input_dimen[0], weightDimen[0]};
-  shape_map_[output_name] = outputDimen;
+  LOGV("Pool %s nchw %d", input_name.c_str(), nchw);
+  LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
+  LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
 }
 
 void Shaper::Eltwise(const std::string& input1_name,
@@ -328,44 +275,6 @@ void Shaper::Eltwise(const std::string& input1_name,
   shape_map_[output_name] = max_shape;
 }
 
-void Shaper::Eltwise(const std::string& input1_name,
-                     const std::string& output_name) {
-  shape_map_[output_name] = shape_map_.at(input1_name);
-}
-
-void Shaper::BatchToSpace(const std::string& input_name,
-                          const std::vector<int32_t>& block_sizes,
-                          const std::string& output_name) {
-  auto input_dimen = shape_map_.at(input_name);
-  auto output_dimen = {input_dimen[0] / Product(block_sizes),
-                       input_dimen[1] * block_sizes[0],
-                       input_dimen[2] * block_sizes[1], input_dimen[3]};
-  shape_map_[output_name] = output_dimen;
-}
-
-void Shaper::SpaceToBatch(const std::string& input_name,
-                          const std::vector<int32_t>& block_sizes,
-                          const std::vector<int32_t>& pads,
-                          const std::string& output_name) {
-  auto input_dimen = shape_map_.at(input_name);
-  auto output_dimen = {input_dimen[0] * Product(block_sizes),
-                       (input_dimen[1] + pads[0] + pads[1]) / block_sizes[0],
-                       (input_dimen[2] + pads[2] + pads[3]) / block_sizes[1],
-                       input_dimen[3]};
-  shape_map_[output_name] = output_dimen;
-}
-
-void Shaper::Affine(const std::string& input_name,
-                    const std::string& output_name) {
-  shape_map_[output_name] = shape_map_.at(input_name);
-}
-void Shaper::Affine(const std::string& input_name, const std::string& a,
-                    const std::string& b, const std::string& output_name) {
-  (void)a;
-  (void)b;
-  Shaper::Affine(input_name, output_name);
-}
-
 void Shaper::Identity(const std::string& input_name,
                       const std::string& output_name) {
   shape_map_[output_name] = shape_map_.at(input_name);
@@ -382,10 +291,3 @@ size_t Shaper::GetSize(const std::string& name) {
 void Shaper::Clear() {
   shape_map_.clear();
 }
-
-// std::ostream& operator<<(std::ostream& os, const Shaper& shaper) {
-//   for (const auto& p : shaper.shape_map_) {
-//     os << (p.first + ": ") << p.second << std::endl;
-//   }
-//   return os;
-// }

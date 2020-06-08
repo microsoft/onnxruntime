@@ -14,7 +14,7 @@ struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
 
-//#define USENNAPISHAREDMEM 1
+#define USENNAPISHAREDMEM 1
 
 #ifdef USENNAPISHAREDMEM
 // Manage NNAPI shared memory handle

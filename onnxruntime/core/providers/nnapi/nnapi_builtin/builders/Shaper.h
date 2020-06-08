@@ -35,12 +35,7 @@ class Shaper {
                      int32_t dilation_y,
                      bool nchw,
                      const std::string& output_name);
-  void StridedSlice(const std::string& input_name,
-                    const std::vector<int32_t>& starts,
-                    const std::vector<int32_t>& ends,
-                    const std::vector<int32_t>& strides, int32_t beginMask,
-                    int32_t endMask, int32_t shrinkAxisMask,
-                    const std::string& output_name);
+
   void Pool(const std::string& input_name,
             int32_t padding_left,
             int32_t padding_right,
@@ -48,26 +43,15 @@ class Shaper {
             int32_t padding_bottom,
             int32_t stride_x,
             int32_t stride_y,
-            bool nchw,
             int32_t width,
             int32_t height,
+            bool nchw,
             const std::string& output_name);
   void Reshape(const std::string& input_name,
                const std::vector<int32_t>& shape,
                const std::string& output_name);
-  void Softmax(const std::string& input_name, const std::string& output_name);
-  void Concat(const std::vector<std::string>& input_names, uint32_t axis,
-              const std::string& output_name);
-  void LRN(const std::string& input_name, const std::string& output_name);
-  void FC(const std::string& input_name, const std::string& weight_name,
-          const std::string& output_name);
   void Eltwise(const std::string& input1_name, const std::string& input2_name,
                const std::string& output_name);
-  void Eltwise(const std::string& input1_name,
-               const std::string& output_name);
-  void Affine(const std::string& input_name, const std::string& output_name);
-  void Affine(const std::string& input_name, const std::string& a,
-              const std::string& b, const std::string& output_name);
   void Identity(const std::string& input_name,
                 const std::string& output_name);
   void BatchToSpace(const std::string& input_name,
@@ -84,7 +68,6 @@ class Shaper {
   inline const Shape& operator[](const std::string& key) {
     return shape_map_.at(key);
   }
-  //   friend std::ostream& operator<<(std::ostream& os, const Shaper& shaper);
 
  private:
   std::map<std::string, Shape> shape_map_;

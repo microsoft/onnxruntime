@@ -113,7 +113,7 @@ void Model::Predict(const std::vector<InputOutputInfo>& inputs) {
   PredictAfterSetInputBuffer();
 }
 
-#ifdef USENNSHAREDMEM
+#ifdef USENNAPISHAREDMEM
 NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
   if (name && size > 0) {
     nnapi_ = nnapi;

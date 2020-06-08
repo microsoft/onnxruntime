@@ -268,6 +268,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       // }
 
       std::vector<nnapi::InputOutputInfo> inputs;
+
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const auto& input_name = model->GetInputs()[i];
         const auto& model_input_type = model->GetType(input_name);
@@ -279,13 +280,13 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         for (const auto& dim : tensor_shape)
           dimensions.push_back(static_cast<uint32_t>(dim));
 
-        // ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandByteSize() == 0,
-        //             "dimanesions should match or model input dimension has 0");
-
         // remove
         // LOGS_DEFAULT(INFO) << "input name is " << input_name << " and i " << i;
         // LOGS_DEFAULT(INFO) << "dim is " << GetShape(dimensions);
         // LOGS_DEFAULT(INFO) << "model dim is " << GetShape(model_input_type.dimensions);
+
+        ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandByteSize() == 0,
+                    "dimanesions should match or model input dimension has 0");
 
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
@@ -296,6 +297,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
         void* inputBuffer = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
         inputs.push_back({inputBuffer, std::move(type)});
+
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
         // Remove

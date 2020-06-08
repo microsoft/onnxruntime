@@ -682,16 +682,16 @@ void ModelBuilder::AddOperations() {
         shaper_.Conv(input, weight,
                      onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                      onnx_strides[1], onnx_strides[0],
-                     nchw,
                      onnx_dilations[1], onnx_dilations[0],
+                     nchw,
                      output);
       } else if (depthwiseConv2D) {
         operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
         shaper_.DepthwiseConv(input, weight,
                               onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                               onnx_strides[1], onnx_strides[0],
-                              nchw,
                               onnx_dilations[1], onnx_dilations[0],
+                              nchw,
                               output);
       }
 
@@ -834,8 +834,8 @@ void ModelBuilder::AddOperations() {
       shaper_.Pool(input,
                    onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                    onnx_strides[1], onnx_strides[0],
-                   nchw,
                    kernel_shape[1], kernel_shape[0],
+                   nchw,
                    output);
       const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
       AddOperation(operationCode, input_indices, {output}, {output_operand_type});
