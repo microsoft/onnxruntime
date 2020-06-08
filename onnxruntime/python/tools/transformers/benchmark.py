@@ -44,7 +44,12 @@ import numpy
 import sys
 import os
 import psutil
+import onnx
 from packaging import version
+
+from optimizer import optimize_model, optimize_by_onnxruntime
+from BertOnnxModel import BertOptimizationOptions
+from quantize import quantize, QuantizationMode
 
 logger = logging.getLogger('')
 
@@ -86,7 +91,7 @@ class GPT2ModelNoPastState(GPT2Model):
         super().__init__(config)
 
     def forward(self, input_ids):
-        return super().forward(input_ids, use_cache=False)
+        return super().forward(input_ids)
 
 
 def load_pretrained_model(model_name, config, cache_dir):
@@ -95,14 +100,14 @@ def load_pretrained_model(model_name, config, cache_dir):
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization):
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, single_thread = False):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     if not enable_all_optimization:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
-    if (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
+    if single_thread or (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
         # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
         # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
         sess_options.intra_op_num_threads = 1
@@ -227,16 +232,19 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
                                             use_gpu=use_gpu,
                                             optimized_model_path=ort_model_path,
                                             opt_level=99)
-        model_fusion_statistics[ort_model_path] = opt_model.get_fused_operator_statistics()
+        #model_fusion_statistics[ort_model_path] = opt_model.get_fused_operator_statistics()
     else:
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
+def quantize_onnx_model(onnx_model_path, quantized_model_path):
+    onnx_opt_model = onnx.load(onnx_model_path)
+    quantized_onnx_model = quantize(onnx_opt_model, quantization_mode=QuantizationMode.IntegerOps, symmetric_weight=True, force_fusions=True)
+    onnx.save(quantized_onnx_model, quantized_model_path)
+    logger.info(f"quantized model saved to:{quantized_model_path}")
 
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
                         fp16, overwrite):
     if overwrite or not os.path.exists(optimized_model_path):
-        from optimizer import optimize_model, optimize_by_onnxruntime
-        from BertOnnxModel import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
         if fp16:
             optimization_options.enable_gelu_approximation = True
@@ -330,6 +338,7 @@ def get_latency_result(runtimes, batch_size):
     return {
         "test_times": len(runtimes),
         "latency_variance": "{:.2f}".format(latency_variance),
+        "latency_50_percentile": "{:.2f}".format(numpy.percentile(runtimes, 50) * 1000.0),
         "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
         "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
         "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
@@ -339,7 +348,7 @@ def get_latency_result(runtimes, batch_size):
 
 
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite):
+                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, quantize, single_thread):
     import onnxruntime
 
     results = []
@@ -367,7 +376,10 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
             if not is_valid_onnx_model:
                 continue
 
-            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True)
+            if quantize:
+                quantize_onnx_model(onnx_model_file, onnx_model_file)
+
+            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, True, single_thread)
             if ort_session is None:
                 continue
 
@@ -377,7 +389,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                 for sequence_length in sequence_lengths:
                     if max_sequence_length is not None and sequence_length > max_sequence_length:
                         continue
-
+                    logger.info(f"sequence_length:{sequence_length}")
                     ort_input = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names)
 
                     logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
@@ -405,13 +417,13 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
 
 
 def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
-                verbose):
+                verbose, quantize, single_thread):
     results = []
     if use_gpu and not torch.cuda.is_available():
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
         return results
 
-    torch.set_num_threads(cpu_count)
+    torch.set_num_threads(1 if single_thread else cpu_count)
     torch.set_grad_enabled(False)
 
     for model_name in model_names:
@@ -427,6 +439,9 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
 
         device = torch.device("cuda:0" if use_gpu else "cpu")
         model.to(device)
+
+        if quantize:
+            model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
@@ -474,7 +489,7 @@ def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "engine", "version", "device", "fp16", "optimizer", "model_name", "inputs", "batch_size", "sequence_length",
-            "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile",
+            "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_50_percentile", "latency_90_percentile",
             "latency_95_percentile", "latency_99_percentile"
         ]
 
@@ -512,7 +527,7 @@ def output_summary(results, csv_filename, args):
                                     assert row[k] == headers[k]
                             b = result["batch_size"]
                             s = result["sequence_length"]
-                            row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                            row[f"b{b}_s{s}"] = result["latency_50_percentile"]
                     csv_writer.writerow(row)
 
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
@@ -612,7 +627,10 @@ def parse_arguments():
 
     parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1])
 
-    parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[8, 16, 32, 64, 128, 256])
+    parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[4, 8, 16, 32, 64, 128, 256])
+
+    parser.add_argument("-q", "--quantize", required=False, action="store_true", help="Run quantization model")
+    parser.add_argument("--single_thread", required=False, action="store_true", help="Run quantization model")
 
     args = parser.parse_args()
     return args
@@ -654,17 +672,17 @@ def main():
 
         if enable_torchscript:
             results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, True, args.cache_dir, args.verbose)
+                                   args.test_times, True, args.cache_dir, args.verbose, args.quantize, args.single_thread)
 
         if enable_torch:
             results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, False, args.cache_dir, args.verbose)
+                                   args.test_times, False, args.cache_dir, args.verbose, args.quantize, args.single_thread)
 
     if enable_onnxruntime:
         try:
             results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
-                                       args.cache_dir, args.onnx_dir, args.verbose, args.overwrite)
+                                       args.cache_dir, args.onnx_dir, args.verbose, args.overwrite, args.quantize, args.single_thread)
         except:
             logger.error(f"Exception", exc_info=True)
 
