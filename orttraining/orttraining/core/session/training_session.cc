@@ -130,17 +130,6 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-  // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
-  // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
-  // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
-  std::unordered_set<std::string> excluded_initializers =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
-          : GetTrainableModelInitializers(config.immutable_weights);
-  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    excluded_initializers.erase(weight_name_to_not_train);
-  }
-
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
@@ -149,8 +138,6 @@ Status TrainingSession::ConfigureForTraining(
                                                           config.distributed_config.world_rank,
                                                           config.distributed_config.world_size));
   }
-
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
@@ -188,11 +175,30 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
   }
 
+  // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
+  // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
+  // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
+  std::unordered_set<std::string> trainable_initializers =
+      !config.weight_names_to_train.empty()
+          ? config.weight_names_to_train
+          : GetTrainableModelInitializers(config.immutable_weights, loss_name);
+  if (config.weight_names_to_not_train.size() > 0)
+  {
+    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:\n";
+    for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
+      trainable_initializers.erase(weight_name_to_not_train);
+      LOGS(*session_logger_, INFO) << weight_name_to_not_train;
+    }
+    LOGS(*session_logger_, INFO) << std::endl;
+  }
+  
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers));
+
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !config.weight_names_to_train.empty()
           ? config.weight_names_to_train
-          : GetTrainableModelInitializers(config.immutable_weights);
+          : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     weight_names_to_train.erase(weight_name_to_not_train);
   }
@@ -937,26 +943,46 @@ bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weight
 }
 
 std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
-    const ImmutableWeights& immutable_weights) const {
+    const ImmutableWeights& immutable_weights, const std::string& loss_name) const {
+
   const Graph& graph = model_->MainGraph();
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
-  std::unordered_set<std::string> model_initializers;
-  std::transform(initialized_tensors.begin(),
-                 initialized_tensors.end(),
-                 std::inserter(model_initializers, model_initializers.end()),
-                 [](const auto& pair) { return pair.first; });
+  std::unordered_set<std::string> trainable_initializers;
 
-  std::unordered_set<std::string> trainable_initializers(model_initializers);
-  for (const std::string& initializer_name : model_initializers) {
-    const auto& nodes = graph.GetConsumerNodes(initializer_name);
-    for (const Node* node : nodes) {
-      if (IsUntrainable(node, initializer_name, session_logger_) ||
-          IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_)) {
-        trainable_initializers.erase(initializer_name);
+  auto add_trainable_initializers = [&](const Node* node) { 
+      for (auto input : node->InputDefs()) {
+        std::string initializer_name = input->Name();
+        if (initialized_tensors.count(initializer_name) == 0)
+          continue;
+
+        if (IsUntrainable(node, initializer_name, session_logger_) ||
+            IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_))
+          continue;
+
+        trainable_initializers.insert(initializer_name);
       }
-    }
-  }
+  };
 
+  auto stop_at_untrainable = [&](const Node* from, const Node* to) {
+
+      auto is_trainable_from_to_link = [&](Node::EdgeEnd e) { 
+        if (&e.GetNode() != to) 
+          return false;
+
+        std::string input_name = from->InputDefs()[e.GetDstArgIndex()]->Name();
+        return !IsUntrainable(from, input_name, session_logger_);
+      };
+
+      bool proceed = std::any_of(from->InputEdgesBegin(), from->InputEdgesEnd(), is_trainable_from_to_link);
+      if (!proceed && session_logger_) {
+        VLOGS(*session_logger_, 1) << "Stopping training parameters discovery traversal from " << from->Name() << " to " << to->Name() << std::endl;
+      }
+
+      return !proceed;
+  };
+
+  // perform reverse dfs from output node to discover trainable parameters
+  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 
