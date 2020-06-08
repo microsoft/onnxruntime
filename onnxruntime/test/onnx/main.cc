@@ -37,7 +37,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
-      "'openvino', 'nuphar', 'migraphx' or 'acl'. "
+      "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -85,7 +85,7 @@ int real_main(int argc, wchar_t* argv[], Ort::Env& env) {
 int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
   // if this var is not empty, only run the tests with name in this list
-  std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
+  std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -101,13 +101,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_nnapi = false;
   bool enable_dml = false;
   bool enable_acl = false;
+  bool enable_armnn = false;
   bool enable_migraphx = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   int verbosity_option_count = 0;
 
-  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   {
     int ch;
     while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
@@ -168,9 +169,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
             enable_acl = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
+            enable_armnn = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
-          }else {
+          } else {
             usage();
             return -1;
           }
@@ -223,11 +226,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   }
 
   // set log level based on number of verbosity options
-  if (verbosity_option_count == 1) {
-    logging_level = ORT_LOGGING_LEVEL_INFO;
-  } else if (verbosity_option_count > 1) {
-    logging_level = ORT_LOGGING_LEVEL_VERBOSE;
-  }
+  logging_level =
+      static_cast<OrtLoggingLevel>(static_cast<int>(ORT_LOGGING_LEVEL_ERROR) -
+                                   std::min<int>(verbosity_option_count, static_cast<int>(ORT_LOGGING_LEVEL_ERROR)));
 
   if (concurrent_session_runs > 1 && repeat_count > 1) {
     fprintf(stderr, "when you use '-r [repeat]', please set '-c' to 1\n");
@@ -249,7 +250,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     return -1;
   }
 
-  std::vector<std::basic_string<PATH_CHAR_TYPE> > data_dirs;
+  std::vector<std::basic_string<PATH_CHAR_TYPE>> data_dirs;
   TestResultStat stat;
 
   for (int i = 0; i != argc; ++i) {
@@ -366,6 +367,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_armnn) {
+#ifdef USE_ARMNN
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
+#else
+      fprintf(stderr, "ArmNN is not supported in this build\n");
+      return -1;
+#endif
+    }
     if (enable_migraphx) {
 #ifdef USE_MIGRAPHX
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(sf, device_id));
@@ -428,7 +437,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
 
-    std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
+    std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
@@ -446,9 +455,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
+    std::vector<std::unique_ptr<ITestCase>> owned_tests;
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, all_disabled_tests,
-              [&tests](ITestCase* l) { tests.push_back(l); });
+
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+              all_disabled_tests,
+              [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
+                tests.push_back(l.get());
+                owned_tests.push_back(std::move(l));
+              });
 
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
@@ -456,9 +471,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
       return -1;
-    }
-    for (ITestCase* l : tests) {
-      delete l;
     }
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
