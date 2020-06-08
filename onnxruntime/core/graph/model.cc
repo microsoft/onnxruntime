@@ -26,7 +26,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 
-static constexpr int protobuf_block_size_in_bytes = 4 << 20;
+static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 
 namespace onnxruntime {
 Model::Model(const std::string& graph_name,
