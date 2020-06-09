@@ -21,22 +21,6 @@ jobs:
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
     - task: CmdLine@2
-      displayName: 'Download azcopy'
-      inputs:
-        script: |
-          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
-          tar -zxvf azcopy.tar.gz --strip 1
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: CmdLine@2
       displayName: 'Run docker image'
       inputs:
         script: sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory)/server:/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro onnxruntime-server-ubuntu16.04 /bin/bash /onnxruntime_src/ci/run.sh

@@ -971,7 +971,8 @@ class ORTTrainer():
                 model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().BFLOAT16:
             raise RuntimeError("the first output of a model to run with fully optimized ORT backend must be float types.")
         if len(model.graph.output[0].type.tensor_type.shape.dim) != 0:
-            raise RuntimeError("the first output of a model to run with fully optimized ORT backend must be a scaler.")
+            raise RuntimeError(
+                "the first output of a model to run with fully optimized ORT backend assumed to be loss and must be a scalar.")
 
 class LossScaler():
     def __init__(self, loss_scale_input_name, is_dynamic_scale,
