@@ -1135,6 +1135,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   for(auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
+      std::cout << "PipelineOnlinePartition test with stage = " << i << ", is_fp32 = " << is_fp32 << ".\n";
 #ifdef _WIN32
       auto surfix = std::to_wstring(i);
 #else
