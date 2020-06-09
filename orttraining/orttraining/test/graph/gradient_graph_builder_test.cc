@@ -1135,7 +1135,6 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   for(auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
-      std::cout << "PipelineOnlinePartition test with stage = " << i << ", is_fp32 = " << is_fp32 << ".\n";
 #ifdef _WIN32
       auto surfix = std::to_wstring(i);
 #else
@@ -1159,7 +1158,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
       }
 
       PathString backprop_model_file;
-      ASSERT_STATUS_OK(BuildBackPropGraph(model_uri, config, backprop_model_file));
+      Status status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+      ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
 
       // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
       // which takes a const tensor input. Const cast for input in function body won't be saved in the output
@@ -1169,7 +1169,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
       if (is_fp32) {
         std::shared_ptr<Model> model;
         // Ensure the partitioned model load.
-        ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+        status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
+        ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
       }
     }
   }
