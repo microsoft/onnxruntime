@@ -12,7 +12,7 @@ allprojects {
 	}
 }
 
-project.group = "ai.onnxruntime"
+project.group = "com.microsoft.onnxruntime"
 version = rootProject.file('../VERSION_NUMBER').text.trim()
 
 java {

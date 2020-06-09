@@ -136,7 +136,7 @@ steps:
       modifyEnvironment: true
 
   # Esrp signing
-  - template: esrp_dll.yml
+  - template: win-esrp-dll.yml
     parameters:
       FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
       DisplayName: 'ESRP - Sign Native dlls'

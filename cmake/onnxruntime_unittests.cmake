@@ -336,6 +336,10 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
+if(onnxruntime_USE_ARMNN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
+endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
@@ -355,6 +359,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
