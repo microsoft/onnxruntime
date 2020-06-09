@@ -19,8 +19,18 @@ namespace android {
 namespace nn {
 namespace wrapper {
 
+bool isScalarType(const Type& type) {
+  return type == Type::FLOAT16 || type == Type::FLOAT32 || type == Type::INT32 || type == Type::BOOL || type == Type::UINT32;
+}
+
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(std::move(d)) {
+  if (dimensions.empty()) {
+    if (!isScalarType(type)) {
+      dimensions = {1};
+    }
+  }
+
   operandType = {
       .type = static_cast<int32_t>(type),
       .dimensionCount = static_cast<uint32_t>(dimensions.size()),
@@ -33,6 +43,12 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
 OperandType::OperandType(const OperandType& other) {
   type = other.type;
   dimensions = other.dimensions;
+  if (dimensions.empty()) {
+    if (!isScalarType(type)) {
+      dimensions = {1};
+    }
+  }
+
   operandType = {
       .type = static_cast<int32_t>(type),
       .dimensionCount = static_cast<uint32_t>(dimensions.size()),

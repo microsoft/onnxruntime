@@ -300,8 +300,7 @@ void ModelBuilder::RegisterInitializers() {
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        if (shape.empty())  // scalar
-          type = Type::FLOAT32;
+        type = Type::TENSOR_FLOAT32;
         break;
       default:
         // TODO: support other type
@@ -352,14 +351,13 @@ void ModelBuilder::RegisterInitializers() {
 
 void ModelBuilder::RegisterModelInputs() {
   for (const auto& input : model_proto_.graph().input()) {
-    std::string name = input.name();
-    bool needTranspose = false;
+    std::string input_name = input.name();
 
     {  // input should not be an initializer
-      if (HAS(operands_, name))
+      if (HAS(operands_, input_name))
         continue;
 
-      if (HAS(initializers_, name))
+      if (HAS(initializers_, input_name))
         continue;
     }
 
@@ -374,54 +372,40 @@ void ModelBuilder::RegisterModelInputs() {
       }
     }
 
-    // if (shape.size() == 4) {
-    //   name = name + "preTranspose";
-    //   needTranspose = true;
-    // }
-
-    shaper_.AddShape(name, shape);
+    shaper_.AddShape(input_name, shape);
 
     Type type = Type::TENSOR_FLOAT32;
     if (input.type().tensor_type().has_elem_type()) {
       switch (input.type().tensor_type().elem_type()) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          if (shape.empty())  // scalar
-            type = Type::FLOAT32;
+          type = Type::TENSOR_FLOAT32;
           break;
         default:
           // TODO: support other type
           throw std::invalid_argument(
-              "The input of graph doesn't have valid type: " + name);
+              "The input of graph doesn't have valid type: " + input_name);
       }
     }
 
     OperandType operand_type(type, shape);
     auto index = AddNewOperand(operand_type);
-    RegisterOperand(name, index, operand_type);
+    RegisterOperand(input_name, index, operand_type);
 
     input_index_vec_.push_back(index);
-    nnapi_model_->AddInput(name, shape, operand_type);
-
-    // will transpose the input from nchw to nwhc if necessary
-    if (needTranspose) {
-      // int32_t perm[4] = {0, 2, 3, 1};
-      // const std::string& output(input.name());
-      // IndexSeq input_indices;
-      // input_indices.push_back(operand_indexes_.at(name));
-    }
+    nnapi_model_->AddInput(input_name, shape, operand_type);
   }
 }
 
 void ModelBuilder::RegisterModelOutputs() {
   for (const auto& output : model_proto_.graph().output()) {
-    const std::string& name(output.name());
-    if (operands_.find(name) == operands_.end()) {
+    const std::string& output_name(output.name());
+    if (!HAS(operands_, output_name)) {
       throw std::invalid_argument(
-          "The output of graph is not registered" + name);
+          "The output of graph is not registered" + output_name);
     }
 
-    output_index_vec_.push_back(operand_indexes_[name]);
-    nnapi_model_->AddOutput(name, shaper_[name], operand_types_.at(name));
+    output_index_vec_.push_back(operand_indexes_[output_name]);
+    nnapi_model_->AddOutput(output_name, shaper_[output_name], operand_types_.at(output_name));
   }
 }
 
@@ -556,8 +540,8 @@ uint32_t ModelBuilder::Add1230Initializer(const std::string& name) {
           auto onnx_idx = out * in_t * h_t * w_t +
                           in * h_t * w_t + h * w_t +
                           w;
-          auto nnapi_idx = h * w_t * out_t +
-                           w * out_t +
+          auto nnapi_idx = in * h_t * w_t * out_t +
+                           h * w_t * out_t + w * out_t +
                            out;
           buffer[nnapi_idx] = src[onnx_idx];
         }
@@ -572,7 +556,6 @@ void ModelBuilder::AddOperations() {
   for (const auto& node : model_proto_.graph().node()) {
     const auto& op = node.op_type();
 
-    bool nchw = true;
     NodeAttrHelper helper(node);
     // process skips (already used as activation)
     if (op == "Add") {
@@ -698,7 +681,7 @@ void ModelBuilder::AddOperations() {
       }
       int32_t fuse_code = FindActivation(output);
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
+      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&use_nchw_), sizeof(bool)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[1]), sizeof(int32_t)));
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[0]), sizeof(int32_t)));
 
@@ -709,7 +692,7 @@ void ModelBuilder::AddOperations() {
                      onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                      onnx_strides[1], onnx_strides[0],
                      onnx_dilations[1], onnx_dilations[0],
-                     nchw,
+                     use_nchw_,
                      output);
       } else if (depthwiseConv2D) {
         operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
@@ -717,7 +700,7 @@ void ModelBuilder::AddOperations() {
                               onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                               onnx_strides[1], onnx_strides[0],
                               onnx_dilations[1], onnx_dilations[0],
-                              nchw,
+                              use_nchw_,
                               output);
       }
 
@@ -760,7 +743,7 @@ void ModelBuilder::AddOperations() {
       const auto tensor_b_name = input + "_imm_b";
       const auto tensor_imm_product_name = input + "_imm_mul";
       Shape tensor_a_dimen;
-      if (nchw)
+      if (use_nchw_)
         tensor_a_dimen = {size, 1, 1};  // {C, H, W}
       else
         tensor_a_dimen = {size};
@@ -833,7 +816,7 @@ void ModelBuilder::AddOperations() {
         onnx_strides = vector<int>{1, 1};
         onnx_pads = vector<int>{0, 0, 0, 0};
 
-        if (nchw)
+        if (use_nchw_)
           kernel_shape = vector<int>{static_cast<int32_t>(shaper_[input][2]),
                                      static_cast<int32_t>(shaper_[input][3])};
         else
@@ -855,13 +838,13 @@ void ModelBuilder::AddOperations() {
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[0]), sizeof(int32_t)));
       int32_t fuse_code = FindActivation(output);
       input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&nchw), sizeof(bool)));
+      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&use_nchw_), sizeof(bool)));
 
       shaper_.Pool(input,
                    onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
                    onnx_strides[1], onnx_strides[0],
                    kernel_shape[1], kernel_shape[0],
-                   nchw,
+                   use_nchw_,
                    output);
       const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
       AddOperation(operationCode, input_indices, {output}, {output_operand_type});
@@ -895,8 +878,8 @@ void ModelBuilder::AddOperations() {
       if (!perm.empty()) {
         Shape perm_dimen = {static_cast<uint32_t>(shaper_[input].size())};
         std::string perm_name = input + op + "perm";
-        OperandType operandType(Type::TENSOR_INT32, perm_dimen);
-        uint32_t perm_idx = AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), operandType);
+        OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
+        uint32_t perm_idx = AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
         input_indices.push_back(perm_idx);
       }
 

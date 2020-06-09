@@ -27,6 +27,8 @@ class ModelBuilder {
   ONNX_NAMESPACE::ModelProto& model_proto_;
   std::unique_ptr<Model> nnapi_model_;
 
+  bool use_nchw_{true};
+
   Shaper shaper_;
 
   std::map<std::string, uint32_t> operand_indexes_;

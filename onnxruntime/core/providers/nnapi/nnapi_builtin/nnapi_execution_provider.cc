@@ -256,16 +256,16 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       }
 
       // remove
-      // for (size_t i = 0; i < num_inputs; i++) {
-      //   const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-      //   const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-      //   const auto& tensor_shape = ort.GetTensorShape(tensor_info);
-      //   std::vector<uint32_t> dimensions;
-      //   for (const auto& dim : tensor_shape)
-      //     dimensions.push_back(static_cast<uint32_t>(dim));
-      //   ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-      //   LOGS_DEFAULT(INFO) << "system input i is " << i << " system dim is " << GetShape(dimensions);
-      // }
+      for (size_t i = 0; i < num_inputs; i++) {
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        std::vector<uint32_t> dimensions;
+        for (const auto& dim : tensor_shape)
+          dimensions.push_back(static_cast<uint32_t>(dim));
+        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+        LOGS_DEFAULT(INFO) << "system input i is " << i << " system dim is " << GetShape(dimensions);
+      }
 
       std::vector<nnapi::InputOutputInfo> inputs;
 
@@ -281,9 +281,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           dimensions.push_back(static_cast<uint32_t>(dim));
 
         // remove
-        // LOGS_DEFAULT(INFO) << "input name is " << input_name << " and i " << i;
-        // LOGS_DEFAULT(INFO) << "dim is " << GetShape(dimensions);
-        // LOGS_DEFAULT(INFO) << "model dim is " << GetShape(model_input_type.dimensions);
+        LOGS_DEFAULT(INFO) << "input name is " << input_name << " and i " << i;
+        LOGS_DEFAULT(INFO) << "dim is " << GetShape(dimensions);
+        LOGS_DEFAULT(INFO) << "model dim is " << GetShape(model_input_type.dimensions);
 
         ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandBlobByteSize() == 0,
                     "dimanesions should match or model input dimension has 0");
