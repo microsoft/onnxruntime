@@ -1130,8 +1130,9 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
   mixed_precision_config.use_fp16_initializers = true;
 
-  // 2 test variations - full precision (m == 0) and mixed precision (m == 1)
-  for (int m = 0; m < 2; ++m) {
+  // 2 test variations - full precision and mixed precision
+  const std::vector<bool> test_with_fp32{true, false};
+  for(auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
 #ifdef _WIN32
@@ -1152,7 +1153,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
       config.distributed_config.pipeline_parallel_size = 3;
       config.model_with_training_graph_path = output_file;
 
-      if (m >= 1) {
+      if (!is_fp32) {
         config.mixed_precision_config = mixed_precision_config;
       }
 
@@ -1164,7 +1165,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
       // model so reload will run into error.
       // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
       // partition logic and validate the graph.
-      if (m == 0) {
+      if (is_fp32) {
         std::shared_ptr<Model> model;
         // Ensure the partitioned model load.
         ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
