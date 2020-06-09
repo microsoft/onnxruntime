@@ -9,14 +9,9 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-OpKernelContext::OpKernelContext(IExecutionFrame* frame,
-                                 const OpKernel* kernel,
-                                 concurrency::ThreadPool* threadpool,
-                                 const logging::Logger& logger)
-    : execution_frame_(frame),
-      kernel_(kernel),
-      threadpool_(threadpool),
-      logger_(&logger) {
+OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
+                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
+    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 

@@ -109,7 +109,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasReluActivation>
 #if defined(MLAS_SSE2_INTRINSICS)
         return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
 #else
-        return (std::max)(Value, 0.0f);
+        return std::max(Value, 0.0f);
 #endif
     }
 };
@@ -140,10 +140,11 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 #elif defined(MLAS_AVX_INTRINSICS)
         return _mm_blendv_ps(ValueTimesAlpha, Value, _mm_cmple_ps(ZeroFloat32x4, Value));
 #elif defined(MLAS_SSE2_INTRINSICS)
-        __m128 Selection = _mm_cmple_ps(ZeroFloat32x4, Value);
-        return _mm_or_ps(_mm_and_ps(Value, Selection), _mm_andnot_ps(Selection, ValueTimesAlpha));
+        return MlasBlendFloat32x4(ValueTimesAlpha, Value, _mm_cmple_ps(ZeroFloat32x4, Value));
+#elif defined(MLAS_VSX_INTRINSICS)
+        return vec_sel(ValueTimesAlpha, Value, vec_cmple(ZeroFloat32x4, Value));
 #else
-#error Unsupported architecture.
+        return MlasBlendFloat32x4(ValueTimesAlpha, Value, ZeroFloat32x4 < Value);
 #endif
     }
 
@@ -184,8 +185,8 @@ struct MLAS_ACTIVATION_FUNCTION<MlasClipActivation>
 #if defined(MLAS_SSE2_INTRINSICS)
         return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
 #else
-        Value = (std::max)(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
-        Value = (std::min)(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
+        Value = std::max(Value, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
+        Value = std::min(Value, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
 
         return Value;
 #endif

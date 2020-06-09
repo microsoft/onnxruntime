@@ -21,6 +21,12 @@ enum class SimpleBroadcast : int32_t {
   RightPerChannelBatchN = (int32_t)-5,
 };
 
+enum class BroadcastIndexType : int32_t {
+  NoBroadcast = (int32_t)0,
+  Scalar = (int32_t)1,
+  NeedCompute = (int32_t)2,
+};
+
 template <typename T>
 class IConstantBuffer {
  public:
@@ -48,10 +54,22 @@ struct TArray {
     ORT_ENFORCE(size <= capacity, "TArray size was set to ", size, ", exeeding the capacity limit of ", capacity);
   }
 
+  TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size()))  {
+    memcpy(data_, vec.data(), vec.size() * sizeof(T));
+  }
+
+  T& operator[](int32_t index) {
+    return data_[index];
+  }
+
+  __host__ __device__ __forceinline__ const T& operator[](int32_t index) const {
+    return data_[index];
+  }
+
   static constexpr int32_t GetCapacity() { return capacity; };
 
-  T data_[capacity];
   int32_t size_;
+  T data_[capacity];
 };
 
 }  // namespace cuda

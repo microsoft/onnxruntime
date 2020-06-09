@@ -18,13 +18,17 @@ static std::string ToLower(std::string s) {
   return s;
 }
 
-/*explicit*/ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply)
+FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply)
     : GraphTransformer("FreeDimensionOverrideTransformer") {
   for (const auto& o : overrides_to_apply) {
     // Convert to lowercase to perform case-insensitive comparisons later
-    std::string denotation = ToLower(o.dimension_denotation);
-
-    dimension_override_by_denotation_.emplace(denotation, o.dimension_override);
+    if (o.dim_identifer_type == FreeDimensionOverrideType::Denotation) {
+      dimension_override_by_denotation_.emplace(ToLower(o.dim_identifier), o.dim_value);
+    } else if (o.dim_identifer_type == FreeDimensionOverrideType::Name) {
+      dimension_override_by_name_.emplace(o.dim_identifier, o.dim_value);
+    } else {
+      ORT_THROW("Invalid free dimension override.");
+    }
   }
 }
 
@@ -40,6 +44,7 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
 
     // Construct a new shape for this input, replacing free dimensions with their overrides
     onnx::TensorShapeProto new_shape;
+    bool shape_modified = false;
     for (int32_t dim_index = 0; dim_index < input_shape->dim_size(); ++dim_index) {
       const auto& dimension = input_shape->dim(dim_index);
 
@@ -47,37 +52,56 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
       auto* new_dimension = new_shape.add_dim();
       *new_dimension = dimension;
 
+      bool overridden = false;
+      int64_t dimension_override = 0;
+
       if (dimension.has_denotation()) {
         // Convert to lowercase to perform case-insensitive comparison
         auto it = dimension_override_by_denotation_.find(ToLower(dimension.denotation()));
-        if (it == dimension_override_by_denotation_.end()) {
-          continue;
+        if (it != dimension_override_by_denotation_.end()) {
+          overridden = true;
+          dimension_override = it->second;
         }
+      }
 
-        int64_t dimension_override = it->second;
+      if (dimension.has_dim_param()) {
+        auto it = dimension_override_by_name_.find(dimension.dim_param());
+        if (it != dimension_override_by_name_.end()) {
+          if (overridden && dimension_override != it->second) {
+            return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Conflicting free dimension overrides.");
+          }
 
-        // If this dimension actually has a value but it doesn't match the override value, return an
-        // error.
-        if (dimension.has_dim_value() && dimension.dim_value() != dimension_override) {
+          overridden = true;
+          dimension_override = it->second;
+        }
+      }
+
+      if (overridden) {
+        if (dimension.has_dim_value()) {
+          // If this dimension actually has a value but it doesn't match the override value, return an
+          // error.
+          if (dimension.dim_value() != dimension_override) {
             LOGS(logger, ERROR) << "The model has input '" << graph_input->Name() << "' "
-                                << "with a fixed dimension denotation '" << dimension.denotation() << "' "
-                                << "but the size of this dimension " << dimension.dim_value() << " "
-                                << "does not equal the specified override of" << dimension_override << ".";
+                                << "with a fixed dimension size " << dimension.dim_value() << " "
+                                << "which does not equal the specified override of " << dimension_override << ".";
 
-          return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
+            return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid free dimension override.");
+          }
+        } else {
+          // Set the dimension override
+          new_dimension->set_dim_value(dimension_override);
+          shape_modified = true;
         }
-
-        // Set the dimension override
-        new_dimension->clear_dim_param();
-        new_dimension->set_dim_value(dimension_override);
       }
     }
 
-    // Set the new shape
-    auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
-    assert(mutable_graph_input != nullptr);
-    mutable_graph_input->SetShape(new_shape);
-    modified = true;
+    if (shape_modified) {
+      // Set the new shape
+      auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
+      assert(mutable_graph_input != nullptr);
+      mutable_graph_input->SetShape(new_shape);
+      modified = true;
+    }
   }
 
   return Status::OK();

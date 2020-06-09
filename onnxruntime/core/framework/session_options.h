@@ -7,11 +7,20 @@
 #include <vector>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
+#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
+
+enum class FreeDimensionOverrideType {
+  Invalid = 0,
+  Denotation = 1,
+  Name = 2
+};
+
 struct FreeDimensionOverride {
-  std::string dimension_denotation;
-  int64_t dimension_override;
+  std::string dim_identifier;
+  FreeDimensionOverrideType dim_identifer_type;
+  int64_t dim_value;
 };
 
 /**
@@ -55,14 +64,19 @@ struct SessionOptions {
   TransformerLevel graph_optimization_level = TransformerLevel::Level3;
 
   // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
-  int intra_op_num_threads = 0;
+  OrtThreadPoolParams intra_op_param;
 
   // controls the size of the thread pool used to parallelize the execution of nodes (ops)
   // configuring this makes sense only when you're using parallel executor
-  int inter_op_num_threads = 0;
+  OrtThreadPoolParams inter_op_param;
 
-  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
-  // free dimensions with, keyed by dimension denotation.
+  // For models with symbolic input dimensions (most commonly batch size), specifies a set of values to override those
+  // symbolic dimensions with, keyed by dimension parameters.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
+
+  // By default the session uses its own set of threadpools, unless this is set to false.
+  // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
+  bool use_per_session_threads = true;
+  bool thread_pool_allow_spinning = true;
 };
 }  // namespace onnxruntime

@@ -10,17 +10,12 @@
 #include <d3d11on12.h>
 #include <d3d11_4.h>
 
-using namespace Windows::AI::MachineLearning;
-using namespace winrt::Windows::Media;
-using namespace winrt::Windows::Graphics::Imaging;
-using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
-using namespace winrt::Windows::Graphics::DirectX;
-using namespace Windows::Graphics::DirectX::Direct3D11;
+using namespace _winml;
 
 ConverterResources::ConverterResources(Pool& pool, ConverterResourceDescription& descriptor) : m_pool(pool),
                                                                                           Descriptor(descriptor),
-                                                                                          Tensorizer(std::make_unique<Windows::AI::MachineLearning::Internal::VideoFrameToTensorConverter>()),
-                                                                                          Detensorizer(std::make_unique<Windows::AI::MachineLearning::Internal::TensorToVideoFrameConverter>()) {
+                                                                                          Tensorizer(std::make_unique<VideoFrameToTensorConverter>()),
+                                                                                          Detensorizer(std::make_unique<TensorToVideoFrameConverter>()) {
 }
 
 void ConverterResources::ReturnToCache() {

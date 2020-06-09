@@ -12,11 +12,20 @@ namespace dft = Microsoft::Featurizer::Featurizers;
 using SysClock = std::chrono::system_clock;
 
 namespace onnxruntime {
+
+namespace featurizers {
+
+// Defined in date_time_transformer.cc
+extern std::string GetDateTimeTransformerDataDir(void);
+
+} // namespace featurizers
+
 namespace test {
 
 namespace {
-std::vector<uint8_t> GetStream() {
-  dft::DateTimeTransformer dt("", "");
+
+std::vector<uint8_t> GetStream(std::string const &optionalCountryCode=std::string()) {
+  dft::DateTimeTransformer dt(optionalCountryCode, onnxruntime::featurizers::GetDateTimeTransformerDataDir());
   Microsoft::Featurizer::Archive ar;
   dt.save(ar);
   return ar.commit();
@@ -280,6 +289,59 @@ TEST(FeaturizersTests, DateTimeTransformer_future_2025_june_30) {
   ASSERT_EQ(tp.dayOfWeekLabel, "Monday");
   ASSERT_EQ(tp.holidayName, "");
   ASSERT_EQ(tp.isPaidTimeOff, 0);
+
+  test.AddOutput<int32_t>("year", {1}, {tp.year});
+  test.AddOutput<uint8_t>("month", {1}, {tp.month});
+  test.AddOutput<uint8_t>("day", {1}, {tp.day});
+  test.AddOutput<uint8_t>("hour", {1}, {tp.hour});
+  test.AddOutput<uint8_t>("minute", {1}, {tp.minute});
+  test.AddOutput<uint8_t>("second", {1}, {tp.second});
+  test.AddOutput<uint8_t>("amPm", {1}, {tp.amPm});
+  test.AddOutput<uint8_t>("hour12", {1}, {tp.hour12});
+  test.AddOutput<uint8_t>("dayOfWeek", {1}, {tp.dayOfWeek});
+  test.AddOutput<uint8_t>("dayOfQuarter", {1}, {tp.dayOfQuarter});
+  test.AddOutput<uint16_t>("dayOfYear", {1}, {tp.dayOfYear});
+  test.AddOutput<uint16_t>("weekOfMonth", {1}, {tp.weekOfMonth});
+  test.AddOutput<uint8_t>("quarterOfYear", {1}, {tp.quarterOfYear});
+  test.AddOutput<uint8_t>("halfOfYear", {1}, {tp.halfOfYear});
+  test.AddOutput<uint8_t>("weekIso", {1}, {tp.weekIso});
+  test.AddOutput<int32_t>("yearIso", {1}, {tp.yearIso});
+  test.AddOutput<std::string>("monthLabel", {1}, {tp.monthLabel});
+  test.AddOutput<std::string>("amPmLabel", {1}, {tp.amPmLabel});
+  test.AddOutput<std::string>("dayOfWeekLabel", {1}, {tp.dayOfWeekLabel});
+  test.AddOutput<std::string>("holidayName", {1}, {tp.holidayName});
+  test.AddOutput<uint8_t>("isPaidTimeOff", {1}, {tp.isPaidTimeOff});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(FeaturizersTests, DateTimeTransformer_Country_Canada) {
+  std::string const dataDir(onnxruntime::featurizers::GetDateTimeTransformerDataDir());
+
+  if(dataDir.empty()) {
+    GTEST_SKIP() <<
+      "Skipping country-based tests, as the data directory could not be found. This likely indicates that\n"
+      "the test is being invoked from a nuget installation, which isn't a scenario that is supported by\n"
+      "featurizers (featurizers will only be used via the Python ORT wrappers and data is installed as\n"
+      "part of the wheel).\n";
+  }
+
+  const time_t date = 157161600;
+  const auto date_tp = std::chrono::system_clock::from_time_t(date);
+
+  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  // Add state input
+  auto stream = GetStream("Canada");
+  auto dim = static_cast<int64_t>(stream.size());
+  test.AddInput<uint8_t>("State", {dim}, stream);
+
+  // We are adding a scalar Tensor in this instance
+  test.AddInput<int64_t>("Date", {1}, {date});
+
+  dft::DateTimeTransformer dt("Canada", dataDir);
+  dft::TimePoint tp = dt.execute(date_tp);
+
+  ASSERT_EQ(tp.holidayName, "Christmas Day");
 
   test.AddOutput<int32_t>("year", {1}, {tp.year});
   test.AddOutput<uint8_t>("month", {1}, {tp.month});

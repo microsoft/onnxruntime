@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/data_types_internal.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
@@ -45,6 +46,27 @@ namespace onnxruntime {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                                             \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
+
+// var args are type constraints for T and T1
+#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, ...)   \
+  ONNX_CPU_OPERATOR_KERNEL(                                                \
+      OP_TYPE,                                                             \
+      VERSION,                                                             \
+      KernelDefBuilder()                                                   \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>())   \
+          .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()), \
+      KERNEL_CLASS);
+
+// var args are type constraints for T and T1
+#define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, ...) \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                               \
+      OP_TYPE,                                                                                      \
+      VERSION_FROM,                                                                                 \
+      VERSION_TO,                                                                                   \
+      KernelDefBuilder()                                                                            \
+          .TypeConstraint("T", BuildKernelDefConstraints<__VA_ARGS__>())                            \
+          .TypeConstraint("T1", BuildKernelDefConstraints<__VA_ARGS__>()),                          \
+      KERNEL_CLASS);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, double, Add);
@@ -92,8 +114,10 @@ REG_ELEMENTWISE_TYPED_KERNEL(Reciprocal, 6, float, Reciprocal);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 6, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 6, double, Sqrt);
 
-REG_ELEMENTWISE_TYPED_KERNEL(Pow, 7, float, Pow);
-REG_ELEMENTWISE_TYPED_KERNEL(Pow, 7, double, Pow);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, float, double);
+// To reduce templetization we choose to support the below types for both
+// base and the exponent. This gives us 16 permutations
+REG_ELEMENTWISE_KERNEL_NONT(Pow, 12, Pow, int32_t, int64_t, float, double);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Exp, 6, float, Exp);
 REG_ELEMENTWISE_TYPED_KERNEL(Exp, 6, double, Exp);
@@ -103,12 +127,13 @@ REG_ELEMENTWISE_TYPED_KERNEL(Log, 6, float, Log);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sum, 6, 7, float, Sum_6);
 REG_ELEMENTWISE_TYPED_KERNEL(Sum, 8, float, Sum_8);
 
-REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
-REG_ELEMENTWISE_TYPED_KERNEL(Min, 8, float, Min_8);
-
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
-REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, float, Max_8);
-REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, double, Max_8);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, float, double);
+REG_ELEMENTWISE_KERNEL_NONT(Max, 12, Max_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
+
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, float);
+REG_ELEMENTWISE_KERNEL_NONT(Min, 12, Min_8, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, double, Less);
@@ -250,25 +275,115 @@ Status Sqrt<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <typename T>
-Status Pow<T>::Compute(OpKernelContext* context) const {
-  const Tensor& Y = *context->Input<Tensor>(1);
-  std::function<void(EigenVectorMap<T>, ConstEigenVectorMap<T>, T)> input1scalar =
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = Eigen::pow(input0.array(), input1); };
+namespace pow_internal {
+
+template <typename T, typename E>
+void PowImpl(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
+  TBroadcaster<T, E> bc{X, Y};
+  Tensor* const output_tensor = context->Output(0, bc.GetOutputShape());
+  TBroadcastOutput<T> output{bc.GetSpanSize(), *output_tensor};
+
+  // Scalar base
+  auto input0scalar = [](gsl::span<T> output, T X, gsl::span<const E> Y) {
+    std::transform(Y.cbegin(), Y.cend(), output.begin(),
+                   [X](E y) {
+                     return static_cast<T>(std::pow(X, y));
+                   });
+  };
+
+  // Scalar exponent switch to possibly available optimizations
+  std::function<void(gsl::span<T>, gsl::span<const T> X, E Y)> input1scalar =
+      [](gsl::span<T> output, gsl::span<const T> X, E Y) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [Y](T x) {
+                         return static_cast<T>(std::pow(x, Y));
+                       });
+      };
+
   if (Y.Shape().Size() == 1) {
-    T value = *Y.Data<T>();
-    if (value == 2.0) {
-      input1scalar = [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T) { output = Eigen::square(input0.array()); };
-    } else if (value == 3.0) {
-      input1scalar = [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T) { output = Eigen::cube(input0.array()); };
+    auto exp = *Y.template Data<E>();
+    if (exp == E{2}) {
+      input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [](T x) {
+                         return static_cast<T>(x * x);
+                       });
+      };
+    } else if (exp == E{3}) {
+      input1scalar = [](gsl::span<T> output, gsl::span<const T> X, E) {
+        std::transform(X.cbegin(), X.cend(), output.begin(),
+                       [](T x) {
+                         return static_cast<T>(x * x * x);
+                       });
+      };
     }
   }
 
-  return BroadcastTwo<T, T>(
-      *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = Eigen::pow(input0, input1.array()); },
-      input1scalar,
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = Eigen::pow(input0.array(), input1.array()); });
+  auto general = [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const E> Y) {
+    std::transform(
+        X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        [](T x, E y) {
+          return static_cast<T>(std::pow(x, y));
+        });
+  };
+
+  BroadcastLoopSpan(bc, output, input0scalar, input1scalar, general);
+}
+
+template <typename B>
+Status DispatchOnBase(OpKernelContext* context, const Tensor& X, const Tensor& Y) {
+  namespace on = ONNX_NAMESPACE;
+  Status s;
+  switch (Y.GetElementType()) {
+    case on::TensorProto_DataType_INT32:
+      PowImpl<B, int32_t>(context, X, Y);
+      break;
+    case on::TensorProto_DataType_INT64:
+      PowImpl<B, int64_t>(context, X, Y);
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      PowImpl<B, float>(context, X, Y);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      PowImpl<B, double>(context, X, Y);
+      break;
+    default:
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
+                          DataTypeImpl::ToString(Y.DataType()));
+  }
+  return s;
+}
+
+}  // namespace pow_internal
+
+Status
+Pow::Compute(OpKernelContext* context) const {
+  const Tensor& X = *context->Input<Tensor>(0);
+  const Tensor& Y = *context->Input<Tensor>(1);
+
+  namespace on = ONNX_NAMESPACE;
+  using namespace pow_internal;
+
+  Status s;
+  // Switch on base type first
+  switch (X.GetElementType()) {
+    case on::TensorProto_DataType_INT32:
+      s = DispatchOnBase<int32_t>(context, X, Y);
+      break;
+    case on::TensorProto_DataType_INT64:
+      s = DispatchOnBase<int64_t>(context, X, Y);
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      s = DispatchOnBase<float>(context, X, Y);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      s = DispatchOnBase<double>(context, X, Y);
+      break;
+    default:
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
+                          DataTypeImpl::ToString(X.DataType()));
+  }
+  return s;
 }
 
 template <typename T>
@@ -277,6 +392,18 @@ Status Exp<T>::Compute(OpKernelContext* ctx) const {
   auto& Y = *ctx->Output(0, X.Shape());
 
   EigenMap<T>(Y) = EigenMap<T>(X).array().exp();
+
+  return Status::OK();
+}
+
+template <>
+Status Exp<float>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const size_t N = static_cast<size_t>(x_shape.Size());
+
+  MlasComputeExp(X->template Data<float>(), Y->template MutableData<float>(), N);
 
   return Status::OK();
 }
@@ -343,13 +470,21 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-template <>
-Status Min_8<float>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<float, float>(
-      Node(), *context,
-      [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input1.array().min(input0); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, float input1) { output = input0.array().min(input1); },
-      [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) { output = input0.array().min(input1.array()); });
+template <typename T>
+struct Min_8::ComputeImpl {
+  Status operator()(const Min_8* inst, OpKernelContext* context) const {
+    return BroadcastVariadic<T, T>(
+        inst->Node(), *context,
+        [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().min(input0); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().min(input1); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().min(input1.array()); });
+  }
+};
+
+Status Min_8::Compute(OpKernelContext* context) const {
+  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(context->Input<Tensor>(0)->GetElementType());
+  return t_disp.Invoke(this, context);
 }
 
 template <>
@@ -371,12 +506,20 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-Status Max_8<T>::Compute(OpKernelContext* context) const {
-  return BroadcastVariadic<T, T>(
-      Node(), *context,
-      [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
+struct Max_8::ComputeImpl {
+  Status operator()(const Max_8* inst, OpKernelContext* context) const {
+    return BroadcastVariadic<T, T>(
+        inst->Node(), *context,
+        [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array().max(input0); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array().max(input1); },
+        [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array().max(input1.array()); });
+  }
+};
+
+Status Max_8::Compute(OpKernelContext* context) const {
+  utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(context->Input<Tensor>(0)->GetElementType());
+  return t_disp.Invoke(this, context);
 }
 
 Status Not::Compute(OpKernelContext* context) const {
@@ -941,12 +1084,12 @@ REG_EXPAND_KERNEL(MLFloat16)
 
 template <>
 Status Erf<float>::Compute(OpKernelContext* context) const {
-  auto X_ptr = context->Input<Tensor>(0);
-  ORT_ENFORCE(X_ptr != nullptr);
-  auto& X = *X_ptr;
-  auto& Y = *context->Output(0, X.Shape());
+  const auto* X = context->Input<Tensor>(0);
+  const auto& x_shape = X->Shape();
+  auto* Y = context->Output(0, x_shape);
+  const size_t N = static_cast<size_t>(x_shape.Size());
 
-  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
+  MlasComputeErf(X->template Data<float>(), Y->template MutableData<float>(), N);
 
   return Status::OK();
 }

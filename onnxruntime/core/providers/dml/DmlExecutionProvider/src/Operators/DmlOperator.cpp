@@ -80,7 +80,7 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    persistentResourceSize,
+                    static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourcePoolingUnk.GetAddressOf()));
@@ -117,7 +117,7 @@ namespace Dml
             {
                 m_persistentResource = nullptr;
                 THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    persistentResourceSize,
+                    static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourcePoolingUnk.GetAddressOf()));

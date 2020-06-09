@@ -1,20 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_pybind_exceptions.h"
-#include "onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_exceptions.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/random_seed.h"
 #include "core/framework/session_options.h"
+#include "core/framework/bfc_arena.h"
+#include "core/session/IOBinding.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -22,7 +27,7 @@
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_OPENMP
+#if _OPENMP
 #define BACKEND_OPENMP "-OPENMP"
 #else
 #define BACKEND_OPENMP ""
@@ -30,7 +35,6 @@
 
 #if USE_DNNL
 #define BACKEND_DNNL "-DNNL"
-#include "core/providers/dnnl/dnnl_execution_provider.h"
 #else
 #define BACKEND_DNNL ""
 #endif
@@ -48,6 +52,13 @@
 #define BACKEND_NGRAPH ""
 #endif
 
+#if USE_MIGRAPHX
+#define BACKEND_MIGRAPHX "-MIGRAPHX"
+#else
+#define BACKEND_MIGRAPHX ""
+#endif
+
+#ifdef USE_OPENVINO
 #if OPENVINO_CONFIG_CPU_FP32
 #define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
 
@@ -63,6 +74,9 @@
 #elif OPENVINO_CONFIG_VAD_M
 #define BACKEND_OPENVINO "-OPENVINO_VAD_M"
 
+#elif OPENVINO_CONFIG_VAD_F
+#define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+#endif
 #else
 #define BACKEND_OPENVINO ""
 #endif
@@ -73,13 +87,20 @@
 #define BACKEND_NUPHAR ""
 #endif
 
+#if USE_VITISAI
+#define BACKEND_VITISAI "-VITISAI"
+#include "core/providers/vitisai/vitisai_execution_provider.h"
+#else
+#define BACKEND_VITISAI ""
+#endif
+
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
 #else
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -87,36 +108,44 @@
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+OrtDevice::DeviceId cuda_device_id = 0;
+size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#ifdef USE_DNNL
-#include "core/providers/dnnl/dnnl_provider_factory.h"
+#ifdef USE_MIGRAPHX
+#include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
 #ifdef USE_NGRAPH
 #include "core/providers/ngraph/ngraph_provider_factory.h"
 #endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
+std::string openvino_device;
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 std::string nuphar_settings;
 #endif
-#ifdef USE_BRAINSLICE
-#include "core/providers/brainslice/brainslice_provider_factory.h"
+#ifdef USE_VITISAI
+#include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit,
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
+
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -136,22 +165,12 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-static AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<TAllocator>();
-  return alloc;
-}
-
-static const SessionOptions& GetDefaultCPUSessionOptions() {
-  static SessionOptions so;
-  return so;
-}
-
 template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -168,7 +187,18 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
 
   if (numpy_type != NPY_OBJECT) {
-    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+    //if it is not cpu tensor, need to copy to host
+    if (rtensor.Location().device.Type() != OrtDevice::CPU) {
+      if (!data_transfer_manager)
+        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed to convert non-CPU tensor to numpy array");
+      static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+      std::vector<char> tensor_data_buffer{};
+      tensor_data_buffer.resize(rtensor.SizeInBytes());
+      ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
+          *data_transfer_manager, rtensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
+      memcpy(outPtr, tensor_data_buffer.data(), dtype->Size() * shape.Size());
+    } else
+      memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
   } else {
     // Handle string type.
     py::object* outObj = static_cast<py::object*>(outPtr);
@@ -176,6 +206,19 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
     for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
       outObj[i] = py::cast(*src);
     }
+  }
+}
+
+static std::string GetDeviceName(const OrtDevice& device) {
+  switch (device.Type()) {
+    case OrtDevice::CPU:
+      return CPU;
+    case OrtDevice::GPU:
+      return CUDA;
+    case OrtDevice::FPGA:
+      return "FPGA";
+    default:
+      throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
   }
 }
 
@@ -235,27 +278,6 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(obj);
 }
 
-class SessionObjectInitializer {
- public:
-  typedef const SessionOptions& Arg1;
-  typedef logging::LoggingManager* Arg2;
-  operator Arg1() {
-    return GetDefaultCPUSessionOptions();
-  }
-
-  operator Arg2() {
-    static std::string default_logger_id{"Default"};
-    static LoggingManager default_logging_manager{std::unique_ptr<ISink>{new CErrSink{}},
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-    return &default_logging_manager;
-  }
-
-  static SessionObjectInitializer Get() {
-    return SessionObjectInitializer();
-  }
-};
-
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
@@ -265,7 +287,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kBrainSliceExecutionProvider, kCpuExecutionProvider};
+                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider};
   return all_providers;
 }
 
@@ -274,6 +296,9 @@ const std::vector<std::string>& GetAvailableProviders() {
     std::vector<std::string> available_providers = {kCpuExecutionProvider};
 #ifdef USE_TENSORRT
     available_providers.push_back(kTensorrtExecutionProvider);
+#endif
+#ifdef USE_MIGRAPHX
+    available_providers.push_back(kMIGraphXExecutionProvider);
 #endif
 #ifdef USE_CUDA
     available_providers.push_back(kCudaExecutionProvider);
@@ -290,8 +315,8 @@ const std::vector<std::string>& GetAvailableProviders() {
 #ifdef USE_NUPHAR
     available_providers.push_back(kNupharExecutionProvider);
 #endif
-#ifdef USE_BRAINSLICE
-    available_providers.push_back(kBrainSliceExecutionProvider);
+#ifdef USE_VITISAI
+    available_providers.push_back(kVitisAIExecutionProvider);
 #endif
     return available_providers;
   };
@@ -307,10 +332,16 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #ifdef USE_TENSORRT
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
 #endif
+    } else if (type == kMIGraphXExecutionProvider) {
+#ifdef USE_MIGRAPHX
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_MIGraphX(0));
+#endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      // device id??
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
+      cuda_device_id = 0;
+      cuda_mem_limit = static_cast<size_t>(INT_MAX);
+      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -322,16 +353,17 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device.c_str()));
+      openvino_device.clear();
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
       nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
 #endif
-    } else if (type == kBrainSliceExecutionProvider) {
-#ifdef USE_BRAINSLICE
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
+    } else if (type == kVitisAIExecutionProvider) {
+#if USE_VITISAI
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
 #endif
     } else {
       // unknown provider
@@ -350,17 +382,20 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
   OrtPybindThrowIfError(sess->Initialize());
 }
 
-void addGlobalMethods(py::module& m) {
+void addGlobalMethods(py::module& m, const Environment& env) {
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
       "Return the device used to compute the prediction (CPU, MKL, ...)");
   m.def(
-      "set_default_logger_severity", [](int severity) {
+      "set_seed", [](const int64_t seed) { utils::SetRandomSeed(seed); },
+      "Sets the seed used for random number generation in Onnxruntime.");
+  m.def(
+      "set_default_logger_severity", [&env](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
                     "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-        logging::LoggingManager* default_logging_manager = SessionObjectInitializer::Get();
+        logging::LoggingManager* default_logging_manager = env.GetLoggingManager();
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
@@ -380,6 +415,17 @@ void addGlobalMethods(py::module& m) {
   });
 #endif
 
+#ifdef USE_OPENVINO
+  m.def(
+      "set_openvino_device", [](const std::string& device) { openvino_device = device; },
+      "Set the prefered OpenVINO device(s) to be used. If left unset, all available devices will be used.");
+  m.def(
+      "get_openvino_device", []() -> std::string {
+        return openvino_device;
+      },
+      "");
+#endif
+
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   m.def(
       "get_all_operator_schema", []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
@@ -389,17 +435,6 @@ void addGlobalMethods(py::module& m) {
   m.def(
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
         std::vector<onnxruntime::KernelDef> result;
-
-        // default logger is needed to create the DNNLExecutionProvider
-        std::string default_logger_id{"DefaultLogger"};
-        std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
-            onnxruntime::make_unique<LoggingManager>(
-                std::unique_ptr<onnxruntime::logging::ISink>{new onnxruntime::logging::CLogSink{}},
-                onnxruntime::logging::Severity::kWARNING,
-                false,
-                onnxruntime::logging::LoggingManager::InstanceType::Default,
-                &default_logger_id,
-                /*default_max_vlog_level*/ -1);
 
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
@@ -413,10 +448,16 @@ void addGlobalMethods(py::module& m) {
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
+            onnxruntime::CreateExecutionProviderFactory_OpenVINO(openvino_device),
 #endif
 #ifdef USE_TENSORRT
-            onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
+            onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
+#endif
+#ifdef USE_MIGRAPHX
+            onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
+#endif
+#ifdef USE_VITISAI
+            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
         };
 
@@ -432,6 +473,14 @@ void addGlobalMethods(py::module& m) {
       },
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
+
+#ifdef USE_CUDA
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+    cuda_mem_limit = static_cast<size_t>(limit);
+  });
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
+#endif
 }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -546,7 +595,7 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-void addObjectMethods(py::module& m) {
+void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
       .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
@@ -556,6 +605,64 @@ void addObjectMethods(py::module& m) {
   py::enum_<ExecutionMode>(m, "ExecutionMode")
       .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
       .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
+
+  py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
+  device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
+      .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
+      .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
+      .def_static("cpu", []() { return OrtDevice::CPU; })
+      .def_static("cuda", []() { return OrtDevice::GPU; })
+      .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
+
+  py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
+  binding
+      .def(py::init<InferenceSession*>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+          throw std::runtime_error("Not a valid numpy type");
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        std::string device_name = GetDeviceName(device);
+
+        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
+        OrtValue mlvalue;
+        mlvalue.Init(p_tensor.release(),
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+        PyArray_Descr* dtype;
+        if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
+          throw std::runtime_error("Not a valid numpy type");
+        int type_num = dtype->type_num;
+        Py_DECREF(dtype);
+
+        std::string device_name = GetDeviceName(device);
+
+        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
+        OrtValue mlvalue;
+        mlvalue.Init(p_tensor.release(),
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        auto status = io_binding->Get()->BindOutput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
+      .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
+        io_binding->Get()->ClearInputs();
+      })
+      .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
+        io_binding->Get()->ClearOutputs();
+      });
 
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
@@ -578,10 +685,10 @@ Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("log_verbosity_level", &SessionOptions::session_log_verbosity_level,
                      R"pbdoc(VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
-      .def_readwrite("intra_op_num_threads", &SessionOptions::intra_op_num_threads,
-                     R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
-      .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
-                     R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property(
+          "intra_op_num_threads", [](const SessionOptions* options) -> int { return options->intra_op_param.thread_pool_size; }, [](SessionOptions* options, int value) -> void { options->intra_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_property(
+          "inter_op_num_threads", [](const SessionOptions* options) -> int { return options->inter_op_param.thread_pool_size; }, [](SessionOptions* options, int value) -> void { options->inter_op_param.thread_pool_size = value; }, R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("execution_mode", &SessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
@@ -638,7 +745,11 @@ Applies to a particular Run() invocation. Default is 0.)pbdoc")
                      "To identify logs generated by a particular Run() invocation.")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
-RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc");
+RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
+      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("training_mode", &RunOptions::training_mode,
+                     R"pbdoc(Choose to run in training or inferencing mode)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -715,15 +826,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string)
       // and model content (bytes)
-      .def(py::init([](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+      .def(py::init([&env](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
         // Given arg is the file path. Invoke the corresponding ctor().
         if (is_arg_file_name) {
-          return onnxruntime::make_unique<InferenceSession>(so, arg, SessionObjectInitializer::Get());
+          return onnxruntime::make_unique<InferenceSession>(so, env, arg);
         }
 
         // Given arg is the model content as bytes. Invoke the corresponding ctor().
         std::istringstream buffer(arg);
-        return onnxruntime::make_unique<InferenceSession>(so, buffer, SessionObjectInitializer::Get());
+        return onnxruntime::make_unique<InferenceSession>(so, env, buffer);
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
@@ -808,10 +919,24 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         auto res = sess->GetModelMetadata();
         OrtPybindThrowIfError(res.first);
         return *(res.second);
+      })
+      .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
+        Status status;
+        if (!run_options)
+          status = sess->Run(*io_binding.Get());
+        else
+          status = sess->Run(*run_options, *io_binding.Get());
+        if (!status.IsOK())
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       });
+
+  py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
+      .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
+      .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
+      .export_values();
 }
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 static struct {
   PyMemAllocatorEx mem;
   PyMemAllocatorEx raw;
@@ -819,11 +944,15 @@ static struct {
 } allocators;
 #endif
 
+#ifdef ENABLE_TRAINING
+void addObjectMethodsForTraining(py::module& m);
+#endif
+
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
   PyMemAllocatorEx alloc;
   alloc.malloc = [](void* ctx, size_t size) {
     ORT_UNUSED_PARAMETER(ctx);
@@ -867,6 +996,31 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #endif
 
+  // Initialization of the module
+  ([]() -> void {
+    // import_array1() forces a void return value.
+    import_array1();
+  })();
+
+  Environment& env = get_env();
+
+  addGlobalMethods(m, env);
+  addObjectMethods(m, env);
+
+#ifdef ENABLE_TRAINING
+  addObjectMethodsForTraining(m);
+#endif  // ENABLE_TRAINING
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  addOpSchemaSubmodule(m);
+  addOpKernelSubmodule(m);
+#endif
+}
+
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
+
+void initialize_env() {
   auto initialize = [&]() {
     // Initialization of the module
     ([]() -> void {
@@ -874,8 +1028,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       import_array1();
     })();
 
-    static std::unique_ptr<Environment> env;
-    OrtPybindThrowIfError(Environment::Create(env));
+    OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
+                                                  std::unique_ptr<ISink>{new CLogSink{}},
+                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+                                                  &SessionObjectInitializer::default_logger_id),
+                                              session_env));
 
     static bool initialized = false;
     if (initialized) {
@@ -884,14 +1041,13 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     initialized = true;
   };
   initialize();
+}
 
-  addGlobalMethods(m);
-  addObjectMethods(m);
-
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
-  addOpSchemaSubmodule(m);
-  addOpKernelSubmodule(m);
-#endif
+onnxruntime::Environment& get_env() {
+  if (!session_env) {
+    initialize_env();
+  }
+  return *session_env;
 }
 
 }  // namespace python

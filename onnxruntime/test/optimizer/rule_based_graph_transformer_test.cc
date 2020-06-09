@@ -25,14 +25,14 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
                           DefaultLoggingManager().DefaultLogger())
                   .IsOK());
   Graph& graph = model->MainGraph();
-  
+
   // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider
   std::unordered_set<std::string> compatible_provider{onnxruntime::kCudaExecutionProvider};
   auto dummy_rule = onnxruntime::make_unique<DummyRewriteRule>("DummyRule");
   const auto* dummy_rule_ptr = dummy_rule.get();
 
   auto graph_transformer = onnxruntime::make_unique<RuleBasedGraphTransformer>("CUDATopDownTransformer", compatible_provider);
-  graph_transformer->Register(std::move(dummy_rule));  
+  graph_transformer->Register(std::move(dummy_rule));
 
   // Create rule based transformer with a dummy rewrite rule and register it with CPU as compatible provider
   auto dummy_rule1 = onnxruntime::make_unique<DummyRewriteRule>("DummyRule1");
@@ -40,7 +40,7 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
 
   auto graph_transformer1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("CPUTopDownTransformer");
 
-  graph_transformer1->Register(std::move(dummy_rule1));  
+  graph_transformer1->Register(std::move(dummy_rule1));
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level2);
@@ -56,5 +56,17 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   ASSERT_TRUE(dummy_rule1_ptr->IsRewriteRuleInvoked());
 }
 
+TEST(RuleBasedGraphTransformerTest, TestSettingStepsInGraphTransformerManager) {
+  // steps provided at object construction time
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  unsigned steps_queried;
+  graph_transformation_mgr.GetSteps(steps_queried);
+  ASSERT_EQ(steps_queried, static_cast<unsigned>(5));
+
+  // steps upadted
+  graph_transformation_mgr.SetSteps(10);
+  graph_transformation_mgr.GetSteps(steps_queried);
+  ASSERT_EQ(steps_queried, static_cast<unsigned> (10));
+}
 }  // namespace test
 }  // namespace onnxruntime

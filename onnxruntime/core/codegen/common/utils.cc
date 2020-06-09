@@ -4,6 +4,7 @@
 #include "core/codegen/common/utils.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/make_unique.h"
+#include "core/common/safeint.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -46,7 +47,7 @@ bool IsEnvVarDefined(const char* var) {
 }
 
 int64_t TotalSize(const std::vector<int64_t>& shape) {
-  int64_t total = 1;
+  SafeInt<int64_t> total = 1;
   for (auto s : shape) {
     total *= s;
   }

@@ -282,7 +282,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   // Both the session and the model need custom registries
   // so we construct it here before the model
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
 
   auto ops_schema = GetConstructSparseTensorSchema();
@@ -298,7 +298,8 @@ TEST_F(OpaqueTypeTests, RunModel) {
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
-  Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+  Model model("SparseTensorTest", false, ModelMetaData(), PathString(), custom_schema_registries_, domain_to_version,
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;

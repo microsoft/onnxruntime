@@ -7,6 +7,8 @@
 #include <initguid.h>
 #include <d3d11.h>
 
+#include "NamespaceAliases.h"
+
 #if __has_include("dxcore.h")
 #define ENABLE_DXCORE 1
 #endif
@@ -45,5 +47,5 @@ HRESULT RunDelayLoadedApi(TFunc& tfunc, TArgs&&... args) {
 
 HRESULT GetAdapterEnumerationSupport(AdapterEnumerationSupport* support);
 bool IsFloat16Supported(ID3D12Device* device);
-bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModelDevice& device);
+bool IsFloat16Supported(const winml::LearningModelDevice& device);
 }  // namespace CommonDeviceHelpers

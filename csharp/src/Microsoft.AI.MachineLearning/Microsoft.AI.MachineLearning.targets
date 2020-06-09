@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <WindowsAI-Platform Condition="'$(Platform)' == 'Win32'">x86</WindowsAI-Platform>
+    <WindowsAI-Platform Condition="'$(Platform)' != 'Win32'">$(Platform)</WindowsAI-Platform>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <WindowsAIBinary>$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OnnxRuntimeBinary Condition="'$(OnnxRuntimePathOverride)' != ''">$(OnnxRuntimePathOverride)</OnnxRuntimeBinary>
+    <OnnxRuntimeBinary Condition="'$(OnnxRuntimeBinary)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\onnxruntime.dll</OnnxRuntimeBinary>
+
+    <DirectMLBinary Condition="'$(DirectMLPathOverride)' != ''">$(DirectMLPathOverride)</DirectMLBinary>
+    <DirectMLBinary Condition="'$(DirectMLBinary)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native\directml.dll</DirectMLBinary>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap10.0\Microsoft.AI.MachineLearning.winmd">
+      <Implementation>$(WindowsAIBinary)</Implementation>
+    </Reference>
+  </ItemGroup>
+  
+  <PropertyGroup Condition="'$(WindowsAI-Platform)' == x64 OR '$(WindowsAI-Platform)' == x86">
+    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary);$(DirectMLBinary)</MLBinaries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(WindowsAI-Platform)' == arm OR '$(WindowsAI-Platform)' == arm64">
+    <MLBinaries>$(WindowsAIBinary);$(OnnxRuntimeBinary)</MLBinaries>
+  </PropertyGroup>
+
+  <Target Name="CopyMLBinaries" BeforeTargets="Build">
+    <PropertyGroup>
+      <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} and {1}.</WindowsAIBinplaceMessage>
+    </PropertyGroup>
+    <Message Text="$([System.String]::Format('$(WindowsAIBinplaceMessage)', '$(WindowsAIBinary)', '$(OnnxRuntimeBinary)'))" />
+    <Copy SkipUnchangedFiles="True" SourceFiles="$(MLBinaries)" DestinationFolder="$(OutDir)" />
+  </Target>
+</Project>

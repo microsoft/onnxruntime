@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -7,6 +7,11 @@
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
+#ifdef WIN32
+#include <Windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
@@ -17,6 +22,11 @@
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "onnxruntime/core/providers/migraphx/migraphx_provider_factory.h"
+#include "onnxruntime/core/providers/acl/acl_provider_factory.h"
+#ifdef USE_DIRECTML
+#include "onnxruntime/core/providers/dml/dml_provider_factory.h"
+#endif
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
@@ -103,7 +113,9 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
     OrtSessionOptions* opts;
     checkOrtStatus(jniEnv,api,api->CreateSessionOptions(&opts));
     checkOrtStatus(jniEnv,api,api->SetInterOpNumThreads(opts, 1));
-    checkOrtStatus(jniEnv,api,api->SetIntraOpNumThreads(opts, 1));
+    // Commented out due to constant OpenMP warning as this API is invalid when running with OpenMP.
+    // Not sure how to detect that from within the C API though.
+    //checkOrtStatus(jniEnv,api,api->SetIntraOpNumThreads(opts, 1));
     return (jlong) opts;
 }
 
@@ -113,10 +125,174 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_creat
  * Signature: (JJ)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeOptions
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-    (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    api->ReleaseSessionOptions((OrtSessionOptions*) handle);
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+  (void)jniEnv; (void)jobj;  // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  api->ReleaseSessionOptions((OrtSessionOptions*)handle);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setLoggerId
+ * Signature: (JJLjava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setLoggerId
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring loggerId) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  const char* loggerIdStr = (*jniEnv)->GetStringUTFChars(jniEnv, loggerId, NULL);
+  checkOrtStatus(jniEnv,api,api->SetSessionLogId(options, loggerIdStr));
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,loggerId,loggerIdStr);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    enableProfiling
+ * Signature: (JJLjava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_enableProfiling
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring pathString) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+#ifdef _WIN32
+  const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
+  size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
+  wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+  wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
+  checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->EnableProfiling(options, (const wchar_t*) newString));
+  free(newString);
+  (*jniEnv)->ReleaseStringChars(jniEnv,pathString,path);
+#else
+  const char* path = (*jniEnv)->GetStringUTFChars(jniEnv, pathString, NULL);
+  checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->EnableProfiling(options, path));
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,pathString,path);
+#endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    disableProfiling
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_disableProfiling
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->DisableProfiling(options));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setMemoryPatternOptimization
+ * Signature: (JJZ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setMemoryPatternOptimization
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jboolean memPattern) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  if (memPattern) {
+    checkOrtStatus(jniEnv,api,api->EnableMemPattern(options));
+  } else {
+    checkOrtStatus(jniEnv,api,api->DisableMemPattern(options));
+  }
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setCPUArenaAllocator
+ * Signature: (JJZ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setCPUArenaAllocator
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jboolean useArena) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  if (useArena) {
+    checkOrtStatus(jniEnv,api,api->EnableCpuMemArena(options));
+  } else {
+    checkOrtStatus(jniEnv,api,api->DisableCpuMemArena(options));
+  }
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setSessionLogLevel
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setSessionLogLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jint logLevel) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->SetSessionLogSeverityLevel(options,logLevel));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setSessionLogVerbosityLevel
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setSessionLogVerbosityLevel
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jint logLevel) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->SetSessionLogVerbosityLevel(options,logLevel));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    registerCustomOpLibrary
+ * Signature: (JJLjava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_registerCustomOpLibrary
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jstring libraryPath) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+
+  // Extract the string chars
+  const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, libraryPath, NULL);
+
+  // Load the library
+  void* libraryHandle;
+  checkOrtStatus(jniEnv,api,api->RegisterCustomOpsLibrary((OrtSessionOptions*)optionsHandle,cPath,&libraryHandle));
+
+  // Release the string chars
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv,libraryPath,cPath);
+
+  return (jlong) libraryHandle;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    closeCustomLibraries
+ * Signature: ([J)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeCustomLibraries
+    (JNIEnv * jniEnv, jobject jobj, jlongArray libraryHandles) {
+  (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+
+  // Get the number of elements in the array
+  jsize numHandles = (*jniEnv)->GetArrayLength(jniEnv, libraryHandles);
+
+  // Get the elements of the libraryHandles array
+  jlong* handles = (*jniEnv)->GetLongArrayElements(jniEnv,libraryHandles,NULL);
+
+  // Iterate the handles, calling the appropriate close function
+  for (jint i = 0; i < numHandles; i++) {
+#ifdef WIN32
+    FreeLibrary((void*)handles[i]);
+#else
+    dlclose((void*)handles[i]);
+#endif
+  }
+
+  // Release the long array
+  (*jniEnv)->ReleaseLongArrayElements(jniEnv,libraryHandles,handles,JNI_ABORT);
 }
 
 /*
@@ -233,8 +409,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNna
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addNuphar
- * Signature: (JILjava/lang/String {
-	})V
+ * Signature: (JILjava/lang/String)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNuphar
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint allowUnalignedBuffers, jstring settingsString) {
@@ -246,5 +421,53 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
   #else
     (void)apiHandle;(void)handle;(void)allowUnalignedBuffers;(void)settingsString; // Parameters used when Nuphar is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with Nuphar support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addMIGraphX
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIGraphX
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
+    (void)jobj;
+  #ifdef USE_MIGRAPHX
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_MIGraphX((OrtSessionOptions*) handle, deviceNum));
+  #else
+    (void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when MIGraphX is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MIGraphX support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addDirectML
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDirectML
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
+  (void)jobj;
+  #ifdef USE_DIRECTML
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_DML((OrtSessionOptions*) handle, deviceID));
+  #else
+    (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when DirectML is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DirectML support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addACL
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addACL
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
+  (void)jobj;
+  #ifdef USE_ACL
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ACL((OrtSessionOptions*) handle,useArena));
+  #else
+    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when ACL is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ACL support.");
   #endif
 }

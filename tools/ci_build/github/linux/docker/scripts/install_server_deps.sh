@@ -19,8 +19,8 @@ if [ $SYS_LONG_BIT = "64" ]; then
   tar -zxf cmake-3.16.2-Linux-x86_64.tar.gz --strip=1 -C /usr
 
   echo "Installing onnxruntime"
-  aria2c https://github.com/microsoft/onnxruntime/releases/download/v1.1.0/onnxruntime-linux-x64-1.1.0.tgz
-  tar -zxf onnxruntime-linux-x64-1.1.0.tgz --strip=1
+  aria2c https://github.com/microsoft/onnxruntime/releases/download/v1.2.0/onnxruntime-linux-x64-1.2.0.tgz
+  tar -zxf onnxruntime-linux-x64-1.2.0.tgz --strip=1
   cp -r include/* /usr/include 
   cp -r lib/* /usr/lib
   ldconfig /usr/lib

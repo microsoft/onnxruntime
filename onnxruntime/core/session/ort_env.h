@@ -42,12 +42,17 @@ struct OrtEnv {
     const char* logid{};
   };
 
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, onnxruntime::common::Status& status);
+  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info,
+                             onnxruntime::common::Status& status,
+                             const OrtThreadingOptions* tp_options = nullptr);
 
   static void Release(OrtEnv* env_ptr);
 
-  onnxruntime::logging::LoggingManager* GetLoggingManager() const;
+  const onnxruntime::Environment& GetEnvironment() const {
+    return *(value_.get());
+  }
 
+  onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
  private:
@@ -56,9 +61,8 @@ struct OrtEnv {
   static int ref_count_;
 
   std::unique_ptr<onnxruntime::Environment> value_;
-  std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager_;
 
-  OrtEnv(std::unique_ptr<onnxruntime::Environment> value1, std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
+  OrtEnv(std::unique_ptr<onnxruntime::Environment> value1);
   ~OrtEnv() = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);

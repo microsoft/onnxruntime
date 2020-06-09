@@ -14,23 +14,13 @@
 #include "Psapi.h"
 
 using namespace winrt;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
+using namespace winml;
+using namespace wfc;
 
-using winrt::Windows::Foundation::IPropertyValue;
+using wf::IPropertyValue;
 
-static void LearningModelSessionAPITestSetup() {
+static void LearningModelSessionAPITestsClassSetup() {
   init_apartment();
-}
-
-static void LearningModelSessionAPITestGpuSetup() {
-  GPUTEST;
-  init_apartment();
-}
-
-static void LearningModelSessionAPITestsSkipEdgeCoreSetup() {
-  LearningModelSessionAPITestGpuSetup();
-  SKIP_EDGECORE
 }
 
 static void CreateSessionDeviceDefault()
@@ -64,7 +54,7 @@ static void CreateSessionWithModelLoadedFromStream()
     LearningModel learningModel = nullptr;
     LearningModelDevice learningModelDevice = nullptr;
     std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
-    auto storageFile = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(path).get();
+    auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
 
     WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromStream(storageFile));
 
@@ -167,7 +157,7 @@ static void EvaluateFeatures()
 
     auto outputTensor = TensorString::Create();
 
-    std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+    std::map<hstring, wf::IInspectable> featuresstandardmap;
     featuresstandardmap[L"X"] = tensor;
     featuresstandardmap[L"Y"] = outputTensor;
     auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
@@ -201,7 +191,7 @@ static void EvaluateFeaturesAsync()
 
     auto outputTensor = TensorString::Create(shape);
 
-    std::map<hstring, winrt::Windows::Foundation::IInspectable> featuresstandardmap;
+    std::map<hstring, wf::IInspectable> featuresstandardmap;
     featuresstandardmap[L"X"] = tensor;
     featuresstandardmap[L"Y"] = outputTensor;
     auto featureswinrtmap = winrt::single_threaded_map(std::move(featuresstandardmap));
@@ -221,7 +211,7 @@ static void EvaluationProperties()
     LearningModelSession learningModelSession = nullptr;
     learningModelSession = LearningModelSession(learningModel);
     // set a property
-    auto value = winrt::Windows::Foundation::PropertyValue::CreateBoolean(true);
+    auto value = wf::PropertyValue::CreateBoolean(true);
     learningModelSession.EvaluationProperties().Insert(L"propName1", value);
     // get the property and make sure it's there with the right value
     auto value2 = learningModelSession.EvaluationProperties().Lookup(L"propName1");
@@ -261,11 +251,8 @@ static void CreateSessionWithCastToFloat16InModel()
     CreateSession(learningModel);
 }
 
-static void DISABLED_CreateSessionWithFloat16InitializersInModel()
+static void CreateSessionWithFloat16InitializersInModel()
 {
-    // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
-    // Model fails to resolve due to ORT using incorrect IR version within partition
-
     // load a model
     LearningModel learningModel = nullptr;
     WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fp16-initializer.onnx", learningModel));
@@ -398,12 +385,10 @@ static void CloseSession()
     });
  }
 
-const LearningModelSesssionAPITestApi& getapi() {
-  static constexpr LearningModelSesssionAPITestApi api =
+const LearningModelSessionAPITestsApi& getapi() {
+  static LearningModelSessionAPITestsApi api =
   {
-    LearningModelSessionAPITestSetup,
-    LearningModelSessionAPITestGpuSetup,
-    LearningModelSessionAPITestsSkipEdgeCoreSetup,
+    LearningModelSessionAPITestsClassSetup,
     CreateSessionDeviceDefault,
     CreateSessionDeviceCpu,
     CreateSessionWithModelLoadedFromStream,
@@ -415,9 +400,26 @@ const LearningModelSesssionAPITestApi& getapi() {
     EvaluateFeaturesAsync,
     EvaluationProperties,
     CreateSessionWithCastToFloat16InModel,
-    DISABLED_CreateSessionWithFloat16InitializersInModel,
+    CreateSessionWithFloat16InitializersInModel,
     EvaluateSessionAndCloseModel,
     CloseSession,
   };
+
+  if (SkipGpuTests()) {
+    api.CreateSessionDeviceDirectX = SkipTest;
+    api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
+    api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
+    api.CreateSessionWithCastToFloat16InModel = SkipTest;
+    api.CreateSessionWithFloat16InitializersInModel = SkipTest;
+    api.AdapterIdAndDevice = SkipTest;
+  }
+  if (RuntimeParameterExists(L"EdgeCore")) {
+    api.AdapterIdAndDevice = SkipTest;
+  }
+  if (RuntimeParameterExists(L"noIDXGIFactory6Tests")) {
+    api.CreateSessionDeviceDirectXHighPerformance = SkipTest;
+    api.CreateSessionDeviceDirectXMinimumPower = SkipTest;
+    api.AdapterIdAndDevice = SkipTest;
+  }
  return api;
 }

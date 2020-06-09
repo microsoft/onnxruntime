@@ -6,7 +6,14 @@
 #include "core/session/inference_session.h"
 #include "core/framework/session_options.h"
 #include "core/common/common.h"
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 28020)
+#endif
 #include "single_include/nlohmann/json.hpp"
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 using json = nlohmann::json;
 

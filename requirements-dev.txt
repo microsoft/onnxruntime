@@ -10,6 +10,5 @@ pytest
 pytest-cov
 scikit-learn
 scipy
-six
 sympy
 wheel

@@ -61,19 +61,19 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    auto conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto);
-    auto add_B = onnxruntime::make_unique<Initializer>(*add_B_tensor_proto);
+    Initializer conv_B{*conv_B_tensor_proto, graph.ModelPath()};
+    Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
 
-    if (conv_B->size() != add_B->size()) {
+    if (conv_B.size() != add_B.size()) {
       return Status::OK();
     }
 
     // Calculate new value of initializers of conv node
-    conv_B->add(*add_B);
+    conv_B.add(add_B);
 
     // Create new initializers of conv
     ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
-    conv_B->ToProto(new_conv_B_tensor_proto);
+    conv_B.ToProto(new_conv_B_tensor_proto);
 
     auto new_name = graph.GenerateNodeArgName("ConvAddFusion_B_" + B_input_name);
     new_conv_B_tensor_proto.set_name(new_name);

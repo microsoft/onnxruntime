@@ -87,7 +87,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
@@ -201,7 +201,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
@@ -215,10 +215,9 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  std::vector<OrtValue> fetche {fetches.back()};
+  std::vector<OrtValue> fetche{fetches.back()};
   VerifyOutputs(fetche, expected_dims_mul_n, expected_values_mul_n);
 }
-
 
 TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   onnxruntime::Model model("graph_removecycleTest", false, DefaultLoggingManager().DefaultLogger());
@@ -316,7 +315,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;

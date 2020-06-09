@@ -147,35 +147,19 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const uint8_t* A,
+    const AType* A,
     size_t lda,
-    uint8_t offa,
-    const int8_t* B,
+    AType offa,
+    const BType* B,
     size_t ldb,
-    int8_t offb,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
+    BType offb,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
@@ -284,6 +268,22 @@ MlasPool(
 
 void
 MLASCALL
+MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeExp(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
 MlasComputeLogistic(
     const float* Input,
     float* Output,
@@ -292,15 +292,18 @@ MlasComputeLogistic(
 
 void
 MLASCALL
-MlasComputeTanh(
+MlasComputeSoftmax(
     const float* Input,
     float* Output,
-    size_t N
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
 MLASCALL
-MlasComputeErf(
+MlasComputeTanh(
     const float* Input,
     float* Output,
     size_t N
@@ -376,7 +379,6 @@ MlasNchwcGetBlockSize(
 void
 MLASCALL
 MlasNchwcConv(
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -397,7 +399,6 @@ void
 MLASCALL
 MlasNchwcPool(
     MLAS_POOLING_KIND PoolingKind,
-    size_t Dimensions,
     const int64_t* InputShape,
     const int64_t* KernelShape,
     const int64_t* DilationShape,
@@ -409,26 +410,38 @@ MlasNchwcPool(
     MLAS_THREADPOOL* ThreadPool
     );
 
+void
+MLASCALL
+MlasNchwcUpsample(
+    const int64_t* InputShape,
+    const int64_t* Scales,
+    const float* Input,
+    float* Output
+    );
+
 //
 // Linear quantization routines.
 //
 
+template<typename OutputType>
 void
 MLASCALL
 MlasQuantizeLinear(
     const float* Input,
-    uint8_t* Output,
+    OutputType* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint
+    OutputType ZeroPoint
     );
 
 void
 MLASCALL
-MlasQuantizeLinear(
-    const float* Input,
-    int8_t* Output,
+MlasRequantizeOutput(
+    const int32_t* Input,
+    uint8_t* Output,
+    const int32_t* Bias,
+    size_t M,
     size_t N,
     float Scale,
-    int8_t ZeroPoint
+    uint8_t ZeroPoint
     );

@@ -1,0 +1,22 @@
+trigger: none
+
+jobs:
+- template: templates/win-ci-2019.yml
+  parameters:
+    AgentPool : 'Win-CPU-2019'
+    JobName: 'Win_CPU_Training'
+    # TODO fix test failures and remove --skip_onnx_tests
+    BuildCommand: >-
+     --build_dir $(Build.BinariesDirectory)
+     --build_shared_lib
+     --cmake_generator "Visual Studio 16 2019"
+     --enable_onnx_tests
+     --enable_training
+     --skip_onnx_tests
+     --skip_submodule_sync
+     --use_openmp
+    BuildArch: 'x64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'x64'
+    BuildConfigurations: ['Debug', 'RelWithDebInfo']
+    EnableLto: false

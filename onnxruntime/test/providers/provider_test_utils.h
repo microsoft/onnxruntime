@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/logging/logging.h"
+#include "core/common/optional.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
@@ -18,25 +19,12 @@
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
+#include "test/util/include/asserts.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
-
-// helpers to run a function and check the status, outputting any error if it fails.
-// note: wrapped in do{} while(false) so the _tmp_status variable has limited scope
-#define ASSERT_STATUS_OK(function)                  \
-  do {                                              \
-    auto _tmp_status = function;                    \
-    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
-  } while (false)
-
-#define EXPECT_STATUS_OK(function)                  \
-  do {                                              \
-    auto _tmp_status = function;                    \
-    EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
-  } while (false)
 
 namespace onnxruntime {
 class InferenceSession;
@@ -55,23 +43,6 @@ struct SeqTensors {
     std::vector<U> data;
   };
   std::vector<Tensor<T>> tensors;
-};
-
-// unfortunately std::optional is in C++17 so use a miniversion of it
-template <typename T>
-class optional {
- public:
-  optional(T v) : has_value_(true), value_(v) {}
-  optional() : has_value_(false) {}
-  bool has_value() const { return has_value_; }
-  const T& value() const {
-    ORT_ENFORCE(has_value_);
-    return value_;
-  }
-
- private:
-  bool has_value_;
-  T value_;
 };
 
 // Function templates to translate C++ types into ONNX_NAMESPACE::TensorProto_DataTypes
@@ -279,19 +250,19 @@ class OpTester {
   // bool and we can't get the raw data out. So those cases must use an initializer_list
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values,
-                bool is_initializer = false) {
-    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer);
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer, false, dim_params);
   }
 
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values,
-                bool is_initializer = false) {
-    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer, false, dim_params);
   }
 
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false) {
-    AddData(input_data_, name, dims, p_values, size, is_initializer);
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    AddData(input_data_, name, dims, p_values, size, is_initializer, false, dim_params);
   }
 
   // Add other registered types, possibly experimental
@@ -441,7 +412,8 @@ class OpTester {
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
-           const CustomOutputVerifierFn& custom_output_verifier = {});
+           const CustomOutputVerifierFn& custom_output_verifier = {},
+           const Graph::ResolveOptions& resolve_options = {});
 
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
@@ -449,7 +421,8 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           const CustomOutputVerifierFn& custom_output_verifier = {});
+           const CustomOutputVerifierFn& custom_output_verifier = {},
+           const Graph::ResolveOptions& resolve_options = {});
 
   std::vector<MLValue> GetFetches() { return fetches_; }
 
@@ -457,7 +430,7 @@ class OpTester {
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
-     cached_model_ = model;
+    cached_model_ = model;
   }
 
   std::shared_ptr<onnxruntime::Model> GetModelCache() {
@@ -522,7 +495,7 @@ class OpTester {
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
 
-  // for gradient unit tests only 
+  // for gradient unit tests only
   std::shared_ptr<onnxruntime::Model> cached_model_;
 
 #ifndef NDEBUG
@@ -532,7 +505,8 @@ class OpTester {
  protected:
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
-               int64_t values_count, bool is_initializer = false, bool sort_output = false) {
+               int64_t values_count, bool is_initializer = false, bool sort_output = false,
+               const std::vector<std::string>* dim_params = nullptr) {
     try {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
@@ -556,7 +530,27 @@ class OpTester {
       OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      data.push_back(Data(NodeArg(name, &type_proto), std::move(value), optional<float>(), optional<float>(), sort_output));
+      auto node_arg = NodeArg(name, &type_proto);
+      if (dim_params && !(dim_params->empty())) {
+        // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
+        auto& dim_params_data = *dim_params;
+        onnx::TensorShapeProto new_shape;
+
+        // currently hard-code the reserved symbolic names.
+        // TODO: when the list grows longer, consider move it to a better place.
+        const static std::unordered_set<std::string> reserved_symbolic{"batch", "seq"};
+
+        for (size_t i = 0; i < dim_params_data.size(); ++i) {
+          if (reserved_symbolic.find(dim_params_data[i])!= reserved_symbolic.end()) {
+            new_shape.add_dim()->set_dim_param(dim_params_data[i]);
+          } else {
+            ASSERT_TRUE(std::stoi(dim_params_data[i]) == dims[i]);
+            new_shape.add_dim()->set_dim_value(dims[i]);
+          }
+        }
+        node_arg.SetShape(new_shape);
+      }
+      data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>(), sort_output));
       if (is_initializer) initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {
       std::cerr << "AddData for '" << name << "' threw: " << ex.what();

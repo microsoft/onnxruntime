@@ -28,7 +28,7 @@ struct RunOptions {
   std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
 };
 
-static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
+static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
 
 static const float kOuterNodeAddValue = 42.f;
 
@@ -73,7 +73,7 @@ class ScanOpTester : public OpTester {
   }
 };
 
-static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message) {
+static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message) {
   bool include_dim_values = options.include_dim_values_in_subgraph;
   bool include_types = options.include_types_in_subgraph;
 
@@ -253,6 +253,8 @@ static void CreateSubgraph(Graph& graph, RunOptions& options, const std::string&
     EXPECT_TRUE(!status.IsOK());
     EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(failure_message));
   }
+
+  return status;
 }
 
 static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t max_sequence_len, int64_t input_size,
@@ -272,7 +274,8 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
   Model model(test_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
-  CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
+  auto status = CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
+  ASSERT_STATUS_OK(status);
   auto& proto = graph.ToGraphProto();
 
   ScanOpTester test{8};
@@ -334,10 +337,13 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
   Model model(test_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
-  CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
+  auto status = CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
+  if (!status.IsOK()) {
+    return;
+  }
   auto& proto = graph.ToGraphProto();
 
-  ScanOpTester test{11};  // use latest version - no significant change over 9
+  ScanOpTester test{ (options.add_bad_shape) ? -1 : 11};  // use latest version - no significant change over 9
 
   test.AddAttribute("body", proto);
   test.AddAttribute<int64_t>("num_scan_inputs", 2);

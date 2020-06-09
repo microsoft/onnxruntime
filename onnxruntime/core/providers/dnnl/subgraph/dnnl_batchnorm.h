@@ -2,12 +2,10 @@
 // Licensed under the MIT License
 
 #pragma once
-#include "core/framework/op_kernel.h"
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
 #include "core/providers/dnnl/memcpy_s.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -83,17 +81,17 @@ template <typename T>
 class DnnlBatchNorm : public DnnlKernel {
  public:
   explicit DnnlBatchNorm(const DnnlNode& node,
-                           DNNLExecutionProvider* provider,
-                           const NodeAttributes& attributes,
-                           const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
+                         DNNLExecutionProvider* provider,
+                         const Provider_NodeAttributes& attributes,
+                         const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
-  void ReadAttributes(const NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     auto attr = attributes.find(attributes_prefix + "epsilon");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
-      epsilon_ = attr->second.f();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT) {
+      epsilon_ = attr->second->f();
     }
   }
 

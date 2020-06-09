@@ -3,7 +3,7 @@
 
 #include "tensor_external_data_info.h"
 #include "core/common/common.h"
-#include "path_lib.h"
+#include "core/platform/path_lib.h"
 
 #ifdef _WIN32
 #include <Windows.h>

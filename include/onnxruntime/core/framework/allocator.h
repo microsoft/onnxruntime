@@ -23,13 +23,14 @@ struct OrtDevice {
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;  //CUDA
+  static const DeviceType GPU = 1;  //CUDA or HIP
   static const DeviceType FPGA = 2;
 
   struct MemType {
     // Pre-defined memory types.
     static const MemoryType DEFAULT = 0;
     static const MemoryType CUDA_PINNED = 1;
+    static const MemoryType HIP_PINNED = 2;
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
@@ -84,7 +85,7 @@ struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor
 
   // use string for name, so we could have customized allocator in execution provider.
-  const char* name;
+  const char* name = nullptr;
   int id = -1;
   OrtMemType mem_type = OrtMemTypeDefault;
   OrtAllocatorType alloc_type = Invalid;
@@ -117,7 +118,7 @@ struct OrtMemoryInfo {
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo: ["
-         << " name:" << name
+         << "name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
          << " alloc_type:" << alloc_type
@@ -141,6 +142,8 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* MIGRAPHX = "MIGraphX";
+constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
 constexpr const char* TRT = "Tensorrt";
 constexpr const char* TRT_PINNED = "TensorrtPinned";
 
@@ -153,6 +156,9 @@ using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 class IAllocator {
  public:
   virtual ~IAllocator() = default;
+  /**
+  @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
+  */
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
   virtual const OrtMemoryInfo& Info() const = 0;
@@ -163,19 +169,32 @@ class IAllocator {
   virtual FencePtr CreateFence(const SessionState* /*unused*/) { return nullptr; }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
-    return CalcMemSizeForArrayWithAlignment<0>(nmemb, size, out);
+    return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
   }
+
+  /**
+  * Calculate the memory size for an array. The size is bounds checked using SafeInt. 
+   * \tparam alignment must be power of 2
+   * \param nmemb Number of members or elements in the array
+   * \param size Size of each element
+   * \param out Total size required after any alignment is applied
+   * \return true, successful. false, overflow
+   */
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept ORT_MUST_USE_RESULT;
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html
    * \tparam alignment must be power of 2
-   * \param nmemb
-   * \param size
-   * \param out
+   * \param nmemb Number of members or elements in the array
+   * \param size Size of each element
+   * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
+   * \remarks This was the original API and was implemented in the header. Replaced with the above version 
+   *          implemented in the .cc file so that the SafeInt dependency is internal.
    */
   template <size_t alignment>
   static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
+
   /**
    * allocate memory for an array which has nmemb items of data, each size bytes long
    */
@@ -192,7 +211,7 @@ class IAllocator {
   template <size_t alignment>
   void* AllocArrayWithAlignment(size_t nmemb, size_t size) {
     size_t len;
-    if (!CalcMemSizeForArrayWithAlignment<alignment>(nmemb, size, &len))
+    if (!CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, &len))
       return nullptr;
     return Alloc(len);
   }
@@ -229,27 +248,7 @@ class IAllocator {
 
 template <size_t alignment>
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
-  static constexpr size_t max_allowed = (size_t(1) << (size_t(std::numeric_limits<size_t>::digits >> 1))) - alignment;
-  static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
-  static constexpr size_t alignment_mask = alignment - 1;
-
-  //Indeed, we only need to check if max_size / nmemb < size
-  //max_allowed is for avoiding unnecessary DIV.
-  if (nmemb >= max_allowed && max_size / nmemb < size) {
-    return false;
-  }
-
-  if (size >= max_allowed &&
-      nmemb > 0 && max_size / nmemb < size) {
-    return false;
-  }
-
-  if (alignment == 0)
-    *out = size * nmemb;
-  else
-    *out = (size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
-
-  return true;
+  return CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
 /**
@@ -284,7 +283,7 @@ class CPUAllocator : public IDeviceAllocator {
   std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 class MiMallocAllocator : public IDeviceAllocator {
  public:
   explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
@@ -306,7 +305,7 @@ class MiMallocAllocator : public IDeviceAllocator {
 
 #endif
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 using TAllocator = MiMallocAllocator;
 #else
 using TAllocator = CPUAllocator;

@@ -7,6 +7,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C#](#C)
 * [C/C++](#CC)
 * [Java](#Java)
+* [Node.js](#Nodejs)
 ***
  
 ## Python
@@ -42,7 +43,7 @@ For a list of available dockerfiles and published images to help with getting st
   * [ONNX Runtime with Azure ML](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md)
 
 **Other**
-* [Running ONNX model tests](./docs/Model_Test.md)
+* [Running ONNX model tests](../docs/Model_Test.md)
 * [Common Errors with explanations](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_common_errors.html#sphx-glr-auto-examples-plot-common-errors-py)
 
 ## C#
@@ -51,8 +52,32 @@ For a list of available dockerfiles and published images to help with getting st
 ## C/C++
 * [C - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 * [C++ - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [C++ - Inferencing (MNIST)](../samples/c_cxx/MNIST)
+* [C++ - Inferencing (MNIST)](./c_cxx/MNIST)
 
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)
-* [MNIST inference](../java/sample/ScoreMNIST.java)
+* [MNIST inference](../java/src/test/java/sample/ScoreMNIST.java)
+
+## Node.js
+This section contains several samples that demonstrate how to use onnxruntime Node.js binding.
+
+### Samples
+
+* [Basic Usage](./nodejs/01_basic-usage/) - a demonstration of basic usage of ONNX Runtime Node.js binding.
+
+* [Create Tensor](./nodejs/02_create-tensor/) - a demonstration of basic usage of creating tensors.
+
+<!--
+* [Create Tensor (Advanced)](./nodejs/03_create-tensor-advanced/) - a demonstration of advanced usage of creating tensors.
+-->
+
+* [Create InferenceSession](./nodejs/04_create-inference-session/) - shows how to create `InferenceSession` in different ways.
+
+### Usage
+
+In each sample's implementation subdirectory, run
+
+```
+npm install
+node ./
+```

@@ -62,7 +62,7 @@ void DmlCommandRecorder::InitializeOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(temporaryResourceSize, AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
         if (!tempResourceHandle)
         {
             THROW_HR(E_OUTOFMEMORY);
@@ -137,7 +137,7 @@ void DmlCommandRecorder::ExecuteOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(temporaryResourceSize, AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
         if (!tempResourceHandle)
         {
             THROW_HR(E_OUTOFMEMORY);

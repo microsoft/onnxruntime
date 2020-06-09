@@ -26,7 +26,7 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 if(WIN32)
-    add_library(onnxruntime SHARED 
+    add_library(onnxruntime SHARED
       ${SYMBOL_FILE}
       "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
       "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
@@ -61,11 +61,16 @@ else()
 endif()
 
 if (NOT WIN32)
-  if (APPLE)
+  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
   else()
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
+endif()
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Android")
+  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
+  set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
 endif()
 
 target_link_libraries(onnxruntime PRIVATE
@@ -75,11 +80,15 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_DNNL}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     ${onnxruntime_winml}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -107,3 +116,7 @@ install(TARGETS onnxruntime
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
+
+if (WINDOWS_STORE)
+  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
+endif()

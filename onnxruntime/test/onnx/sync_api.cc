@@ -12,7 +12,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <unsupported/Eigen/CXX11/ThreadPool>
+#include <core/platform/EigenNonBlockingThreadPool.h>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -88,8 +88,8 @@ Status OnnxRuntimeSetEventWhenCallbackReturns(ORT_CALLBACK_INSTANCE pci, ORT_EVE
     finish_event->finish_event_data.notify_all();
     return Status::OK();
   }
-    pci->AddEvent(finish_event);
-    return Status::OK();
+  pci->AddEvent(finish_event);
+  return Status::OK();
 }
 
 void OnnxRuntimeCallbackInstance::AddEvent(ORT_EVENT event) {
