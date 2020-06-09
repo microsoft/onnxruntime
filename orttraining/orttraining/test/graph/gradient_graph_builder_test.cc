@@ -425,7 +425,7 @@ static void RunBertTrainingWithChecks(
 
   std::vector<OrtValue> fetches;
 
-  EXPECT_TRUE(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches).IsOK());
+  ASSERT_STATUS_OK(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches));
 
   for (size_t i = 0; i < fetch_names.size(); ++i) {
     if (!fetches[i].IsAllocated() || !!fetches[i].IsTensor())
