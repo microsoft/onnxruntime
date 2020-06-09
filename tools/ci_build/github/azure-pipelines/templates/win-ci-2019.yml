@@ -61,6 +61,11 @@ jobs:
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
       env:
         TELEMETRYGUID: $(TELEMETRYGUID)
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '12.x'
+
     - task: UsePythonVersion@0
       inputs: 
         versionSpec: '3.7' 
@@ -187,13 +192,13 @@ jobs:
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
       # Esrp signing
-      - template: esrp_dll.yml
+      - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
-      - template: esrp_dll.yml
+      - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
           DisplayName: 'ESRP - Sign C# dlls'
@@ -226,7 +231,7 @@ jobs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
-      - template: esrp_dll.yml
+      - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64'
           DisplayName: 'ESRP - Sign Node.js binding binaries'
@@ -237,7 +242,7 @@ jobs:
          del /Q $(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64\CodeSignSummary-*.*
          call npm pack
          copy $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         copy $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)
+         xcopy /E /I $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
         workingDirectory: '$(Build.SourcesDirectory)\nodejs'
         displayName: 'Create NPM Package'
 

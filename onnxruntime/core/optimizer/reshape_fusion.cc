@@ -116,7 +116,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   }
 
   auto concat_input_count = concat.InputArgCount().front();
-  if (concat.GetOutputEdgesCount() > 1) {
+  if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
     return false;
   }
 
