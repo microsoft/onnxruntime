@@ -448,24 +448,33 @@ public:
     static inline i8x8_t vld1_dup_i8(T const* ptr) { return vld1_dup_u8(ptr); }
     static inline i8x8_t vld1_i8(T const * ptr) { return vld1_u8(ptr); }
     static inline i8x16_t vld1q_i8(T const * ptr) { return vld1q_u8(ptr); }
-    static inline void vst1q_i8(T* ptr, i8x16_t a) { vst1q_u8(ptr, a); }
 
+    static inline void vst1_i8(T* ptr, i8x8_t a) { vst1_u8(ptr, a); }
+    static inline void vst1q_i8(T* ptr, i8x16_t a) { vst1q_u8(ptr, a); }
     static inline i8x8_t vget_low_i8(i8x16_t a) { return vget_low_u8(a); }
     static inline i8x8_t vget_high_i8(i8x16_t a) { return vget_high_u8(a); }
 
     static inline i16x8_t vsubl_i8(i8x8_t a, i8x8_t b) { return vsubl_u8(a, b); }
     static inline int16x8_t vreinterpretq_s16(i16x8_t a) { return vreinterpretq_s16_u16(a); }
-    static inline i8x8_t vqmovn_s16(int16x8_t a) { return vqmovun_s16(a); }
+
+    static inline i8x8_t vqmovn_s16(int16x8_t a) { return ::vqmovun_s16(a); }
     static inline i8x16_t vcombine_i8(i8x8_t a, i8x8_t b) { return vcombine_u8(a, b); }
-    static inline uint64x2_t vreinterpretq_u64_i8(i8x16_t a) { return vreinterpretq_u64_u8(a); }
     static inline uint32x4_t vreinterpretq_u32_i8(i8x16_t a) { return vreinterpretq_u32_u8(a); }
     static inline uint16x8_t vreinterpretq_u16_i8(i8x16_t a) { return vreinterpretq_u16_u8(a); }
+    static inline uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_u8(a); }
+    static inline uint16x4_t vreinterpret_u16_i8(i8x8_t a) { return vreinterpret_u16_u8(a); }
 
     template <int n>
     static inline void vst1q_lane_i8(T* ptr, i8x16_t a) { vst1q_lane_u8(ptr, a, n); }
 
     template <int n>
+    static inline void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_u8(ptr, a, n); }
+
+    template <int n>
     static inline i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi) { return vextq_u8(lo, hi, n); }
+
+    template <int n>
+    static inline i8x8_t vext_i8(i8x8_t lo, i8x8_t hi) { return vext_u8(lo, hi, n); }
 };
 
 template <>
@@ -482,6 +491,7 @@ public:
     static inline i8x8_t vld1_i8(T const * ptr) { return vld1_s8(ptr); }
     static inline i8x16_t vld1q_i8(T const * ptr) { return vld1q_s8(ptr); }
 
+    static inline void vst1_i8(T* ptr, i8x8_t a) { vst1_s8(ptr, a); }
     static inline void vst1q_i8(T* ptr, i8x16_t a) { vst1q_s8(ptr, a); }
     static inline i8x8_t vget_low_i8(i8x16_t a) { return vget_low_s8(a); }
     static inline i8x8_t vget_high_i8(i8x16_t a) { return vget_high_s8(a); }
@@ -489,17 +499,24 @@ public:
     static inline i16x8_t vsubl_i8(i8x8_t a, i8x8_t b) { return vsubl_s8(a, b); }
     static inline int16x8_t vreinterpretq_s16(i16x8_t a) { return a; }
 
-    static inline i8x8_t vqmovn_s16(int16x8_t a) { return vqmovn_s16(a); }
+    static inline i8x8_t vqmovn_s16(int16x8_t a) { return ::vqmovn_s16(a); }
     static inline i8x16_t vcombine_i8(i8x8_t a, i8x8_t b) { return vcombine_s8(a, b); }
-    static inline uint64x2_t vreinterpretq_u64_i8(i8x16_t a) { return vreinterpretq_u64_s8(a); }
     static inline uint32x4_t vreinterpretq_u32_i8(i8x16_t a) { return vreinterpretq_u32_s8(a); }
     static inline uint16x8_t vreinterpretq_u16_i8(i8x16_t a) { return vreinterpretq_u16_s8(a); }
+    static inline uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_s8(a); }
+    static inline uint16x4_t vreinterpret_u16_i8(i8x8_t a) { return vreinterpret_u16_s8(a); }
 
     template <int n>
     static inline void vst1q_lane_i8(T* ptr, i8x16_t a) { vst1q_lane_s8(ptr, a, n); }
 
     template <int n>
+    static inline void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_s8(ptr, a, n); }
+
+    template <int n>
     static inline i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi) { return vextq_s8(lo, hi, n); }
+
+    template <int n>
+    static inline i8x8_t vext_i8(i8x8_t lo, i8x8_t hi) { return vext_s8(lo, hi, n); }
 };
 
 #include <cassert>
@@ -551,7 +568,7 @@ MlasQLinearAddKernelHelper(
     const int32x4_t vright_shift = vmovq_n_s32(- static_cast<int32_t>(Shift)); // vld1q_dup_s32(&right_shift);
     const int32x4_t vzero_shift_mask = vreinterpretq_s32_u32(vceqq_s32(vright_shift, vmovq_n_s32(0)));
 
-     typename SUI::i8x16_t vc;
+    typename SUI::i8x16_t vc;
     auto n = static_cast<int64_t>(N);
     while (n > 0) {
         const typename SUI::i8x16_t VectorA = SUI::vld1q_i8(InputA); InputA += 16;
@@ -594,20 +611,21 @@ MlasQLinearAddKernelHelper(
 
     if (n < 0) {
         n += 16;
+        typename SUI::i8x8_t v8x8 = SUI::vget_low_i8(vc);
         if (n & 8) {
-            vst1_u64((uint64_t*)OutputC, vget_low_u64(SUI::vreinterpretq_u64_i8(vc)));
+            SUI::vst1_i8(OutputC, v8x8);
             OutputC += 8;
-            vc = SUI::template vextq_i8<8>(vc, vc);
+            v8x8 = SUI::vget_high_i8(vc);
         }
         if (n & 4) {
-            vst1q_lane_u32((uint32_t*)OutputC, SUI::vreinterpretq_u32_i8(vc), 0);
+            vst1_lane_u32((uint32_t*)OutputC, SUI::vreinterpret_u32_i8(v8x8), 0);
             OutputC += 4;
-            vc = SUI::template vextq_i8<4>(vc, vc);
+            v8x8 = SUI::template vext_i8<4>(v8x8, v8x8);
         }
         if (n & 2) {
-            vst1q_lane_u16((uint16_t*)OutputC, SUI::vreinterpretq_u16_i8(vc), 0);
+            vst1_lane_u16((uint16_t*)OutputC, SUI::vreinterpret_u16_i8(v8x8), 0);
             OutputC += 2;
-            vc = SUI::template vextq_i8<2>(vc, vc);
+            v8x8 = SUI::template vext_i8<2>(v8x8, v8x8);
         }
         if (n & 1) {
             SUI::template vst1q_lane_i8<0>(OutputC, vc);
