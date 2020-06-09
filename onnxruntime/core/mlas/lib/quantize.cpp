@@ -628,7 +628,7 @@ MlasQLinearAddKernelHelper(
             v8x8 = SUI::template vext_i8<2>(v8x8, v8x8);
         }
         if (n & 1) {
-            SUI::template vst1q_lane_i8<0>(OutputC, vc);
+            SUI::template vst1_lane_i8<0>(OutputC, v8x8);
         }
     }
 }

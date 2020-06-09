@@ -37,6 +37,19 @@ static T clampi(int a, int min_value, int max_value) {
   return static_cast<T>(std::max(std::min(a, max_value), min_value));
 }
 
+#include  <iomanip>
+template <typename T>
+static void PrinterVector(const char* name, T const* data, int sz, int w = 16)
+{
+  std::cout << "Array " << name << "----------------------------" << std::endl;
+  for (auto i = 0; i < sz; i += w) {
+    for (auto h = i, t = std::min(sz, i + w); h < t; ++h) {
+      std::cout << std::hex << std::setfill('0') << std::setw(2) << (unsigned int)(unsigned char)(data[h]) << ", ";
+    }
+    std::cout << std::endl;
+  }
+}
+
 template <typename T>
 void
 RunQLinearMathTestFromFloat(
@@ -101,6 +114,9 @@ RunQLinearMathTestFromFloat(
   }
   test.template AddOutput<T>("C", c_shape, c);
 
+  PrinterVector<T>("InputA", a_quantized.data(), static_cast<int>(a_quantized.size()));
+  PrinterVector<T>("InputB", b_quantized.data(), static_cast<int>(b_quantized.size()));
+  PrinterVector<T>("OutputC", c.data(), static_cast<int>(c_size));
   test.Run();
 }
 
