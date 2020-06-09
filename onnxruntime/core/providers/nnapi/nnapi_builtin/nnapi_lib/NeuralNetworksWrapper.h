@@ -110,7 +110,7 @@ struct OperandType {
   OperandType& operator=(const OperandType& other) = delete;
 
   size_t GetElementByteSize() const;
-  size_t GetOperandByteSize() const;
+  size_t GetOperandBlobByteSize() const;
 
   operator ANeuralNetworksOperandType() const { return operandType; }
 };

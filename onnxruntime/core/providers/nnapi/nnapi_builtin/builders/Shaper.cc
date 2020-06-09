@@ -160,6 +160,50 @@ void Shaper::DepthwiseConv(const std::string& input_name,
   LOGV("weight %d %d %d %d", weightDimen[0], weightDimen[1], weightDimen[2], weightDimen[3]);
 }
 
+void Shaper::Pool(const std::string& input_name,
+                  int32_t padding_left,
+                  int32_t padding_right,
+                  int32_t padding_top,
+                  int32_t padding_bottom,
+                  int32_t stride_x,
+                  int32_t stride_y,
+                  int32_t width,
+                  int32_t height,
+                  bool nchw,
+                  const std::string& output_name) {
+  auto inputDimen = shape_map_.at(input_name);
+
+  Shape outputDimen;
+  if (nchw) {
+    outputDimen = {
+        inputDimen[0],
+        inputDimen[1],
+        inputDimen[2] == 0
+            ? 0
+            : (inputDimen[2] - height + padding_top + padding_bottom) / stride_y + 1,
+        inputDimen[3] == 0
+            ? 0
+            : (inputDimen[3] - width + padding_left + padding_right) / stride_x + 1,
+    };
+  } else {
+    outputDimen = {
+        inputDimen[0],
+        inputDimen[1] == 0
+            ? 0
+            : (inputDimen[1] - height + padding_top + padding_bottom) / stride_y + 1,
+        inputDimen[2] == 0
+            ? 0
+            : (inputDimen[2] - width + padding_left + padding_right) / stride_x + 1,
+        inputDimen[3]};
+  }
+
+  shape_map_[output_name] = outputDimen;
+
+  LOGV("Pool %s nchw %d", input_name.c_str(), nchw);
+  LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
+  LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
+}
+
 void Shaper::Reshape(const std::string& input_name,
                      const std::vector<int32_t>& shape,
                      const std::string& output_name) {
@@ -211,48 +255,18 @@ void Shaper::Reshape(const std::string& input_name,
   shape_map_[output_name] = final_dimen;
 }
 
-void Shaper::Pool(const std::string& input_name,
-                  int32_t padding_left,
-                  int32_t padding_right,
-                  int32_t padding_top,
-                  int32_t padding_bottom,
-                  int32_t stride_x,
-                  int32_t stride_y,
-                  int32_t width,
-                  int32_t height,
-                  bool nchw,
-                  const std::string& output_name) {
-  auto inputDimen = shape_map_.at(input_name);
+void Shaper::Transpose(const std::string& input_name,
+                       const std::vector<uint32_t>& perm,
+                       const std::string& output_name) {
+  auto input_dimen = shape_map_.at(input_name);
+  if (perm.size() != input_dimen.size())
+    throw std::invalid_argument("Invalid perm is given!");
+  Shape output_Dimen(input_dimen.size());
+  int i = 0;
+  for (auto idx : perm)
+    output_Dimen[i++] = input_dimen[idx];
 
-  Shape outputDimen;
-  if (nchw) {
-    outputDimen = {
-        inputDimen[0],
-        inputDimen[1],
-        inputDimen[2] == 0
-            ? 0
-            : (inputDimen[2] - height + padding_top + padding_bottom) / stride_y + 1,
-        inputDimen[3] == 0
-            ? 0
-            : (inputDimen[3] - width + padding_left + padding_right) / stride_x + 1,
-    };
-  } else {
-    outputDimen = {
-        inputDimen[0],
-        inputDimen[1] == 0
-            ? 0
-            : (inputDimen[1] - height + padding_top + padding_bottom) / stride_y + 1,
-        inputDimen[2] == 0
-            ? 0
-            : (inputDimen[2] - width + padding_left + padding_right) / stride_x + 1,
-        inputDimen[3]};
-  }
-
-  shape_map_[output_name] = outputDimen;
-
-  LOGV("Pool %s nchw %d", input_name.c_str(), nchw);
-  LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
-  LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
+  shape_map_[output_name] = output_Dimen;
 }
 
 void Shaper::Eltwise(const std::string& input1_name,

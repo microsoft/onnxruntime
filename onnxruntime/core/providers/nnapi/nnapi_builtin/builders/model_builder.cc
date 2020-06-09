@@ -312,7 +312,7 @@ void ModelBuilder::RegisterInitializers() {
     OperandType operand_type(type, shape);
     auto index = AddNewOperand(operand_type);
     RegisterOperand(name, index, operand_type);
-    const size_t size = operand_type.GetOperandByteSize();
+    const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t paddedSize = getPaddedByteSize(size);
     sizeAll += paddedSize;
     initializers[i] = std::make_tuple(index, size, paddedSize);
@@ -445,16 +445,27 @@ void ModelBuilder::SetOperandValue(ModelBuilder::Index index,
 uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
-  const size_t size = operand_type.GetOperandByteSize();
-  const size_t paddedSize = getPaddedByteSize(size);
-  auto persist_buffer = std::make_unique<NNMemory>(nnapi_, name.c_str(), paddedSize);
   shaper_.AddShape(name, operand_type.dimensions);
   auto index = AddNewOperand(operand_type);
   RegisterOperand(name, index, operand_type);
-  uint8_t* dest = persist_buffer->get_data_ptr();
-  memcpy(dest, buffer, size);
-  SetOperandValue(index, persist_buffer.get(), size, 0);
-  nnapi_model_->mem_persist_buffers_.push_back(std::move(persist_buffer));
+  const size_t size = operand_type.GetOperandBlobByteSize();
+
+  // for small size operand, the value will be copied
+  // no need to persist
+  if (size < ANEURALNETWORKS_MAX_SIZE_OF_IMMEDIATELY_COPIED_VALUES) {
+    THROW_ON_ERROR(
+        nnapi_->ANeuralNetworksModel_setOperandValue(
+            nnapi_model_->model_, index,
+            buffer, size));
+  } else {
+    const size_t paddedSize = getPaddedByteSize(size);
+    auto persist_buffer = std::make_unique<NNMemory>(nnapi_, name.c_str(), paddedSize);
+    uint8_t* dest = persist_buffer->get_data_ptr();
+    memcpy(dest, buffer, size);
+    SetOperandValue(index, persist_buffer.get(), size, 0);
+    nnapi_model_->mem_persist_buffers_.push_back(std::move(persist_buffer));
+  }
+
   return index;
 }
 

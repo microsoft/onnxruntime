@@ -78,7 +78,7 @@ size_t OperandType::GetElementByteSize() const {
   return element_size;
 }
 
-size_t OperandType::GetOperandByteSize() const {
+size_t OperandType::GetOperandBlobByteSize() const {
   return Product(dimensions) * GetElementByteSize();
 }
 

@@ -50,17 +50,14 @@ class Shaper {
   void Reshape(const std::string& input_name,
                const std::vector<int32_t>& shape,
                const std::string& output_name);
+  void Transpose(const std::string& input_name,
+                 const std::vector<uint32_t>& perm,
+                 const std::string& output_name);
   void Eltwise(const std::string& input1_name, const std::string& input2_name,
                const std::string& output_name);
   void Identity(const std::string& input_name,
                 const std::string& output_name);
-  void BatchToSpace(const std::string& input_name,
-                    const std::vector<int32_t>& block_sizes,
-                    const std::string& output_name);
-  void SpaceToBatch(const std::string& input_name,
-                    const std::vector<int32_t>& block_sizes,
-                    const std::vector<int32_t>& pads,
-                    const std::string& output_name);
+
   void AddShape(const std::string& name, const Shape& shape);
   size_t GetSize(const std::string& name);
   void Clear();

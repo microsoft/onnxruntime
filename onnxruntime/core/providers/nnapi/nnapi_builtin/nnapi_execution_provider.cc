@@ -285,7 +285,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         // LOGS_DEFAULT(INFO) << "dim is " << GetShape(dimensions);
         // LOGS_DEFAULT(INFO) << "model dim is " << GetShape(model_input_type.dimensions);
 
-        ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandByteSize() == 0,
+        ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandBlobByteSize() == 0,
                     "dimanesions should match or model input dimension has 0");
 
         // it is possible that the input has the detailed size while

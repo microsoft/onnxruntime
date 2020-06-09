@@ -55,7 +55,7 @@ const android::nn::wrapper::OperandType& Model::GetType(const std::string& name)
 void Model::SetInputBuffer(const int32_t index, const InputOutputInfo& input) {
   if (!prepared_for_exe_) PrepareForExecution();
   THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setInput(
-      execution_, index, &input.type.operandType, input.buffer, input.type.GetOperandByteSize()));
+      execution_, index, &input.type.operandType, input.buffer, input.type.GetOperandBlobByteSize()));
 }
 
 void Model::SetOutputBuffer(const int32_t index, float* buffer) {

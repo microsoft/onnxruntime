@@ -212,6 +212,17 @@ enum {
 };
 
 /**
+ * For ANeuralNetworksModel_setOperandValue,
+ * values with a length smaller or equal to this
+ * will be immediately copied into the model.
+ *
+ * The size is in bytes.
+*/
+enum {
+  ANEURALNETWORKS_MAX_SIZE_OF_IMMEDIATELY_COPIED_VALUES = 128
+};
+
+/**
  * ANeuralNetworksMemory is an opaque type that represents memory.
  *
  * This type is used to represent shared memory, memory mapped files,
