@@ -138,5 +138,5 @@ CMake creates a target to this project
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>
-  
+
 </Project>
