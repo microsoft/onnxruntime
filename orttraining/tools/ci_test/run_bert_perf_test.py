@@ -46,7 +46,7 @@ def main():
             "--train_batch_size", str(c.batch_size),
             "--mode", "train",
             "--max_seq_length", str(c.max_seq_length),
-            "--num_train_steps", "100",
+            "--num_train_steps", "640",
             "--display_loss_steps", "5",
             "--optimizer", "Lamb",
             "--learning_rate", "3e-3",
