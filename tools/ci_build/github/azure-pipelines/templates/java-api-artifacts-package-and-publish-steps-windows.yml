@@ -15,7 +15,11 @@ steps:
           echo "Directories created"
           copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\${{parameters.artifactName}}
           pushd $(Build.BinariesDirectory)\${{parameters.artifactName}}
-          if ${{parameters.artifactName}} == onnxruntime-java-win-x64 ( set artifact_id=onnxruntime ) else ( set artifact_id=onnxruntime_gpu )
+          if ${{parameters.artifactName}} == onnxruntime-java-win-x64 (
+          set artifact_id=onnxruntime
+          ) else (
+          set artifact_id=onnxruntime_gpu
+          )
           jar xf onnxruntime-${{parameters.version}}.jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
           move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-${{parameters.version}}.pom
           rd /s /q META-INF
