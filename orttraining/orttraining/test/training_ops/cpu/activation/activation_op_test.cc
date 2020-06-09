@@ -10,64 +10,129 @@
 namespace onnxruntime {
 namespace test {
 
-void TestGradientOpWithTwoInputs(const char* szOp,
-                                 std::vector<float>& dY,
-                                 std::vector<float>& X,
-                                 std::function<float(float, float)> expected_func,
-                                 const std::unordered_map<std::string, float> attrs = {},
-                                 int opset_version = 7, const char* domain = kOnnxDomain) {
-  OpTester test(szOp, opset_version, domain);
-  ORT_ENFORCE(dY.size() == X.size());
-  for (auto attr : attrs)
-    test.AddAttribute(attr.first, attr.second);
-
-  std::vector<int64_t> dims{(int64_t)X.size()};
-
-  std::vector<float> expected_vals;
-  for (size_t i = 0; i < X.size(); i++) {
-    expected_vals.push_back(expected_func(dY[i], X[i]));
+namespace {
+void TestElementwiseGradientOp(
+    const char* op,
+    const std::vector<std::pair<std::string, std::vector<float>>>& inputs,
+    std::function<float(const std::vector<float>&)> expected_func,
+    const std::unordered_map<std::string, float> attrs = {},
+    int opset_version = 7, const char* domain = kOnnxDomain) {
+  const auto first_input = inputs.begin();
+  ORT_ENFORCE(first_input != inputs.end());
+  for (auto input = first_input; input != inputs.end(); ++input) {
+    if (input == first_input) continue;
+    ORT_ENFORCE(first_input->second.size() == input->second.size());
   }
 
-  test.AddInput<float>("dY", dims, dY);
-  test.AddInput<float>("X", dims, X);
+  OpTester test(op, opset_version, domain);
+
+  for (auto attr : attrs) {
+    test.AddAttribute(attr.first, attr.second);
+  }
+
+  const auto input_size = first_input->second.size();
+  std::vector<int64_t> dims{static_cast<int64_t>(input_size)};
+
+  std::vector<float> expected_vals;
+  for (size_t i = 0; i < input_size; i++) {
+    std::vector<float> params(inputs.size());
+    std::transform(
+        inputs.begin(), inputs.end(), params.begin(),
+        [i](const std::pair<std::string, std::vector<float>>& input) {
+          return input.second[i];
+        });
+    expected_vals.push_back(expected_func(params));
+  }
+
+  for (const auto& input : inputs) {
+    test.AddInput<float>(input.first.c_str(), dims, input.second);
+  }
   test.AddOutput<float>("dX", dims, expected_vals);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
-TEST(GeluGradTest, Basic) {
-  std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+float GeluGrad(float dy, float x) {
+  return dy * (0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))) +
+               x * std::exp(-0.5f * x * x) * static_cast<float>(M_2_SQRTPI) * static_cast<float>(M_SQRT1_2) * 0.5f);
+}
 
-  std::vector<float> dY(7, 1.0f);
-  TestGradientOpWithTwoInputs(
+float GeluApproximationGrad(float dy, float x) {
+  static const float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
+  static const float kGamma = 0.044715f;
+  static const float kBeta = kAlpha * kGamma * 3.0f;
+
+  float x_cube = x * x * x;
+  float tanh_value = std::tanh(kAlpha * (x + kGamma * x_cube));
+  float sech_sqr_value = 1 - tanh_value * tanh_value;
+  float result = dy * 0.5f * (tanh_value + (sech_sqr_value * (kAlpha * x + kBeta * x_cube)) + 1.0f);
+  return result;
+}
+}  // namespace
+
+TEST(GeluGradTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
       "GeluGrad",
-      dY,
-      x_vals,
-      [](float dy, float x) {
-        return dy * (0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))) +
-                     x * std::exp(-0.5f * x * x) * static_cast<float>(M_2_SQRTPI) * static_cast<float>(M_SQRT1_2) * 0.5f);
+      {{"dY", dY}, {"X", x_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], x = params[1];
+
+        return GeluGrad(dy, x);
       },
       {}, 1, kMSDomain);
 }
 
 TEST(FastGeluGradTest, Basic) {
-  std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
-  std::vector<float> dY(7, 1.0f);
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
 
-  const float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
-  const float kGamma = 0.044715f;
-  const float kBeta = kAlpha * kGamma * 3.0f;
-
-  TestGradientOpWithTwoInputs(
+  TestElementwiseGradientOp(
       "FastGeluGrad",
-      dY,
-      x_vals,
-      [&](float dy, float x) {
-        float x_cube = x * x * x;
-        float tanh_value = std::tanh(kAlpha * (x + kGamma * x_cube));
-        float sech_sqr_value = 1 - tanh_value * tanh_value;
-        float result = dy * 0.5f * (tanh_value + (sech_sqr_value * (kAlpha * x + kBeta * x_cube)) + 1.0f);
-        return result;
+      {{"dY", dY}, {"X", x_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], x = params[1];
+
+        return GeluApproximationGrad(dy, x);
+      },
+      {}, 1, kMSDomain);
+}
+
+// TODO also test broadcasting bias
+TEST(BiasGeluGradDxTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+  const std::vector<float> bias(7, 2.0f);
+
+  TestElementwiseGradientOp(
+      "BiasGeluGrad_dX",
+      {{"dY", dY}, {"X", x_vals}, {"B", bias}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 3);
+        const auto dy = params[0], x = params[1], b = params[2];
+
+        return GeluGrad(dy, x + b);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(BiasFastGeluGradDxTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+  const std::vector<float> bias(7, 2.0f);
+
+  TestElementwiseGradientOp(
+      "BiasFastGeluGrad_dX",
+      {{"dY", dY}, {"X", x_vals}, {"B", bias}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 3);
+        const auto dy = params[0], x = params[1], b = params[2];
+
+        return GeluApproximationGrad(dy, x + b);
       },
       {}, 1, kMSDomain);
 }

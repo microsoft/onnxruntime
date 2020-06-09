@@ -966,7 +966,6 @@ namespace {
 std::vector<NodeDef> GetBiasGeluGradNodes(
     bool use_approximation,
     const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
-    const ArgDef& X_plus_B,                              // intermediate arguments
     const ArgDef& dX, const ArgDef& dB) {                // outputs
   ORT_ENFORCE(GetShape(B).size() == 1, "B must have exactly one dimension.");
 
@@ -979,11 +978,8 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
   }();
 
   return std::vector<NodeDef>{
-      NodeDef("Add",
-              {X, B},
-              {X_plus_B}),
-      NodeDef(OpDef{use_approximation ? "FastGeluGrad" : "GeluGrad", kMSDomain, 1},
-              {dY, X_plus_B},
+      NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
+              {dY, X, B},
               {dX}),
       NodeDef("ReduceSum",
               {dX},
@@ -995,9 +991,8 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
 
 IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
   const auto dY = GO(0), X = I(0), B = I(1),
-             X_plus_B = IA("X_plus_B"),
              dX = GI(0), dB = GI(1);
-  return GetBiasGeluGradNodes(false, dY, X, B, X_plus_B, dX, dB);
+  return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
@@ -1007,9 +1002,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
   if (num_src_node_inputs == 2) {  // with bias
     // FastGeluGrad doesn't support bias - it needs to be composed with other ops
     const auto B = I(1),
-               X_plus_B = IA("X_plus_B"),
                dB = GI(1);
-    return GetBiasGeluGradNodes(true, dY, X, B, X_plus_B, dX, dB);
+    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
   }
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{

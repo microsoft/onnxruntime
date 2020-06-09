@@ -1,8 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/activation/activations.h"
 #include "orttraining/training_ops/cpu/activation/activations_grad.h"
+
+#include "gsl/gsl"
+
+#include "unsupported/Eigen/SpecialFunctions"
+
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    GeluGrad<float>);
+    GeluGrad<float, false>);
 
 ONNX_OPERATOR_KERNEL_EX(
     FastGeluGrad,
@@ -21,16 +26,138 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    FastGeluGrad<float>);
+    GeluGrad<float, true>);
 
-template<typename T>
-constexpr T FastGeluGrad<T>::kAlpha;
+ONNX_OPERATOR_KERNEL_EX(
+    BiasGeluGrad_dX,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    BiasGeluGrad_dX<float, false>);
 
-template<typename T>
-constexpr T FastGeluGrad<T>::kBeta;
+ONNX_OPERATOR_KERNEL_EX(
+    BiasFastGeluGrad_dX,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    BiasGeluGrad_dX<float, true>);
 
-template<typename T>
-constexpr T FastGeluGrad<T>::kGamma;
+namespace {
+template <typename T>
+Status ComputeGeluGradDXActual(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+  static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2 * 0.5);
 
+  ConstEigenVectorArrayMap<T> X_array(X.data(), X.size());
+  ConstEigenVectorArrayMap<T> dY_array(dY.data(), dY.size());
+  EigenVectorArrayMap<T> dX_array(dX.data(), dX.size());
+
+  dX_array = dY_array * (0.5f * ((X_array * static_cast<T>(M_SQRT1_2)).erf() + 1.0f) +
+                         X_array * kAlpha * (-0.5f * X_array * X_array).exp());
+
+  return Status::OK();
+}
+
+template <typename T>
+Status ComputeGeluGradDXApproximation(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+  static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
+  static constexpr T kGamma = static_cast<T>(0.044715f);
+  static constexpr T kBeta = static_cast<T>(kGamma * kAlpha * 3.0f);
+
+  //
+  // Commented out EIGEN implentation due to EIGEN bug.
+  // On Windows Release build with GPU enabled, kAlpha * EIGEN_X below would produce pure 0
+  // result, even though neither kAlpha nor EIGEN_X is zero.
+  // Given that CPU kernel is mostly for conformance check, where performance is not of high
+  // priority, to workaround this bug, use a for loop and avoid using EIGEN library.
+  //
+  // EIGEN_X_VAR(xm);
+  // EIGEN_DY_VAR(dy);
+
+  // const auto x_cube = EIGEN_X.cube();
+  // const auto tanh_result = ((T)kAlpha * (EIGEN_X + kGamma * x_cube)).tanh();
+  // const auto sech_sqr_result = 1 - (tanh_result * tanh_result);
+
+  // EIGEN_DX = dy * (0.5f * (tanh_result + sech_sqr_result * (kAlpha * xm + kBeta * x_cube) + 1));
+  //
+  const T* dY_data = dY.data();
+  const T* X_data = X.data();
+  T* dX_data = dX.data();
+  int64_t elem_count = X.size();
+  for (auto i = 0; i < elem_count; ++i) {
+    const auto x_val = X_data[i];
+    const auto x_cube = x_val * x_val * x_val;
+    T tanh_result = std::tanh(kAlpha * x_val + kAlpha * kGamma * x_cube);
+    T sech_sqr_result = 1 - (tanh_result * tanh_result);
+    dX_data[i] = (dY_data[i]) * (0.5f * (tanh_result + sech_sqr_result * (kAlpha * x_val + kBeta * x_cube) + 1));
+  }
+  return Status::OK();
+}
+
+template <typename T, bool use_approximation>
+Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+  return use_approximation ? ComputeGeluGradDXApproximation(dY, X, dX) : ComputeGeluGradDXActual(dY, X, dX);
+}
+}  // namespace
+
+template <typename T, bool use_approximation>
+Status GeluGrad<T, use_approximation>::Compute(OpKernelContext* context) const {
+  const auto* dY = context->Input<Tensor>(0);
+  ORT_ENFORCE(dY);
+  const auto* X = context->Input<Tensor>(1);
+  ORT_ENFORCE(X);
+  Tensor* dX = context->Output(0, X->Shape());
+  ORT_ENFORCE(dX);
+
+  ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T, use_approximation>(
+      dY->template DataAsSpan<T>(), X->template DataAsSpan<T>(), dX->template MutableDataAsSpan<T>())));
+
+  return Status::OK();
+}
+
+template <typename T, bool use_approximation>
+Status BiasGeluGrad_dX<T, use_approximation>::Compute(OpKernelContext* context) const {
+  const auto* dY = context->Input<Tensor>(0);
+  ORT_ENFORCE(dY);
+  const auto* X = context->Input<Tensor>(1);
+  ORT_ENFORCE(X);
+  const auto* B = context->Input<Tensor>(2);
+  ORT_ENFORCE(B);
+
+  auto* dX = context->Output(0, X->Shape());
+  ORT_ENFORCE(dX);
+
+  ORT_ENFORCE(X->Shape() == dY->Shape());
+
+  const int64_t input_size = X->Shape().Size();
+  const int64_t bias_size = B->Shape().Size();
+
+  // X + B, broadcasting
+  ORT_ENFORCE(B->Shape().NumDimensions() == 1, "Bias must have exactly one dimension.");
+  ORT_ENFORCE(X->Shape().NumDimensions() >= 1, "X must have at least one dimension.");
+
+  ORT_ENFORCE(
+      bias_size == X->Shape().GetDims().back() || bias_size == 1,
+      "Bias is incompatible with X.");
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+  auto X_plus_B_buffer = IAllocator::MakeUniquePtr<T>(allocator, input_size);
+
+  // these are column-major array maps
+  ConstEigenArrayMap<T> X_array(X->template Data<T>(), bias_size, input_size / bias_size);
+  ConstEigenVectorArrayMap<T> B_vector(B->template Data<T>(), bias_size);
+  EigenArrayMap<T> X_plus_B_array(X_plus_B_buffer.get(), bias_size, input_size / bias_size);
+
+  X_plus_B_array = X_array.colwise() + B_vector;
+
+  // dX
+  const auto biased_X_span = gsl::make_span<const T>(X_plus_B_buffer.get(), X->Shape().Size());
+  ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T, use_approximation>(
+      dY->template DataAsSpan<T>(), biased_X_span, dX->template MutableDataAsSpan<T>())));
+
+  return Status::OK();
+}
 }  // namespace contrib
 }  // namespace onnxruntime

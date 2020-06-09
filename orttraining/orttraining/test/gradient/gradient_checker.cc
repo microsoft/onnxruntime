@@ -495,6 +495,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
             }
             *max_error = std::max(*max_error, cur_error);
           }
+
+          // std::cout << "*** r = " << r << "\n***            jac_n           jac_t        abs diff\n";
+          // for (size_t i = 0; i < jac_t.size(); ++i) {
+          //   std::cout << "*** " << std::setw(16) << jac_n[i] << std::setw(16) << jac_t[i] << std::setw(16) << std::fabs(jac_t[i] - jac_n[i]) << "\n";
+          // }
         }
       }
     }
