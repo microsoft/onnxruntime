@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <string>
-#include <unordered_set>
 #include <vector>
 
 #include "core/common/common.h"
@@ -33,6 +31,4 @@ constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";
 constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
-const std::unordered_set<std::string> kNonDeterministicOps =
-      {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 }  // namespace onnxruntime

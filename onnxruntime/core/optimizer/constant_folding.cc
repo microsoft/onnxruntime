@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/constants.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"

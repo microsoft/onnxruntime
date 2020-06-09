@@ -2,12 +2,35 @@
 // Licensed under the MIT License.
 
 #include "common_subexpression_elimination.h"
+#include "core/optimizer/constants.h"
 #include "core/graph/graph_utils.h"
 
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+// This optimization pass will collapse expressions that always evaluate to the same value
+// into one node. As an example, consider the following abstract function where x1, x2,...
+// denote graph inputs, and F1, F2,... - operations.
+//
+// return F3(F2(F1(x1, x2), x3)) + F4(F2(F1(x1, x2), x3))
+//
+// Because F1 operations are given the same inputs, they can be merged into one node:
+//
+// y1 = F1(x1, x2)
+// return F3(F2(y1, x3)) + F4(F2(y1, x3))
+//
+// Now we can see that F2 operations are given the same inputs, so they can be merged too:
+//
+// y1 = F1(x1, x2)
+// y2 = F2(y1, x3)
+// return F3(y2) + F4(y2)
+//
+// This is implemented using value numbering (https://en.wikipedia.org/wiki/Value_numbering):
+// first every graph input, constant initializer and graph node output are assigned
+// an equivalence class, and then nodes that have the same operation and equivalent inputs
+// are collapsed.
 
 namespace onnxruntime {
 
@@ -66,7 +89,7 @@ public:
   bool operator!=(const EquivalenceClass& other) const;
 
   friend struct ::std::hash<EquivalenceClass>;
-  friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs);
+  friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs);
 
   explicit EquivalenceClass(const NodeArg* non_op_value)
     : attributes_(nullptr),
@@ -76,12 +99,12 @@ public:
       hash_(CalculateHash()) {
   }
 
-  EquivalenceClass(const Node* node, const std::vector<const EquivalenceClass*>& explicit_inputs,
+  EquivalenceClass(const Node& node, const std::vector<const EquivalenceClass*>& explicit_inputs,
                    OutputIndex output_index, int discriminator)
-    : op_type_(node->OpType()),
-      domain_(node->Domain()),
+    : op_type_(node.OpType()),
+      domain_(node.Domain()),
       inputs_(Normalize(node, explicit_inputs)),
-      attributes_(&node->GetAttributes()),
+      attributes_(&node.GetAttributes()),
       output_index_(output_index),
       non_op_value_(nullptr),
       discriminator_(discriminator),
@@ -118,8 +141,8 @@ private:
   const std::size_t hash_;
 };
 
-std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs) {
-  const auto& arg_count = node->InputArgCount();
+std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs) {
+  const auto& arg_count = node.InputArgCount();
   auto input_iter = inputs.begin();
   std::vector<std::vector<const EquivalenceClass*>> result(arg_count.size());
 
@@ -322,6 +345,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
   // Pool of equivalence classes; unique_ptr to guarantee stable address.
   std::vector<std::unique_ptr<EquivalenceClass>> unique_equivalence_classes;
+  unique_equivalence_classes.reserve(graph.NumberOfNodes());
 
   // Maps an equivalence class of values to a representative NodeArg that belongs to this class.
   std::unordered_map<
@@ -335,11 +359,11 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   int unique_discriminator = 1;
 
   for (NodeIndex node_index : node_topology_list) {
-    const Node* node = graph_viewer.GetNode(node_index);
+    Node* node = graph.GetNode(node_index);
     if (node == nullptr)
       continue;
 
-    ORT_RETURN_IF_ERROR(Recurse(*graph.GetNode(node_index), modified, graph_level, logger));
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     std::vector<const EquivalenceClass*> input_values;
     input_values.reserve(node->InputDefs().size());
@@ -350,7 +374,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
         // a non-op value (graph input or constant initializer).
         auto value = onnxruntime::make_unique<EquivalenceClass>(input_def);
         const auto* raw_ptr = value.get();
-        unique_equivalence_classes.emplace_back(std::move(value));
+        unique_equivalence_classes.push_back(std::move(value));
         value_to_representative.emplace(raw_ptr, Representative{input_def, 0, kInvalidOutputIndex});
         it = equivalence_classes.emplace_hint(it, input_def, raw_ptr);
       }
@@ -363,14 +387,15 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       discriminator = ++unique_discriminator;
     }
 
-    for (OutputIndex output_index = 0; output_index < static_cast<int>(node->OutputDefs().size()); ++output_index) {
+    for (OutputIndex output_index = 0, end = static_cast<int>(node->OutputDefs().size());
+         output_index < end; ++output_index) {
       const NodeArg* output_def = node->OutputDefs()[output_index];
-      auto equivalence_class = onnxruntime::make_unique<EquivalenceClass>(node, input_values, output_index, discriminator);
+      auto equivalence_class = onnxruntime::make_unique<EquivalenceClass>(*node, input_values, output_index, discriminator);
       auto* raw_ptr = equivalence_class.get();
 
       auto it = value_to_representative.find(raw_ptr);
       if (it == value_to_representative.end()) {
-        unique_equivalence_classes.emplace_back(std::move(equivalence_class));
+        unique_equivalence_classes.push_back(std::move(equivalence_class));
         it = value_to_representative.emplace_hint(it, raw_ptr,
                                                   Representative{output_def, node_index, output_index});
       }
@@ -388,7 +413,8 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       continue;
 
     bool node_output_replaced = false;
-    for (OutputIndex output_idx = 0; output_idx < static_cast<int>(node->OutputDefs().size()); ++output_idx) {
+    for (OutputIndex output_idx = 0, end = static_cast<int>(node->OutputDefs().size());
+         output_idx < end; ++output_idx) {
       const NodeArg* output_def = node->OutputDefs()[output_idx];
 
       const EquivalenceClass* equivalence_class = equivalence_classes.at(output_def);
@@ -401,7 +427,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
       if (graph_outputs.count(output_def) > 0) {
         // Currently, eliminating a value that is the graph's output is not supported.
-        LOGS(logger, INFO) << "Not eliminating output " << output_def->Name() << " of node " << node->Name() <<
+        LOGS(logger, VERBOSE) << "Not eliminating output " << output_def->Name() << " of node " << node->Name() <<
           "[" << node->OpType() << "] because it's the graph's output.";
         continue;
       }
