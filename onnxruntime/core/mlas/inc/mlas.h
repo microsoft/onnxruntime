@@ -147,21 +147,25 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename AType, typename BType>
+struct MLAS_GEMM_U8X8_PARAMETERS {
+    size_t M;
+    size_t N;
+    size_t K;
+    const uint8_t* A;
+    size_t lda;
+    const uint8_t* B;
+    size_t ldb;
+    int32_t* C;
+    size_t ldc;
+    uint8_t offa;
+    uint8_t offb;
+    bool BTypeIsSigned;
+};
+
 void
 MLASCALL
 MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const AType* A,
-    size_t lda,
-    AType offa,
-    const BType* B,
-    size_t ldb,
-    BType offb,
-    int32_t* C,
-    size_t ldc,
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
     MLAS_THREADPOOL* ThreadPool
     );
 

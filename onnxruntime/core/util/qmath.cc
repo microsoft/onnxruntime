@@ -12,6 +12,36 @@
 #endif
 
 namespace onnxruntime {
+
+void QGemm(
+    const MLAS_GEMM_U8X8_PARAMETERS& gemm_parameters,
+    concurrency::ThreadPool* thread_pool) {
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+  MlasGemm(&gemm_parameters, thread_pool);
+#else
+  if (gemm_parameters.BTypeIsSigned) {
+    ORT_NOT_IMPLEMENTED("MatMulInteger: activation uint8 and weight int8 not supported");
+  }
+
+  const size_t M = gemm_parameters.M;
+  const size_t N = gemm_parameters.N;
+  const size_t K = gemm_parameters.K;
+
+  ORT_ENFORCE(gemm_parameters.lda == K && gemm_parameters.ldb == N && gemm_parameters.ldc == N,
+              "For gemmlowp only RowMajor*RowMajor=RowMajor format is supported");
+
+  GemmlowpMultiplyu8u8_s32(gemm_parameters.A,
+                           gemm_parameters.B,
+                           gemm_parameters.C,
+                           gemm_parameters.offa,
+                           gemm_parameters.offb,
+                           static_cast<int>(M),
+                           static_cast<int>(N),
+                           static_cast<int>(K),
+                           thread_pool);
+#endif
+}
+
 template <>
 void QGemm<uint8_t, int8_t, int32_t>(
     int M,
@@ -26,24 +56,21 @@ void QGemm<uint8_t, int8_t, int32_t>(
     int32_t* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, thread_pool);
-#else
-  ORT_UNUSED_PARAMETER(M);
-  ORT_UNUSED_PARAMETER(N);
-  ORT_UNUSED_PARAMETER(K);
-  ORT_UNUSED_PARAMETER(lhs_data);
-  ORT_UNUSED_PARAMETER(lda);
-  ORT_UNUSED_PARAMETER(lhs_offset);
-  ORT_UNUSED_PARAMETER(rhs_data);
-  ORT_UNUSED_PARAMETER(ldb);
-  ORT_UNUSED_PARAMETER(rhs_offset);
-  ORT_UNUSED_PARAMETER(result_data);
-  ORT_UNUSED_PARAMETER(ldc);
-  ORT_UNUSED_PARAMETER(thread_pool);
+  MLAS_GEMM_U8X8_PARAMETERS gemm_parameters = {};
+  gemm_parameters.M = M;
+  gemm_parameters.N = N;
+  gemm_parameters.K = K;
+  gemm_parameters.A = lhs_data;
+  gemm_parameters.lda = lda;
+  gemm_parameters.B = (const uint8_t*)rhs_data;
+  gemm_parameters.ldb = ldb;
+  gemm_parameters.C = result_data;
+  gemm_parameters.ldc = ldc;
+  gemm_parameters.offa = uint8_t(lhs_offset);
+  gemm_parameters.offb = uint8_t(rhs_offset);
+  gemm_parameters.BTypeIsSigned = true;
 
-  ORT_NOT_IMPLEMENTED("MatMulInteger: activation uint8 and weight int8 not supported on ARM");
-#endif
+  QGemm(gemm_parameters, thread_pool);
 }
 
 template <>
@@ -60,13 +87,21 @@ void QGemm<uint8_t, uint8_t, int32_t>(
     int32_t* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
-  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, thread_pool);
-#else
-  ORT_ENFORCE(lda == K && ldb == N && ldc == N, "For gemmlowp only RowMajor*RowMajor=RowMajor format is supported");
+  MLAS_GEMM_U8X8_PARAMETERS gemm_parameters = {};
+  gemm_parameters.M = M;
+  gemm_parameters.N = N;
+  gemm_parameters.K = K;
+  gemm_parameters.A = lhs_data;
+  gemm_parameters.lda = lda;
+  gemm_parameters.B = (const uint8_t*)rhs_data;
+  gemm_parameters.ldb = ldb;
+  gemm_parameters.C = result_data;
+  gemm_parameters.ldc = ldc;
+  gemm_parameters.offa = uint8_t(lhs_offset);
+  gemm_parameters.offb = uint8_t(rhs_offset);
+  gemm_parameters.BTypeIsSigned = false;
 
-  GemmlowpMultiplyu8u8_s32(lhs_data, rhs_data, result_data, lhs_offset, rhs_offset, M, N, K, thread_pool);
-#endif
+  QGemm(gemm_parameters, thread_pool);
 }
 
 }  // namespace onnxruntime

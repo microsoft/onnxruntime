@@ -4,12 +4,17 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
+#include "core/mlas/inc/mlas.h"
 
 #if defined(_M_AMD64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
 #define MLAS_SUPPORTS_GEMM_U8X8
 #endif
 
 namespace onnxruntime {
+
+void QGemm(
+    const MLAS_GEMM_U8X8_PARAMETERS& gemm_parameters,
+    concurrency::ThreadPool* thread_pool);
 
 template <typename LeftScalar, typename RightScalar, typename OutputScalar>
 void QGemm(

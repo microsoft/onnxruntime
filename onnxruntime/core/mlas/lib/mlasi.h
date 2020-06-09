@@ -254,18 +254,12 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 typedef
 void
 (MLASCALL MLAS_GEMM_U8X8_OPERATION)(
-    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
     size_t M,
     size_t N,
-    size_t K,
     const uint8_t* A,
-    size_t lda,
-    int16_t offa,
     const uint8_t* B,
-    size_t ldb,
-    int16_t offb,
-    int32_t* C,
-    size_t ldc
+    int32_t* C
     );
 
 typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
@@ -274,9 +268,9 @@ typedef
 size_t
 (MLASCALL MLAS_GEMM_U8S8_KERNEL)(
     const uint8_t* A,
-    const int8_t* B,
+    const uint8_t* B,
     int32_t* C,
-    size_t QuadCountK,
+    size_t PackedCountK,
     size_t CountM,
     size_t CountN,
     size_t ldc,
@@ -292,7 +286,7 @@ typedef
 size_t
 (MLASCALL MLAS_GEMV_U8S8_KERNEL)(
     const uint8_t* A,
-    const int8_t* B,
+    const uint8_t* B,
     int32_t* C,
     size_t CountK,
     size_t CountN,
@@ -307,7 +301,7 @@ size_t
     const int16_t* A,
     const uint8_t* B,
     int32_t* C,
-    size_t PairCountK,
+    size_t PackedCountK,
     size_t CountM,
     size_t CountN,
     size_t ldc,

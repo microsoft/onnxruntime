@@ -507,12 +507,29 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
+        MLAS_GEMM_U8X8_PARAMETERS Parameters = { };
+
+        Parameters.M = M;
+        Parameters.N = N;
+        Parameters.K = K;
+        Parameters.A = A;
+        Parameters.lda = lda;
+        Parameters.offa = offa;
+        Parameters.B = (const uint8_t*)B;
+        Parameters.ldb = ldb;
+        Parameters.offb = offb;
+        Parameters.BTypeIsSigned = std::is_signed<xint8_t>::value;
+        Parameters.C = C;
+        Parameters.ldc = ldc;
+
+        MlasGemm(&Parameters, threadpool);
+
         ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
                 printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, (int)offa, (int)offb);
+                break;
             }
         }
     }
