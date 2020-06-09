@@ -72,21 +72,19 @@ class Session:
         self._reset_session()
         self._load_model(providers)
 
-    def config_provider(self, provider, device_options):
+    def set_provider_options(self, provider, provider_options):
 
-        if not device_options or not isinstance(device_options, dict):
+        if not provider_options or not isinstance(provider_options, dict):
             raise ValueError("Please specify provider options in python diction format")
 
         if provider not in self._providers:
             raise ValueError("{} does not in the list of registered providers {}".format(
                 provider, self._providers))
 
-        args = []
-        for key, val in device_options.items():
-            args.append(key)
-            args.append(val)
+        for key, val in provider_options.items():
+            provider_options[key] = str(val)
 
-        self._sess.config_device_options(provider, args)
+        self._sess.set_device_options(provider, provider_options)
         self._load_model(self._providers)
 
     def disable_fallback(self):

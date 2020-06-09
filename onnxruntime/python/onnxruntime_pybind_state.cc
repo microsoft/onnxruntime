@@ -399,13 +399,14 @@ bool is_cuda_device_id_valid(int id) {
 void set_cuda_device_options(std::map<std::string, std::string> m) {
 
     // currently hardcode here.
-    // should we use struct CudaDeviceOptions to know which option we provide for cuda device?
+    // should we make device options part of the c++ code, such as struct CudaDeviceOptions?
     std::map<std::string, std::string>::iterator it;
+
     it = m.find("device_id");
-    
     if (it != m.end()) {
         int device_id = std::stoi(it->second);
         if (!is_cuda_device_id_valid(device_id)) {
+            throw std::runtime_error("Please provide proper device ID.");
             return;
         }
         printf("set cuda device id: %d\n", device_id);
@@ -962,33 +963,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         OrtPybindThrowIfError(res.first);
         return *(res.second);
       })
-      .def("config_device_options", [](InferenceSession* sess, std::string provider, py::list & list) -> void {
+      .def("set_device_options", [](InferenceSession* sess, std::string provider, std::map<std::string, std::string> &deviceOptionsMap) -> void {
         if (sess == nullptr) {
           return;
-        }
-
-        if (py::len(list) % 2 != 0) {
-          return; 
-        }
-
-        // device options is stored in python list
-        // first, convert contents of list to std::string
-        // and then save to c++ map
-        int cnt = 0;
-        std::map<std::string, std::string> deviceOptionsMap;
-        std::string key;
-        std::string val;
-        for (py::handle o : list) {
-
-          if (cnt % 2 == 0) {
-            key = py::cast<std::string>(py::str(o));
-          }
-          else {
-            val = py::cast<std::string>(py::str(o));
-            deviceOptionsMap[key] = val;
-          }
-
-          cnt += 1;
         }
 
         if (provider == kCudaExecutionProvider) {
