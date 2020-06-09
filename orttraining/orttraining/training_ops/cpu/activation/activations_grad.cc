@@ -46,7 +46,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace {
 template <typename T>
-Status ComputeGeluGradDXActual(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+Status ComputeGeluGradDXImpl(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2 * 0.5);
 
   ConstEigenVectorArrayMap<T> X_array(X.data(), X.size());
@@ -60,7 +60,7 @@ Status ComputeGeluGradDXActual(gsl::span<const T> dY, gsl::span<const T> X, gsl:
 }
 
 template <typename T>
-Status ComputeGeluGradDXApproximation(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+Status ComputeGeluApproximationGradDXImpl(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
   static constexpr T kGamma = static_cast<T>(0.044715f);
   static constexpr T kBeta = static_cast<T>(kGamma * kAlpha * 3.0f);
@@ -97,7 +97,7 @@ Status ComputeGeluGradDXApproximation(gsl::span<const T> dY, gsl::span<const T> 
 
 template <typename T, bool use_approximation>
 Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
-  return use_approximation ? ComputeGeluGradDXApproximation(dY, X, dX) : ComputeGeluGradDXActual(dY, X, dX);
+  return use_approximation ? ComputeGeluApproximationGradDXImpl(dY, X, dX) : ComputeGeluGradDXImpl(dY, X, dX);
 }
 }  // namespace
 
@@ -125,22 +125,20 @@ Status BiasGeluGrad_dX<T, use_approximation>::Compute(OpKernelContext* context) 
   const auto* B = context->Input<Tensor>(2);
   ORT_ENFORCE(B);
 
-  auto* dX = context->Output(0, X->Shape());
+  const auto& input_shape = X->Shape();
+  ORT_ENFORCE(input_shape == dY->Shape(), "dY and X must have the same shape.");
+  const auto& bias_shape = B->Shape();
+  ORT_ENFORCE(
+      input_shape.NumDimensions() >= 1 && bias_shape.NumDimensions() == 1 &&
+          input_shape.GetDims().back() == bias_shape.GetDims().back(),
+      "B must be 1-dimensional and match the last dimension of X.");
+
+  auto* dX = context->Output(0, input_shape);
   ORT_ENFORCE(dX);
 
-  ORT_ENFORCE(X->Shape() == dY->Shape());
-
-  const int64_t input_size = X->Shape().Size();
-  const int64_t bias_size = B->Shape().Size();
+  const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
 
   // X + B, broadcasting
-  ORT_ENFORCE(B->Shape().NumDimensions() == 1, "Bias must have exactly one dimension.");
-  ORT_ENFORCE(X->Shape().NumDimensions() >= 1, "X must have at least one dimension.");
-
-  ORT_ENFORCE(
-      bias_size == X->Shape().GetDims().back() || bias_size == 1,
-      "Bias is incompatible with X.");
-
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   auto X_plus_B_buffer = IAllocator::MakeUniquePtr<T>(allocator, input_size);

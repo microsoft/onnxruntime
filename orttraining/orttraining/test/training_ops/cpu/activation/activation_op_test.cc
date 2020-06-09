@@ -137,5 +137,41 @@ TEST(BiasFastGeluGradDxTest, Basic) {
       {}, 1, kMSDomain);
 }
 
+namespace {
+template <typename TComputeGeluGradScalarFn>
+void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain, TComputeGeluGradScalarFn compute_gelu_grad_scalar_fn) {
+  OpTester test(op.c_str(), opset_version, domain.c_str());
+
+  const std::vector<float> X{-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f};
+  const std::vector<float> dY(6, 1.0f);
+  const std::vector<float> B{1.0f, 2.0f, 3.0f};
+
+  const TensorShape input_shape{2, 3};
+  const TensorShape bias_shape{3};
+
+  test.AddInput<float>("dY", input_shape.GetDims(), dY);
+  test.AddInput<float>("X", input_shape.GetDims(), X);
+  test.AddInput<float>("B", bias_shape.GetDims(), B);
+
+  const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
+  std::vector<float> expected_dX{};
+  for (int64_t i = 0; i < input_size; ++i) {
+    expected_dX.push_back(compute_gelu_grad_scalar_fn(dY[i], X[i] + B[i % bias_size]));
+  }
+
+  test.AddOutput("dX", input_shape.GetDims(), expected_dX);
+
+  test.Run();
+}
+}  // namespace
+
+TEST(BiasGeluGradDxTest, BroadcastBias) {
+  TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, GeluGrad);
+}
+
+TEST(BiasFastGeluGradDxTest, BroadcastBias) {
+  TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, GeluApproximationGrad);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

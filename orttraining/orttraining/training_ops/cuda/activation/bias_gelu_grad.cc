@@ -76,14 +76,14 @@ Status BiasGeluGrad_dX<use_approximation>::ComputeInternal(OpKernelContext* cont
   ORT_ENFORCE(input_shape == dY->Shape(), "dY and X must have the same shape.");
   const auto& bias_shape = B->Shape();
   ORT_ENFORCE(
-      input_shape.NumDimensions() >= 1 && bias_shape.NumDimensions() == 1 && input_shape.GetDims().back() == bias_shape.GetDims().back(),
+      input_shape.NumDimensions() >= 1 && bias_shape.NumDimensions() == 1 &&
+          input_shape.GetDims().back() == bias_shape.GetDims().back(),
       "B must be 1-dimensional and match the last dimension of X.");
 
-  auto* dX = context->Output(0, dY->Shape());
+  auto* dX = context->Output(0, input_shape);
   ORT_ENFORCE(dX);
 
   const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
-  ORT_ENFORCE(input_size > 0 && bias_size > 0, "dY, X, and B sizes must be greater than 0.");
 
   if (use_approximation) {
     utils::MLTypeCallDispatcher<
