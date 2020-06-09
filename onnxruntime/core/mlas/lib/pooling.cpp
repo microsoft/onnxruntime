@@ -80,7 +80,7 @@ struct MLAS_MAXIMUM_POOLING
 
     static float Reduce(float Reduction, float Value)
     {
-        return (std::max)(Reduction, Value);
+        return std::max(Reduction, Value);
     }
 
     static MLAS_FLOAT32X4 Reduce(MLAS_FLOAT32X4 Reduction, MLAS_FLOAT32X4 Value)
@@ -293,8 +293,8 @@ Return Value:
             const int64_t iwStart64 = pw * StrideWidth - PaddingLeftWidth;
             const int64_t iwEnd64 = iwStart64 + KernelWidth;
 
-            const size_t iwStart = size_t((std::max)(iwStart64, int64_t(0)));
-            const size_t iwEnd = size_t((std::min)(iwEnd64, int64_t(InputWidth)));
+            const size_t iwStart = size_t(std::max(iwStart64, int64_t(0)));
+            const size_t iwEnd = size_t(std::min(iwEnd64, int64_t(InputWidth)));
 
             float m = PoolingType::InitialValue();
 
@@ -370,16 +370,16 @@ Return Value:
             const int64_t ihStart64 = ph * StrideHeight - PaddingLeftHeight;
             const int64_t ihEnd64 = ihStart64 + KernelHeight;
 
-            const size_t ihStart = size_t((std::max)(ihStart64, int64_t(0)));
-            const size_t ihEnd = size_t((std::min)(ihEnd64, int64_t(InputHeight)));
+            const size_t ihStart = size_t(std::max(ihStart64, int64_t(0)));
+            const size_t ihEnd = size_t(std::min(ihEnd64, int64_t(InputHeight)));
 
             for (size_t pw = 0; pw < OutputWidth; pw++) {
 
                 const int64_t iwStart64 = pw * StrideWidth - PaddingLeftWidth;
                 const int64_t iwEnd64 = iwStart64 + KernelWidth;
 
-                const size_t iwStart = size_t((std::max)(iwStart64, int64_t(0)));
-                const size_t iwEnd = size_t((std::min)(iwEnd64, int64_t(InputWidth)));
+                const size_t iwStart = size_t(std::max(iwStart64, int64_t(0)));
+                const size_t iwEnd = size_t(std::min(iwEnd64, int64_t(InputWidth)));
 
                 float m = PoolingType::InitialValue();
 
@@ -604,14 +604,12 @@ Return Value:
                         break;
                     }
 
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
-                    MlasStoreLaneFloat32x4<0>(Output, Reduction);
-                    MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
-#elif defined(MLAS_SSE2_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
                     Reduction = _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(2, 0, 2, 0));
                     MlasStoreLowHalfFloat32x4(Output, Reduction);
 #else
-#error Unsupported architecture.
+                    MlasStoreLaneFloat32x4<0>(Output, Reduction);
+                    MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #endif
 
                     Output += 2;
@@ -688,24 +686,24 @@ Return Value:
             const int64_t idStart64 = pd * StrideDepth - PaddingLeftDepth;
             const int64_t idEnd64 = idStart64 + KernelDepth;
 
-            const size_t idStart = size_t((std::max)(idStart64, int64_t(0)));
-            const size_t idEnd = size_t((std::min)(idEnd64, int64_t(InputDepth)));
+            const size_t idStart = size_t(std::max(idStart64, int64_t(0)));
+            const size_t idEnd = size_t(std::min(idEnd64, int64_t(InputDepth)));
 
             for (size_t ph = 0; ph < OutputHeight; ph++) {
 
                 const int64_t ihStart64 = ph * StrideHeight - PaddingLeftHeight;
                 const int64_t ihEnd64 = ihStart64 + KernelHeight;
 
-                const size_t ihStart = size_t((std::max)(ihStart64, int64_t(0)));
-                const size_t ihEnd = size_t((std::min)(ihEnd64, int64_t(InputHeight)));
+                const size_t ihStart = size_t(std::max(ihStart64, int64_t(0)));
+                const size_t ihEnd = size_t(std::min(ihEnd64, int64_t(InputHeight)));
 
                 for (size_t pw = 0; pw < OutputWidth; pw++) {
 
                     const int64_t iwStart64 = pw * StrideWidth - PaddingLeftWidth;
                     const int64_t iwEnd64 = iwStart64 + KernelWidth;
 
-                    const size_t iwStart = size_t((std::max)(iwStart64, int64_t(0)));
-                    const size_t iwEnd = size_t((std::min)(iwEnd64, int64_t(InputWidth)));
+                    const size_t iwStart = size_t(std::max(iwStart64, int64_t(0)));
+                    const size_t iwEnd = size_t(std::min(iwEnd64, int64_t(InputWidth)));
 
                     float m = PoolingType::InitialValue();
 
@@ -976,14 +974,12 @@ Return Value:
                             break;
                         }
 
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
-                        MlasStoreLaneFloat32x4<0>(Output, Reduction);
-                        MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
-#elif defined(MLAS_SSE2_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
                         Reduction = _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(2, 0, 2, 0));
                         MlasStoreLowHalfFloat32x4(Output, Reduction);
 #else
-#error Unsupported architecture.
+                        MlasStoreLaneFloat32x4<0>(Output, Reduction);
+                        MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #endif
 
                         Output += 2;

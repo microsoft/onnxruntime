@@ -14,8 +14,8 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
             device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
 
-  // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable. 
-  // But first we need to add a mechanism to allow that sort of low level configuration to be done 
+  // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable.
+  // But first we need to add a mechanism to allow that sort of low level configuration to be done
   // without adding separate parameters to SessionOptions for every single one of them.
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
@@ -62,7 +62,7 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCArena::Extend(size_t rounded_bytes) {
+Status BFCArena::Extend(size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -70,7 +70,8 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
   if (rounded_bytes > available_bytes) {
-    return false;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes,
+                           " is smaller than requested bytes of ", rounded_bytes);
   }
 
   auto safe_alloc = [this](size_t alloc_bytes) {
@@ -137,11 +138,11 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   }
 
   if (mem_addr == nullptr) {
-    ORT_THROW("Failed to allocate memory for requested buffer of size ", rounded_bytes);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
-  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
-                     << " bytes.";
+  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
   LOGS_DEFAULT(INFO) << "Total allocated bytes: "
@@ -170,7 +171,7 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
-  return true;
+  return Status::OK();
 }
 
 BFCArena::ChunkHandle BFCArena::AllocateChunk() {
@@ -260,10 +261,15 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
                      << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
 
   // Try to extend
-  if (Extend(rounded_bytes)) {
+  auto status = Extend(rounded_bytes);
+  if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
       return ptr;
+    } else {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to find a free memory block despite calling Extend. rounded_bytes=",
+                               rounded_bytes);
     }
   }
 
@@ -271,13 +277,12 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying "
-                        << "to allocate " << num_bytes
+    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying to allocate " << num_bytes
                         << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
 
-  return nullptr;
+  ORT_THROW(status.ErrorMessage());
 }
 
 void BFCArena::GetStats(AllocatorStats* stats) {
@@ -307,8 +312,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // kMaxDeadBytesInChunk bytes on padding this alloc.
         const int64_t kMaxDeadBytesInChunk = 128 << 20;  // 128mb
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxDeadBytesInChunk) {
+            static_cast<int64_t>(chunk->size) - rounded_bytes >= kMaxDeadBytesInChunk) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

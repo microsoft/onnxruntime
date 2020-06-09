@@ -19,8 +19,9 @@ class ValueInfoProto;
 //One test case can contain multiple test data(input/output pairs)
 class ITestCase {
  public:
-  virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, OrtValue*>& name_data_map,
-                            bool is_input) = 0;
+  virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
+                            std::unordered_map<std::string, OrtValue*>& name_data_map,
+                            bool is_input) const = 0;
   virtual const PATH_CHAR_TYPE* GetModelUrl() const = 0;
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
@@ -28,13 +29,13 @@ class ITestCase {
   virtual const std::string& GetTestCaseName() const = 0;
   virtual std::string GetTestCaseVersion() const = 0;
   //a string to help identify the dataset
-  virtual std::string GetDatasetDebugInfoString(size_t dataset_id) = 0;
+  virtual std::string GetDatasetDebugInfoString(size_t dataset_id) const = 0;
   //The number of input/output pairs
   virtual size_t GetDataCount() const = 0;
   virtual ~ITestCase() = default;
-  virtual ::onnxruntime::common::Status GetPerSampleTolerance(double* value) = 0;
-  virtual ::onnxruntime::common::Status GetRelativePerSampleTolerance(double* value) = 0;
-  virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) = 0;
+  virtual ::onnxruntime::common::Status GetPerSampleTolerance(double* value) const = 0;
+  virtual ::onnxruntime::common::Status GetRelativePerSampleTolerance(double* value) const = 0;
+  virtual ::onnxruntime::common::Status GetPostProcessing(bool* value) const = 0;
 };
 
 class TestModelInfo {
@@ -57,9 +58,11 @@ class TestModelInfo {
   virtual std::string GetModelVersion() const { return ""; }
   virtual ~TestModelInfo() = default;
 
-  static TestModelInfo* LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
+  static std::unique_ptr<TestModelInfo> LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url);
   static const std::string unknown_version;
 };
 
-ITestCase* CreateOnnxTestCase(const std::string& test_case_name, TestModelInfo* model,
-                              double default_per_sample_tolerance, double default_relative_per_sample_tolerance);
+std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
+                                              std::unique_ptr<TestModelInfo> model,
+                                              double default_per_sample_tolerance,
+                                              double default_relative_per_sample_tolerance);
