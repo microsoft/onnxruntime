@@ -161,7 +161,10 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
       m,
       n);
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length);
+  const int past_sequence_length = 0;
+  const T* past_data = nullptr;
+  T* present_data = nullptr;
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
@@ -174,7 +177,11 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           temp_buffer.get(),
           cublas,
           element_size,
-          is_unidirectional_)) {
+          is_unidirectional_,
+          past_sequence_length,
+          past_data,
+          present_data
+      )) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

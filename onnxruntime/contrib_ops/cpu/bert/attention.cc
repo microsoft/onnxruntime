@@ -36,7 +36,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                                   const Tensor* bias,
                                   const Tensor* mask_index,
                                   const Tensor* past) const {
-  // Input and output shapes:
+  // Input shapes:
   //   input       : (batch_size, sequence_length, hidden_size)
   //   weights     : (hidden_size, 3 * hidden_size)
   //   bias        : (3 * hidden_size)
@@ -121,6 +121,43 @@ Status AttentionBase::CheckInputs(const Tensor* input,
   return Status::OK();
 }
 
+Tensor* AttentionBase::GetPresent(OpKernelContext* context,
+                                  const Tensor* past,
+                                  int batch_size,
+                                  int head_size,
+                                  int sequence_length,
+                                  int& past_sequence_length) const {
+  // Input and output shapes:
+  //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
+  //   present     : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
+
+  std::vector<int64_t> present_dims;
+  if (nullptr != past) {
+    const auto past_dims = past->Shape().GetDims();
+    past_sequence_length = static_cast<int>(past_dims[3]);
+
+    present_dims.push_back(past_dims[0]);
+    present_dims.push_back(past_dims[1]);
+    present_dims.push_back(past_dims[2]);
+    present_dims.push_back(static_cast<int64_t>(past_sequence_length + sequence_length));
+    present_dims.push_back(past_dims[4]);
+  } else {
+    present_dims.push_back(static_cast<int64_t>(2));
+    present_dims.push_back(static_cast<int64_t>(batch_size));
+    present_dims.push_back(static_cast<int64_t>(num_heads_));
+    present_dims.push_back(static_cast<int64_t>(sequence_length));
+    present_dims.push_back(static_cast<int64_t>(head_size));
+  }
+
+  TensorShape present_shape(present_dims);
+  Tensor* present = context->Output(1, present_shape);
+  if (nullptr != past && nullptr == present) {
+    ORT_THROW("Expect to have present state output when past state input is given");
+  }
+
+  return present;
+}
+
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {
 }
@@ -145,29 +182,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   int past_sequence_length = 0;
-  std::vector<int64_t> present_dims;
-  if (nullptr != past) {
-    const auto past_dims = past->Shape().GetDims();
-    past_sequence_length = static_cast<int>(past_dims[3]);
-
-    present_dims.push_back(past_dims[0]);
-    present_dims.push_back(past_dims[1]);
-    present_dims.push_back(past_dims[2]);
-    present_dims.push_back(static_cast<int64_t>(past_sequence_length + sequence_length));
-    present_dims.push_back(past_dims[4]);
-  } else {
-    present_dims.push_back(static_cast<int64_t>(2));
-    present_dims.push_back(static_cast<int64_t>(batch_size));
-    present_dims.push_back(static_cast<int64_t>(num_heads_));
-    present_dims.push_back(static_cast<int64_t>(sequence_length));
-    present_dims.push_back(static_cast<int64_t>(head_size));
-  }
-
-  TensorShape present_shape(present_dims);
-  Tensor* present = context->Output(1, present_shape);
-  if (nullptr != past && nullptr == present) {
-    ORT_THROW("Expect to have present state output when past state input is given");
-  }
+  Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
 
   // Total sequence length including that of past state: S* = S' + S
   const int all_sequence_length = past_sequence_length + sequence_length;
