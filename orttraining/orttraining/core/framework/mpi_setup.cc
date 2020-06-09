@@ -51,9 +51,7 @@ MPIContext setup_mpi() {
          local_rank, world_rank, world_size, local_size, version);
   return MPIContext(world_rank, local_rank, world_size, local_size);
 }
-#endif
 
-#ifdef USE_MPI
 void shutdown_mpi() {
 #ifdef USE_HOROVOD
   horovod::common::horovod_shutdown();

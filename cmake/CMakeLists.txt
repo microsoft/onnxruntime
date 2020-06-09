@@ -948,26 +948,13 @@ if (onnxruntime_ENABLE_TRAINING)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
     if (MPI_FOUND)
-      set(MPI_HEADER_FILE "${MPI_INCLUDE_DIR}/mpi.h")
-      message( STATUS "Determining MPI version from the header file: ${MPI_HEADER_FILE}" )
-      file (STRINGS ${MPI_HEADER_FILE} MPI_MAJOR_VERSION_DEFINED
-            REGEX "^[ \t]*#define[ \t]+OMPI_MAJOR_VERSION[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-      if (MPI_MAJOR_VERSION_DEFINED)
-        string (REGEX REPLACE "^[ \t]*#define[ \t]+OMPI_MAJOR_VERSION[ \t]+" ""
-                MPI_MAJOR_VERSION ${MPI_MAJOR_VERSION_DEFINED})
-        message( STATUS "MPI_MAJOR_VERSION: ${MPI_MAJOR_VERSION}" )
-      endif()
-      file (STRINGS ${MPI_HEADER_FILE} MPI_MINOR_VERSION_DEFINED
-            REGEX "^[ \t]*#define[ \t]+OMPI_MINOR_VERSION[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-      if (MPI_MINOR_VERSION_DEFINED)
-        string (REGEX REPLACE "^[ \t]*#define[ \t]+OMPI_MINOR_VERSION[ \t]+" ""
-                MPI_MINOR_VERSION ${MPI_MINOR_VERSION_DEFINED})
-        message(STATUS "MPI_MINOR_VERSION: ${MPI_MINOR_VERSION}")
-      endif()
+      execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
+      message( STATUS "MPI Version: ${MPI_VERSION}")
 
       set(MPI_INCLUDE_DIRS ${MPI_INCLUDE_DIR})
       set(MPI_LIBRARIES ${MPI_LIBRARY})
-      message( STATUS "Found MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
+      message( STATUS "MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
       mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
@@ -986,12 +973,7 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_NCCL_HOME}/include
         $ENV{CUDA_ROOT}/include)
 
-      if ($ENV{USE_STATIC_NCCL})
-        message( STATUS "USE_STATIC_NCCL detected. Linking against static NCCL library" )
-        set(NCCL_LIBNAME "libnccl_static.a")
-      else()
-        set(NCCL_LIBNAME "nccl")
-      endif()
+      set(NCCL_LIBNAME "nccl")
 
       find_library(NCCL_LIBRARY
         NAMES ${NCCL_LIBNAME}
@@ -1022,7 +1004,7 @@ if (onnxruntime_ENABLE_TRAINING)
 
         set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
         set(NCCL_LIBRARIES ${NCCL_LIBRARY})
-        message( STATUS "Found NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
+        message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
         mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
 
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
