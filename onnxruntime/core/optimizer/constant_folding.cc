@@ -87,7 +87,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Check if constant folding can be applied on this node.
       if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
-        kNonDeterministicOps.find(node->OpType()) != kNonDeterministicOps.end() ||
+          kNonDeterministicOps.find(node->OpType()) != kNonDeterministicOps.end() ||
           // constant folding does not support executing a node that includes subgraphs (control flow operators,
           // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
           // by the Recurse call above

@@ -58,14 +58,14 @@ std::vector<std::string> GetAllNodeNamesSorted(const Graph& graph) {
   std::sort(res.begin(), res.end());
   return res;
 }
-}
+}  // namespace
 
 TEST(CseTests, SimpleTest) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse1.onnx");
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-        DefaultLoggingManager().DefaultLogger())
-      .IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   ApplyCse(*model);
 
   Graph& graph = model->MainGraph();
@@ -88,8 +88,8 @@ TEST(CseTests, GraphOutput) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_graph_output.onnx");
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-        DefaultLoggingManager().DefaultLogger())
-      .IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   ApplyCse(*model);
 
   Graph& graph = model->MainGraph();
@@ -111,8 +111,8 @@ TEST(CseTests, OptionalArgs) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_optional_args.onnx");
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-        DefaultLoggingManager().DefaultLogger())
-      .IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   auto op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count.at("Clip"), 5);
@@ -138,8 +138,8 @@ TEST(CseTests, Random) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_random.onnx");
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-        DefaultLoggingManager().DefaultLogger())
-      .IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   auto op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count["RandomUniform"], 4);
@@ -167,13 +167,13 @@ TEST(CseTests, Subgraph) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_subgraph.onnx");
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-        DefaultLoggingManager().DefaultLogger())
-      .IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   auto node_names = GetAllNodeNamesSorted(graph);
-  ASSERT_EQ(node_names, (std::vector<std::string>{ "if_0",
-              "iffalse_intermediate_1", "iffalse_intermediate_2", "iffalse_res_1", "iffalse_res_2", "iffalse_res_3",
-              "iftrue_intermediate_1", "iftrue_intermediate_2", "iftrue_res_1", "iftrue_res_2", "iftrue_res_3" }));
+  ASSERT_EQ(node_names, (std::vector<std::string>{"if_0",
+                                                  "iffalse_intermediate_1", "iffalse_intermediate_2", "iffalse_res_1", "iffalse_res_2", "iffalse_res_3",
+                                                  "iftrue_intermediate_1", "iftrue_intermediate_2", "iftrue_res_1", "iftrue_res_2", "iftrue_res_3"}));
 
   ApplyCse(*model);
 
@@ -223,8 +223,8 @@ TEST(CseTests, MergeConstants) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_merge_constants.onnx");
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-        DefaultLoggingManager().DefaultLogger())
-      .IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   GraphTransformerManager graph_transformation_mgr(1);
   // In current implementation, equal constants are not merged. So CSE must precede constant folding, otherwise we end up
@@ -242,5 +242,5 @@ TEST(CseTests, MergeConstants) {
   ASSERT_EQ(op_count["Add"], 2);
 }
 
-}
-}
+}  // namespace test
+}  // namespace onnxruntime

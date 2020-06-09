@@ -84,7 +84,7 @@ const NodeArg* Normalize(const NodeArg* node_arg) {
 // Represents an equivalence class of expressions (inputs, constant initializers and node outputs)
 // that will always evaluate to the same runtime value.
 class EquivalenceClass {
-public:
+ public:
   bool operator==(const EquivalenceClass& other) const;
   bool operator!=(const EquivalenceClass& other) const;
 
@@ -92,26 +92,26 @@ public:
   friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs);
 
   explicit EquivalenceClass(const NodeArg* non_op_value)
-    : attributes_(nullptr),
-      output_index_(kInvalidOutputIndex),
-      non_op_value_(Normalize(non_op_value)),
-      discriminator_(0),
-      hash_(CalculateHash()) {
+      : attributes_(nullptr),
+        output_index_(kInvalidOutputIndex),
+        non_op_value_(Normalize(non_op_value)),
+        discriminator_(0),
+        hash_(CalculateHash()) {
   }
 
   EquivalenceClass(const Node& node, const std::vector<const EquivalenceClass*>& explicit_inputs,
                    OutputIndex output_index, int discriminator)
-    : op_type_(node.OpType()),
-      domain_(node.Domain()),
-      inputs_(Normalize(node, explicit_inputs)),
-      attributes_(&node.GetAttributes()),
-      output_index_(output_index),
-      non_op_value_(nullptr),
-      discriminator_(discriminator),
-      hash_(CalculateHash()) {
+      : op_type_(node.OpType()),
+        domain_(node.Domain()),
+        inputs_(Normalize(node, explicit_inputs)),
+        attributes_(&node.GetAttributes()),
+        output_index_(output_index),
+        non_op_value_(nullptr),
+        discriminator_(discriminator),
+        hash_(CalculateHash()) {
   }
 
-private:
+ private:
   std::size_t CalculateHash() const;
 
   // Operation and domain of the node that produces this value.
@@ -198,7 +198,7 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
     case onnx::AttributeProto_AttributeType_GRAPHS:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
     case onnx::AttributeProto_AttributeType_UNDEFINED:
-      return false; // Don't support these attributes for now; corresponding nodes will be considered distinct.
+      return false;  // Don't support these attributes for now; corresponding nodes will be considered distinct.
   }
 
   return false;
@@ -324,9 +324,9 @@ bool IsNodeSupported(const Node& node) {
 
   return true;
 }
-}
+}  // namespace
 
-}
+}  // namespace onnxruntime
 
 namespace std {
 template <>
@@ -335,7 +335,7 @@ struct hash<onnxruntime::EquivalenceClass> {
     return val.hash_;
   }
 };
-}
+}  // namespace std
 
 namespace onnxruntime {
 
@@ -349,9 +349,10 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
   // Maps an equivalence class of values to a representative NodeArg that belongs to this class.
   std::unordered_map<
-    const EquivalenceClass*,
-    Representative,
-    DeepPointerHash, DeepPointerEquality> value_to_representative;
+      const EquivalenceClass*,
+      Representative,
+      DeepPointerHash, DeepPointerEquality>
+      value_to_representative;
 
   // Reverse mapping.
   std::unordered_map<const NodeArg*, const EquivalenceClass*, NodeArgPtrHash, NodeArgPtrEquality> equivalence_classes;
@@ -427,8 +428,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
       if (graph_outputs.count(output_def) > 0) {
         // Currently, eliminating a value that is the graph's output is not supported.
-        LOGS(logger, VERBOSE) << "Not eliminating output " << output_def->Name() << " of node " << node->Name() <<
-          "[" << node->OpType() << "] because it's the graph's output.";
+        LOGS(logger, VERBOSE) << "Not eliminating output " << output_def->Name() << " of node " << node->Name() << "[" << node->OpType() << "] because it's the graph's output.";
         continue;
       }
 
@@ -451,4 +451,4 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   return Status::OK();
 }
 
-}
+}  // namespace onnxruntime
