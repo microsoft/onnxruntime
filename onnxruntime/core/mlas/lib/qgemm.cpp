@@ -181,48 +181,39 @@ Return Value:
     }
 }
 
-template<typename BType>
 void
 MlasGemmU8X8CopyPackBProcessSse(
     int16_t* D,
     __m128i BytesRow0,
     __m128i BytesRow1,
-    __m128i ZeroVector,
+    __m128i BitFlipVector,
     __m128i ColumnSums[2]
     )
 {
     __m128i BytesInterleaved = _mm_unpacklo_epi8(BytesRow0, BytesRow1);
-    __m128i WordsInterleaved[2];
 
-    //
-    // Zero or sign extend the bytes to words.
-    //
+    BytesInterleaved = _mm_xor_si128(BytesInterleaved, BitFlipVector);
 
-    if (std::is_same<BType, uint8_t>::value) {
-        WordsInterleaved[0] = _mm_unpacklo_epi8(BytesInterleaved, ZeroVector);
-        WordsInterleaved[1] = _mm_unpackhi_epi8(BytesInterleaved, ZeroVector);
-    } else {
-        WordsInterleaved[0] = _mm_srai_epi16(_mm_unpacklo_epi8(BytesInterleaved, BytesInterleaved), 8);
-        WordsInterleaved[1] = _mm_srai_epi16(_mm_unpackhi_epi8(BytesInterleaved, BytesInterleaved), 8);
-    }
+    __m128i WordsInterleaved0 = _mm_srai_epi16(_mm_unpacklo_epi8(BytesInterleaved, BytesInterleaved), 8);
+    __m128i WordsInterleaved1 = _mm_srai_epi16(_mm_unpackhi_epi8(BytesInterleaved, BytesInterleaved), 8);
 
-    ColumnSums[0] = _mm_add_epi16(ColumnSums[0], WordsInterleaved[0]);
-    ColumnSums[1] = _mm_add_epi16(ColumnSums[1], WordsInterleaved[1]);
+    ColumnSums[0] = _mm_add_epi16(ColumnSums[0], WordsInterleaved0);
+    ColumnSums[1] = _mm_add_epi16(ColumnSums[1], WordsInterleaved1);
 
-    _mm_storeu_si128((__m128i*)&D[0], WordsInterleaved[0]);
-    _mm_storeu_si128((__m128i*)&D[8], WordsInterleaved[1]);
+    _mm_storeu_si128((__m128i*)&D[0], WordsInterleaved0);
+    _mm_storeu_si128((__m128i*)&D[8], WordsInterleaved1);
 }
 
-template<typename BType>
 void
 MlasGemmU8X8CopyPackBSse(
     int16_t* D,
-    const BType* B,
+    const uint8_t* B,
     size_t ldb,
     size_t CountN,
     size_t CountK,
     int32_t* ColumnSumVector,
-    int16_t offa
+    int16_t offa,
+    bool BTypeIsSigned
     )
 /*++
 
@@ -256,9 +247,8 @@ Return Value:
 
 --*/
 {
-    const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i OffsetBroadcast = _mm_set1_epi16(offa);
-    BType PaddedMatrixBData[16] = { 0 };
+    const __m128i BitFlipVector = _mm_set1_epi32(BTypeIsSigned ? 0 : 0x80808080);
 
     //
     // Process 8 columns of matrix B in a loop.
@@ -266,12 +256,12 @@ Return Value:
 
     while (CountN >= 8) {
 
-        const BType* b = B;
+        const uint8_t* b = B;
         size_t k = CountK;
         __m128i ColumnSums[2];
 
-        ColumnSums[0] = ZeroVector;
-        ColumnSums[1] = ZeroVector;
+        ColumnSums[0] = _mm_setzero_si128();
+        ColumnSums[1] = _mm_setzero_si128();
 
         //
         // Interleave rows of matrix B and write to the packed buffer.
@@ -286,7 +276,7 @@ Return Value:
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&b[0]);
             __m128i BytesRow1 = _mm_loadl_epi64((__m128i*)&b[ldb]);
 
-            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, BytesRow1, ZeroVector, ColumnSums);
+            MlasGemmU8X8CopyPackBProcessSse(D, BytesRow0, BytesRow1, BitFlipVector, ColumnSums);
 
             b += ldb * 2;
             D += 16;
@@ -297,7 +287,7 @@ Return Value:
 
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&b[0]);
 
-            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, ZeroVector, ZeroVector, ColumnSums);
+            MlasGemmU8X8CopyPackBProcessSse(D, BytesRow0, BitFlipVector, BitFlipVector, ColumnSums);
 
             D += 16;
         }
@@ -325,12 +315,15 @@ Return Value:
 
     if (CountN > 0) {
 
-        const BType* b = B;
+        const uint8_t* b = B;
         size_t k = CountK;
         __m128i ColumnSums[2];
+        uint8_t PaddedMatrixBData[16];
 
-        ColumnSums[0] = ZeroVector;
-        ColumnSums[1] = ZeroVector;
+        _mm_storeu_si128((__m128i*)PaddedMatrixBData, BitFlipVector);
+
+        ColumnSums[0] = _mm_setzero_si128();
+        ColumnSums[1] = _mm_setzero_si128();
 
         //
         // Interleave rows of matrix B using an intermediate zero padded stack
@@ -339,9 +332,9 @@ Return Value:
 
         while (k >= 2) {
 
-            const BType* bcopy = b;
-            BType* padded = PaddedMatrixBData;
-            BType* padded_end = padded + CountN;
+            const uint8_t* bcopy = b;
+            uint8_t* padded = PaddedMatrixBData;
+            uint8_t* padded_end = padded + CountN;
 
             do {
                 padded[0] = bcopy[0];
@@ -353,7 +346,7 @@ Return Value:
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[0]);
             __m128i BytesRow1 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[8]);
 
-            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, BytesRow1, ZeroVector, ColumnSums);
+            MlasGemmU8X8CopyPackBProcessSse(D, BytesRow0, BytesRow1, BitFlipVector, ColumnSums);
 
             b += ldb * 2;
             D += 16;
@@ -362,9 +355,9 @@ Return Value:
 
         if (k > 0) {
 
-            const BType* bcopy = b;
-            BType* padded = PaddedMatrixBData;
-            BType* padded_end = padded + CountN;
+            const uint8_t* bcopy = b;
+            uint8_t* padded = PaddedMatrixBData;
+            uint8_t* padded_end = padded + CountN;
 
             do {
                 padded[0] = bcopy[0];
@@ -374,7 +367,7 @@ Return Value:
 
             __m128i BytesRow0 = _mm_loadl_epi64((__m128i*)&PaddedMatrixBData[0]);
 
-            MlasGemmU8X8CopyPackBProcessSse<BType>(D, BytesRow0, ZeroVector, ZeroVector, ColumnSums);
+            MlasGemmU8X8CopyPackBProcessSse(D, BytesRow0, BitFlipVector, BitFlipVector, ColumnSums);
         }
 
         //
@@ -648,6 +641,10 @@ Return Value:
     size_t StrideN = MLAS_GEMM_U8X8_STRIDEN_SSE;
     size_t StrideK = MLAS_GEMM_U8X8_STRIDEK_SSE;
 
+    if (!WorkBlock->BTypeIsSigned) {
+        offb = int8_t(offb ^ 0x80);
+    }
+
     //
     // Step through each slice of matrix B along the K dimension.
     //
@@ -656,7 +653,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, StrideK);
+        CountK = std::min(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -666,7 +663,7 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, StrideN);
+            CountN = std::min(N - n, StrideN);
 
             //
             // Copy a panel of matrix B to a local packed buffer.
@@ -674,13 +671,8 @@ Return Value:
 
             const uint8_t* b = B + n + k * ldb;
 
-            if (WorkBlock->BTypeIsSigned) {
-                MlasGemmU8X8CopyPackBSse(PanelB, (const int8_t*)b, ldb, CountN,
-                    CountK, ColumnSumVector, -int16_t(offa));
-            } else {
-                MlasGemmU8X8CopyPackBSse(PanelB, (const uint8_t*)b, ldb, CountN,
-                    CountK, ColumnSumVector, -int16_t(offa));
-            }
+            MlasGemmU8X8CopyPackBSse(PanelB, b, ldb, CountN, CountK,
+                ColumnSumVector, -int16_t(offa), WorkBlock->BTypeIsSigned);
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -694,7 +686,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, StrideM);
+                CountM = std::min(M - m, StrideM);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
@@ -892,7 +884,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, StrideK);
+        CountK = std::min(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -902,7 +894,7 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, StrideN);
+            CountN = std::min(N - n, StrideN);
 
             //
             // Copy a panel of matrix B to a local packed buffer.
@@ -910,8 +902,8 @@ Return Value:
 
             const int8_t* b = (const int8_t*)B + n + k * ldb;
 
-            MlasGemmU8S8CopyPackBAvx2(PanelB, b, ldb, CountN,
-                CountK, ColumnSumVector, -int16_t(offa), WorkBlock->BTypeIsSigned);
+            MlasGemmU8S8CopyPackBAvx2(PanelB, b, ldb, CountN, CountK,
+                ColumnSumVector, -int16_t(offa), WorkBlock->BTypeIsSigned);
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -925,7 +917,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, StrideM);
+                CountM = std::min(M - m, StrideM);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.
@@ -1038,7 +1030,7 @@ Return Value:
 
     for (size_t k = 0; k < K; k += CountK) {
 
-        CountK = (std::min)(K - k, StrideK);
+        CountK = std::min(K - k, StrideK);
 
         //
         // Step through each slice of matrix B along the N dimension.
@@ -1048,16 +1040,16 @@ Return Value:
 
         for (size_t n = 0; n < N; n += CountN) {
 
-            CountN = (std::min)(N - n, StrideN);
+            CountN = std::min(N - n, StrideN);
 
             //
             // Copy a panel of matrix B to a local packed buffer.
             //
 
-            const uint8_t* b = (const uint8_t*)B + n + k * ldb;
+            const uint8_t* b = B + n + k * ldb;
 
-            MlasGemmU8U8CopyPackBAvx2(PanelB, b, ldb, CountN, CountK, ColumnSumVector,
-                -int16_t(offa));
+            MlasGemmU8U8CopyPackBAvx2(PanelB, b, ldb, CountN, CountK,
+                ColumnSumVector, -int16_t(offa));
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -1071,7 +1063,7 @@ Return Value:
 
             for (size_t m = 0; m < M; m += CountM) {
 
-                CountM = (std::min)(M - m, StrideM);
+                CountM = std::min(M - m, StrideM);
 
                 //
                 // Copy a panel of matrix A to a local packed buffer.

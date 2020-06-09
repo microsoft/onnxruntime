@@ -737,6 +737,20 @@ class Graph {
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
 
+  /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
+  up to their source node/s.
+  @param from Set of Nodes to traverse from.
+  @param enter Visit function that will be invoked on a node when it is visited but its parents haven't been.
+  @param leave Visit function invoked on the node after its parents have all been visited.
+  @param stop Stop traversal from node n to input node p if stop(n, p) is true.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void ReverseDFSFrom(const std::vector<const Node*>& from,
+                      const std::function<void(const Node*)>& enter,
+                      const std::function<void(const Node*)>& leave,
+                      const std::function<bool(const Node*, const Node*)>& comp,
+                      const std::function<bool(const Node*, const Node*)>& stop) const;
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;

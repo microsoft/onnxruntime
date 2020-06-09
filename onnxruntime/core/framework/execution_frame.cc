@@ -243,15 +243,39 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.
         for (size_t i = 0; i < mem_patterns_->locations.size(); i++) {
-          ORT_ENFORCE(buffers_.find(mem_patterns_->locations[i]) == buffers_.end());
-          AllocatorPtr alloc = GetAllocator(mem_patterns_->locations[i]);
-          void* buffer = mem_patterns_->patterns[i].PeakSize() > 0
-                             ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize())
-                             : nullptr;
-          buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
+          const auto& location = mem_patterns_->locations[i];
+          ORT_ENFORCE(buffers_.find(location) == buffers_.end());
+          if (mem_patterns_->patterns[i].PeakSize() > 0) {
+            AllocatorPtr alloc = GetAllocator(location);
+            void* buffer = nullptr;
+            // it's possible we can't allocate the large block. if we have memory patterns we know we have successfully
+            // executed once before, so if there's an arena involved it probably has smaller blocks available.
+            // due to that we can still run and use those blocks (inside the arena logic) instead of one large one.
+            // it's less efficient (the arena will add some overhead to coalesce individual allocations
+            // back into blocks on 'free'), but better than failing completely.
+            try {
+              buffer = alloc->Alloc(mem_patterns_->patterns[i].PeakSize());
 
-          // log size of activation. Keep it commented out for now to avoid log flooding.
-          // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: " << mem_patterns_->patterns[i].PeakSize();
+              // handle allocator that doesn't throw
+              if (buffer == nullptr) {
+                // INFO level as this may fire on every run and there may not be much a user can do
+                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                    << location.ToString() << " returned nullptr";
+              }
+
+            } catch (const OnnxRuntimeException& ex) {
+              LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
+                                                  << location.ToString() << " failed. Error:" << ex.what();
+            }
+
+            if (buffer != nullptr) {
+              buffers_[location] = BufferUniquePtr(buffer, alloc);
+            }
+
+            // log size of activation. Keep it commented out for now to avoid log flooding.
+            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
+            //                                   << mem_patterns_->patterns[i].PeakSize();
+          }
         }
       }
     }
@@ -312,30 +336,30 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
       // if block not found, fall back to default behavior
       if (block) {
         auto it = buffers_.find(location);
-        // if the block is not correct, log message then fall back to default behavior
-        if (it != buffers_.end() && block->size_ == size) {
-          void* buffer = it->second.get();
-          auto status = AllocateTensorWithPreAllocateBufferHelper(
-              ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
-              shape);
-          return status;
+        if (it != buffers_.end()) {
+          // if the block is not correct, log message then fall back to default behavior
+          if (block->size_ == size) {
+            void* buffer = it->second.get();
+            auto status = AllocateTensorWithPreAllocateBufferHelper(
+                ort_value, static_cast<void*>(static_cast<char*>(buffer) + block->offset_), element_type, location,
+                shape);
+            return status;
+          } else {
+            // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
+            // fed in, so use VERBOSE as the log level as it's expected.
+            // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
+            // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
+            LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
+                                                   << ", block in memory pattern size is: " << block->size_
+                                                   << " but the actually size is: " << size
+                                                   << ", fall back to default allocation behavior";
+          }
         }
-        if (block->size_ != size) {
-          // the block size may vary especially if the model has NonZero ops, or different sequence lengths are
-          // fed in, so use VERBOSE as the log level as it's expected.
-          // TODO: Should we re-use the block if the size is large enough? Would probably need to allow it
-          // to be freed if the size difference was too large so our memory usage doesn't stick at a high water mark
-          LOGS(session_state_.Logger(), VERBOSE) << "For ort_value with index: " << ort_value_index
-                                                 << ", block in memory pattern size is: " << block->size_
-                                                 << " but the actually size is: " << size
-                                                 << ", fall back to default allocation behavior";
-        } else if (it == buffers_.end()) {
-          LOGS(session_state_.Logger(), WARNING) << "For ort_value with index: " << ort_value_index
-                                                 << ", block not found in target location. fall back to default allocation behavior";
-        }
+        // else { we couldn't allocate the large block for the buffer so we didn't insert an entry }
       }
     }
   }
+
   //no memory pattern, or the pattern is not correct.
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 

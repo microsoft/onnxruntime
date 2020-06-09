@@ -420,7 +420,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
                                    const logging::Logger& logger) {
   // we have no way to handle replacing multiple outputs so check only one is used
   const std::string* output_name = nullptr;
-  if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
+  if (!IsOnlyOneOutputUsed(graph, node, output_name) || output_name == nullptr) {
     return false;
   }
 

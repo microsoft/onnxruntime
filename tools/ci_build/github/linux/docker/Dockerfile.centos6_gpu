@@ -5,8 +5,10 @@ ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh
-ENV PATH /opt/rh/devtoolset-2/root/usr/bin:${PATH}
+ENV JAVA_HOME /usr/lib/jvm/jre-1.8.0-openjdk.x86_64
+ENV PATH /opt/rh/devtoolset-2/root/usr/bin:${JAVA_HOME}/bin:${PATH}
 RUN /tmp/scripts/install_deps.sh -p 3.6 && rm -rf /tmp/scripts
+ENV PATH ${PATH}:/usr/local/gradle/bin
 
 #Below are copied from https://gitlab.com/nvidia/container-images/cuda/tree/master/dist/centos6
 

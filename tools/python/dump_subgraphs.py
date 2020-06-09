@@ -42,7 +42,7 @@ def main():
     out = os.path.abspath(args.out)
 
     if not os.path.exists(out):
-        os.mkdirs(out)
+        os.makedirs(out)
 
     model = onnx.load_model(model_path)
     dump_subgraph(model, out)
