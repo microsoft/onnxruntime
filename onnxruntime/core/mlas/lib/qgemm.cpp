@@ -698,7 +698,6 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-
     static constexpr size_t StrideM = 12;
     static constexpr size_t StrideN = 128;
     static constexpr size_t StrideK = 128;
@@ -763,6 +762,11 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
         return 1;
     }
 };
+
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::PackedK;
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::StrideM;
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::StrideN;
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::StrideK;
 
 void
 MLASCALL
@@ -880,7 +884,6 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-
     static constexpr size_t StrideM = 24;
     static constexpr size_t StrideN = 256;
     static constexpr size_t StrideK = 128;
@@ -941,6 +944,11 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
     }
 };
 
+constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
+constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::StrideM;
+constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::StrideN;
+constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::StrideK;
+
 void
 MLASCALL
 MlasGemmU8S8OperationAvx2(
@@ -998,7 +1006,6 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-
     static constexpr size_t StrideM = 24;
     static constexpr size_t StrideN = 256;
     static constexpr size_t StrideK = 128;
@@ -1059,6 +1066,11 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
             ldc, RowSumVector, ColumnSumVector, DepthValue, ZeroMode);
     }
 };
+
+constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
+constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::StrideM;
+constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::StrideN;
+constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::StrideK;
 
 void
 MLASCALL
