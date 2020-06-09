@@ -34,8 +34,8 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
-    int16_t offa;
-    int16_t offb;
+    uint8_t offa;
+    uint8_t offb;
     bool BTypeIsSigned;
 };
 
@@ -1293,7 +1293,7 @@ Return Value:
         WorkBlock->ThreadCountN = 1;
     }
 
-    MlasExecuteThreaded(MlasGemmU8X8Threaded, &WorkBlock, TargetThreadCount, ThreadPool);
+    MlasExecuteThreaded(MlasGemmU8X8Threaded, WorkBlock, TargetThreadCount, ThreadPool);
 }
 
 template<typename AType, typename BType>
@@ -1369,8 +1369,8 @@ Return Value:
     WorkBlock.ldb = ldb;
     WorkBlock.C = C;
     WorkBlock.ldc = ldc;
-    WorkBlock.offa = int16_t(offa);
-    WorkBlock.offb = int16_t(offb);
+    WorkBlock.offa = offa;
+    WorkBlock.offb = offb;
     WorkBlock.BTypeIsSigned = std::is_signed<BType>::value;
 
     //
