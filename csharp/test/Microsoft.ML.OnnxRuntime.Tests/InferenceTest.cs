@@ -576,6 +576,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
                 skipModels["test_zfnet512"] = "System out of memory";
                 skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
+                skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
             }
 
             return skipModels;
@@ -1745,9 +1746,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
         static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
-            var file = File.OpenRead(filename);
-            var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
-            file.Close();
+            //Set buffer size to 4MB
+            int readBufferSize = 4194304;
+            Onnx.TensorProto tensor = null;
+            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read, readBufferSize))
+            {
+                tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+            }
 
             Type tensorElemType = null;
             int width = 0;
