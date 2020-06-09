@@ -495,7 +495,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"dropout_default", "result differs", {"onnxtip"}},
       {"dropout_random", "result differs", {"onnxtip"}},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"}
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+      {"XGBoost_XGClassifier_sklearn_load_wine", "result mismatch"}, // only in orttraining_1p branch
+      {"coreml_GradientBoostingClassifier_sklearn_load_wine", "result mismatch"}, // only in orttraining_1p branch
+      {"scikit_GradientBoostingClassifier_sklearn_load_wine", "result mismatch"} // only in orttraining_1p branch
   };
 
   if (enable_ngraph) {
@@ -591,9 +594,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
-    broken_tests.insert({"XGBoost_XGClassifier_sklearn_load_wine", "result mismatch"}); // only in orttraining_1p branch
-    broken_tests.insert({"coreml_GradientBoostingClassifier_sklearn_load_wine", "result mismatch"}); // only in orttraining_1p branch
-    broken_tests.insert({"scikit_GradientBoostingClassifier_sklearn_load_wine", "result mismatch"}); // only in orttraining_1p branch
   }
 
   if (enable_dml) {
