@@ -51,7 +51,7 @@ class Shaper {
                const std::vector<int32_t>& shape,
                const std::string& output_name);
   void Transpose(const std::string& input_name,
-                 const std::vector<uint32_t>& perm,
+                 const std::vector<int32_t>& perm,
                  const std::string& output_name);
   void Eltwise(const std::string& input1_name, const std::string& input2_name,
                const std::string& output_name);

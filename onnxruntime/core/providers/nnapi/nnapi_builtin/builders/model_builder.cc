@@ -85,6 +85,7 @@ std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
           {"GlobalAveragePool", 29},
           {"GlobalMaxPool", 29},
           {"Reshape", 27},
+          {"Transpose", 28},
       };
 
   if (supported_ops.find(op) == supported_ops.end()) {
@@ -351,7 +352,8 @@ void ModelBuilder::RegisterInitializers() {
 
 void ModelBuilder::RegisterModelInputs() {
   for (const auto& input : model_proto_.graph().input()) {
-    const std::string& name(input.name());
+    std::string name = input.name();
+    bool needTranspose = false;
 
     {  // input should not be an initializer
       if (HAS(operands_, name))
@@ -371,6 +373,11 @@ void ModelBuilder::RegisterModelInputs() {
             "The input of graph doesn't have dim_value");
       }
     }
+
+    // if (shape.size() == 4) {
+    //   name = name + "preTranspose";
+    //   needTranspose = true;
+    // }
 
     shaper_.AddShape(name, shape);
 
@@ -394,6 +401,14 @@ void ModelBuilder::RegisterModelInputs() {
 
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(name, shape, operand_type);
+
+    // will transpose the input from nchw to nwhc if necessary
+    if (needTranspose) {
+      // int32_t perm[4] = {0, 2, 3, 1};
+      // const std::string& output(input.name());
+      // IndexSeq input_indices;
+      // input_indices.push_back(operand_indexes_.at(name));
+    }
   }
 }
 
@@ -868,6 +883,27 @@ void ModelBuilder::AddOperations() {
       shaper_.Reshape(input, shape, output);
       const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
       RegisterOperand(output, operand_indexes_.at(input), output_operand_type);
+    } else if (op == "Transpose") {
+      // For reshape we are not really doing anything but
+      // register a new operand with new shape
+      const auto input = node.input(0);
+
+      IndexSeq input_indices;
+      input_indices.push_back(operand_indexes_.at(input));  // input
+
+      vector<int32_t> perm = helper.get("perm", vector<int32_t>());
+      if (!perm.empty()) {
+        Shape perm_dimen = {static_cast<uint32_t>(shaper_[input].size())};
+        std::string perm_name = input + op + "perm";
+        OperandType operandType(Type::TENSOR_INT32, perm_dimen);
+        uint32_t perm_idx = AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), operandType);
+        input_indices.push_back(perm_idx);
+      }
+
+      const auto output = node.output(0);
+      shaper_.Transpose(input, perm, output);
+      const OperandType output_operand_type(operand_types_.at(input).type, shaper_[output]);
+      AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output}, {output_operand_type});
     }
 
     else {
