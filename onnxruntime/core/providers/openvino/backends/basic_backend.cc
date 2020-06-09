@@ -21,6 +21,13 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
+
+struct static_cast_int64
+{
+  template <typename T1> // T1 models type statically convertible to T
+  int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
+};
+
 BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                            GlobalContext& global_context,
                            const SubGraphContext& subgraph_context)
@@ -70,21 +77,35 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
     InferenceEngine::Blob::Ptr graph_input_blob;
     try {
       graph_input_blob = infer_request->GetBlob(input_info_iter->first);
+      
     } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first);
     }
-
+    auto precision = input_info_iter->second->getPrecision();
     auto graph_input_buffer = graph_input_blob->buffer()
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
-    const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
 
-    // Copy input data into OpenVINO's input buffer
-    std::memcpy(graph_input_buffer, tensor_data, input_data_size);
+    auto tensor_shape = ort.GetTensorTypeAndShape(input_tensors[i]);
+    auto elem_type = ort.GetTensorElementType(tensor_shape);
+
+   if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
+        (precision == InferenceEngine::Precision::I32)) {
+
+      const int64_t* tensor_data_64 = ort.GetTensorData<int64_t>(input_tensors[i]);
+      auto data_len = (input_data_size * 2) / sizeof(int64_t)  ;    
+     
+      std::copy(tensor_data_64, tensor_data_64+data_len, (uint32_t*)graph_input_buffer);
+    } else {
+
+      // Copy input data into OpenVINO's input buffer
+      const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
+
+      std::memcpy(graph_input_buffer, tensor_data, input_data_size);
+    }
   }
-
   // Start Async inference
   try {
     infer_request->StartAsync();
@@ -123,13 +144,29 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
     }
+    
     auto graph_output_buffer = graph_output_blob->buffer()
                                    .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+    
     size_t output_data_size = graph_output_blob->byteSize();
-    char* tensor_data = ort.GetTensorMutableData<char>(output_tensors[i]);
 
-    // Copy output results back to ONNX-RT's output buffers
-    std::memcpy(tensor_data, graph_output_buffer, output_data_size);
+    auto tensor_shape = ort.GetTensorTypeAndShape(output_tensors[i]);
+    auto elem_type = ort.GetTensorElementType(tensor_shape);
+    auto precision = output_info_iter->second->getPrecision();
+   
+   if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
+       (precision == InferenceEngine::Precision::I32)) {
+
+      int64_t* tensor_data = ort.GetTensorMutableData<int64_t>(output_tensors[i]);  
+    
+      auto data_len = output_data_size/sizeof(int32_t); 
+      std::transform((int32_t*)graph_output_buffer,((int32_t*)graph_output_buffer) + data_len, tensor_data, static_cast_int64());
+
+    } else {
+      char* tensor_data = ort.GetTensorMutableData<char>(output_tensors[i]);
+      std::memcpy(tensor_data, graph_output_buffer, output_data_size);
+
+    }    
   }
 }
 

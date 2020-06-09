@@ -475,11 +475,14 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
     };
 
     std::set<int> supported_types_gpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32};
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+    };
     auto dtype = type_proto->tensor_type().elem_type();
 
     if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL") {

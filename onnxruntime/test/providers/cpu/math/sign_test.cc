@@ -120,7 +120,7 @@ TEST(MathOpTest, Sign_uint64) {
   test.AddOutput<uint64_t>("output", input_dims, output);
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
-
+//we disable this test for openvino as openvino ep supports only FP32 Precision
 TEST(MathOpTest, Sign_int64) {
   using namespace test_sign_internal;
   OpTester test("Sign", 9);
@@ -134,7 +134,7 @@ TEST(MathOpTest, Sign_int64) {
   std::vector<int64_t> output;
   TestImpl<int64_t>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<int64_t>("output", input_dims, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(MathOpTest, Sign_float) {
