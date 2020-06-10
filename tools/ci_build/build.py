@@ -1233,7 +1233,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
             cmd += ["-j", str(num_parallel_models)]
         if enable_multi_device_test:
             cmd += ['-d', '1']
-        if config != 'Debug' and os.path.exists(model_dir):
+        # Even in release mode nuphar needs 40 minutes to run all the models tests
+        if config != 'Debug' and os.path.exists(model_dir) and provider != 'nuphar':
             cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
             cmd.append(onnx_test_data_dir)
@@ -1403,10 +1404,10 @@ def nuphar_run_python_tests(build_dir, configs):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
-        use_acl, nightly_build=False, featurizers_build=False):
+        use_acl, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
+        if is_windows() and not use_ninja:
             cwd = os.path.join(cwd, config)
 
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
@@ -1796,6 +1797,7 @@ def main():
                 args.use_acl,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
+                use_ninja=(args.cmake_generator == 'Ninja')
             )
 
     if args.gen_doc and (args.build or args.test):

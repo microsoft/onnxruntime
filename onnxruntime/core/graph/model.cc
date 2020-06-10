@@ -24,7 +24,9 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
+
+static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 
 namespace onnxruntime {
 Model::Model(const std::string& graph_name,
@@ -237,7 +239,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream, 1 << 20);
+  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream, protobuf_block_size_in_bytes);
   const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Failed to load model because protobuf parsing failed.");
@@ -447,7 +449,7 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  FileInputStream input(fd, 1 << 20);
+  FileInputStream input(fd, protobuf_block_size_in_bytes);
   const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
