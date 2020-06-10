@@ -133,12 +133,39 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
     if (matched) {
       shape_value.push_back(0);
-    } else if (concat_input_node_arg &&
-               concat_input_node_arg->Shape() &&
-               concat_input_node_arg->Shape()->dim_size() == 1) {
+      continue;
+    }
+
+    // If we haven't been able to match the pattern, try and see if this is a candidate for subgraph pattern fusion.
+    // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
+    // We use shape info (if made available via shape inference) for this.
+    if (!concat_input_node_arg) {
+      // We need NodeArg to be able to lookup any shape info
+      // Can't proceed with fusion
+      return false;
+    }
+    const auto* input_shape = concat_input_node_arg->Shape();
+    if (!input_shape) {
+      // We need shape to be able to be certain of number of elements
+      // Can't proceed with fusion
+      return false;
+    }
+
+    const auto input_rank = concat_input_node_arg->Shape()->dim_size();
+
+    // For the number of elements in this input to Concat be 1,
+    // it should be a 1D tensor (scalars are not valid inputs to Concat)
+    // and the dim value of the first dimension must be available and must be 1.
+
+    if (input_rank != 1) {
+      // This tensor holds multi-dimensional input
+      // Can't proceed with fusion
+      return false;
+    }
+
+    const auto& first_dim = input_shape->dim()[0];
+    if (first_dim.has_dim_value() && first_dim.dim_value() == 1) {
       // This node could lead to a potential subgraph pattern fusion.
-      // Shape (rank) inference has established that this input to the Concat node is 1 dimensional.
-      // Hence, fill in a shape value of `-1` (true value will be established when the Reshape node runs).
       shape_value.push_back(-1);
     } else {
       return false;
