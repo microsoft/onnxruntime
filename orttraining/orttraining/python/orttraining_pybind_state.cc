@@ -149,9 +149,15 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
 
     // TODO reduction types
+    // bugbug
     if (parameters.use_adasum) {
-      opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
+#ifdef USE_CUDA
+      //opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
+      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
+#else
+      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
     }
+#endif
 
     config.optimizer_config = opt;
   }
