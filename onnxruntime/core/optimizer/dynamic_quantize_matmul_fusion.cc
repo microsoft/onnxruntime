@@ -54,7 +54,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
 
     std::vector<graph_utils::EdgeEndToMatch> right_parent_path{
         {0, 1, "Mul", {7}, kOnnxDomain},
-        {0, 0, "DynamicQuantizeLinear", {11}, kOnnxDomain}};
+        {1, 0, "DynamicQuantizeLinear", {11}, kOnnxDomain}};
 
     std::vector<const Node::EdgeEnd*> left_edges;
     std::vector<const Node::EdgeEnd*> right_edges;
@@ -71,7 +71,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
     Node& dql_node_right = const_cast<Node&>(right_edges[1]->GetNode());
 
     // Check if left DynamicQuantizeLinear is same as right DynamicQuantizeLinear
-    if (dql_node_left.Index() == dql_node_right.Index()) {
+    if (dql_node_left.Index() != dql_node_right.Index()) {
       continue;
     }
 
@@ -79,7 +79,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
     if (cast_node.GetOutputEdgesCount() != 1 ||
         matmulinteger_node.GetOutputEdgesCount() != 1 ||
         mul_node_right.GetOutputEdgesCount() != 1 ||
-        dql_node_left.GetOutputEdgesCount() != 2 ||
+        dql_node_left.GetOutputEdgesCount() != 3 ||
         !graph.GetNodeOutputsInGraphOutputs(cast_node).empty() ||
         !graph.GetNodeOutputsInGraphOutputs(matmulinteger_node).empty() ||
         !graph.GetNodeOutputsInGraphOutputs(mul_node_right).empty() ||
