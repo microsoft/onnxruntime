@@ -315,10 +315,10 @@ class UpsampleBase {
                     "Input dim is zero but "
                     "required output dim is non-zero. "
                     "Cannot scale 0 by any factor to generate a non-zero value. "
-                    "Input dims: ",
-                    input_dims,
-                    " Output dims: ",
-                    output_dims);
+                    "Input dim value: ",
+                    input_dims[i],
+                    " Output dim value: ",
+                    output_dims[i]);
         // Scale can be any arbitrary value as technically scaling 0 by any factor
         // results in 0. Keeping scale as 1 is more intuitive given that input_dim == output_dim.
         scales[i] = 1.f;
