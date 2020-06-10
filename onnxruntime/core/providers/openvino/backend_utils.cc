@@ -17,7 +17,7 @@
 #include "core/common/logging/logging.h"
 
 #include "backend_utils.h"
-#include <ngraph/serializer.hpp>
+//#include <ngraph/serializer.hpp>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -58,11 +58,11 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 
-  std::string json_string = serialize(ng_function, 4);
+  /*std::string json_string = serialize(ng_function, 4);
 
   std::ofstream out("serialize_function_before_PM.json");
 
-  out << json_string;
+  out << json_string;*/
 
   if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations

@@ -165,6 +165,9 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Sinh",
       "Softsign",
       "Tan",
+      "RoiAlign",
+      "NonZero",
+      "Tile",
   };
 
   std::set<std::string> unsupported_ops = {};
