@@ -201,6 +201,22 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   return supported_node_vecs;
 }
 
+#define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                  \
+  ModelBuilder::Index ModelBuilder::AddOperandFromScalar(scalar_type value) { \
+    OperandType operandType(Type::op_type);                                   \
+    auto index = AddNewOperand(operandType);                                  \
+    THROW_ON_ERROR_WITH_NOTE(                                                 \
+        nnapi_->ANeuralNetworksModel_setOperandValue(                         \
+            nnapi_model_->model_, index, &value, sizeof(value)),              \
+        "value: " + std::to_string(value));                                   \
+    return index;                                                             \
+  }
+
+DEFINE_ADD_OPERAND_FROM_SCALAR(bool, BOOL);
+DEFINE_ADD_OPERAND_FROM_SCALAR(int32_t, INT32);
+
+#undef DEFINE_ADD_OPERAND_FROM_SCALAR
+
 // Scalar operand is copied into the model, no need to persist
 ModelBuilder::Index ModelBuilder::SetOperandFromScalar(Type type, const void* value, size_t size) {
   OperandType operandType(type);
@@ -567,10 +583,7 @@ void ModelBuilder::AddOperations() {
       input_indices.push_back(operand_indexes_.at(input1));  // input 1
       input_indices.push_back(operand_indexes_.at(input2));  // input 2
       int32_t fuse_code = FindActivation(output);
-      input_indices.push_back(
-          SetOperandFromScalar(Type::INT32,
-                               static_cast<const void*>(&fuse_code),
-                               sizeof(fuse_code)));  // fusecode
+      input_indices.push_back(AddOperandFromScalar(fuse_code));
       shaper_.Eltwise(input1, input2, output);
       const OperandType output_operand_type(operand_types_.at(input1).type, shaper_[output]);
       AddOperation(ANEURALNETWORKS_ADD, input_indices, {output}, {output_operand_type});
@@ -583,10 +596,7 @@ void ModelBuilder::AddOperations() {
       input_indices.push_back(operand_indexes_.at(input1));  // input 1
       input_indices.push_back(operand_indexes_.at(input2));  // input 2
       int32_t fuse_code = FindActivation(output);
-      input_indices.push_back(
-          SetOperandFromScalar(Type::INT32,
-                               static_cast<const void*>(&fuse_code),
-                               sizeof(fuse_code)));  // fusecode
+      input_indices.push_back(AddOperandFromScalar(fuse_code));
       shaper_.Eltwise(input1, input2, output);
       const OperandType output_operand_type(operand_types_.at(input1).type, shaper_[output]);
       AddOperation(ANEURALNETWORKS_MUL, input_indices, {output}, {output_operand_type});
@@ -669,21 +679,21 @@ void ModelBuilder::AddOperations() {
       }
       const auto& output = node.output(0);
       input_indices.push_back(bias_idx_val);
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[0]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[2]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[1]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[0]), sizeof(int32_t)));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[1]));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[3]));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[0]));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[2]));
+      input_indices.push_back(AddOperandFromScalar(onnx_strides[1]));
+      input_indices.push_back(AddOperandFromScalar(onnx_strides[0]));
       if (!conv2d && depthwiseConv2D) {
         int32_t depthwiseMultiplier = shaper_[weight][3] / group;
-        input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&depthwiseMultiplier), sizeof(int32_t)));
+        input_indices.push_back(AddOperandFromScalar(depthwiseMultiplier));
       }
       int32_t fuse_code = FindActivation(output);
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&use_nchw_), sizeof(bool)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[1]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_dilations[0]), sizeof(int32_t)));
+      input_indices.push_back(AddOperandFromScalar(fuse_code));
+      input_indices.push_back(AddOperandFromScalar(use_nchw_));
+      input_indices.push_back(AddOperandFromScalar(onnx_dilations[1]));
+      input_indices.push_back(AddOperandFromScalar(onnx_dilations[0]));
 
       int32_t operationCode = ANEURALNETWORKS_CONV_2D;
       if (conv2d) {
@@ -760,11 +770,11 @@ void ModelBuilder::AddOperations() {
         IndexSeq input_indices;
         input_indices.push_back(operand_indexes_.at(input));  // input 1
         input_indices.push_back(tensor_a_idx);                // input 2
-        int32_t fuse_code = FindActivation(tensor_imm_product_name);
-        input_indices.push_back(
-            SetOperandFromScalar(Type::INT32,
-                                 static_cast<const void*>(&fuse_code),
-                                 sizeof(fuse_code)));  // fusecode
+
+        // No fuse for intermediate steps
+        int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+        input_indices.push_back(AddOperandFromScalar(fuse_code));
+
         shaper_.Eltwise(input, tensor_a_name, tensor_imm_product_name);
         const OperandType output_operand_type(operand_types_.at(input).type, shaper_[tensor_imm_product_name]);
         AddOperation(ANEURALNETWORKS_MUL, input_indices, {tensor_imm_product_name}, {output_operand_type});
@@ -775,10 +785,7 @@ void ModelBuilder::AddOperations() {
         input_indices.push_back(operand_indexes_.at(tensor_imm_product_name));  // input 1
         input_indices.push_back(tensor_b_idx);                                  // input 2
         int32_t fuse_code = FindActivation(output);
-        input_indices.push_back(
-            SetOperandFromScalar(Type::INT32,
-                                 static_cast<const void*>(&fuse_code),
-                                 sizeof(fuse_code)));  // fusecode
+        input_indices.push_back(AddOperandFromScalar(fuse_code));
         shaper_.Eltwise(tensor_imm_product_name, tensor_b_name, output);
         const OperandType output_operand_type(operand_types_.at(tensor_imm_product_name).type, shaper_[output]);
         AddOperation(ANEURALNETWORKS_ADD, input_indices, {output}, {output_operand_type});
@@ -828,17 +835,17 @@ void ModelBuilder::AddOperations() {
       input_indices.push_back(operand_indexes_.at(input));
       const auto& output = node.output(0);
 
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[1]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[3]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[0]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_pads[2]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[1]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&onnx_strides[0]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[1]), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&kernel_shape[0]), sizeof(int32_t)));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[1]));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[3]));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[0]));
+      input_indices.push_back(AddOperandFromScalar(onnx_pads[2]));
+      input_indices.push_back(AddOperandFromScalar(onnx_strides[1]));
+      input_indices.push_back(AddOperandFromScalar(onnx_strides[0]));
+      input_indices.push_back(AddOperandFromScalar(kernel_shape[1]));
+      input_indices.push_back(AddOperandFromScalar(kernel_shape[0]));
       int32_t fuse_code = FindActivation(output);
-      input_indices.push_back(SetOperandFromScalar(Type::INT32, static_cast<const void*>(&fuse_code), sizeof(int32_t)));
-      input_indices.push_back(SetOperandFromScalar(Type::BOOL, static_cast<const void*>(&use_nchw_), sizeof(bool)));
+      input_indices.push_back(AddOperandFromScalar(fuse_code));
+      input_indices.push_back(AddOperandFromScalar(use_nchw_));
 
       shaper_.Pool(input,
                    onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
