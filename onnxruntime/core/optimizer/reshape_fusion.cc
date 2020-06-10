@@ -133,6 +133,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
     if (matched) {
       shape_value.push_back(0);
+      // We have matched the pattern for this input into Concat
+      // Proceed to the next input
       continue;
     }
 
@@ -144,6 +146,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       // Can't proceed with fusion
       return false;
     }
+
     const auto* input_shape = concat_input_node_arg->Shape();
     if (!input_shape) {
       // We need shape to be able to be certain of number of elements
@@ -151,12 +154,10 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       return false;
     }
 
-    const auto input_rank = concat_input_node_arg->Shape()->dim_size();
-
     // For the number of elements in this input to Concat be 1,
     // it should be a 1D tensor (scalars are not valid inputs to Concat)
     // and the dim value of the first dimension must be available and must be 1.
-
+    const auto input_rank = concat_input_node_arg->Shape()->dim_size();
     if (input_rank != 1) {
       // This tensor holds multi-dimensional input
       // Can't proceed with fusion
@@ -168,6 +169,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       // This node could lead to a potential subgraph pattern fusion.
       shape_value.push_back(-1);
     } else {
+      // There are potentially more than 1 element in this tensor.
+      // Can't proceed with fusion
       return false;
     }
   }
