@@ -872,8 +872,8 @@ Arguments:
 
     C (rdx) - Supplies the address of matrix C.
 
-    QuadCountK (rcx) - Supplies the number of quad columns from matrix A and
-        the number of quad rows from matrix B to iterate over.
+    PackedCountK (rcx) - Supplies the number of packed columns from matrix A
+        and the number of packed rows from matrix B to iterate over.
 
     CountM (r8) - Supplies the maximum number of rows that can be processed for
         matrix A and matrix C. The actual number of rows handled for this
