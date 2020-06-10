@@ -195,6 +195,13 @@ class IOBinding:
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
+    def bind_input(self, name, numpy_arr_on_cpu):
+        '''
+        :param name: input name
+        :param numpy_val_on_cpu: input values as numpy array on CPU
+        '''
+        self._iobinding.bind_input(name, numpy_arr_on_cpu)
+
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         '''
         :param name: input name
@@ -219,7 +226,7 @@ class IOBinding:
         :param buffer_ptr: memory pointer to output data
         '''
         if (device_type is None):
-            if (device_type is None)  or (device_type == 'CPU'):
+            if (device_type is None)  or (device_type == 'cpu'):
                 self._iobinding.bind_output(name)
             else:
                 raise Exception ("Cannot bind output to device other than CPU without output shape, element type or buffer pointer")
