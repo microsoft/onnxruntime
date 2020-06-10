@@ -42,12 +42,12 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
 /**
  * Find the subgraph that matches [root] -> Shape -> Gather -> Unsqueeze
  */
-bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, const Node& concat, 
-  int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, const Node& concat,
+                                   int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-        {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain},
-        {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
@@ -102,6 +102,12 @@ After fusion:
                     Reshape
 */
 bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger) {
+  if (
+      reshape.Name() == "Reshape_1240" ||
+      reshape.Name() == "Reshape_1227") {
+    double a = 2.4;
+    ORT_IGNORE_RETURN_VALUE(std::floor(a));
+  }
   // The root could be either a graph input or a node so use node arg to compare.
   const NodeArg& root_input = *(reshape.InputDefs()[0]);
 
@@ -120,7 +126,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     return false;
   }
 
-  // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion. 
+  // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion.
   std::vector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
   for (int i = 0; i < concat_input_count; ++i) {
@@ -130,16 +136,20 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     }
     // Try to find path [Root] --> Shape --> Gather(indices=i) --> Unsqueeze (axes=0) --> Concat [input i]
     bool matched = ReshapeFusion::Fuse_Subgraph2(graph, root_input, concat, i, shape_value, logger);
-    const Node* p_cur_node = graph_utils::GetInputNode(concat, i);
+    const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
     if (matched) {
       shape_value.push_back(0);
-    } else if (p_cur_node != nullptr) {
-      // This node could lead to a potential subgraph pattern fusion. Mark the shape value to -1.
+    } else if (concat_input_node_arg &&
+               concat_input_node_arg->Shape() &&
+               concat_input_node_arg->Shape()->dim_size() == 1) {
+      // This node could lead to a potential subgraph pattern fusion.
+      // Shape (rank) inference has established that this input to the Concat node is 1 dimensional.
+      // Hence, fill in a shape value of `-1` (true value will be established when the Reshape node runs).
       shape_value.push_back(-1);
     } else {
       return false;
     }
-  }  
+  }
 
   // Check how many -1 are there in shape_value.
   int subgraph_cnt = 0;
@@ -148,7 +158,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       subgraph_cnt++;
     }
   }
-  // If more than one "-1" value is present in shape_value, return false to exit current fusion.  
+  // If more than one "-1" value is present in shape_value, return false to exit current fusion.
   if (subgraph_cnt > 1) {
     return false;
   }
