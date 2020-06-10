@@ -197,7 +197,7 @@ public:
 #if defined(MLAS_NEON64_INTRINSICS)
 
 #define high_s16_to_s32(s16x8) vmovl_high_s16(s16x8)
-#define combine_s16_s32(lo, hi) vqmovn_high_s32(vqmovn_s32(lo), hi))
+#define combine_s16_s32(lo, hi) vqmovn_high_s32(vqmovn_s32(lo), hi)
 
 #else
 
