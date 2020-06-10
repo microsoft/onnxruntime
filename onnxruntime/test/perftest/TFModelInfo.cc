@@ -8,8 +8,10 @@
 #include <core/platform/env.h>
 
 std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
-  auto ret = std::unique_ptr<TFModelInfo>(new TFModelInfo{});
-  ret->model_url_ = model_url;
+  auto* model_info = new TFModelInfo{};
+  std::unique_ptr<TestModelInfo> ret(model_info);
+
+  model_info->model_url_ = model_url;
   std::basic_string<PATH_CHAR_TYPE> meta_file_path = model_url;
   meta_file_path.append(ORT_TSTR(".meta"));
   const onnxruntime::Env& env = onnxruntime::Env::Default();
@@ -40,15 +42,15 @@ std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* mo
     }
     if (line.empty()) continue;
     if (line.compare(0, 6, "input=") == 0) {
-      ret->input_names_.push_back(line.substr(6));
+      model_info->input_names_.push_back(line.substr(6));
     } else if (line.compare(0, 7, "output=") == 0) {
-      ret->output_names_.push_back(line.substr(7));
+      model_info->output_names_.push_back(line.substr(7));
     } else {
       ORT_THROW("unknown line:", line.size());
     }
   }
 
-  return std::move(ret);
+  return ret;
 }
 
 int TFModelInfo::GetInputCount() const { return static_cast<int>(input_names_.size()); }

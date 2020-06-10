@@ -1233,7 +1233,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
             cmd += ["-j", str(num_parallel_models)]
         if enable_multi_device_test:
             cmd += ['-d', '1']
-        if config != 'Debug' and os.path.exists(model_dir):
+        # Even in release mode nuphar needs 40 minutes to run all the models tests
+        if config != 'Debug' and os.path.exists(model_dir) and provider != 'nuphar':
             cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
             cmd.append(onnx_test_data_dir)
