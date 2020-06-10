@@ -459,74 +459,29 @@ MlasQLinearAddKernelHelper(
 
 #elif defined(MLAS_SSE2_INTRINSICS)
 
-template<typename DataType>
+template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-MlasPackS16(
-    MLAS_INT32X4 IntegerVector
-    );
+ShiftRightInt32(MLAS_INT32X4 v, int imm);
 
-template<>
+template<> MLAS_INT32X4 ShiftRightInt32<int8_t>(MLAS_INT32X4 v, int imm) { return _mm_srai_epi32(v, imm); }
+template<> MLAS_INT32X4 ShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm) { return _mm_srli_epi32(v, imm); }
+
+template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-MlasPackS16<uint8_t>(
-    MLAS_INT32X4 IntegerVector
-    )
-{
-    return _mm_packus_epi16(IntegerVector, IntegerVector);
-}
+UnpackloBytesToShorts(MLAS_INT32X4 v);
 
-template<>
+template <> MLAS_INT32X4 UnpackloBytesToShorts<int8_t>(MLAS_INT32X4 v) { return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8); }
+template <> MLAS_INT32X4 UnpackloBytesToShorts<uint8_t>(MLAS_INT32X4 v) { return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8); }
+
+template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-MlasPackS16<int8_t>(
-    MLAS_INT32X4 IntegerVector
-    )
-{
-    return _mm_packs_epi16(IntegerVector, IntegerVector);
-}
+Pack16Bits(MLAS_INT32X4 a, MLAS_INT32X4 b);
 
-template<typename DataType>
-MLAS_FORCEINLINE
-MLAS_INT32X4
-MlasQuantizeLinearUnpackBytes(
-    MLAS_INT32X4 IntegerVector
-    );
-
-template<>
-MLAS_INT32X4
-MlasQuantizeLinearUnpackBytes<uint8_t>(
-    MLAS_INT32X4 IntegerVector
-    )
-{
-    IntegerVector = _mm_unpacklo_epi8(IntegerVector, IntegerVector);
-    IntegerVector = _mm_unpacklo_epi16(IntegerVector, IntegerVector);
-    IntegerVector = _mm_srli_epi32(IntegerVector, 24);
-    return IntegerVector;
-}
-
-template<>
-MLAS_INT32X4
-MlasQuantizeLinearUnpackBytes<int8_t>(
-    MLAS_INT32X4 IntegerVector
-    )
-{
-    IntegerVector = _mm_unpacklo_epi8(IntegerVector, IntegerVector);
-    IntegerVector = _mm_unpacklo_epi16(IntegerVector, IntegerVector);
-    IntegerVector = _mm_srai_epi32(IntegerVector, 24);
-    return IntegerVector;
-}
-
-MLAS_FORCEINLINE
-MLAS_FLOAT32X4
-MlasDequantizeLinearVector(
-    MLAS_INT32X4 IntVector,
-    MLAS_FLOAT32X4 ScaleVector,
-    MLAS_INT32X4 ZeroPointVector
-    )
-{
-    return MlasMultiplyFloat32x4(_mm_cvtepi32_ps(MlasSubtractInt32x4(IntVector, ZeroPointVector)), ScaleVector);
-}
+template <> MLAS_INT32X4 Pack16Bits<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packus_epi16(a, b); }
+template <> MLAS_INT32X4 Pack16Bits<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packs_epi16(a, b); }
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 void
@@ -540,77 +495,66 @@ MlasQLinearAddKernelHelper(
     float ScaleC,
     int32_t ZeroPointC,
     DataType* OutputC,
-    size_t N
+    size_t p_N
     )
 {
-    constexpr int32_t MinimumValue = std::numeric_limits<DataType>::min();
-    constexpr int32_t MaximumValue = std::numeric_limits<DataType>::max();
+    const auto VectorScaleRatio_AC = MlasBroadcastFloat32x4(ScaleA / ScaleC);
+    const auto VectorScaleRatio_BC = MlasBroadcastFloat32x4(ScaleB / ScaleC);
+    auto VectorFixedPart = MlasBroadcastFloat32x4((float)ZeroPointC - ScaleA / ScaleC * ZeroPointA - ScaleB / ScaleC * ZeroPointB);
 
-    const auto ScaleVectorA = MlasBroadcastFloat32x4(ScaleA);
-    const auto ScaleVectorB = MlasBroadcastFloat32x4(ScaleB);
-    const auto ScaleVectorC = MlasBroadcastFloat32x4(ScaleC);
-    const auto ZeroPointVectorA = MlasBroadcastInt32x4(ZeroPointA);
-    const auto ZeroPointVectorB = MlasBroadcastInt32x4(ZeroPointB);
-    const auto ZeroPointVectorC = MlasBroadcastInt32x4(ZeroPointC);
-    const auto MinimumValueVectorC = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPointC));
-    const auto MaximumValueVectorC = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPointC));
-
-    MLAS_FLOAT32X4 FloatVectorA;
-    MLAS_FLOAT32X4 FloatVectorB;
-
+    MLAS_FLOAT32X4 va_lo, va_hi, vb_lo, vb_hi;
     if (IsScalarA) {
-        auto IntegerVectorA = MlasBroadcastInt32x4((int32_t)*InputA);
-        FloatVectorA = MlasDequantizeLinearVector(IntegerVectorA, ScaleVectorA, ZeroPointVectorA);
+        va_lo = _mm_set1_ps((float)*InputA);
+        VectorFixedPart = _mm_add_ps(VectorFixedPart, _mm_mul_ps(va_lo, VectorScaleRatio_AC));
     }
     if (IsScalarB) {
-        auto IntegerVectorB = MlasBroadcastInt32x4((int32_t)*InputB);
-        FloatVectorB = MlasDequantizeLinearVector(IntegerVectorB, ScaleVectorB, ZeroPointVectorB);
+        vb_lo = _mm_set1_ps((float)*InputB);
+        VectorFixedPart = _mm_add_ps(VectorFixedPart, _mm_mul_ps(vb_lo, VectorScaleRatio_BC));
     }
 
-    while (N >= 4) {
+    atuo N = static_cast<int64_t>(p_N);
+    MLAS_INT32X4 vc = _mm_setzero_si128();
+    while (N > 0) {
         if (!IsScalarA) {
-            auto IntegerVectorA = MlasQuantizeLinearUnpackBytes<DataType>(MlasBroadcastInt32x4(*((const int32_t*)InputA)));
-            FloatVectorA = MlasDequantizeLinearVector(IntegerVectorA, ScaleVectorA, ZeroPointVectorA);
+            const auto va_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)InputA);
+            const auto va_i16x8 = _mm_unpacklo_epi8(va_low_half, va_low_half);
+            InputA += 8;
+            va_lo = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpacklo_epi16(va_i16x8, va_i16x8), 24));
+            va_hi = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpackhi_epi16(va_i16x8, va_i16x8), 24));
         }
         if (!IsScalarB) {
-            auto IntegerVectorB = MlasQuantizeLinearUnpackBytes<DataType>(MlasBroadcastInt32x4(*((const int32_t*)InputB)));
-            FloatVectorB = MlasDequantizeLinearVector(IntegerVectorB, ScaleVectorB, ZeroPointVectorB);
+            const auto vb_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)InputB);
+            const auto vb_i16x8 = _mm_unpacklo_epi8(vb_low_half, vb_low_half);
+            InputB += 8;
+            vb_lo = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpacklo_epi16(vb_i16x8, vb_i16x8), 24));
+            vb_hi = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpackhi_epi16(vb_i16x8, vb_i16x8), 24));
         }
-        auto FloatVectorC = MlasAddFloat32x4(FloatVectorA, FloatVectorB);
-        auto IntegerVectorC = MlasQuantizeLinearVector(FloatVectorC, ScaleVectorC,
-                MinimumValueVectorC, MaximumValueVectorC, ZeroPointVectorC);
-        IntegerVectorC = MlasPackS16<DataType>(IntegerVectorC);
-        IntegerVectorC = MlasPackS16<DataType>(IntegerVectorC);
 
-        *((int32_t*)OutputC) = _mm_cvtsi128_si32(IntegerVectorC);
+        MLAS_INT32X4 r_lo, r_hi;
+        if (IsScalarA) {
+            r_lo = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(vb_lo, VectorScaleRatio_BC)));
+            r_hi = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
+        } else if (IsScalarB) {
+            r_lo = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_lo, VectorScaleRatio_AC)));
+            r_hi = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)));
+        } else {
+            r_lo = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_lo, VectorScaleRatio_AC)), _mm_mul_ps(vb_lo, VectorScaleRatio_BC)));
+            r_hi = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)), _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
+        }
+        const auto vc_i16x8 = _mm_packs_epi32(r_lo, r_hi);
+        vc = Pack16Bits<DataType>(vc_i16x8, vc_i16x8);
 
-        if (!IsScalarA) {
-            InputA += 4;
-        }
-        if (!IsScalarB) {
-            InputB += 4;
-        }
-        OutputC += 4;
-        N -= 4;
+        N -= 8;
+        if (N < 0) break;
+
+        _mm_storel_epi64((MLAS_INT32X4*)OutputC, vc);
+        OutputC += 8;
     }
 
-    if (N > 0) {
-        auto IntegerVectorA = (IsScalarA) ?
-                MlasBroadcastInt32x4((int32_t)*InputA) :
-                MlasQuantizeLinearUnpackBytes<DataType>(MlasBroadcastInt32x4(*((const int32_t*)InputA)));
-        auto IntegerVectorB = (IsScalarB) ?
-                MlasBroadcastInt32x4((int32_t)*InputB) :
-                MlasQuantizeLinearUnpackBytes<DataType>(MlasBroadcastInt32x4(*((const int32_t*)InputB)));
-        auto FloatVectorC = MlasAddFloat32x4(
-                MlasDequantizeLinearVector(IntegerVectorA, ScaleVectorA, ZeroPointVectorA),
-                MlasDequantizeLinearVector(IntegerVectorB, ScaleVectorB, ZeroPointVectorB));
-        auto IntegerVectorC = MlasQuantizeLinearVector(FloatVectorC, ScaleVectorC,
-                MinimumValueVectorC, MaximumValueVectorC, ZeroPointVectorC);
-        IntegerVectorC = MlasPackS16<DataType>(IntegerVectorC);
-        IntegerVectorC = MlasPackS16<DataType>(IntegerVectorC);
-
-        uint32_t PackedValueC = _mm_cvtsi128_si32(IntegerVectorC);
-        for (size_t n = 0; n < N; ++n) {
+    if (N < 0) {
+        N += 8;
+        uint64_t PackedValueC = (uint64_t)_mm_cvtsi128_si64(vc);
+        for (int64_t n = 0; n < N; ++n) {
             *((uint8_t*)OutputC + n) = (uint8_t)PackedValueC;
             PackedValueC >>= 8;
         }
