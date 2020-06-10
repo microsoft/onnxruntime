@@ -15,6 +15,20 @@ allprojects {
 project.group = "com.microsoft.onnxruntime"
 version = rootProject.file('../VERSION_NUMBER').text.trim()
 
+// cmake runs will inform us of the build directory of the current run
+def cmakeBuildDir = System.properties['cmakeBuildDir']
+def useCUDA = System.properties['USE_CUDA']
+def cmakeJavaDir = "${cmakeBuildDir}/java"
+def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
+def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
+def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
+def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
+
+def mavenUser = System.properties['mavenUser']
+def mavenPwd = System.properties['mavenPwd']
+
+def mavenArtifactId = useCUDA != null ? project.name + "_gpu" : project.name
+
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
 	targetCompatibility = JavaVersion.VERSION_1_8
@@ -29,7 +43,7 @@ jar {
 task sourcesJar(type: Jar, dependsOn: classes) {
 	classifier = "sources"
 	from sourceSets.main.allSource
-	into("META-INF/maven/$project.group/$project.name") {
+	into("META-INF/maven/$project.group/$mavenArtifactId") {
 		from { generatePomFileForMavenPublication }
 		rename ".*", "pom.xml"
 	}
@@ -39,7 +53,7 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 task javadocJar(type: Jar, dependsOn: javadoc) {
 	classifier = "javadoc"
 	from javadoc.destinationDir
-	into("META-INF/maven/$project.group/$project.name") {
+	into("META-INF/maven/$project.group/$mavenArtifactId") {
 		from { generatePomFileForMavenPublication }
 		rename ".*", "pom.xml"
 	}
@@ -60,17 +74,6 @@ spotless {
 		indentWithTabs()
 	}
 }
-
-// cmake runs will inform us of the build directory of the current run
-def cmakeBuildDir = System.properties['cmakeBuildDir']
-def cmakeJavaDir = "${cmakeBuildDir}/java"
-def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
-def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
-def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
-def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
-
-def mavenUser = System.properties['mavenUser']
-def mavenPwd = System.properties['mavenPwd']
 
 compileJava {
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
@@ -98,7 +101,12 @@ if (cmakeBuildDir != null) {
 
 	// Overwrite jar location
 	task allJar(type: Jar) {
-		into("META-INF/maven/$project.group/$project.name") {
+		manifest {
+			attributes('Automatic-Module-Name': project.group,
+					'Implementation-Title': 'onnxruntime',
+					'Implementation-Version': project.version)
+		}
+		into("META-INF/maven/$project.group/$mavenArtifactId") {
 			from { generatePomFileForMavenPublication }
 			rename ".*", "pom.xml"
 		}
@@ -157,7 +165,7 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			artifactId = project.name
+			artifactId = mavenArtifactId
 
 			from components.java
 			pom {
