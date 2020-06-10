@@ -313,8 +313,8 @@ class UpsampleBase {
         // result in any non-zero value
         ORT_ENFORCE(output_dims[i] == 0,
                     "Input dim is zero but "
-                    " required output dim is non-zero. "
-                    "Cannot scale 0 by any factor to generate a non-zero value."
+                    "required output dim is non-zero. "
+                    "Cannot scale 0 by any factor to generate a non-zero value. "
                     "Input dims: ",
                     input_dims,
                     " Output dims: ",
