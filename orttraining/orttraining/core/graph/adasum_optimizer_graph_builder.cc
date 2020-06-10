@@ -154,7 +154,9 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
 
   // If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
-    const float adasum_scale = 1.0f / opt_graph_config_.local_size;
+    // bugbug
+    //const float adasum_scale = 1.0f / opt_graph_config_.local_size;
+    const float adasum_scale = 1.0f;
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
 
