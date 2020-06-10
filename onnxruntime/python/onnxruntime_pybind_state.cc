@@ -575,6 +575,13 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
       .def(py::init<InferenceSession*>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object numpy_arr_on_cpu) -> void {
+        OrtValue mlvalue;
+        CreateTensorMLValue(GetAllocator(), name, &numpy_arr_on_cpu, &mlvalue);
+        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
@@ -630,7 +637,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
-        for (auto _ : outputs) {
+        for (const auto& _ : outputs) {
           if (_.IsTensor()) {
             AddTensorAsPyObj(_, rfetch);
           } else {
