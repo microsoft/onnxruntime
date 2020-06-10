@@ -112,9 +112,10 @@
 #include "core/providers/cuda/cuda_device_options.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
-OrtDevice::DeviceId cuda_device_id = 0;
-size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
-onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+onnxruntime::CudaDeviceOptions cuda_device_options;
+//OrtDevice::DeviceId cuda_device_id = 0;
+//size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+//onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -342,9 +343,11 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
-      cuda_mem_limit = static_cast<size_t>(INT_MAX);
-      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_options.device_id,
+                                                                                        cuda_device_options.cuda_mem_limit, 
+                                                                                        cuda_device_options.arena_extend_strategy));
+      //cuda_mem_limit = static_cast<size_t>(INT_MAX);
+      //arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -396,10 +399,8 @@ bool is_cuda_device_id_valid(int id) {
     return true;
 }
 
-void set_cuda_device_options(std::map<std::string, std::string> m) {
+void update_cuda_device_options(std::map<std::string, std::string> m) {
 
-    // currently hardcode here.
-    // should we make device options part of the c++ code, such as struct CudaDeviceOptions?
     std::map<std::string, std::string>::iterator it;
 
     it = m.find("device_id");
@@ -410,7 +411,7 @@ void set_cuda_device_options(std::map<std::string, std::string> m) {
             return;
         }
         printf("set cuda device id: %d\n", device_id);
-        cuda_device_id = device_id; 
+        cuda_device_options.device_id = device_id; 
     }
 }
 #endif
@@ -518,11 +519,11 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
-  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_options.device_id = static_cast<OrtDevice::DeviceId>(id); });
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
-    cuda_mem_limit = static_cast<size_t>(limit);
+    cuda_device_options.cuda_mem_limit = static_cast<size_t>(limit);
   });
-  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { cuda_device_options.arena_extend_strategy = strategy; });
 #endif
 }
 
@@ -969,7 +970,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
 
         if (provider == kCudaExecutionProvider) {
-            set_cuda_device_options(deviceOptionsMap);
+            update_cuda_device_options(deviceOptionsMap);
         }
       })
       .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {

@@ -75,7 +75,7 @@ class Session:
     def set_provider_options(self, provider, provider_options):
 
         if not provider_options or not isinstance(provider_options, dict):
-            raise ValueError("Please specify provider options in python diction format")
+            raise ValueError("Please specify provider options in python dict format")
 
         if provider not in self._providers:
             raise ValueError("{} does not in the list of registered providers {}".format(
