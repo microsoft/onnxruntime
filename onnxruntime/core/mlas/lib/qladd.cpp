@@ -107,17 +107,13 @@ public:
     static MLAS_FORCEINLINE i8x16_t vld1q_dup_i8(T const* ptr) { return vld1q_dup_u8(ptr); }
     static MLAS_FORCEINLINE i8x8_t vld1_i8(T const * ptr) { return vld1_u8(ptr); }
     static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_u8(ptr); }
-
     static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_u8(ptr, a); }
     static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_u8(ptr, a); }
     static MLAS_FORCEINLINE i8x8_t vget_low_i8(i8x16_t a) { return vget_low_u8(a); }
     static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a) { return vget_high_u8(a); }
-
     static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b) { return vsubl_u8(a, b); }
-    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a) { return vreinterpretq_s16_u16(a); }
 
-    static MLAS_FORCEINLINE i8x8_t vqmovn_s16(int16x8_t a) { return ::vqmovun_s16(a); }
-    static MLAS_FORCEINLINE i8x16_t vcombine_i8(i8x8_t a, i8x8_t b) { return vcombine_u8(a, b); }
+    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a) { return vreinterpretq_s16_u16(a); }
     static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a) { return vreinterpretq_u32_u8(a); }
     static MLAS_FORCEINLINE uint16x8_t vreinterpretq_u16_i8(i8x16_t a) { return vreinterpretq_u16_u8(a); }
     static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_u8(a); }
@@ -134,6 +130,17 @@ public:
 
     template <int n>
     static MLAS_FORCEINLINE i8x8_t vext_i8(i8x8_t lo, i8x8_t hi) { return vext_u8(lo, hi, n); }
+
+    static MLAS_FORCEINLINE i8x16_t combine_i8_s16(int16x8_t v0, int16x8_t v1)
+    {
+
+#if defined(MLAS_NEON64_INTRINSICS)
+         return vqmovun_high_s16(vqmovun_s16(v0), v1);
+#else
+         return vcombine_u8(vqmovun_s16(v0), vqmovun_s16(v1));
+#endif
+
+    }
 };
 
 template <>
@@ -151,17 +158,13 @@ public:
     static MLAS_FORCEINLINE i8x16_t vld1q_dup_i8(T const* ptr) { return vld1q_dup_s8(ptr); }
     static MLAS_FORCEINLINE i8x8_t vld1_i8(T const * ptr) { return vld1_s8(ptr); }
     static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_s8(ptr); }
-
     static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_s8(ptr, a); }
     static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_s8(ptr, a); }
     static MLAS_FORCEINLINE i8x8_t vget_low_i8(i8x16_t a) { return vget_low_s8(a); }
     static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a) { return vget_high_s8(a); }
-
     static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b) { return vsubl_s8(a, b); }
-    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a) { return a; }
 
-    static MLAS_FORCEINLINE i8x8_t vqmovn_s16(int16x8_t a) { return ::vqmovn_s16(a); }
-    static MLAS_FORCEINLINE i8x16_t vcombine_i8(i8x8_t a, i8x8_t b) { return vcombine_s8(a, b); }
+    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a) { return a; }
     static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a) { return vreinterpretq_u32_s8(a); }
     static MLAS_FORCEINLINE uint16x8_t vreinterpretq_u16_i8(i8x16_t a) { return vreinterpretq_u16_s8(a); }
     static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_s8(a); }
@@ -178,11 +181,30 @@ public:
 
     template <int n>
     static MLAS_FORCEINLINE i8x8_t vext_i8(i8x8_t lo, i8x8_t hi) { return vext_s8(lo, hi, n); }
-};
 
-#endif
+    static MLAS_FORCEINLINE i8x16_t combine_i8_s16(int16x8_t v0, int16x8_t v1)
+    {
 
 #if defined(MLAS_NEON64_INTRINSICS)
+         return vqmovn_high_s16(vqmovn_s16(v0), v1);
+#else
+         return vcombine_s8(vqmovn_s16(v0), vqmovn_s16(v1));
+#endif
+
+    }
+};
+
+#if defined(MLAS_NEON64_INTRINSICS)
+
+#define high_s16_to_s32(s16x8) vmovl_high_s16(s16x8)
+#define combine_s16_s32(lo, hi) vqmovn_high_s32(vqmovn_s32(lo), hi))
+
+#else
+
+#define high_s16_to_s32(s16x8) vmovl_s16(vget_high_s16(s16x8))
+#define combine_s16_s32(lo, hi) vcombine_s16(vqmovn_s32(lo), vqmovn_s32(hi))
+
+#endif
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 void
@@ -203,7 +225,6 @@ MlasQLinearAddKernelHelper(
 
     constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
     constexpr float MaxScaleRatio = 256.0f; //std::stof("0x1.0p+8f");
-
     const float ScaleRatio_AC = ScaleA / ScaleC;
     const float ScaleRatio_BC = ScaleB / ScaleC;
     const float GreaterScaleRatio = std::max(ScaleRatio_AC, ScaleRatio_BC);
@@ -229,7 +250,7 @@ MlasQLinearAddKernelHelper(
     const int16x8_t VectorZeroPointC = vmovq_n_s16((int16_t)ZeroPointC);
     const int32x4_t vright_shift = vmovq_n_s32(- static_cast<int32_t>(Shift)); // vld1q_dup_s32(&right_shift);
     const int32x4_t vzero_shift_mask = vreinterpretq_s32_u32(vceqq_s32(vright_shift, vmovq_n_s32(0)));
-
+    
     int32x4_t vscalar;
     if (IsScalarA) {
         const typename SUI::i8x8_t VectorA0 = SUI::vmov_n_i8(*InputA);
@@ -241,9 +262,11 @@ MlasQLinearAddKernelHelper(
         const int16x8_t vb_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(VectorB0, VectorZeroPointB));
         vscalar = vmulq_s32(vmovl_s16(vget_low_s16(vb_s16x8)), VectorMultiplierB);
     }
-    typename SUI::i8x16_t vc0, vc1;
     auto n = static_cast<int64_t>(N);
-    while (n > 0) {
+
+#if defined(MLAS_NEON64_INTRINSICS)
+
+    while (n > 32) {
         int32x4_t vacc0_lo, vacc0_hi, vacc1_lo, vacc1_hi, vacc2_lo, vacc2_hi, vacc3_lo, vacc3_hi;
         if (IsScalarA) {
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(InputB);
@@ -258,10 +281,10 @@ MlasQLinearAddKernelHelper(
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
             vacc2_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb2_s16x8)), VectorMultiplierB);
             vacc3_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb3_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(vb0_s16x8)), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(vb1_s16x8)), VectorMultiplierB);
-            vacc2_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(vb2_s16x8)), VectorMultiplierB);
-            vacc3_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(vb3_s16x8)), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
+            vacc2_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb2_s16x8), VectorMultiplierB);
+            vacc3_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb3_s16x8), VectorMultiplierB);
         } else if (IsScalarB) {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA);
             const typename SUI::i8x16_t VectorA1 = SUI::vld1q_i8(InputA + 16);
@@ -275,10 +298,10 @@ MlasQLinearAddKernelHelper(
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
             vacc2_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va2_s16x8)), VectorMultiplierA);
             vacc3_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va3_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(va0_s16x8)), VectorMultiplierA);
-            vacc1_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(va1_s16x8)), VectorMultiplierA);
-            vacc2_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(va2_s16x8)), VectorMultiplierA);
-            vacc3_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(va3_s16x8)), VectorMultiplierA);
+            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(va1_s16x8), VectorMultiplierA);
+            vacc2_hi = vmlaq_s32(vscalar, high_s16_to_s32(va2_s16x8), VectorMultiplierA);
+            vacc3_hi = vmlaq_s32(vscalar, high_s16_to_s32(va3_s16x8), VectorMultiplierA);
         } else  {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA);
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(InputB);
@@ -286,7 +309,6 @@ MlasQLinearAddKernelHelper(
             const typename SUI::i8x16_t VectorB1 = SUI::vld1q_i8(InputB + 16);
             InputA += 32;
             InputB += 32;
-
             const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
             const int16x8_t vb0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorB0), VectorZeroPointB));
             const int16x8_t va1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorA0), VectorZeroPointA));
@@ -300,19 +322,19 @@ MlasQLinearAddKernelHelper(
             vacc1_lo = vmulq_s32(vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
             vacc2_lo = vmulq_s32(vmovl_s16(vget_low_s16(va2_s16x8)), VectorMultiplierA);
             vacc3_lo = vmulq_s32(vmovl_s16(vget_low_s16(va3_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmulq_s32(vmovl_s16(vget_high_s16(va0_s16x8)), VectorMultiplierA);
-            vacc1_hi = vmulq_s32(vmovl_s16(vget_high_s16(va1_s16x8)), VectorMultiplierA);
-            vacc2_hi = vmulq_s32(vmovl_s16(vget_high_s16(va2_s16x8)), VectorMultiplierA);
-            vacc3_hi = vmulq_s32(vmovl_s16(vget_high_s16(va3_s16x8)), VectorMultiplierA);
+            vacc0_hi = vmulq_s32(high_s16_to_s32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmulq_s32(high_s16_to_s32(va1_s16x8), VectorMultiplierA);
+            vacc2_hi = vmulq_s32(high_s16_to_s32(va2_s16x8), VectorMultiplierA);
+            vacc3_hi = vmulq_s32(high_s16_to_s32(va3_s16x8), VectorMultiplierA);
 
             vacc0_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
             vacc1_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
             vacc2_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb2_s16x8)), VectorMultiplierB);
             vacc3_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb3_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vacc0_hi, vmovl_s16(vget_high_s16(vb0_s16x8)), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vacc1_hi, vmovl_s16(vget_high_s16(vb1_s16x8)), VectorMultiplierB);
-            vacc2_hi = vmlaq_s32(vacc0_hi, vmovl_s16(vget_high_s16(vb2_s16x8)), VectorMultiplierB);
-            vacc3_hi = vmlaq_s32(vacc1_hi, vmovl_s16(vget_high_s16(vb3_s16x8)), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vacc0_hi, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vacc1_hi, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
+            vacc2_hi = vmlaq_s32(vacc0_hi, high_s16_to_s32(vb2_s16x8), VectorMultiplierB);
+            vacc3_hi = vmlaq_s32(vacc1_hi, high_s16_to_s32(vb3_s16x8), VectorMultiplierB);
         }
 
         vacc0_lo = vsraq_n_s32(vacc0_lo, vbicq_s32(vacc0_lo, vzero_shift_mask), 31);
@@ -334,113 +356,23 @@ MlasQLinearAddKernelHelper(
         vacc3_hi = vrshlq_s32(vacc3_hi, vright_shift);
 
         // Pack, saturate, and add output zero point.
-        const int16x8_t vacc0 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi)), VectorZeroPointC);
-        const int16x8_t vacc1 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc1_lo), vqmovn_s32(vacc1_hi)), VectorZeroPointC);
-        vc0 = SUI::vcombine_i8(SUI::vqmovn_s16(vacc0), SUI::vqmovn_s16(vacc1));
+        const int16x8_t vacc0 = vqaddq_s16(combine_s16_s32(vacc0_lo, vacc0_hi), VectorZeroPointC);
+        const int16x8_t vacc1 = vqaddq_s16(combine_s16_s32(vacc1_lo, vacc1_hi), VectorZeroPointC);
+        const int16x8_t vacc2 = vqaddq_s16(combine_s16_s32(vacc2_lo, vacc2_hi), VectorZeroPointC);
+        const int16x8_t vacc3 = vqaddq_s16(combine_s16_s32(vacc3_lo, vacc3_hi), VectorZeroPointC);
 
-        const int16x8_t vacc2 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc2_lo), vqmovn_s32(vacc2_hi)), VectorZeroPointC);
-        const int16x8_t vacc3 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc3_lo), vqmovn_s32(vacc3_hi)), VectorZeroPointC);
-        vc1 = SUI::vcombine_i8(SUI::vqmovn_s16(vacc2), SUI::vqmovn_s16(vacc3));
-
-        n -= 32;
-        if (n < 0) break;
+        const typename SUI::i8x16_t vc0 = SUI::combine_i8_s16(vacc0, vacc1);
+        const typename SUI::i8x16_t vc1 = SUI::combine_i8_s16(vacc2, vacc3);
 
         SUI::vst1q_i8(OutputC, vc0);
         SUI::vst1q_i8(OutputC + 16, vc1);
+        n -= 32;
         OutputC += 32;
     }
 
-    if (n < 0) {
-        n += 32;
-        typename SUI::i8x16_t vc = vc0;
-        if (n & 16) {
-            SUI::vst1q_i8(OutputC, vc0);
-            OutputC += 16;
-            vc = vc1;
-        }
-        typename SUI::i8x8_t v8x8 = SUI::vget_low_i8(vc);
-        if (n & 8) {
-            SUI::vst1_i8(OutputC, v8x8);
-            OutputC += 8;
-            v8x8 = SUI::vget_high_i8(vc);
-        }
-        if (n & 4) {
-            vst1_lane_u32((uint32_t*)OutputC, SUI::vreinterpret_u32_i8(v8x8), 0);
-            OutputC += 4;
-            v8x8 = SUI::template vext_i8<4>(v8x8, v8x8);
-        }
-        if (n & 2) {
-            vst1_lane_u16((uint16_t*)OutputC, SUI::vreinterpret_u16_i8(v8x8), 0);
-            OutputC += 2;
-            v8x8 = SUI::template vext_i8<2>(v8x8, v8x8);
-        }
-        if (n & 1) {
-            SUI::template vst1_lane_i8<0>(OutputC, v8x8);
-        }
-    }
-}
+#endif
 
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-template<typename DataType, bool IsScalarA, bool IsScalarB>
-void
-MlasQLinearAddKernelHelper(
-    const DataType* InputA,
-    float ScaleA,
-    int32_t ZeroPointA,
-    const DataType* InputB,
-    float ScaleB,
-    int32_t ZeroPointB,
-    float ScaleC,
-    int32_t ZeroPointC,
-    DataType* OutputC,
-    size_t N
-    )
-{
-    typedef SignedUnsignedIntOps<DataType> SUI;
-
-    constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
-    constexpr float MaxScaleRatio = 256.0f; //std::stof("0x1.0p+8f");
-
-    float ScaleRatio_AC = ScaleA / ScaleC;
-    float ScaleRatio_BC = ScaleB / ScaleC;
-    const float GreaterScaleRatio = std::max(ScaleRatio_AC, ScaleRatio_BC);
-    const int32_t GreaterExponent = (int32_t)(BitsOfFp32(GreaterScaleRatio) >> 23) - 127;
-    const uint32_t Shift = (uint32_t)(21 - GreaterExponent); // Shift is in [13, 31] range.
-    const float MultiplierFloatValue = Fp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
-    const int32_t MultiplierA = (int32_t) lrintf(ScaleRatio_AC * MultiplierFloatValue);
-    const int32_t MultiplierB = (int32_t) lrintf(ScaleRatio_BC * MultiplierFloatValue);
-
-    if (!(ScaleRatio_AC >= MinScaleRatio && ScaleRatio_AC < MaxScaleRatio) || 
-            !(ScaleRatio_BC >= MinScaleRatio && ScaleRatio_BC < MaxScaleRatio) ||
-            !(Shift <= 31 && Shift >= 13) || !(MultiplierA < 0x00400000 && MultiplierB < 0x00400000) || 
-            !(MultiplierA >= 0x00200000 || MultiplierB >= 0x00200000)) {
-        MlasQLinearAddKernelRawHelper<DataType,IsScalarA, IsScalarB>(
-            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
-        return;
-    }
-
-    const int32x4_t VectorMultiplierA = vld1q_dup_s32(&MultiplierA);
-    const int32x4_t VectorMultiplierB = vld1q_dup_s32(&MultiplierB);
-    const typename SUI::i8x8_t VectorZeroPointA = SUI::vmov_n_i8((DataType)ZeroPointA);
-    const typename SUI::i8x8_t VectorZeroPointB = SUI::vmov_n_i8((DataType)ZeroPointB);
-    const int16x8_t VectorZeroPointC = vmovq_n_s16((int16_t)ZeroPointC);
-    const int32x4_t vright_shift = vmovq_n_s32(- static_cast<int32_t>(Shift)); // vld1q_dup_s32(&right_shift);
-    const int32x4_t vzero_shift_mask = vreinterpretq_s32_u32(vceqq_s32(vright_shift, vmovq_n_s32(0)));
-
-    int32x4_t vscalar;
-    if (IsScalarA) {
-        const typename SUI::i8x8_t VectorA0 = SUI::vmov_n_i8(*InputA);
-        const int16x8_t va_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(VectorA0, VectorZeroPointA));
-        vscalar = vmulq_s32(vmovl_s16(vget_low_s16(va_s16x8)), VectorMultiplierA);
-    }
-    if (IsScalarB) {
-        const typename SUI::i8x8_t VectorB0 = SUI::vmov_n_i8(*InputB);
-        const int16x8_t vb_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(VectorB0, VectorZeroPointB));
-        vscalar = vmulq_s32(vmovl_s16(vget_low_s16(vb_s16x8)), VectorMultiplierB);
-    }
     typename SUI::i8x16_t vc;
-    auto n = static_cast<int64_t>(N);
     while (n > 0) {
         int32x4_t vacc0_lo, vacc1_lo, vacc0_hi, vacc1_hi;
         if (IsScalarA) {
@@ -450,8 +382,8 @@ MlasQLinearAddKernelHelper(
 
             vacc0_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(vb0_s16x8)), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(vb1_s16x8)), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
         } else if (IsScalarB) {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA); InputA += 16;
             const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
@@ -459,12 +391,11 @@ MlasQLinearAddKernelHelper(
 
             vacc0_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va0_s16x8)), VectorMultiplierA);
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(va0_s16x8)), VectorMultiplierA);
-            vacc1_hi = vmlaq_s32(vscalar, vmovl_s16(vget_high_s16(va1_s16x8)), VectorMultiplierA);
+            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(va1_s16x8), VectorMultiplierA);
         } else  {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA); InputA += 16;
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(InputB); InputB += 16;
-
             const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
             const int16x8_t vb0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorB0), VectorZeroPointB));
             const int16x8_t va1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorA0), VectorZeroPointA));
@@ -472,13 +403,13 @@ MlasQLinearAddKernelHelper(
 
             vacc0_lo = vmulq_s32(vmovl_s16(vget_low_s16(va0_s16x8)), VectorMultiplierA);
             vacc1_lo = vmulq_s32(vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmulq_s32(vmovl_s16(vget_high_s16(va0_s16x8)), VectorMultiplierA);
-            vacc1_hi = vmulq_s32(vmovl_s16(vget_high_s16(va1_s16x8)), VectorMultiplierA);
+            vacc0_hi = vmulq_s32(high_s16_to_s32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmulq_s32(high_s16_to_s32(va1_s16x8), VectorMultiplierA);
 
             vacc0_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
             vacc1_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vacc0_hi, vmovl_s16(vget_high_s16(vb0_s16x8)), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vacc1_hi, vmovl_s16(vget_high_s16(vb1_s16x8)), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vacc0_hi, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vacc1_hi, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
         }
 
         vacc0_lo = vsraq_n_s32(vacc0_lo, vbicq_s32(vacc0_lo, vzero_shift_mask), 31);
@@ -494,8 +425,8 @@ MlasQLinearAddKernelHelper(
         // Pack, saturate, and add output zero point.
         const int16x8_t vacc0 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi)), VectorZeroPointC);
         const int16x8_t vacc1 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc1_lo), vqmovn_s32(vacc1_hi)), VectorZeroPointC);
+        vc = SUI::combine_i8_s16(vacc0, vacc1);
 
-        vc = SUI::vcombine_i8(SUI::vqmovn_s16(vacc0), SUI::vqmovn_s16(vacc1));
         n -= 16;
         if (n < 0) break;
 
@@ -505,24 +436,24 @@ MlasQLinearAddKernelHelper(
 
     if (n < 0) {
         n += 16;
-        typename SUI::i8x8_t v8x8 = SUI::vget_low_i8(vc);
+        typename SUI::i8x8_t i8x8 = SUI::vget_low_i8(vc);
         if (n & 8) {
-            SUI::vst1_i8(OutputC, v8x8);
+            SUI::vst1_i8(OutputC, i8x8);
             OutputC += 8;
-            v8x8 = SUI::vget_high_i8(vc);
+            i8x8 = SUI::vget_high_i8(vc);
         }
         if (n & 4) {
-            vst1_lane_u32((uint32_t*)OutputC, SUI::vreinterpret_u32_i8(v8x8), 0);
+            vst1_lane_u32((uint32_t*)OutputC, SUI::vreinterpret_u32_i8(i8x8), 0);
             OutputC += 4;
-            v8x8 = SUI::template vext_i8<4>(v8x8, v8x8);
+            i8x8 = SUI::template vext_i8<4>(i8x8, i8x8);
         }
         if (n & 2) {
-            vst1_lane_u16((uint16_t*)OutputC, SUI::vreinterpret_u16_i8(v8x8), 0);
+            vst1_lane_u16((uint16_t*)OutputC, SUI::vreinterpret_u16_i8(i8x8), 0);
             OutputC += 2;
-            v8x8 = SUI::template vext_i8<2>(v8x8, v8x8);
+            i8x8 = SUI::template vext_i8<2>(i8x8, i8x8);
         }
         if (n & 1) {
-            SUI::template vst1_lane_i8<0>(OutputC, v8x8);
+            SUI::template vst1_lane_i8<0>(OutputC, i8x8);
         }
     }
 }
