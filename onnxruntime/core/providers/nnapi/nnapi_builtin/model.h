@@ -4,6 +4,7 @@
 #pragma once
 #include "builders/Shaper.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
+#include <unordered_map>
 
 struct ANeuralNetworksModel;
 struct ANeuralNetworksCompilation;
@@ -64,6 +65,12 @@ class Model {
   const android::nn::wrapper::OperandType& GetType(const std::string& name) const;
   Shaper::Shape GetShape(const std::string& name);
 
+  void SetInputMap(std::unordered_map<std::string, size_t>&& input_map);
+  void SetOutputMap(std::unordered_map<std::string, size_t>&& output_map);
+
+  size_t GetMappedInputIdx(const std::string& name) const;
+  size_t GetMappedOutputIdx(const std::string& name) const;
+
   void SetOutputBuffer(const int32_t index, float* buffer);
   void SetOutputBuffer(const int32_t index, uint8_t* buffer);
   void SetOutputBuffer(const int32_t index, char* buffer);
@@ -86,6 +93,9 @@ class Model {
   std::vector<std::string> output_names_;
   std::map<std::string, android::nn::wrapper::OperandType> operand_types_;
   Shaper shaper_;
+
+  std::unordered_map<std::string, size_t> input_map_;
+  std::unordered_map<std::string, size_t> output_map_;
 
   Model();
   void AddInput(const std::string& name, const Shaper::Shape& shape,

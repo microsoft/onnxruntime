@@ -216,7 +216,31 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
     {
       nnapi::ModelBuilder builder(model_proto);
-      nnapi_models_.emplace(fused_node->Name(), builder.Compile());
+      std::unique_ptr<nnapi::Model> nnapi_model = builder.Compile();
+
+      // Build map from input name to its index in input definitions
+      {
+        std::unordered_map<std::string, size_t> input_map;
+        const auto& input_defs = fused_node->InputDefs();
+        input_map.reserve(input_defs.size());
+        for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+          input_map[input_defs[i]->Name()] = i;
+        }
+        nnapi_model->SetInputMap(std::move(input_map));
+      }
+
+      // Build map from output name to its index in output definitions
+      {
+        std::unordered_map<std::string, size_t> output_map;
+        const auto& output_defs = fused_node->OutputDefs();
+        output_map.reserve(output_defs.size());
+        for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
+          output_map[output_defs[i]->Name()] = i;
+        }
+        nnapi_model->SetOutputMap(std::move(output_map));
+      }
+
+      nnapi_models_.emplace(fused_node->Name(), std::move(nnapi_model));
     }
 
     NodeComputeInfo compute_info;
@@ -246,7 +270,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         const auto output_name = model->GetOutputs()[i];
         const auto output_shape = model->GetShape(output_name);
         std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
-        auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
+        auto output_idx = model->GetMappedOutputIdx(output_name);
+        auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx, int64_output_shape.data(), int64_output_shape.size());
 
         // remove
         // LOGS_DEFAULT(INFO) << "output name is " << output_name << " and i " << i;
@@ -273,7 +298,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         const auto& input_name = model->GetInputs()[i];
         const auto& model_input_type = model->GetType(input_name);
 
-        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+        auto input_idx = model->GetMappedInputIdx(input_name);
+        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_idx);
         const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         const auto& tensor_shape = ort.GetTensorShape(tensor_info);
         std::vector<uint32_t> dimensions;
