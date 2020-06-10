@@ -126,6 +126,9 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "ThresholdedRelu",
       "Upsample",
       "Xor",
+      "RoiAlign",
+      "NonZero",
+      "Tile",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
@@ -140,6 +143,9 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "SinFloat",
       "Sinh",
       "Softsign",
+      "RoiAlign",
+      "NonZero",
+      "Tile",
   };
 
   std::set<std::string> unsupported_ops_vpu = {
@@ -865,7 +871,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     const auto& nodes = graph_viewer.GetNodesInTopologicalOrder();
     if (nodes.size() == 1) {
       const auto& node = graph_viewer.GetNode(nodes[0]);
-      if (node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
+      if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
         return result;
     }
 
@@ -909,7 +915,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if (this_cluster.size() == 1) {
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if (node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
+        if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
