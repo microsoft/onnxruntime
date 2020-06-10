@@ -64,7 +64,12 @@ class Gpt2OnnxModel(BertOnnxModel):
                                              outputs=[add_node_name + "_output"],
                                              name=add_node_name)
 
+            self.replace_input_of_all_nodes(reshape_after_gemm.output[0], add_node_name + "_output")
+            
+            # Link root node output with MatMul
+            self.replace_input_of_all_nodes(root_node.output[0], matmul_node_name + "_input")
             root_node.output[0] = matmul_node_name + "_input"
+
             self.replace_input_of_all_nodes(reshape_after_gemm.output[0], add_node_name + "_output")
 
             self.add_node(matmul_node)
