@@ -156,7 +156,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
     // bugbug
     //const float adasum_scale = 1.0f / opt_graph_config_.local_size;
-    const float adasum_scale = 1.0f;
+    const float adasum_scale = 0.5f;
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
 
