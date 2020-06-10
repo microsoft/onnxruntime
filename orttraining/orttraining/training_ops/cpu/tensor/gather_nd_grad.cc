@@ -28,15 +28,10 @@ struct GatherNDGradComputeImpl {
     const int64_t slice_size = p.element_count_per_slice;
     const InputT* input_base_casted = reinterpret_cast<const InputT*>(p.input_base);
     InputT* output_base_casted = reinterpret_cast<InputT*>(p.output_base);
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
+
     for (int64_t i = 0; i < grad_size; i++) {
       uint64_t slice_offset = p.slice_offsets[i / slice_size];
       size_t j = i % slice_size;
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
       output_base_casted[slice_offset + j] += input_base_casted[i];
     }
   }
