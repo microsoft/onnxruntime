@@ -42,7 +42,7 @@ Fp32FromBits(uint32_t u) {
     return uf.fp32;
 }
 
-// Pure C++ helper, should not be used in most case.
+// Pure C++ helper, back off here in rare case.
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 static
 MLAS_FORCEINLINE
@@ -60,8 +60,8 @@ MlasQLinearAddKernelRawHelper(
     size_t N
     )
 {
-    constexpr int32_t MinimumValue = std::numeric_limits<DataType>::min();
-    constexpr int32_t MaximumValue = std::numeric_limits<DataType>::max();
+    const float MinimumValue = (float)((int)std::numeric_limits<DataType>::min() - ZeroPointC);
+    const float MaximumValue = (float)((int)std::numeric_limits<DataType>::max() - ZeroPointC);
 
     float ValueA;
     float ValueB;
@@ -80,10 +80,9 @@ MlasQLinearAddKernelRawHelper(
         if (!IsScalarB) {
             ValueB = ScaleB * (int32_t(InputB[n]) - ZeroPointB);
         }
-        int32_t IntValueC = (int32_t)std::nearbyintf((ValueA + ValueB) / ScaleC) + ZeroPointC;
-        IntValueC = std::max(IntValueC, MinimumValue);
-        IntValueC = std::min(IntValueC, MaximumValue);
-        OutputC[n] = (DataType)IntValueC;
+        float ValueC = (ValueA + ValueB) / ScaleC;
+        ValueC = std::min(std::max(ValueC, MinimumValue), MaximumValue);
+        OutputC[n] = (DataType)(int32_t)std::nearbyintf(ValueC + ZeroPointC);
     }
 }
 
@@ -736,6 +735,10 @@ MlasQLinearAdd<uint8_t>(
             InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA, LengthB);
 }
 
+//
+// Function definition for platform usage
+//
+
 void
 MLASCALL
 MlasQLinearAddS8Kernel(
@@ -753,11 +756,7 @@ MlasQLinearAddS8Kernel(
     )
 {
     MlasQLinearAddKernel<int8_t>(
-        InputA, ScaleA, ZeroPointA,
-        InputB, ScaleB, ZeroPointB,
-        ScaleC, ZeroPointC, OutputC,
-        LengthA, LengthB
-    );
+        InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA, LengthB);
 }
 
 void
@@ -777,9 +776,5 @@ MlasQLinearAddU8Kernel(
     )
 {
     MlasQLinearAddKernel<uint8_t>(
-        InputA, ScaleA, ZeroPointA,
-        InputB, ScaleB, ZeroPointB,
-        ScaleC, ZeroPointC, OutputC,
-        LengthA, LengthB
-    );
+        InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA, LengthB);
 }
