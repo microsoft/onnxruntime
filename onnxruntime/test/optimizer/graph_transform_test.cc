@@ -2296,7 +2296,7 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
   }
 }
 
-TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
+TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
   auto model_uri = MODEL_FOLDER "fusion/dynamic_quantize_matmul.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
