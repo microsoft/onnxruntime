@@ -54,7 +54,7 @@ AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
                                   OrtMemoryInfoLessThanIgnoreAllocType>::const_reference;
 
   auto entry = std::find_if(allocators_.cbegin(), allocators_.cend(),
-                            [device](const AllocatorEntry& entry) {
+                            [device](AllocatorEntry& entry) {
                               return entry.first.device == device &&
                                      entry.first.mem_type == OrtMemTypeDefault;
                             });
