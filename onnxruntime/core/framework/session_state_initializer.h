@@ -12,44 +12,14 @@
 #include "core/platform/path_lib.h"
 
 namespace onnxruntime {
-class ExecutionProviders;
-class Graph;
-class GraphTransformerManager;
-class InsertCastTransformer;
 class KernelRegistryManager;
 class Node;
-class NodeArg;
 class SessionState;
 
-namespace logging {
-class Logger;
-}
+Status FinalizeSessionState(SessionState& session_state,
+                            const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+                            KernelRegistryManager& kernel_registry_manager,
+                            _In_opt_ const Node* parent_node,
+                            ExecutionMode execution_mode = ORT_SEQUENTIAL);
 
-// Don't use this class before graph partition is done
-class SessionStateInitializer {
- public:
-  /**
-   *
-   * \param graph_loc The file path of where the graph was loaded. e.g. /tmp/test_squeezenet/model.onnx
-   */
-  SessionStateInitializer(bool enable_mem_pattern, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                          onnxruntime::Graph& graph, SessionState& session_state, const ExecutionProviders& providers,
-                          KernelRegistryManager& kernel_registry_manager);
-
-  // First perform any transformations and create the execution plan
-  // Then initialize tensors, and save. save kernels and input/output node mappings
-  common::Status CreatePlan(_In_opt_ const Node* parent_node,
-                            _In_opt_ const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args,
-                            ExecutionMode execution_mode);
-
- private:
-  const std::basic_string<PATH_CHAR_TYPE>& graph_loc_;
-  onnxruntime::Graph& graph_;
-  SessionState& session_state_;
-
-  const ExecutionProviders& execution_providers_;
-  KernelRegistryManager& kernel_registry_manager_;
-  const logging::Logger& logger_;
-  const bool enable_mem_pattern_;
-};
 }  // namespace onnxruntime

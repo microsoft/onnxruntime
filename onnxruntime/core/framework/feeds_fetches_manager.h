@@ -51,8 +51,8 @@ struct FeedsFetchesInfo {
 
 struct MLValueCopyInfo {
   OrtDevice source_device{};
-  OrtDevice target_device{};
-  const IExecutionProvider* allocation_provider{nullptr};
+  OrtDevice target_device{};  // default is CPU
+  AllocatorPtr allocator;     // allocator for target device
 };
 
 class FeedsFetchesManager {

@@ -90,10 +90,6 @@ void DefaultFree(void* p) {
 #endif
 }
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info) {
-  return session_state.GetExecutionProviders().GetAllocator(memory_info);
-}
-
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
@@ -105,9 +101,8 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kRknpuExecutionProvider;
 }
 
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, const OrtDevice& device,
-                              const Tensor& fetched_tensor, OrtValue& output_mlvalue) {
-  auto allocator = execution_provider.GetAllocator(device.Id(), OrtMemTypeDefault);
+static common::Status AllocateHelper(const AllocatorPtr& allocator,
+                                     const Tensor& fetched_tensor, OrtValue& output_mlvalue) {
   if (!allocator) {
     return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
   }
@@ -156,17 +151,13 @@ static Status BatchOrCopyMLValue(
     return Status::OK();
   }
 
-  // This shouldn't be necessary. Edge case may be an unused input that has a mismatch between source and target
-  // but as it's unused we have no allocator info (and don't want to allocate it as it's unused). Uncomment if needed.
-  //  if (copy_info.allocation_provider == nullptr) {
-  //  target_mlvalue = source_mlvalue;
-  //  return Status::OK();
-  //}
-
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
-                                              source_tensor, target_mlvalue));
+    // we need to do a copy so the initial setup for feeds/fetches should have populated the allocator field.
+    ORT_ENFORCE(copy_info.allocator != nullptr, "Allocator was not set but source and target device differ. ",
+                copy_info.source_device.ToString(), " != ", copy_info.target_device.ToString());
+
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(copy_info.allocator, source_tensor, target_mlvalue));
   }
 
   Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
@@ -213,8 +204,6 @@ const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
 static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session_state,
                                                      const std::string& input_name,
                                                      MLValueCopyInfo& copy_info) {
-  const auto& exec_providers = session_state.GetExecutionProviders();
-
   std::vector<SessionState::NodeInfo> node_info_vec;
   ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
@@ -226,9 +215,12 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 
   copy_info.target_device = *node_info.device;
 
-  const auto& required_provider_type = GetNodeInputProviderType(node_info);
-  const auto* required_provider = exec_providers.Get(required_provider_type);
-  copy_info.allocation_provider = required_provider;
+  // only setup the allocator if we need it.
+  // location info for implicit inputs may not be known yet if this is a subgraph.
+  if (copy_info.source_device != copy_info.target_device ||
+      session_state.GetGraphViewer().IsSubgraph()) {
+    copy_info.allocator = session_state.GetAllocator(copy_info.target_device);
+  }
 
   return Status::OK();
 }
@@ -313,22 +305,19 @@ static bool FinalizeCopyInfoForFetches(const SessionState& session_state,
   ORT_ENFORCE(fetch_alloc_info.size() == copy_info.size());
   bool copy_needed = false;
 
-  auto& execution_providers = session_state.GetExecutionProviders();
-  const auto& cpu_execution_provider = *execution_providers.Get(onnxruntime::kCpuExecutionProvider);  // never null
-
   auto num_outputs = fetch_alloc_info.size();
   for (size_t i = 0; i < num_outputs; ++i) {
-    const IExecutionProvider* provider = &cpu_execution_provider;
-    const auto* alloc_info = fetch_alloc_info[i];
+    const OrtMemoryInfo* alloc_info = fetch_alloc_info[i];
 
     if (alloc_info != nullptr) {
       copy_info[i].target_device = alloc_info->device;
-      provider = execution_providers.Get(*alloc_info);
     }
 
     if (copy_info[i].source_device != copy_info[i].target_device) {
       copy_needed = true;
-      copy_info[i].allocation_provider = provider;
+      copy_info[i].allocator = session_state.GetAllocator(copy_info[i].target_device);
+      ORT_ENFORCE(copy_info[i].allocator != nullptr, "Failed to find allocator for device ",
+                  copy_info[i].target_device.ToString());
     }
   }
 

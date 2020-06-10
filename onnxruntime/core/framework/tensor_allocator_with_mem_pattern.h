@@ -34,8 +34,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         void* buffer;
         if (alloc->Info().alloc_type == OrtArenaAllocator) {
           buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_patterns_.patterns[i].PeakSize());
-        }
-        else {
+        } else {
           buffer = alloc->Alloc(mem_patterns_.patterns[i].PeakSize());
         }
         weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
@@ -50,9 +49,9 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(session_state),
         planner_(execution_plan),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
