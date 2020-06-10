@@ -1,0 +1,21 @@
+Metadata-Version: 2.1
+Name: quantization
+Version: 0.1
+Summary: Converts Machine Learning models to ONNX for use in Windows ML
+Home-page: https://github.com/onnx/keras-onnx
+Author: Microsoft Corporation
+Author-email: winmlcvt@microsoft.com
+License: MIT License
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: License :: OSI Approved :: MIT License
+Description-Content-Type: text/markdown
