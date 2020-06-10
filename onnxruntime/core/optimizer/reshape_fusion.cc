@@ -102,12 +102,6 @@ After fusion:
                     Reshape
 */
 bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger) {
-  if (
-      reshape.Name() == "Reshape_1240" ||
-      reshape.Name() == "Reshape_1227") {
-    double a = 2.4;
-    ORT_IGNORE_RETURN_VALUE(std::floor(a));
-  }
   // The root could be either a graph input or a node so use node arg to compare.
   const NodeArg& root_input = *(reshape.InputDefs()[0]);
 
