@@ -153,16 +153,17 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
+        @echo on
         pushd onnxruntime-java-linux-x64-gpu
         jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\testing.jar libcustom_op_library.so
         del /F /Q libcustom_op_library.so
         jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64-gpu\onnxruntime-$(OnnxRuntimeVersion).jar .
         popd
         pushd onnxruntime-java-win-x64-gpu
-        ren onnxruntime-$(OnnxRuntimeVersion).jar onnxruntime-gpu-$(OnnxRuntimeVersion).jar
-        ren onnxruntime-$(OnnxRuntimeVersion)-javadoc.jar onnxruntime-gpu-$(OnnxRuntimeVersion)-javadoc.jar
-        ren onnxruntime-$(OnnxRuntimeVersion)-sources.jar onnxruntime-gpu-$(OnnxRuntimeVersion)-sources.jar
-        ren onnxruntime-$(OnnxRuntimeVersion).pom onnxruntime-gpu-$(OnnxRuntimeVersion).pom
+        ren onnxruntime-$(OnnxRuntimeVersion).jar onnxruntime_gpu-$(OnnxRuntimeVersion).jar
+        ren onnxruntime-$(OnnxRuntimeVersion)-javadoc.jar onnxruntime_gpu-$(OnnxRuntimeVersion)-javadoc.jar
+        ren onnxruntime-$(OnnxRuntimeVersion)-sources.jar onnxruntime_gpu-$(OnnxRuntimeVersion)-sources.jar
+        ren onnxruntime-$(OnnxRuntimeVersion).pom onnxruntime_gpu_$(OnnxRuntimeVersion).pom
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
       displayName: 'Create final GPU Jar'
@@ -211,7 +212,7 @@ jobs:
         popd
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
-        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
 - job: Final_Jar_Testing_Linux
