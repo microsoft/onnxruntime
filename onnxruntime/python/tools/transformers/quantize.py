@@ -132,10 +132,9 @@ def quantize_data(data, quantize_range, qType):
 
     if qType == onnx_proto.TensorProto.INT8:
         max_range = max(abs(rmin), abs(rmax))
-        scale = (float(max_range) * 2) / quantize_range
+        scale = (float(max_range) * 2) / quantize_range if max_range != 0 else 1
         zero_point = 0
         # signed byte type
-        print(f"scale:{scale}")
         quantized_data = (np.asarray(data) / scale).round().astype('b')
     elif qType == onnx_proto.TensorProto.UINT8:
         scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
@@ -308,7 +307,7 @@ class ONNXQuantizer:
             else:
                 if node.op_type == 'Conv':
                     new_list += self._quantize_convolution(node, new_list)
-                elif node.op_type == 'MatMul':
+                elif node.op_type == 'MatMul' and self._is_valid_quantize_value(node.input[1]):
                     new_list += self._quantize_matmul(node, new_list)
                 elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
                     new_list += self._quantize_gather_ops(node, new_list)
@@ -355,10 +354,10 @@ class ONNXQuantizer:
         return weights
 
     def _is_valid_quantize_value(self, value_name):
-        if value_name in self.value_infos:
-            value_info = self.value_infos[value_name]
-            return value_info.type.HasField(
-                'tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
+        #if value_name in self.value_infos:
+        #    value_info = self.value_infos[value_name]
+        #    return value_info.type.HasField(
+        #        'tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
         weight = _find_by_name(value_name, self.model.graph.initializer)
         return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
@@ -1360,11 +1359,12 @@ class ONNXQuantizer:
         if node.name != "":
             qattention_name = node.name + "_quant"
 
+        #print(f"input count:{len(node.input)}")
         inputs = []
         inputs.extend(quantized_input_names)
         inputs.extend([node.input[2]])
         inputs.extend(scale_names)
-        inputs.extend([node.input[3]])
+        inputs.extend([node.input[3] if len(node.input) > 3 else ""])
         inputs.extend(zero_point_names)
 
         kwargs = {}

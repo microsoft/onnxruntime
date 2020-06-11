@@ -270,7 +270,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
 
 def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx,
-                      overwrite):
+                      overwrite, quantize):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -327,6 +327,9 @@ def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp1
             ort_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), False, use_gpu, fp16, True)
             optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite)
 
+    if quantize:
+        quantize_onnx_model(onnx_model_path, onnx_model_path)
+
     return onnx_model_path, is_valid_onnx_model, config.vocab_size, tokenizer.max_model_input_sizes[model_name]
 
 
@@ -372,12 +375,9 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
                     model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx,
-                    overwrite)
+                    overwrite, quantize)
             if not is_valid_onnx_model:
                 continue
-
-            if quantize:
-                quantize_onnx_model(onnx_model_file, onnx_model_file)
 
             ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, True, single_thread)
             if ort_session is None:
