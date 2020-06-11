@@ -156,8 +156,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
       opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
 #else
       opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
-    }
 #endif
+    }
 
     config.optimizer_config = opt;
   }
