@@ -382,42 +382,38 @@ bool LaunchTransQkv(cudaStream_t stream,
 
 template <typename T>
 __global__ void ConcatPastToPresent(const int sequence_length,
-                                    const int H,
                                     const T* past,
-                                    const T* k,
-                                    const T* v,
+                                    const T* k_v,
                                     T* present) {
   const int h = threadIdx.x;
-  const int s = threadIdx.y;
-  const int n = blockIdx.x;
+  const int n = threadIdx.y;
+  const int s = blockIdx.x;
   const int b = blockIdx.y;
+  const int is_v = blockIdx.z; // 0 for k, 1 for v
 
-  const int all_sequence_length = blockDim.y;
-  const int num_heads = gridDim.x;
+  const int all_sequence_length = gridDim.x;
   const int batch_size = gridDim.y;
+  const int num_heads = blockDim.y;
+  const int H = blockDim.x;
 
-  // past = 2 x BxNxS'xH    (past_k and past_v)
-  // k or v: BxNxSxH
-  // present: 2 x BxNxS*xH  (present_k and present_v)
+  // past:    2 x BxNxS'xH   (past_k and past_v)
+  // k_v:     2 x BxNxSxH    (k and v)
+  // present: 2 x BxNxS*xH   (present_k and present_v)
   const int past_sequence_length = all_sequence_length - sequence_length;
 
   const int present_SH = all_sequence_length * H;
   const int present_NSH = num_heads * present_SH;
-
+  int out_offset = b * present_NSH + n * present_SH + s * H + h + is_v * (present_NSH * batch_size);
   if (s < past_sequence_length) {
     const int past_SH = past_sequence_length * H;
     const int past_NSH = num_heads * past_SH;
-    int in_offset = b * past_NSH + n * past_SH + s * H + h;
-    int out_offset = b * present_NSH + n * present_SH + s * H + h;
+    const int in_offset = b * past_NSH + n * past_SH + s * H + h + is_v * (past_NSH * batch_size);
     present[out_offset] = past[in_offset];
-    present[out_offset + present_NSH * batch_size] = past[in_offset + past_NSH * batch_size];
-  } else if (s < all_sequence_length) {
+} else if (s < all_sequence_length) {
     const int SH = sequence_length * H;
     const int NSH = num_heads * SH;
-    int in_offset = b * NSH + n * SH + (s - past_sequence_length) * H + h;
-    int out_offset = b * present_NSH + n * present_SH + s * H + h;
-    present[out_offset] = k[in_offset];
-    present[out_offset + present_NSH * batch_size] = v[in_offset];
+    const int in_offset = b * NSH + n * SH + (s - past_sequence_length) * H + h + is_v * (NSH * batch_size);
+    present[out_offset] = k_v[in_offset];
   }
 }
 
@@ -428,23 +424,17 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int head_size,
                                const int num_heads,
                                const float* past,
-                               const float* k,
-                               const float* v,
+                               const float* k_v,
                                float* present) {
   const int all_sequence_length = past_sequence_length + sequence_length;
-  const dim3 grid(num_heads, batch_size, 1);
-  if (0 == (head_size % 2)) {
-    const int H = head_size / 2;
-    const dim3 block(H, all_sequence_length, 1);
-    const float2* past2 = reinterpret_cast<const float2*>(past);
-    const float2* k2 = reinterpret_cast<const float2*>(k);
-    const float2* v2 = reinterpret_cast<const float2*>(v);
-    float2* present2 = reinterpret_cast<float2*>(present);
-    ConcatPastToPresent<float2><<<grid, block, 0, stream>>>(sequence_length, H, past2, k2, v2, present2);
+  const dim3 grid(all_sequence_length, batch_size, 2);
+  if (0 == (head_size & 1)) {
+    const dim3 block(head_size / 2, num_heads, 1);
+    ConcatPastToPresent<float2><<<grid, block, 0, stream>>>(sequence_length, reinterpret_cast<const float2*>(past), reinterpret_cast<const float2*>(k_v), reinterpret_cast<float2*>(present));
   } else
   {
-    const dim3 block(head_size, all_sequence_length, 1);
-    ConcatPastToPresent<float><<<grid, block, 0, stream>>>(sequence_length, head_size, past, k, v, present);
+    const dim3 block(head_size, num_heads, 1);
+    ConcatPastToPresent<float><<<grid, block, 0, stream>>>(sequence_length, past, k_v, present);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -456,30 +446,19 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const int head_size,
                                const int num_heads,
                                const half* past,
-                               const half* k,
-                               const half* v,
+                               const half* k_v,
                                half* present) {
   const int all_sequence_length = past_sequence_length + sequence_length;
-  const dim3 grid(num_heads, batch_size, 1);
+  const dim3 grid(all_sequence_length, batch_size, 2);
   if (0 == (head_size % 4)) {
-    const int H = head_size / 4;
-    const dim3 block(H, all_sequence_length, 1);
-    const float2* past2 = reinterpret_cast<const float2*>(past);
-    const float2* k2 = reinterpret_cast<const float2*>(k);
-    const float2* v2 = reinterpret_cast<const float2*>(v);
-    float2* present2 = reinterpret_cast<float2*>(present);
-    ConcatPastToPresent<float2><<<grid, block, 0, stream>>>(sequence_length, H, past2, k2, v2, present2);
+    const dim3 block(head_size / 4, num_heads, 1);
+    ConcatPastToPresent<float2><<<grid, block, 0, stream>>>(sequence_length, reinterpret_cast<const float2*>(past), reinterpret_cast<const float2*>(k_v), reinterpret_cast<float2*>(present));
   } else if (0 == (head_size & 1)) {
-    const int H = head_size / 2;
-    const dim3 block(H, all_sequence_length, 1);
-    const half2* past2 = reinterpret_cast<const half2*>(past);
-    const half2* k2 = reinterpret_cast<const half2*>(k);
-    const half2* v2 = reinterpret_cast<const half2*>(v);
-    half2* present2 = reinterpret_cast<half2*>(present);
-    ConcatPastToPresent<half2><<<grid, block, 0, stream>>>(sequence_length, H, past2, k2, v2, present2);
+    const dim3 block(head_size / 2, num_heads, 1);
+    ConcatPastToPresent<half2><<<grid, block, 0, stream>>>(sequence_length,  reinterpret_cast<const half2*>(past), reinterpret_cast<const half2*>(k_v), reinterpret_cast<half2*>(present));
   } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel.
-    const dim3 block(head_size, all_sequence_length, 1);
-    ConcatPastToPresent<half><<<grid, block, 0, stream>>>(sequence_length, head_size, past, k, v, present);
+    const dim3 block(head_size, num_heads, 1);
+    ConcatPastToPresent<half><<<grid, block, 0, stream>>>(sequence_length, past, k_v, present);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -536,7 +515,7 @@ bool QkvToContext(
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
   const int present_size_per_batch = (past_sequence_length + sequence_length) * head_size;
   if (nullptr != present) {
-    if (!LaunchConcatPastToPresent(stream, past_sequence_length, sequence_length, batch_size, head_size, num_heads, past, k, v, present)) {
+    if (!LaunchConcatPastToPresent(stream, past_sequence_length, sequence_length, batch_size, head_size, num_heads, past, k, present)) {
       return false;
     }
 
