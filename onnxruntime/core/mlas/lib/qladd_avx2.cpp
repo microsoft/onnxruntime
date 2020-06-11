@@ -51,8 +51,7 @@ MlasQLinearAddKernelAvx2Helper(
     int64_t n = static_cast<int64_t>(N);
     __m256i vc = _mm256_setzero_si256();
     while (n > 0) {
-        __m256i va_i8x32, vb_i8x32, vc02, vc13;
-
+        __m256i va_i8x32, vb_i8x32;
         if (!IsScalarA) {
             va_i8x32 = _mm256_lddqu_si256((const __m256i*)InputA);
             InputA += 32;
@@ -63,7 +62,6 @@ MlasQLinearAddKernelAvx2Helper(
         }
 
         __m256 lolo_f32x8, lohi_f32x8, hilo_f32x8, hihi_f32x8;
-
         if (IsScalarA) {
             const auto blo_i16x16 = _mm256_unpacklo_epi8(vb_i8x32, vb_i8x32);
             const auto bhi_i16x16 = _mm256_unpackhi_epi8(vb_i8x32, vb_i8x32);
@@ -89,7 +87,6 @@ MlasQLinearAddKernelAvx2Helper(
         } else {
             const auto blo_i16x16 = _mm256_unpacklo_epi8(vb_i8x32, vb_i8x32);
             const auto bhi_i16x16 = _mm256_unpackhi_epi8(vb_i8x32, vb_i8x32);
-
             lolo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(blo_i16x16, blo_i16x16)));
             lohi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(blo_i16x16, blo_i16x16)));
             hilo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(bhi_i16x16, bhi_i16x16)));
@@ -111,9 +108,8 @@ MlasQLinearAddKernelAvx2Helper(
             hihi_f32x8 = _mm256_fmadd_ps(ahihi_8xfp32, VectorScaleRatio_AC, hihi_f32x8);
         }
 
-        vc02 = _mm256_packs_epi32(_mm256_cvtps_epi32(lolo_f32x8), _mm256_cvtps_epi32(lohi_f32x8));
-        vc13 = _mm256_packs_epi32(_mm256_cvtps_epi32(hilo_f32x8), _mm256_cvtps_epi32(hihi_f32x8));
-
+        const auto vc02 = _mm256_packs_epi32(_mm256_cvtps_epi32(lolo_f32x8), _mm256_cvtps_epi32(lohi_f32x8));
+        const auto vc13 = _mm256_packs_epi32(_mm256_cvtps_epi32(hilo_f32x8), _mm256_cvtps_epi32(hihi_f32x8));
         vc = PackS16<DataType>(vc02, vc13);
 
         n -= 32;
@@ -144,3 +140,56 @@ MlasQLinearAddKernelAvx2Helper(
     }
 }
 
+void
+MlasQLinearAddS8KernelAvx2(
+    const int8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const int8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    int8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+) 
+{
+    if (LengthA == 1) {
+        MlasQLinearAddKernelAvx2Helper<int8_t, true, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthB);
+    } else if (LengthB == 1) {
+        MlasQLinearAddKernelAvx2Helper<int8_t, false, true>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA);
+    } else {
+        MlasQLinearAddKernelAvx2Helper<int8_t, false, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA);
+    }
+}
+
+void
+MlasQLinearAddU8KernelAvx2(
+    const uint8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    )
+{
+    if (LengthA == 1) {
+        MlasQLinearAddKernelAvx2Helper<uint8_t, true, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthB);
+    } else if (LengthB == 1) {
+        MlasQLinearAddKernelAvx2Helper<uint8_t, false, true>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA);
+    } else {
+        MlasQLinearAddKernelAvx2Helper<uint8_t, false, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA);
+    }
+}
