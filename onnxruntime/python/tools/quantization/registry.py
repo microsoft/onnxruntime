@@ -7,6 +7,7 @@ from .operators.gather import GatherQuant
 from .operators.conv import QLinearCov, ConInteger
 from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
+from .operators.maxpool import QMaxPool
 
 CommonOpsRegistry ={
     "Gather":GatherQuant,
@@ -26,7 +27,8 @@ QLinearOpsRegistry = {
     "Add":QLinearBinaryOp,
     "Mul":QLinearBinaryOp,
     "Relu":QLinearActivation,
-    "Clip":QLinearActivation
+    "Clip":QLinearActivation,
+    "MaxPool":QMaxPool,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 

@@ -1,7 +1,8 @@
 import numpy as np
 import onnx
 
-from .quantize import quantize, QuantizationMode
+from quantization import quantize, quant_utils
+from quant_utils import QuantizationMode
 
 
 def calibrate_custom(model):
@@ -25,7 +26,7 @@ def main():
 
     param_q = calibrate_custom(model)
 
-    quantized_model = quantize(model,
+    quantized_model = quantize.quantize(model,
                                quantization_mode=QuantizationMode.QLinearOps,
                                static=True,
                                quantization_params=param_q)
