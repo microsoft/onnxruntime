@@ -55,8 +55,7 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 
 // Finalize the feed and fetch copy info using session_state and the device and location information from the feeds
 // and fetches that will be used in graph execution.
-void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
-                               FeedsFetchesManager& feeds_fetches_manager,
+void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
                                const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
 

@@ -305,7 +305,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
     fetch_locations.push_back(&alloc_info);
   }
 
-  utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
+  utils::FinalizeFeedFetchCopyInfo(*ffm, feed_locations, fetch_locations);
 
   feeds_fetches_manager_ = std::move(ffm);
 
