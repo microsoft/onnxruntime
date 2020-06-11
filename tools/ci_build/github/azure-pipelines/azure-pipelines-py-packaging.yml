@@ -206,10 +206,10 @@ jobs:
   # Esrp signing
   - template: templates/win-esrp-dll.yml
     parameters:
-      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
       DisplayName: 'ESRP - Sign Native dlls'
       DoEsrp: true
-      Pattern: '*.pyd'
+      Pattern: '*.pyd,*.dll'
 
   - task: PythonScript@0
     displayName: 'Build wheel'
@@ -303,10 +303,10 @@ jobs:
     # Esrp signing
     - template: templates/win-esrp-dll.yml
       parameters:
-        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
         DisplayName: 'ESRP - Sign Native dlls'
         DoEsrp: true
-        Pattern: '*.pyd'
+        Pattern: '*.pyd,*.dll'
 
     - task: PythonScript@0
       displayName: 'Build wheel'
@@ -386,6 +386,7 @@ jobs:
   workspace:
     clean: all
   pool: 'Linux-CPU'
+  condition: ne(variables['is_featurizers_build'], 'true')
   strategy:
     matrix:
       Py37:
