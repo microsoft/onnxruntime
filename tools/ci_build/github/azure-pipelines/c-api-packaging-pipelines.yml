@@ -144,6 +144,13 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         createLogFile: true
 
+    # Esrp signing
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign Native dlls'
+        DoEsrp: true
+        Pattern: '*.dll,*.exe'
 
     - task: PythonScript@0
       displayName: 'test'
@@ -222,6 +229,14 @@ jobs:
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         createLogFile: true
+
+    # Esrp signing
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign Native dlls'
+        DoEsrp: true
+        Pattern: '*.dll,*.exe'
 
     - task: PythonScript@0
       displayName: 'test'
