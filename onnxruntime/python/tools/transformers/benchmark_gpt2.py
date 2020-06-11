@@ -57,7 +57,7 @@ def pytorch_inference(model, input_ids, past=None, attention_mask=None, total_ru
     return outputs, average_latency
 
 
-def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100):
+def onnxruntime_inference(ort_session, input_ids, past=None, attention_mask=None, total_runs=100):
     ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
 
     if attention_mask is not None:
@@ -84,6 +84,7 @@ def onnxruntime_inference_with_binded_io(ort_session,
                                          last_state,
                                          last_state_shape,
                                          past=None,
+                                         attention_mask=None,
                                          present=None,
                                          present_shape=None,
                                          total_runs=100):
@@ -92,13 +93,17 @@ def onnxruntime_inference_with_binded_io(ort_session,
     # Bind inputs
     io_binding.bind_input('input_ids', input_ids.device.type, 0, numpy.longlong, list(input_ids.size()),
                           input_ids.data_ptr())
+    if attention_mask is not None:
+        io_binding.bind_input('attention_mask', attention_mask.device.type, 0, numpy.float32, list(attention_mask.size()),
+                              attention_mask.data_ptr())
+
     if past is not None:
         for i, past_i in enumerate(past):
             io_binding.bind_input(f'past_{i}', past[i].device.type, 0, numpy.float32, list(past[i].size()),
                                   past[i].data_ptr())
 
     # Bind outputs
-    io_binding.bind_output("last_state", last_state.device.type, 0, numpy.float32, last_state_shape,
+    io_binding.bind_output(ort_session.get_outputs()[0].name, last_state.device.type, 0, numpy.float32, last_state_shape,
                            last_state.data_ptr())
     if present is not None:
         for i, present_i in enumerate(present):
@@ -127,6 +132,7 @@ def inference(model,
               ort_session,
               input_ids,
               past=None,
+              attention_mask=None,
               last_state=None,
               present=None,
               last_state_shape=None,
@@ -134,12 +140,12 @@ def inference(model,
               total_runs=100,
               verify_outputs=True,
               with_io_binding=False):
-    outputs, torch_latency = pytorch_inference(model, input_ids, past, total_runs)
-    ort_outputs, ort_latency = onnxruntime_inference(ort_session, input_ids, past, total_runs)
+    outputs, torch_latency = pytorch_inference(model, input_ids, past, attention_mask, total_runs)
+    ort_outputs, ort_latency = onnxruntime_inference(ort_session, input_ids, past, attention_mask, total_runs)
     latencies = [torch_latency, ort_latency]
     if with_io_binding:
         ort_io_outputs, ort_io_latency = onnxruntime_inference_with_binded_io(ort_session, input_ids, last_state,
-                                                                              last_state_shape, past, present,
+                                                                              last_state_shape, past, attention_mask, present,
                                                                               present_shape, total_runs)
         latencies.append(ort_io_latency)
     if verify_outputs:
@@ -205,7 +211,8 @@ def parse_arguments():
                         help='Use optimizer.py to optimize onnx model')
     parser.set_defaults(optimize_onnx=False)
 
-    parser.add_argument('--with_io_binding',
+    parser.add_argument('-i',
+                        '--with_io_binding',
                         required=False,
                         action='store_true',
                         help='Run ONNX Runtime with binded inputs and outputs. ')
@@ -276,19 +283,16 @@ def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead=False, 
     #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
     #    attention_mask: (batch_size, seq_len)
     # Shape of output tensors:
-    #    last_state: (batch_size, seq_len + 1, hidden_size)
-    #    present_{i}:  (2, batch_size, num_heads, seq_len + 1, hidden_size/num_heads)
-    dynamic_axes = {'input_ids': {0: 'batch_size'}, 'last_state': {0: 'batch_size', 1: 'seq_len_plus_1'}}
-
+    #    last_state: (batch_size, all_seq_len, hidden_size)
+    #    present_{i}:  (2, batch_size, num_heads, all_seq_len, hidden_size/num_heads)
+    dynamic_axes = {'input_ids': {0: 'batch_size', 1 : 'seq_len'}, output_names[0]: {0: 'batch_size', 1: 'all_seq_len'}}
+    for name in past_names:
+        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len'}
     for name in present_names:
         dynamic_axes[name] = {1: 'batch_size', 3: 'all_seq_len'}
 
-    past_names = [f'past_{i}' for i in range(num_layer)]
-    input_names = ['input_ids'] + past_names
-    dummy_past = [torch.zeros(list(outputs[1][0].shape), dtype=torch.float32, device=device) for _ in range(num_layer)]
-    for name in past_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len'}
-    logger.debug(f"vocab_size:{model.config.vocab_size}")
+    if use_attention_mask:
+        dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'seq_len'}
 
     dummy_input_ids = torch.randint(low=0,
                                     high=model.config.vocab_size - 1,
@@ -334,7 +338,7 @@ def main():
         os.makedirs(output_dir)
 
     use_torchscript = False
-    (model_class, tokenizer_class, model_name) = MODEL_CLASSES[args.model_type]
+    (model_class, tokenizer_class, model_name, use_LMHead, use_attention_mask) = MODEL_CLASSES[args.model_type]
     config = AutoConfig.from_pretrained(model_name, torchscript=use_torchscript, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = tokenizer_class.from_pretrained(model_name, cache_dir=cache_dir)
@@ -342,7 +346,7 @@ def main():
     #    model = torch.jit.trace(model, (input_ids, past))
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
-    export_model_path = export_onnx(model, config, tokenizer, device, output_dir)
+    export_model_path = export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_attention_mask)
 
     # setup environment variables before importing onnxruntime.
     setup_environment()
@@ -389,7 +393,10 @@ def main():
         ]
 
         # dummy last state
-        last_state_size = numpy.prod([max_batch_size, 1, config.hidden_size])
+        if use_LMHead:
+            last_state_size = numpy.prod([max_batch_size, 1, config.vocab_size])
+        else:
+            last_state_size = numpy.prod([max_batch_size, 1, config.hidden_size])
         dummy_last_state = torch.empty(last_state_size).to(device)
 
     for batch_size in args.batch_sizes:
@@ -404,6 +411,7 @@ def main():
                                             size=(batch_size, 1),
                                             dtype=torch.int64,
                                             device=device)
+            dummy_mask = torch.ones([batch_size, 1], dtype=torch.float32, device=device) if use_attention_mask else None
 
             # Calculate the expected output shapes
             last_state_shape = [batch_size, 1, config.hidden_size]
@@ -416,6 +424,7 @@ def main():
                                   session,
                                   dummy_input_ids,
                                   dummy_past,
+                                  dummy_mask,
                                   dummy_last_state,
                                   dummy_present,
                                   last_state_shape,
