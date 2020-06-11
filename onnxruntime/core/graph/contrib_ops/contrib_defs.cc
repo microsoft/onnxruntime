@@ -309,10 +309,49 @@ mask_index shall not be provided.)DOC";
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
       .Input(3, "mask_index", "Attention mask index with shape (batch_size).", "M", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
+
+        if (hasInputShape(ctx, 0)) {
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          if (ctx.getNumOutputs() > 1) {
+            auto& input_shape = getInputShape(ctx, 0);
+            auto& input_dims = input_shape.dim();
+            if (input_dims.size() != 3) {
+              fail_shape_inference("Inputs 0 shall be 3 dimensions");
+            }
+
+            if (hasInputShape(ctx, 4)) {
+              auto& past_shape = getInputShape(ctx, 4);
+              auto& past_dims = past_shape.dim();
+              if (past_dims.size() != 5) {
+                fail_shape_inference("Inputs 4 shall be 5 dimensions");
+              }
+
+              if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+                auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+
+                ONNX_NAMESPACE::TensorShapeProto present_shape;
+                for (auto& dim : past_dims) {
+                  *present_shape.add_dim() = dim;
+                }
+                present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
+
+                updateOutputShape(ctx, 1, present_shape);
+              }
+            }
+          }
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
       .SetDomain(kMSDomain)
