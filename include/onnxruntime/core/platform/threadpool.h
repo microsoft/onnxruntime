@@ -44,7 +44,12 @@ struct TensorOpCost {
 
 template <typename Environment>
 class ThreadPoolTempl;
+
 namespace concurrency {
+
+class ExtendedThreadPoolInterface;
+class BatchHandle;
+
 class ThreadPool {
  public:
   // Scheduling strategies for ParallelFor. The strategy governs how the given
@@ -123,13 +128,16 @@ class ThreadPool {
   //
   // REQUIRES: num_threads > 0
   // The allocator parameter is only used for creating a Eigen::ThreadPoolDevice to be used with Eigen Tensor classes.
-  ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
+  ThreadPool(Env* env,
+             const ThreadOptions& thread_options,
+             const NAME_CHAR_TYPE* name,
+             int num_threads,
              bool low_latency_hint);
   // Constructs a pool that wraps around the thread::ThreadPoolInterface
   // instance provided by the caller. Caller retains ownership of
   // `user_threadpool` and must ensure its lifetime is longer than the
   // ThreadPool instance.
-  ThreadPool(Eigen::ThreadPoolInterface* user_threadpool);
+  ThreadPool(ExtendedThreadPoolInterface* user_threadpool);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -137,6 +145,13 @@ class ThreadPool {
 
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
+
+  // Run fn with up to n degree-of-parallelism enlisting the thread pool for
+  // help.  The degree-of-parallelism includes the caller, and so if n==1
+  // then the function will run directly in the caller.  The fork-join 
+  // synchronization is handled in the thread pool, and so any state captured
+  // by fn() is safe from concurrent access once RunWithHelp returns.
+  void RunWithHelp(std::function<void()> fn, int n);
 
   // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
   // with these parameters.
@@ -224,10 +239,8 @@ class ThreadPool {
   // thread in the pool. Returns -1 otherwise.
   int CurrentThreadId() const;
 
-  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
-  // returns a non-null pointer. The caller does not own the object the returned
-  // pointer points to, and should not attempt to delete.
-  Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
+  // Return true if the calling thread is in the pool.
+  bool CurrentThreadIsInPool() const;
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
@@ -347,10 +360,10 @@ class ThreadPool {
   ThreadOptions thread_options_;
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.
-  Eigen::ThreadPoolInterface* underlying_threadpool_;
+  ExtendedThreadPoolInterface* underlying_threadpool_;
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
-  std::unique_ptr<ThreadPoolTempl<Env> > eigen_threadpool_;
+  std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
 };
 
 }  // namespace concurrency
