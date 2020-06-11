@@ -17,6 +17,6 @@ steps:
       print("##vso[task.setvariable variable=FeaturizerBuildFlag]%s" % flags)
       
       if "${{ parameters.is_nightly_build }}" == "1":
-        flags = flags + "--nightly_build"
+        flags = flags + " --nightly_build"
 
       print("##vso[task.setvariable variable=WheelBuildFlag]%s" % flags)
