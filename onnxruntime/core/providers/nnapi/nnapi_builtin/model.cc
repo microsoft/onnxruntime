@@ -80,17 +80,6 @@ void Model::SetOutputBuffer(const int32_t index, const InputOutputInfo& output) 
       execution_, index, &output.type.operandType, output.buffer, output.type.GetOperandBlobByteSize()));
 }
 
-void Model::PredictAfterSetInputBuffer() {
-  ANeuralNetworksEvent* event = nullptr;
-
-  THROW_ON_ERROR(
-      nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksEvent_wait(event));
-
-  nnapi_->ANeuralNetworksEvent_free(event);
-  ResetExecution();
-}
-
 void Model::PrepareForExecution() {
   if (compilation_ == nullptr) {
     throw std::invalid_argument(
@@ -107,12 +96,35 @@ void Model::ResetExecution() {
   prepared_for_exe_ = false;
 }
 
-void Model::Predict(const std::vector<InputOutputInfo>& inputs) {
+void Model::Predict(const std::vector<InputOutputInfo>& inputs,
+                    const std::vector<InputOutputInfo>& outputs) {
   if (!prepared_for_exe_) PrepareForExecution();
+
+  SetInputs(inputs);
+  SetOutputs(outputs);
+
+  ANeuralNetworksEvent* event = nullptr;
+
+  THROW_ON_ERROR(
+      nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
+
+  THROW_ON_ERROR(
+      nnapi_->ANeuralNetworksEvent_wait(event));
+
+  nnapi_->ANeuralNetworksEvent_free(event);
+  ResetExecution();
+}
+
+void Model::SetInputs(const std::vector<InputOutputInfo>& inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     SetInputBuffer(i, inputs[i]);
   }
-  PredictAfterSetInputBuffer();
+}
+
+void Model::SetOutputs(const std::vector<InputOutputInfo>& outputs) {
+  for (size_t i = 0; i < outputs.size(); i++) {
+    SetOutputBuffer(i, outputs[i]);
+  }
 }
 
 #ifdef USENNAPISHAREDMEM

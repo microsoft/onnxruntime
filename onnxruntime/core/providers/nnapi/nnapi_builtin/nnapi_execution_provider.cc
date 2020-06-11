@@ -267,37 +267,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       // LOGS_DEFAULT(VERBOSE) << "Input size is " << model->GetInputs().size();
       // LOGS_DEFAULT(VERBOSE) << "Output size is " << model->GetOutputs().size();
 
-      for (size_t i = 0; i < num_outputs; i++) {
-        const auto output_name = model->GetOutputs()[i];
-        const auto output_shape = model->GetShape(output_name);
-        const auto& model_output_type = model->GetType(output_name);
-
-        std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
-        auto output_idx = model->GetMappedOutputIdx(output_name);
-        auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx, int64_output_shape.data(), int64_output_shape.size());
-
-        // remove
-        LOGS_DEFAULT(VERBOSE) << "output name is " << output_name << " and i " << i;
-        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(model_output_type.dimensions);
-
-        void* output_buffer = nullptr;
-        switch (model_output_type.type) {
-          case Type::TENSOR_FLOAT32:
-            output_buffer = ort.GetTensorMutableData<float>(output_tensor);
-            break;
-          case Type::TENSOR_INT32:
-            output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
-            break;
-          default:
-            ORT_THROW("Unsupported output type: " + typeToStr(model_output_type.type));
-            break;
-        }
-
-        OperandType type(model_output_type);
-        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(type.dimensions);
-        model->SetOutputBuffer(i, {output_buffer, std::move(type)});
-      }
-
       // remove
       for (size_t i = 0; i < num_inputs; i++) {
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
@@ -311,6 +280,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       }
 
       std::vector<nnapi::InputOutputInfo> inputs;
+      std::vector<nnapi::InputOutputInfo> outputs;
 
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const auto& input_name = model->GetInputs()[i];
@@ -348,7 +318,38 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         // LOGS_DEFAULT(VERBOSE) << "i is " << i << " input[0] is " << ((float*)inputBuffer)[0];
       }
 
-      model->Predict(inputs);
+      for (size_t i = 0; i < num_outputs; i++) {
+        const auto output_name = model->GetOutputs()[i];
+        const auto output_shape = model->GetShape(output_name);
+        const auto& model_output_type = model->GetType(output_name);
+
+        std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
+        auto output_idx = model->GetMappedOutputIdx(output_name);
+        auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx, int64_output_shape.data(), int64_output_shape.size());
+
+        // remove
+        LOGS_DEFAULT(VERBOSE) << "output name is " << output_name << " and i " << i;
+        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(model_output_type.dimensions);
+
+        void* output_buffer = nullptr;
+        switch (model_output_type.type) {
+          case Type::TENSOR_FLOAT32:
+            output_buffer = ort.GetTensorMutableData<float>(output_tensor);
+            break;
+          case Type::TENSOR_INT32:
+            output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+            break;
+          default:
+            ORT_THROW("Unsupported output type: " + typeToStr(model_output_type.type));
+            break;
+        }
+
+        OperandType type(model_output_type);
+        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(type.dimensions);
+        outputs.push_back({output_buffer, std::move(type)});
+      }
+
+      model->Predict(inputs, outputs);
 
       // Remove
       // for (size_t i = 0; i < num_outputs; i++) {

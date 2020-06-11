@@ -70,11 +70,12 @@ class Model {
   size_t GetMappedInputIdx(const std::string& name) const;
   size_t GetMappedOutputIdx(const std::string& name) const;
 
-  void SetOutputBuffer(const int32_t index, const InputOutputInfo& output);
-  void Predict(const std::vector<InputOutputInfo>& inputs);
+  void Predict(const std::vector<InputOutputInfo>& inputs,
+               const std::vector<InputOutputInfo>& outputs);
 
  private:
   const NnApi* nnapi_{nullptr};
+  bool prepared_for_exe_ = false;
 
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
@@ -98,11 +99,13 @@ class Model {
   void AddOutput(const std::string& name, const Shaper::Shape& shape,
                  const android::nn::wrapper::OperandType& operand_type);
 
+  void SetInputs(const std::vector<InputOutputInfo>& inputs);
+  void SetOutputs(const std::vector<InputOutputInfo>& outputs);
   void SetInputBuffer(const int32_t index, const InputOutputInfo& input);
+  void SetOutputBuffer(const int32_t index, const InputOutputInfo& output);
+
   void PrepareForExecution();
   void ResetExecution();
-  void PredictAfterSetInputBuffer();
-  bool prepared_for_exe_ = false;
 };
 
 }  // namespace nnapi
