@@ -5,6 +5,7 @@
 #include "core/optimizer/optimizer_utils.h"
 #include "core/graph/graph_utils.h"
 
+#include <memory>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -129,7 +130,7 @@ class EquivalenceClass {
 
   // When the value is not an output of an operation, (i.e., a constant initializer or an input),
   // non_op_value is set to the corresponding NodeArg, and other fields are empty.
-  // Currently, different NodeArg's are always considered different values, although we
+  // Currently, different inputs/initializers are always considered different values, although we
   // could merge equal initializers.
   const NodeArg* non_op_value_;
 
@@ -314,15 +315,7 @@ struct NodeArgPtrEquality {
 };
 
 bool IsNodeSupported(const Node& node) {
-  if (node.ContainsSubgraph()) {
-    return false;
-  }
-
-  if (!IsOperationDeterministic(node.Domain(), node.OpType())) {
-    return false;
-  }
-
-  return true;
+  return !node.ContainsSubgraph() && IsOperationDeterministic(node.Domain(), node.OpType());
 }
 }  // namespace
 
@@ -354,7 +347,9 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
       DeepPointerHash, DeepPointerEquality>
       value_to_representative;
 
-  // Reverse mapping.
+  // Maps every NodeArg to its equivalence class of.
+  // This is the inverse of the above mapping, except that different NodeArgs can belong to the same
+  // equivalence class. In that case these NodeArgs will be "merged" into one.
   std::unordered_map<const NodeArg*, const EquivalenceClass*, NodeArgPtrHash, NodeArgPtrEquality> equivalence_classes;
 
   int unique_discriminator = 1;
@@ -426,18 +421,18 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
         continue;
       }
 
+      ORT_ENFORCE(representative.output_index != kInvalidOutputIndex);
+
       if (graph_outputs.count(output_def) > 0) {
-        // Currently, eliminating a value that is the graph's output is not supported.
+        // Currently, we don't support eliminating the graph's outputs.
         LOGS(logger, VERBOSE) << "Not eliminating output " << output_def->Name() << " of node " << node->Name() << "[" << node->OpType() << "] because it's the graph's output.";
         continue;
       }
 
-      if (representative.output_index != kInvalidOutputIndex) {
-        Node& replacement = *graph.GetNode(representative.node_index);
-        OutputIndex replacement_output_idx = representative.output_index;
-        graph_utils::ReplaceDownstreamNodeInput(graph, *node, output_idx, replacement, replacement_output_idx);
-        node_output_replaced = true;
-      }
+      Node& replacement = *graph.GetNode(representative.node_index);
+      OutputIndex replacement_output_idx = representative.output_index;
+      graph_utils::ReplaceDownstreamNodeInput(graph, *node, output_idx, replacement, replacement_output_idx);
+      node_output_replaced = true;
     }
 
     if (node_output_replaced) {
