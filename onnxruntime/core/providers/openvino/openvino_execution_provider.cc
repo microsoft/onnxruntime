@@ -129,6 +129,8 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "RoiAlign",
       "NonZero",
       "Tile",
+      "GatherND",
+      "ScatterND",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
@@ -143,9 +145,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "SinFloat",
       "Sinh",
       "Softsign",
-      "RoiAlign",
-      "NonZero",
-      "Tile",
+      "ReverseSequence",
   };
 
   std::set<std::string> unsupported_ops_vpu = {
@@ -165,9 +165,6 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Sinh",
       "Softsign",
       "Tan",
-      "RoiAlign",
-      "NonZero",
-      "Tile",
   };
 
   std::set<std::string> unsupported_ops = {};
