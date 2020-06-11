@@ -370,25 +370,20 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.count("axes") == 0)
       return true;
   } else if (optype == "Slice") {
-    //Slice in opset 10 is currently not supported.
-    //unsupported inputs: starts, ends, axes, steps
-    if (node->InputDefs().size() > 1) {
-      return true;
+    //start, end, axes need to be a initializer
+    const auto &start_arg = node->InputDefs()[1];
+    const auto &end_arg = node->InputDefs()[2];
+    
+    bool cond_for_slice = false;
+    cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
+    cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
+      
+    if (node->InputDefs().size() > 3) {
+      const auto &axes_arg = node->InputDefs()[3];
+      cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
     }
-    //nGraph does not properly handle the situation where any value of the "starts" attribute
-    //is higher than a corresponding value in the "ends"
-    const auto& attributes = node->GetAttributes();
-    if (attributes.count("starts") == 0 || attributes.count("ends") == 0) {
-      return true;
-    }
-
-    const auto& starts = attributes.find("starts")->second.ints();
-    const auto& ends = attributes.find("ends")->second.ints();
-    for (int i = 0; i < starts.size(); ++i) {
-      if (starts.Get(i) > ends.Get(i)) {
-        return true;
-      }
-    }
+     
+    return cond_for_slice; 
   } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in nGraph
     const auto& attributes = node->GetAttributes();
