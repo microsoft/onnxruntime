@@ -15,9 +15,6 @@
 namespace onnxruntime {
 class GraphViewer;
 class Node;
-}  // namespace onnxruntime
-namespace onnxruntime {
-
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
@@ -27,7 +24,7 @@ class KernelRegistryManager;
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
 
-// if we are export the fused function to dll, the function will still in the same binary as lotus
+// if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
@@ -140,6 +137,13 @@ class IExecutionProvider {
      that all commands of current Run has been submmited by CPU
   */
   virtual common::Status OnRunEnd();
+
+  /**
+     Called when session creation is complete
+     This provides an opportunity for execution providers to optionally synchronize and
+     clean up its temporary resources to reduce memory and ensure the first run is fast.
+  */
+  virtual common::Status OnSessionInitializationEnd();
 
   void InsertAllocator(AllocatorPtr allocator);
 

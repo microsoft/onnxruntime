@@ -7,19 +7,23 @@ import numpy as np
 
 import onnx
 from onnx import numpy_helper
-from onnx import mapping
-from onnx import TensorProto
+
+
+def read_tensorproto_pb_file(filename):
+    """Return tuple of tensor name and numpy.ndarray of the data from a pb file containing a TensorProto."""
+
+    tensor = onnx.load_tensor(filename)
+    np_array = numpy_helper.to_array(tensor)
+    return tensor.name, np_array
+
 
 def dump_tensorproto_pb_file(filename):
     """Dump the data from a pb file containing a TensorProto."""
 
-    tensor = onnx.load_tensor(filename)
-
-    print("Name: {}".format(tensor.name))
-
-    np_array = numpy_helper.to_array(tensor)
-    print("Shape: {}".format(np_array.shape))
-    print(np_array)
+    name, data = read_tensorproto_pb_file(filename)
+    print("Name: {}".format(name))
+    print("Shape: {}".format(data.shape))
+    print(data)
 
 
 def dump_pb(dir_or_filename):
@@ -81,17 +85,16 @@ def update_name_in_pb(filename, name, output_filename):
 
 def get_arg_parser():
     parser = argparse.ArgumentParser(
-        description=
-        """
-        Utilities for working with the input/output protobuf files used by the ONNX test cases and onnx_test_runner. 
-        These are expected to only contain a serialized TensorProto. 
-        
+        description="""
+        Utilities for working with the input/output protobuf files used by the ONNX test cases and onnx_test_runner.
+        These are expected to only contain a serialized TensorProto.
+
         dump_pb: Dumps the TensorProto data from an individual pb file, or all pb files in a directory.
         numpy_to_pb: Convert numpy array saved to a file with numpy.save() to a TensorProto, and serialize to a pb file.
         image_to_pb: Convert data from an image file into a TensorProto, and serialize to a pb file.
         random_to_pb: Create a TensorProto with random data, and serialize to a pb file.
-        update_name_in_pb: Update the TensorProto.name value in a pb file. 
-                           Updates the input file unless --output <filename> is specified. 
+        update_name_in_pb: Update the TensorProto.name value in a pb file.
+                           Updates the input file unless --output <filename> is specified.
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -107,8 +110,8 @@ def get_arg_parser():
     image_to_pb_group = parser.add_argument_group('image_to_pb',
                                                   'image_to_pb specific options')
     image_to_pb_group.add_argument('--resize', default=None, type=lambda s: [int(item) for item in s.split(',')],
-                                    help='Provide the shape as comma separated values to resize the image to.'
-                                         ' e.g. --shape 200,200')
+                                   help='Provide the shape as comma separated values to resize the image to.'
+                                        ' e.g. --shape 200,200')
     image_to_pb_group.add_argument('--channels_last', action='store_true',
                                    help='Transpose image from channels first to channels last.')
     image_to_pb_group.add_argument('--add_batch_dim', action='store_true',
@@ -120,7 +123,7 @@ def get_arg_parser():
     random_to_pb_group.add_argument('--shape', type=lambda s: [int(item) for item in s.split(',')],
                                     help='Provide the shape as comma separated values e.g. --shape 200,200')
     random_to_pb_group.add_argument('--datatype',
-                                    help="numpy dtype value for the data type. e.g. f4=float32, i8=int64."
+                                    help="numpy dtype value for the data type. e.g. f4=float32, i8=int64. "
                                          "See: https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html")
     random_to_pb_group.add_argument('--min_value', default=0, type=int,
                                     help="Limit the generated values to this minimum.")
@@ -146,7 +149,7 @@ if __name__ == '__main__':
         if not args.input or not args.output or not args.name:
             print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
             sys.exit(-1)
-        # read data saved with
+        # read data saved with numpy
         data = np.load(args.input)
         numpy_to_pb(args.name, data, args.output)
     elif args.action == 'image_to_pb':
@@ -172,4 +175,3 @@ if __name__ == '__main__':
     else:
         print("Unknown action.", file=sys.stderr)
         arg_parser.print_help(sys.stderr)
-

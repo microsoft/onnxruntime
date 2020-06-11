@@ -4,6 +4,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
+#include <queue>
 
 namespace onnxruntime {
 
@@ -233,7 +234,8 @@ static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_nod
   auto input_edges = GetNodeInputEdges(src_node);
 
   for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
-    graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, cur->dst_arg_index);
+    auto target_arg_index = GetNodeInputIndexFromInputName(target_node, cur->arg_name);
+    graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, target_arg_index);
   }
 
   RemoveGraphEdges(graph, input_edges);
@@ -259,6 +261,16 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
+
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  auto itr = std::find_if(node.InputDefs().begin(), node.InputDefs().end(),
+                          [&input_name](const NodeArg* input) { return input->Name() == input_name; });
+  ORT_ENFORCE(itr != node.InputDefs().end(), 
+      "Attempting to get index for an input which does not exist.");
+  auto index = std::distance(node.InputDefs().begin(), itr);
+  return static_cast<int>(index);
+
+}
 
 const std::string& GetNodeInputName(const Node& node, int index) {
   const auto& inputs = node.InputDefs();
@@ -419,7 +431,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
                                    const logging::Logger& logger) {
   // we have no way to handle replacing multiple outputs so check only one is used
   const std::string* output_name = nullptr;
-  if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
+  if (!IsOnlyOneOutputUsed(graph, node, output_name) || output_name == nullptr) {
     return false;
   }
 
@@ -522,7 +534,8 @@ bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg) {
   return IsConstantInitializer(graph, node_arg.Name(), true);
 }
 
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs) {
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
+                              const std::unordered_set<std::string>& excluded_initializers) {
   // clear so we have a known state. if we fail part way through we go back to this state.
   constant_inputs.clear();
 
@@ -537,7 +550,7 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
     // because it can be overridden by the user at runtime. For constant folding to be applied, the initializer should
     // not appear in the graph's inputs (that is the only way to guarantee it will always be constant).
     const ONNX_NAMESPACE::TensorProto* initializer = GetConstantInitializer(graph, input_def->Name(), true);
-    if (initializer) {
+    if (initializer && excluded_initializers.find(input_def->Name()) == excluded_initializers.cend()) {
       constant_inputs.insert({input_def->Name(), initializer});
     } else {
       constant_inputs.clear();
@@ -743,5 +756,41 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
   return true;
 }
 
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
+  std::queue<const Node*> q;
+  std::vector<NodeIndex> nodes_to_remove;
+  q.push(&start_node);
+  // From the current node, remove nodes bottom-up util it reaches a node with multiple outputs/graph output. 
+  while (q.size() != 0) {
+    const Node& cur_node = *(q.front());
+    q.pop();
+    // Each eligible node in the subgraph must have less than one output edge and no output should be 
+    // the graph output
+    if (cur_node.GetOutputEdgesCount() > 1 || !graph.GetNodeOutputsInGraphOutputs(cur_node).empty()) {
+      continue;
+    }
+    nodes_to_remove.push_back(cur_node.Index());
+    // push the parents of current node to the queue. 
+    for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
+      const std::string& input_name = GetNodeInputName(cur_node, i);
+      if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
+        // skip initializers and graph inputs
+        continue;
+      }
+      q.push(GetInputNode(cur_node, i));
+    }
+  }
+  if (nodes_to_remove.size() <= 0) {
+    // Nothing to remove
+    return false;
+  }
+  // Remove nodes that are not used anymore.
+  for (const auto& node_index : nodes_to_remove) {
+    Node* node = graph.GetNode(node_index);
+    RemoveNodeOutputEdges(graph, *node);  
+    graph.RemoveNode(node->Index());
+  }
+  return true;
+}
 }  // namespace graph_utils
 }  // namespace onnxruntime

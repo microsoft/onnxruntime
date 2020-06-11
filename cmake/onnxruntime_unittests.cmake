@@ -54,9 +54,6 @@ function(AddTest)
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
   endif()
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND onnxruntime_ENABLE_PYTHON)
-    target_compile_definitions(${_UT_TARGET} PRIVATE ENABLE_LANGUAGE_INTEROP_OPS)
-  endif()
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -204,15 +201,23 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
 endif()
 
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
 endif()
 
+if (onnxruntime_USE_RKNPU)
+  file(GLOB_RECURSE onnxruntime_test_providers_rknpu_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/rknpu/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
+endif()
+
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
+set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${ONNXRUNTIME_ROOT}/test/api_tests_without_env")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -230,6 +235,9 @@ set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
+
+set (onnxruntime_api_tests_without_env_SRC
+          ${ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR}/test_apis_without_env.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -293,6 +301,10 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+endif()
+
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
@@ -302,6 +314,11 @@ endif()
 if(onnxruntime_USE_DML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
 endif()
+
+if(onnxruntime_USE_MIGRAPHX)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
+endif()
+
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
@@ -319,6 +336,10 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
+if(onnxruntime_USE_ARMNN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
+endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
@@ -330,12 +351,15 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_CUDA}
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -368,6 +392,13 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_RKNPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/rknpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
 endif()
 
 if(WIN32)
@@ -613,15 +644,15 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark ${TEST_SRC_DIR}/onnx/microbenchmark/main.cc ${TEST_SRC_DIR}/onnx/microbenchmark/modeltest.cc)
-  target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} benchmark)
+  add_executable(onnxruntime_benchmark ${BENCHMARK_DIR}/main.cc ${BENCHMARK_DIR}/modeltest.cc ${BENCHMARK_DIR}/pooling.cc ${BENCHMARK_DIR}/batchnorm.cc ${BENCHMARK_DIR}/batchnorm2.cc ${BENCHMARK_DIR}/tptest.cc ${BENCHMARK_DIR}/eigen.cc ${BENCHMARK_DIR}/gelu.cc ${BENCHMARK_DIR}/activation.cc)
+  target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
                       "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4141>")
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   endif()
-  target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark ${onnx_test_libs})
+  target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark::benchmark ${onnx_test_libs})
   add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
 endif()
@@ -671,7 +702,9 @@ target_include_directories(onnxruntime_perf_test PRIVATE ${onnx_test_runner_src_
         ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 if (WIN32)
   target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
-  SET(SYS_PATH_LIB shlwapi)
+  if (NOT DEFINED SYS_PATH_LIB)
+    set(SYS_PATH_LIB shlwapi)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
@@ -742,6 +775,16 @@ if (onnxruntime_BUILD_SHARED_LIB)
           DEPENDS ${all_dependencies}
   )
   endif()
+
+ # A separate test is needed to test the APIs that don't rely on the env being created first.
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+  AddTest(DYN
+          TARGET onnxruntime_api_tests_without_env
+          SOURCES ${onnxruntime_api_tests_without_env_SRC}
+          LIBS ${onnxruntime_shared_lib_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
+  endif()
 endif()
 
 #some ETW tools
@@ -773,7 +816,7 @@ endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 if(WIN32)
-  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp)
+  target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -792,8 +835,35 @@ set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRU
 
 if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
+    # native-test is added to resources so custom_op_lib can be loaded
+    # and we want to symlink it there
+    set(JAVA_NATIVE_TEST_DIR ${JAVA_OUTPUT_DIR}/native-test)
+    file(MAKE_DIRECTORY ${JAVA_NATIVE_TEST_DIR})
+
     # delegate to gradle's test runner
-    add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-            WORKING_DIRECTORY ${REPO_ROOT}/java)
+    if(WIN32)
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> 
+                       ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
+      # On windows ctest requires a test to be an .exe(.com) file
+      # So there are two options 1) Install Chocolatey and its gradle package
+      # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
+      # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+      # That can handle both .exe and .bat
+      add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
+        -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
+        -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DREPO_ROOT=${REPO_ROOT}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
+    else()
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> 
+                       ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
+      if (onnxruntime_USE_CUDA)
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1
+                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      else()
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
+                 WORKING_DIRECTORY ${REPO_ROOT}/java)
+      endif()
+    endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()

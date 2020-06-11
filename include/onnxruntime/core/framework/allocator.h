@@ -23,13 +23,14 @@ struct OrtDevice {
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;  //CUDA
+  static const DeviceType GPU = 1;  //CUDA or HIP
   static const DeviceType FPGA = 2;
 
   struct MemType {
     // Pre-defined memory types.
     static const MemoryType DEFAULT = 0;
     static const MemoryType CUDA_PINNED = 1;
+    static const MemoryType HIP_PINNED = 2;
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
@@ -117,7 +118,7 @@ struct OrtMemoryInfo {
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo: ["
-         << " name:" << name
+         << "name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
          << " alloc_type:" << alloc_type
@@ -141,6 +142,8 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* MIGRAPHX = "MIGraphX";
+constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
 constexpr const char* TRT = "Tensorrt";
 constexpr const char* TRT_PINNED = "TensorrtPinned";
 
@@ -303,9 +306,9 @@ class MiMallocAllocator : public IDeviceAllocator {
 #endif
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
-  using TAllocator = MiMallocAllocator;
+using TAllocator = MiMallocAllocator;
 #else
-  using TAllocator = CPUAllocator;
+using TAllocator = CPUAllocator;
 #endif
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;

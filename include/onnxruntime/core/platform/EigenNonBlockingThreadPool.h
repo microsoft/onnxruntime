@@ -20,9 +20,7 @@
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
-// The following warning can be fixed by updating eigen to the latest, however, the new code will trigger a MSVC bug
-// that will slow down the build time to 3-5 hours.
-#pragma warning(disable : 4723)
+#pragma warning(disable : 4805)
 #endif
 
 #include "unsupported/Eigen/CXX11/ThreadPool"

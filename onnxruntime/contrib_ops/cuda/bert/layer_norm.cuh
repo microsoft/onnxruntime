@@ -79,7 +79,8 @@ struct KeyValuePairSum {
 
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta, const T* gamma, T* output) {
+    const cub::KeyValuePair<T, T>& thread_data, const int ld, const int offset, const T* beta, 
+    const T* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
 
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<T, T>, TPB>;
@@ -92,7 +93,7 @@ __device__ inline void LayerNorm(
 
   if (threadIdx.x == 0) {
     mu = sum_kv.key;
-    rsigma = Rsqrt(sum_kv.value - mu * mu);
+    rsigma = Rsqrt(sum_kv.value - mu * mu + epsilon);
   }
   __syncthreads();
 
@@ -107,7 +108,7 @@ __device__ inline void LayerNorm(
 
 template <typename T, int TPB>
 __device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>& thread_data, const int ld, const int idx,
-                                      const T* beta, const T* gamma, T* output) {
+                                      const T* beta, const T* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
@@ -122,7 +123,7 @@ __device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>
 
   if (threadIdx.x == 0) {
     mu = sum_kv.key;
-    rsigma = Rsqrt(sum_kv.value - mu * mu);
+    rsigma = Rsqrt(sum_kv.value - mu * mu + epsilon);
   }
   __syncthreads();
 

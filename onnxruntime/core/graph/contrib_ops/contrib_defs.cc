@@ -314,6 +314,83 @@ mask_index shall not be provided.)DOC";
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Quantization of Multi-Head Self Attention.")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("unidirectional",
+            "Whether every token can only attend to previous tokens. Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Input(
+          0,
+          "input",
+          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size",
+          "T1")
+      .Input(
+          1,
+          "weight",
+          "2D input tensor with shape (hidden_size, 3 * hidden_size)",
+          "T2")
+      .Input(
+          2,
+          "bias",
+          "1D input tensor with shape (3 * hidden_size)",
+          "T3")
+      .Input(
+          3,
+          "input_scale",
+          "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
+      .Input(
+          4,
+          "weight_scale",
+          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "T3")
+      .Input(
+          5,
+          "mask_index",
+          "Attention mask index with shape (batch_size)",
+          "T4",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "input_zero_point",
+          "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.",
+          "T1",
+          OpSchema::Optional)
+      .Input(
+          7,
+          "weight_zero_point",
+          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "T2",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "output",
+          "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+          "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        // Shape inference
+        // if the input shape doesn't exist, further shape inference is not possible
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        return;
+      });
+
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
@@ -326,6 +403,7 @@ will be calculated.)DOC";
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
       .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
@@ -398,6 +476,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Skip and Layer Normalization Fusion")
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
@@ -1201,7 +1280,17 @@ activation and leaky_relu_alpha.)DOC")
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
-          "leaky_relu_alpha",
+          "activation_alpha",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_gamma",
           "",
           AttributeProto::FLOAT,
           OPTIONAL_VALUE)
@@ -1993,13 +2082,44 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
       });
 
+  const char* QLinearLeakyReluDoc_ver1 = R"DOC(
+QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
+and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
+`f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearLeakyRelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QLinearLeakyReluDoc_ver1)
+      .Attr("alpha", "Coefficient of leakage.", AttributeProto::FLOAT, 0.01f)
+      .Input(0, "X", "Input tensor", "T")
+      .Input(1, "X_scale",
+             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(2, "X_zero_point",
+             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Input(3, "Y_scale",
+             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.",
+             "tensor(float)")
+      .Input(4, "Y_zero_point",
+             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+             "T", OpSchema::Optional)
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.)DOC")
       .Input(0, "X", "An input tensor to hash.", "T1")
       .Output(0, "Y", "32-bit hash value.", "T2")
-      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
+      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(uint64)", "tensor(int64)", "tensor(float)", "tensor(double)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
       .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned and signed 32-bit integer tensor.")
       .Attr(
           "seed",
@@ -2058,77 +2178,6 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
           fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
         }
         auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
-        if (last_indice_dimension > data_rank) {
-          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
-        }
-        for (int i = 0; i < indices_rank - 1; ++i) {
-          *ctx.getOutputType(0)
-               ->mutable_tensor_type()
-               ->mutable_shape()
-               ->add_dim() = indices_shape.dim(i);
-        }
-        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
-          *ctx.getOutputType(0)
-               ->mutable_tensor_type()
-               ->mutable_shape()
-               ->add_dim() = data_shape.dim(i);
-        }
-      })
-      .SetDoc(R"DOC(
-Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
-slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
-Example 1:
-  data    = [[0,1],[2,3]]
-  indices = [[0,0],[1,1]]
-  output  = [0,3]
-Example 2:
-  data    = [[0,1],[2,3]]
-  indices = [[1],[0]]
-  output  = [[2,3],[0,1]]
-Example 3:
-  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
-  indices = [[0,1],[1,0]]
-  output  = [[2,3],[4,5]]
-Example 4:
-  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
-  indices = [[[0,1]],[[1,0]]]
-  output  = [[[2,3]],[[4,5]]]
-)DOC");
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(1)
-      .Attr(
-          "axis",
-          "The number of batch dims. The gather of indexing starts from dimension of data[axis:]",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r >= 1.", "T")
-      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
-      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
-      .TypeConstraint(
-          "T",
-          OpSchema::all_tensor_types(),
-          "Constrain input and output types to any tensor type.")
-      .TypeConstraint(
-          "Tind",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain indice type to int32 or int64")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasNInputShapes(ctx, 2)) {
-          return;
-        }
-        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
-        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-        auto data_rank = data_shape.dim_size();
-        auto indices_rank = indices_shape.dim_size();
-        auto axis = ctx.getAttribute("axis");
-        int64_t axis_data = axis ? static_cast<int>(axis->i()) : 0;
-        if (data_rank < 1 || indices_rank < 1) {
-          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
-        }
-        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value() + axis_data;
         if (last_indice_dimension > data_rank) {
           fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
         }
@@ -2598,45 +2647,45 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-        .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
-        .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
-        .TypeConstraint(
-            "T",
-            {"tensor(float16)",
-             "tensor(float)",
-             "tensor(double)"},
-            "Constrain input and output types to float tensors.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-            // Type inference
-            using namespace ONNX_NAMESPACE;
-            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
+      .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
-            // Shape inference
-            if (hasInputShape(ctx, 0)) {
-              const TensorShapeProto& input_shape =
-                  ctx.getInputType(0)->tensor_type().shape();
-              const int rank = static_cast<int>(input_shape.dim_size());
+        // Shape inference
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
 
-              if (rank < 2) {
-                fail_shape_inference("Input rank must be >= 2.")
-              }
+          if (rank < 2) {
+            fail_shape_inference("Input rank must be >= 2.")
+          }
 
-              const auto mat_w = input_shape.dim(rank - 1);
-              const auto mat_h = input_shape.dim(rank - 2);
-              if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
-                  (mat_w.dim_value() != mat_h.dim_value())) {
-                fail_shape_inference(
-                    "The inner-most 2 dimensions must have the same size (mat_w:",
-                    mat_w.dim_value(),
-                    " != mat_h:",
-                    mat_h.dim_value(),
-                    ").");
-              }
+          const auto mat_w = input_shape.dim(rank - 1);
+          const auto mat_h = input_shape.dim(rank - 2);
+          if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
+              (mat_w.dim_value() != mat_h.dim_value())) {
+            fail_shape_inference(
+                "The inner-most 2 dimensions must have the same size (mat_w:",
+                mat_w.dim_value(),
+                " != mat_h:",
+                mat_h.dim_value(),
+                ").");
+          }
 
-              // Shape inference
-              propagateShapeFromInputToOutput(ctx, 0, 0);
-            }
-        });
+          // Shape inference
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+        }
+      });
 
   RegisterBertSchemas();
 }

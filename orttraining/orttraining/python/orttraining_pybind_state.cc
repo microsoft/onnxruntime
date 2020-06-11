@@ -22,7 +22,7 @@ using namespace onnxruntime::logging;
 // BEGIN: forward declaration for stuff in onnxruntime_pybind_state
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types);
 void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr);
-void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
+void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
                           py::object& value, OrtValue* p_mlvalue);
 // END: forward declaration
 
@@ -51,6 +51,7 @@ struct TrainingParameters {
   int horizontal_parallel_size = 1;
   bool partition_optimizer = false;
   bool enable_grad_norm_clip = true;
+  bool set_gradients_as_graph_outputs = false;
 };
 
 struct TrainingConfigurationResult {
@@ -94,7 +95,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.weight_names_to_not_train = parameters.weights_not_to_train;
   config.immutable_weights = parameters.immutable_weights;
 
-  config.set_gradients_as_graph_outputs = true;
+  config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
 
@@ -180,7 +181,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
-      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip);
+      .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
+      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())

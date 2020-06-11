@@ -52,6 +52,8 @@ class ImageConverter {
   Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_state_;
   Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptor_heap_;
+  uint64_t fence_completion_value_ = 0;
+
   Microsoft::WRL::ComPtr<ID3D11Texture2D> D3D11_cached_texture_;
   wm::VideoFrame converted_video_frame_;
   CWinMLLock lock_;

@@ -49,9 +49,12 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
         cxxopts::value<std::string>()->default_value("data/1024/books_wiki_en_corpus/test"))
       ("output_dir", "The output directory where the trained model files will be written.",
         cxxopts::value<std::string>()->default_value(""))
+      ("perf_output_dir", "The output directory where the trained perf metrics files will be written.",
+        cxxopts::value<std::string>()->default_value(""))
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
+      ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
       ("learning_rate", "The initial learning rate for the optimizer.", cxxopts::value<float>()->default_value("5e-5"))
       ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100"))
       ("warmup_ratio", "Fraction of training steps for learning rate warmup.", cxxopts::value<float>()->default_value("0"))
@@ -119,7 +122,11 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
-
+    if (flags.count("eval_batch_size")) {
+      params.eval_batch_size = flags["eval_batch_size"].as<int>();
+    } else {
+      params.eval_batch_size = params.batch_size;
+    }
     params.max_sequence_length = flags["max_seq_length"].as<int>();
 
     params.gradient_accumulation_steps = flags["gradient_accumulation_steps"].as<int>();
@@ -135,6 +142,10 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
     params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
+    }
+    params.perf_output_dir = ToPathString(flags["perf_output_dir"].as<std::string>());
+    if (params.perf_output_dir.empty()) {
+      printf("No perf output directory specified. Trained perf metrics will not be saved.\n");
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
@@ -260,6 +271,15 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
+// mapping to define what to be stored in mapped_dimensions
+// see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
+const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
+  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+};
+
+// generic properties for storing perf metrics
+MapStringToString mapped_dimensions;
+
 void setup_training_params(GPT2Parameters& params) {
   params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
@@ -315,6 +335,8 @@ void setup_training_params(GPT2Parameters& params) {
       {"position_ids", "position_ids"},
       {"attention_mask", "attention_mask"},
       {"labels", "labels"}};
+
+  params.model_type = "gpt2";
 
 #ifdef USE_CUDA
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
@@ -408,7 +430,13 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
                                                             max_num_files_preload);
   }
 
-  ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get()));
+  if (!params.perf_output_dir.empty()) {
+    // collecting GPT2 related params from training data
+    auto training_data = training_data_loader->CurrentDataSet();
+    ORT_RETURN_IF_ERROR(training_data->GetTensorDimensionsFromInputs(input_to_dimension_mapping, mapped_dimensions));
+  }
+
+  ORT_RETURN_IF_ERROR(runner->Run(training_data_loader.get(), test_data_loader.get(), mapped_dimensions));
 
   // only test and save trained model on device #0
   if (params.mpi_context.world_rank == 0) {

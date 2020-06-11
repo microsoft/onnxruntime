@@ -42,7 +42,7 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
 /** Get values of an integer tensor from initializer, and append them to a vector.
 @remarks only support int32 and int64 tensor. This function does not clear vector before appending.
 */
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data);
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data, bool require_constant = true);
 
 /** Check Shape of node input or output.
 @remarks when expected dim value > 0, the dim is expected to known and match the dim value.
@@ -65,6 +65,13 @@ int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg);
 @param supported_data_types specify the supported data types.
 */
 bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types);
+
+/** Check whether node's output edges count is expected.
+@remarks graph output is not included in output edges, and this node shall not have graph output.
+        A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.
+@returns false when the node has graph output, or number of output edges are not expected.
+*/
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime
