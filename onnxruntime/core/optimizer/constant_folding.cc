@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/constants.h"
+#include "core/optimizer/optimizer_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
@@ -87,7 +87,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Check if constant folding can be applied on this node.
       if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
-          kNonDeterministicOps.find(node->OpType()) != kNonDeterministicOps.end() ||
+          !IsOperationDeterministic(node->Domain(), node->OpType()) ||
           // constant folding does not support executing a node that includes subgraphs (control flow operators,
           // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
           // by the Recurse call above

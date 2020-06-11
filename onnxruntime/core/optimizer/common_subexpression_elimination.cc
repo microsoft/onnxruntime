@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "common_subexpression_elimination.h"
-#include "core/optimizer/constants.h"
+#include "core/optimizer/optimizer_utils.h"
 #include "core/graph/graph_utils.h"
 
 #include <type_traits>
@@ -314,11 +314,11 @@ struct NodeArgPtrEquality {
 };
 
 bool IsNodeSupported(const Node& node) {
-  if (node.Domain() != kOnnxDomain || node.ContainsSubgraph()) {
+  if (node.ContainsSubgraph()) {
     return false;
   }
 
-  if (kNonDeterministicOps.find(node.OpType()) != kNonDeterministicOps.end()) {
+  if (!IsOperationDeterministic(node.Domain(), node.OpType())) {
     return false;
   }
 
