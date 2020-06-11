@@ -792,6 +792,60 @@ void ConvOpBuilder::AddOperatorImpl() {
 
 #pragma endregion op_conv
 
+#pragma region op_cast
+
+class CastOpBuilder : public BaseOpBuilder {
+ public:
+  CastOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
+      : BaseOpBuilder(model_builder, node) {}
+
+ private:
+  std::pair<bool, std::string> IsOpSupportedImpl() override;
+  int32_t GetMinSupportedSdkVer() const override { return 29; }
+  void AddOperatorImpl() override;
+};
+
+std::pair<bool, std::string> CastOpBuilder::IsOpSupportedImpl() {
+  NodeAttrHelper helper(node_);
+  auto to = helper.get("to", 0);
+  if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
+      to != ONNX_NAMESPACE::TensorProto::INT32) {
+    return {false, "Only support cast to int32 or float"};
+  }
+
+  return {true, ""};
+}
+
+void CastOpBuilder::AddOperatorImpl() {
+  auto& shaper(model_builder_.GetShaper());
+  const auto& operand_indices(model_builder_.GetOperandIndices());
+  NodeAttrHelper helper(node_);
+
+  const auto& input = node_.input(0);
+  const auto& output = node_.output(0);
+  auto to = helper.get("to", 0);
+  Type type;
+  switch (to) {
+    case ONNX_NAMESPACE::TensorProto::FLOAT:
+      type = Type::TENSOR_FLOAT32;
+      break;
+    case ONNX_NAMESPACE::TensorProto::INT32:
+      type = Type::TENSOR_INT32;
+      break;
+    default:
+      throw std::invalid_argument(
+          "Invalid cast to type: " + std::to_string(to));
+  }
+
+  ModelBuilder::IndexSeq input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(type, shaper[output]);
+  model_builder_.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion
+
 #pragma region CreateOpBuilder
 
 std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
@@ -809,11 +863,15 @@ std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
     return std::make_unique<ReshapeOpBuilder>(model_builder, node);
   } else if (op == "BatchNormalization") {
     return std::make_unique<BatchNormalizationOpBuilder>(model_builder, node);
-  } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool" ||
-             op == "AveragePool" || op == "MaxPool") {
+  } else if (op == "GlobalAveragePool" ||
+             op == "GlobalMaxPool" ||
+             op == "AveragePool" ||
+             op == "MaxPool") {
     return std::make_unique<PoolOpBuilder>(model_builder, node);
   } else if (op == "Conv") {
     return std::make_unique<ConvOpBuilder>(model_builder, node);
+  } else if (op == "Cast") {
+    return std::make_unique<CastOpBuilder>(model_builder, node);
   }
 
   return std::make_unique<BaseOpBuilder>(model_builder, node);

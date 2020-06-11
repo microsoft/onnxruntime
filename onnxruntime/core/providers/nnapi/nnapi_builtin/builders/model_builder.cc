@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <onnx/shape_inference/implementation.h>
-
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
 #include "model_builder.h"
@@ -19,37 +17,6 @@ const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
   return tensor.float_data().empty()
              ? reinterpret_cast<const float*>(tensor.raw_data().data())
              : tensor.float_data().data();
-}
-
-Shaper::Shape GetShapeA(const ONNX_NAMESPACE::ModelProto& model_proto,
-                        const std::string& name) {
-  Shaper::Shape emptyShape;
-  for (const auto& value_info : model_proto.graph().value_info()) {
-    if (value_info.name() == name) {
-      if (!value_info.has_type()) {
-        return emptyShape;
-      } else if (!value_info.type().has_tensor_type()) {
-        return emptyShape;
-      } else if (!value_info.type().tensor_type().has_shape()) {
-        return emptyShape;
-      } else if (value_info.type().tensor_type().shape().dim_size() == 0) {
-        return emptyShape;
-      }
-
-      Shaper::Shape shape;
-      for (const auto& dim : value_info.type().tensor_type().shape().dim()) {
-        if (dim.has_dim_value()) {
-          shape.push_back(dim.dim_value());
-        } else {
-          return emptyShape;
-        }
-      }
-
-      return shape;
-    }
-  }
-
-  return emptyShape;
 }
 
 ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
