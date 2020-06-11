@@ -158,8 +158,6 @@ SPECIALIZED_DROPOUT_GRAD_IMPL(float)
 SPECIALIZED_DROPOUT_GRAD_IMPL(double)
 SPECIALIZED_DROPOUT_GRAD_IMPL(half)
 
-constexpr int UNROLL = 4;
-
 template <typename T, bool has_residual>
 __global__ void BiasDropoutKernel(
     const int64_t N,
