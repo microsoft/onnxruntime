@@ -41,6 +41,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
    
     - task: CmdLine@2
       inputs:
@@ -102,6 +103,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
 
     - task: CmdLine@2
       inputs:
@@ -170,6 +172,7 @@ jobs:
   - template: templates/set-featurizer-build-flag-step.yml
     parameters:
       is_featurizers_build: $(is_featurizers_build)
+      is_nightly_build: $(NIGHTLY_BUILD)
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -212,7 +215,7 @@ jobs:
     displayName: 'Build wheel'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
-      arguments: 'bdist_wheel'
+      arguments: bdist_wheel $(WheelBuildFlag)
       workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
   - task: CopyFiles@2
@@ -288,6 +291,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
 
     - task: PythonScript@0
       displayName: 'build'
@@ -308,7 +312,7 @@ jobs:
       displayName: 'Build wheel'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\setup.py'
-        arguments: 'bdist_wheel'
+        arguments: bdist_wheel --use_cuda $(WheelBuildFlag)
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
     - task: CopyFiles@2
@@ -350,6 +354,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
 
     - task: UsePythonVersion@0
       displayName: 'Use Python'
