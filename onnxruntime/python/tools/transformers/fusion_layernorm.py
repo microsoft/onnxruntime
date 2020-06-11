@@ -117,7 +117,7 @@ class FusionLayerNormalization(Fusion):
 
 class FusionLayerNormalizationTF(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(model, "LayerNormalization", "Add")
+        super().__init__(model, "LayerNormalization", "Add", "TF")
 
     def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
