@@ -12,17 +12,8 @@ namespace cuda {
 // - dY, X, dX have input_size elements
 // - B has bias_size elements
 // - input_size % bias_size == 0
-template <typename T>
+template <typename T, typename GeluComputationMode>
 void LaunchBiasGeluGradDxKernel(
-    int64_t input_size, int64_t bias_size,
-    const T* dY, const T* X, const T* B, T* dX);
-
-// assumptions:
-// - dY, X, dX have input_size elements
-// - B has bias_size elements
-// - input_size % bias_size == 0
-template <typename T>
-void LaunchBiasGeluApproximationGradDxKernel(
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX);
 

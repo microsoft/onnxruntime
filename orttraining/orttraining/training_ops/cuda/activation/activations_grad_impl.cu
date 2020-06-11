@@ -13,14 +13,14 @@ namespace cuda {
 template <typename T>
 struct OP_GeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    return ComputeGeluGradScalar(dy, x);
+    return ComputeGeluGradScalar(dy, x, gelu_computation_mode::Default{});
   }
 };
 
 template <typename T>
 struct OP_FastGeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    return ComputeGeluApproximationGradScalar(dy, x);
+    return ComputeGeluGradScalar(dy, x, gelu_computation_mode::Approximation{});
   }
 };
 

@@ -4,6 +4,7 @@
 #include "orttraining/training_ops/cuda/activation/bias_gelu_grad.h"
 
 #include "core/common/common.h"
+#include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 #include "orttraining/training_ops/cuda/activation/bias_gelu_grad_impl.h"
 
 namespace onnxruntime {
@@ -17,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double>())
         .MayInplace(0, 0),
-    BiasGeluGrad_dX<false>);
+    BiasGeluGrad_dX<gelu_computation_mode::Default>);
 
 ONNX_OPERATOR_KERNEL_EX(
     BiasFastGeluGrad_dX,
@@ -27,44 +28,26 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double>())
         .MayInplace(0, 0),
-    BiasGeluGrad_dX<true>);
+    BiasGeluGrad_dX<gelu_computation_mode::Approximation>);
 
-namespace {
+template <typename GeluComputationMode>
 template <typename T>
-struct BiasGeluGradDxDispatcher {
-  void operator()(
-      int64_t input_size, int64_t bias_size,
-      const Tensor& dY, const Tensor& X, const Tensor& B,
-      Tensor& dX) const {
-    using CudaT = typename ToCudaType<T>::MappedType;
-    LaunchBiasGeluGradDxKernel(
-        input_size, bias_size,
-        reinterpret_cast<const CudaT*>(dY.template Data<T>()),
-        reinterpret_cast<const CudaT*>(X.template Data<T>()),
-        reinterpret_cast<const CudaT*>(B.template Data<T>()),
-        reinterpret_cast<CudaT*>(dX.template MutableData<T>()));
-  }
-};
+void BiasGeluGrad_dX<GeluComputationMode>::KernelLaunchDispatcher<T>::operator()(
+    int64_t input_size, int64_t bias_size,
+    const Tensor& dY, const Tensor& X, const Tensor& B,
+    Tensor& dX) const {
+  using CudaT = typename ToCudaType<T>::MappedType;
 
-template <typename T>
-struct BiasGeluApproximationGradDxDispatcher {
-  void operator()(
-      int64_t input_size, int64_t bias_size,
-      const Tensor& dY, const Tensor& X, const Tensor& B,
-      Tensor& dX) const {
-    using CudaT = typename ToCudaType<T>::MappedType;
-    LaunchBiasGeluApproximationGradDxKernel(
-        input_size, bias_size,
-        reinterpret_cast<const CudaT*>(dY.template Data<T>()),
-        reinterpret_cast<const CudaT*>(X.template Data<T>()),
-        reinterpret_cast<const CudaT*>(B.template Data<T>()),
-        reinterpret_cast<CudaT*>(dX.template MutableData<T>()));
-  }
-};
-}  // namespace
+  LaunchBiasGeluGradDxKernel<CudaT, GeluComputationMode>(
+      input_size, bias_size,
+      reinterpret_cast<const CudaT*>(dY.template Data<T>()),
+      reinterpret_cast<const CudaT*>(X.template Data<T>()),
+      reinterpret_cast<const CudaT*>(B.template Data<T>()),
+      reinterpret_cast<CudaT*>(dX.template MutableData<T>()));
+}
 
-template <bool use_approximation>
-Status BiasGeluGrad_dX<use_approximation>::ComputeInternal(OpKernelContext* context) const {
+template <typename GeluComputationMode>
+Status BiasGeluGrad_dX<GeluComputationMode>::ComputeInternal(OpKernelContext* context) const {
   const auto* dY = context->Input<Tensor>(0);
   ORT_ENFORCE(dY);
   const auto* X = context->Input<Tensor>(1);
@@ -85,19 +68,11 @@ Status BiasGeluGrad_dX<use_approximation>::ComputeInternal(OpKernelContext* cont
 
   const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
 
-  if (use_approximation) {
-    utils::MLTypeCallDispatcher<
-        BiasGeluApproximationGradDxDispatcher,
-        MLFloat16, float, double>
-        dispatcher{X->GetElementType()};
-    dispatcher.Invoke(input_size, bias_size, *dY, *X, *B, *dX);
-  } else {
-    utils::MLTypeCallDispatcher<
-        BiasGeluGradDxDispatcher,
-        MLFloat16, float, double>
-        dispatcher{X->GetElementType()};
-    dispatcher.Invoke(input_size, bias_size, *dY, *X, *B, *dX);
-  }
+  utils::MLTypeCallDispatcher<
+      KernelLaunchDispatcher,
+      MLFloat16, float, double>
+      dispatcher{X->GetElementType()};
+  dispatcher.Invoke(input_size, bias_size, *dY, *X, *B, *dX);
 
   return Status::OK();
 }

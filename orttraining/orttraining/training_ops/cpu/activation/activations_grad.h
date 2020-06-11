@@ -9,14 +9,14 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T, bool use_approximation>
+template <typename T, typename GeluComputationMode>
 class GeluGrad final : public OpKernel {
  public:
   GeluGrad(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T, bool use_approximation>
+template <typename T, typename GeluComputationMode>
 class BiasGeluGrad_dX final : public OpKernel {
  public:
   BiasGeluGrad_dX(const OpKernelInfo& info) : OpKernel{info} {}

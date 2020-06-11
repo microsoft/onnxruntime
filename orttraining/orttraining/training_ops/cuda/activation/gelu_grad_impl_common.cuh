@@ -4,18 +4,19 @@
 #pragma once
 
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__device__ __inline__ T ComputeGeluGradScalar(T dY, T X) {
+__device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Default) {
   const T kAlpha = T(M_2_SQRTPI) * T(M_SQRT1_2) * T(0.5);
   return dY * (_Normcdf(X) + X * kAlpha * _Exp(-T(0.5) * X * X));
 }
 
 template <typename T>
-__device__ __inline__ T ComputeGeluApproximationGradScalar(T dY, T X) {
+__device__ __inline__ T ComputeGeluGradScalar(T dY, T X, gelu_computation_mode::Approximation) {
   // copied and adapted from DeepSpeed:
   // https://github.com/microsoft/DeepSpeed/blob/f5025506de37f617a93eabc2aed7cc4f4bfd7d80/csrc/transformer/gelu_kernels.cu#L10
 

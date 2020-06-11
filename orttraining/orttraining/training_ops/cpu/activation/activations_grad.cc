@@ -9,6 +9,8 @@
 
 #include "core/util/math_cpuonly.h"
 
+#include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -18,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    GeluGrad<float, false>);
+    GeluGrad<float, gelu_computation_mode::Default>);
 
 ONNX_OPERATOR_KERNEL_EX(
     FastGeluGrad,
@@ -26,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    GeluGrad<float, true>);
+    GeluGrad<float, gelu_computation_mode::Approximation>);
 
 ONNX_OPERATOR_KERNEL_EX(
     BiasGeluGrad_dX,
@@ -34,7 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    BiasGeluGrad_dX<float, false>);
+    BiasGeluGrad_dX<float, gelu_computation_mode::Default>);
 
 ONNX_OPERATOR_KERNEL_EX(
     BiasFastGeluGrad_dX,
@@ -42,11 +44,12 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    BiasGeluGrad_dX<float, true>);
+    BiasGeluGrad_dX<float, gelu_computation_mode::Approximation>);
 
 namespace {
 template <typename T>
-Status ComputeGeluGradDXImpl(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX,
+                         gelu_computation_mode::Default) {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2 * 0.5);
 
   ConstEigenVectorArrayMap<T> X_array(X.data(), X.size());
@@ -60,7 +63,8 @@ Status ComputeGeluGradDXImpl(gsl::span<const T> dY, gsl::span<const T> X, gsl::s
 }
 
 template <typename T>
-Status ComputeGeluApproximationGradDXImpl(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
+Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX,
+                         gelu_computation_mode::Approximation) {
   static constexpr T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
   static constexpr T kGamma = static_cast<T>(0.044715f);
   static constexpr T kBeta = static_cast<T>(kGamma * kAlpha * 3.0f);
@@ -94,15 +98,10 @@ Status ComputeGeluApproximationGradDXImpl(gsl::span<const T> dY, gsl::span<const
   }
   return Status::OK();
 }
-
-template <typename T, bool use_approximation>
-Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<T> dX) {
-  return use_approximation ? ComputeGeluApproximationGradDXImpl(dY, X, dX) : ComputeGeluGradDXImpl(dY, X, dX);
-}
 }  // namespace
 
-template <typename T, bool use_approximation>
-Status GeluGrad<T, use_approximation>::Compute(OpKernelContext* context) const {
+template <typename T, typename GeluComputationMode>
+Status GeluGrad<T, GeluComputationMode>::Compute(OpKernelContext* context) const {
   const auto* dY = context->Input<Tensor>(0);
   ORT_ENFORCE(dY);
   const auto* X = context->Input<Tensor>(1);
@@ -110,14 +109,15 @@ Status GeluGrad<T, use_approximation>::Compute(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, X->Shape());
   ORT_ENFORCE(dX);
 
-  ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T, use_approximation>(
-      dY->template DataAsSpan<T>(), X->template DataAsSpan<T>(), dX->template MutableDataAsSpan<T>())));
+  ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T>(
+      dY->template DataAsSpan<T>(), X->template DataAsSpan<T>(), dX->template MutableDataAsSpan<T>(),
+      GeluComputationMode{})));
 
   return Status::OK();
 }
 
-template <typename T, bool use_approximation>
-Status BiasGeluGrad_dX<T, use_approximation>::Compute(OpKernelContext* context) const {
+template <typename T, typename GeluComputationMode>
+Status BiasGeluGrad_dX<T, GeluComputationMode>::Compute(OpKernelContext* context) const {
   const auto* dY = context->Input<Tensor>(0);
   ORT_ENFORCE(dY);
   const auto* X = context->Input<Tensor>(1);
@@ -152,8 +152,9 @@ Status BiasGeluGrad_dX<T, use_approximation>::Compute(OpKernelContext* context) 
 
   // dX
   const auto biased_X_span = gsl::make_span<const T>(X_plus_B_buffer.get(), X->Shape().Size());
-  ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T, use_approximation>(
-      dY->template DataAsSpan<T>(), biased_X_span, dX->template MutableDataAsSpan<T>())));
+  ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T>(
+      dY->template DataAsSpan<T>(), biased_X_span, dX->template MutableDataAsSpan<T>(),
+      GeluComputationMode{})));
 
   return Status::OK();
 }

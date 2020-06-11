@@ -10,23 +10,9 @@
 namespace onnxruntime {
 namespace cuda {
 
-namespace {
-template <bool use_approximation>
-struct GeluGradDxScalarComputer {
-  template <typename T>
-  __device__ T operator()(const T dY, const T X, const T B) {
-    if (use_approximation) {
-      return ComputeGeluApproximationGradScalar(dY, X + B);
-    } else {
-      return ComputeGeluGradScalar(dY, X + B);
-    }
-  }
-};
-
-template <typename T, typename ComputeGeluGradDxScalarFn>
+template <typename T, typename GeluComputationMode>
 __global__ void BiasGeluGradDxKernel(
     int num_consecutive_elements_per_group, int num_groups_per_thread,
-    ComputeGeluGradDxScalarFn compute_gelu_grad_dx_scalar_fn,
     CUDA_LONG input_size, fast_divmod bias_size_fdm,
     const T* dY, const T* X, const T* B, T* dX) {
   const auto& num_threads_per_block = blockDim.x;
@@ -48,8 +34,7 @@ __global__ void BiasGeluGradDxKernel(
         if (base_idx < input_size) {
           const int bias_idx =
               base_bias_idx + element_idx - static_cast<int>((base_bias_idx + element_idx) >= bias_size) * bias_size;
-          // printf("dX[%d] = GeluGrad(dY[%d], X[%d] + B[%d]); base_bias_idx = %d; bias_size = %d\n", input_idx, input_idx, input_idx, bias_idx, base_bias_idx, bias_size);
-          dX[input_idx] = compute_gelu_grad_dx_scalar_fn(dY[input_idx], X[input_idx], B[bias_idx]);
+          dX[input_idx] = ComputeGeluGradScalar(dY[input_idx], X[input_idx] + B[bias_idx], GeluComputationMode{});
         }
       }
 
@@ -57,9 +42,8 @@ __global__ void BiasGeluGradDxKernel(
     }
   }
 }
-}  // namespace
 
-template <typename T>
+template <typename T, typename GeluComputationMode>
 void LaunchBiasGeluGradDxKernel(
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX) {
@@ -70,33 +54,16 @@ void LaunchBiasGeluGradDxKernel(
       input_size,
       num_threads_per_block * num_consecutive_elements_per_group * num_groups_per_thread);
   const fast_divmod bias_size_fdm{static_cast<int>(bias_size)};
-  BiasGeluGradDxKernel<<<num_blocks_per_grid, num_threads_per_block>>>(
-      num_consecutive_elements_per_group, num_groups_per_thread,
-      GeluGradDxScalarComputer<false>{},
-      static_cast<CUDA_LONG>(input_size), bias_size_fdm, dY, X, B, dX);
-}
 
-template <typename T>
-void LaunchBiasGeluApproximationGradDxKernel(
-    int64_t input_size, int64_t bias_size,
-    const T* dY, const T* X, const T* B, T* dX) {
-  constexpr int num_consecutive_elements_per_group = 4;
-  constexpr int num_groups_per_thread = 4;
-  constexpr int num_threads_per_block = GridDim::maxThreadsPerBlock;
-  const auto num_blocks_per_grid = CeilDiv(
-      input_size,
-      num_threads_per_block * num_consecutive_elements_per_group * num_groups_per_thread);
-  const fast_divmod bias_size_fdm{static_cast<int>(bias_size)};
-  BiasGeluGradDxKernel<<<num_blocks_per_grid, GridDim::maxThreadsPerBlock>>>(
+  BiasGeluGradDxKernel<T, GeluComputationMode><<<num_blocks_per_grid, num_threads_per_block>>>(
       num_consecutive_elements_per_group, num_groups_per_thread,
-      GeluGradDxScalarComputer<true>{},
       static_cast<CUDA_LONG>(input_size), bias_size_fdm, dY, X, B, dX);
 }
 
 // explicit instantiations
-#define SPECIALIZED_BIAS_GELU_GRAD_IMPL(T)   \
-  template void LaunchBiasGeluGradDxKernel(  \
-      int64_t input_size, int64_t bias_size, \
+#define SPECIALIZED_BIAS_GELU_GRAD_IMPL(T)                                     \
+  template void LaunchBiasGeluGradDxKernel<T, gelu_computation_mode::Default>( \
+      int64_t input_size, int64_t bias_size,                                   \
       const T* dY, const T* X, const T* B, T* dX)
 
 SPECIALIZED_BIAS_GELU_GRAD_IMPL(half);
@@ -105,9 +72,9 @@ SPECIALIZED_BIAS_GELU_GRAD_IMPL(double);
 
 #undef SPECIALIZED_BIAS_GELU_GRAD_IMPL
 
-#define SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(T) \
-  template void LaunchBiasGeluApproximationGradDxKernel( \
-      int64_t input_size, int64_t bias_size,             \
+#define SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(T)                             \
+  template void LaunchBiasGeluGradDxKernel<T, gelu_computation_mode::Approximation>( \
+      int64_t input_size, int64_t bias_size,                                         \
       const T* dY, const T* X, const T* B, T* dX)
 
 SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(half);
