@@ -44,7 +44,6 @@ new_parameters = {
 
 
 class TinyGpt2Model(OnnxModel):
-
     def __init__(self, model):
         super(TinyGpt2Model, self).__init__(model)
         self.resize_model()
@@ -238,7 +237,7 @@ class TinyGpt2Model(OnnxModel):
                                                                                     data_type=TensorProto.INT64,
                                                                                     dims=[],
                                                                                     vals=[new_parameters["num_heads"]
-                                                                                         ])))
+                                                                                          ])))
                             print("constant", att.t.name, old_parameters["num_heads"], "=>",
                                   new_parameters["num_heads"])
                         if numpy_helper.to_array(att.t) == np.sqrt(old_parameters["size_per_head"]):
@@ -258,7 +257,7 @@ class TinyGpt2Model(OnnxModel):
         for node in nodes_to_remove:
             graph.node.remove(node)
         graph.node.extend(nodes_to_add)
- 
+
         for i, input in enumerate(self.model.graph.input):
             if i > 0:
                 dim_proto = input.type.tensor_type.shape.dim[2]
@@ -275,6 +274,7 @@ class TinyGpt2Model(OnnxModel):
                 dim_proto.dim_value = new_parameters["num_heads"]
                 dim_proto = output.type.tensor_type.shape.dim[4]
                 dim_proto.dim_value = new_parameters["size_per_head"]
+
 
 def generate_test_data(onnx_file,
                        output_path,
@@ -305,25 +305,27 @@ def generate_test_data(onnx_file,
         input1_name = sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]
         inputs = {input1_name: input_1}
-        
+
         with open(os.path.join(path, 'input_{}.pb'.format(0)), 'wb') as f:
             f.write(tensor_1.SerializeToString())
-            
+
         for i in range(12):
             input_name = f"past_{i}"
-            input = np.random.rand(2, batch_size, new_parameters["num_heads"], sequence_length, new_parameters["size_per_head"]).astype(np.float32)
+            input = np.random.rand(2, batch_size, new_parameters["num_heads"], sequence_length,
+                                   new_parameters["size_per_head"]).astype(np.float32)
             tensor = numpy_helper.from_array(input, input_name)
-            inputs.update({input_name:input})
-            
-            with open(os.path.join(path, 'input_{}.pb'.format(1+i)), 'wb') as f:
+            inputs.update({input_name: input})
+
+            with open(os.path.join(path, 'input_{}.pb'.format(1 + i)), 'wb') as f:
                 f.write(tensor.SerializeToString())
 
         if input_tensor_only:
             return
-            
+
         result = sess.run(output_names, inputs)
         print("result 0 shape:", result[0].shape)
         print("result 1 shape:", result[1].shape)
+
 
 def main():
     parser = argparse.ArgumentParser()

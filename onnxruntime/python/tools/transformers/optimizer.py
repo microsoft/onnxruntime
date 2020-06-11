@@ -6,21 +6,16 @@
 # Convert Bert ONNX model converted from TensorFlow or exported from PyTorch to use Attention, Gelu,
 # SkipLayerNormalization and EmbedLayerNormalization ops to optimize
 # performance on NVidia GPU and CPU.
-
+#
 # For Bert model exported from PyTorch, OnnxRuntime has bert model optimization support internally.
-# You can use the option --use_onnxruntime to use model optimization from OnnxRuntime package.
+# You can use the option --use_onnxruntime to check optimizations from OnnxRuntime.
 # For Bert model file like name.onnx, optimized model for GPU or CPU from OnnxRuntime will output as
 # name_ort_gpu.onnx or name_ort_cpu.onnx in the same directory.
+#
 # This script is retained for experiment purpose. Useful senarios like the following:
-#  (1) Change model from fp32 to fp16.
+#  (1) Change model from fp32 to fp16 for mixed precision inference in GPU with Tensor Core.
 #  (2) Change input data type from int64 to int32.
 #  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
-
-# This script has been tested using the following models:
-#  (1) BertForSequenceClassification as in https://github.com/huggingface/transformers/blob/master/examples/run_glue.py
-#      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
-#  (2) BertForQuestionAnswering as in https://github.com/huggingface/transformers/blob/master/examples/run_squad.py
-#      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
 
 import logging
 import coloredlogs
@@ -48,17 +43,21 @@ MODEL_CLASSES = {
 }
 
 
-def optimize_by_onnxruntime(onnx_model_path:str, use_gpu:bool=False, optimized_model_path:str=None, opt_level:int=99) -> str:
+def optimize_by_onnxruntime(onnx_model_path: str,
+                            use_gpu: bool = False,
+                            optimized_model_path: str = None,
+                            opt_level: int = 99) -> str:
     """
-    Use onnxruntime package to optimize model. It could support models exported by PyTorch.
+    Use onnxruntime to optimize model.
 
     Args:
-        onnx_model_path (str): th path of input onnx model.
+        onnx_model_path (str): the path of input onnx model.
         use_gpu (bool): whether the optimized model is targeted to run in GPU.
         optimized_model_path (str or None): the path of optimized model.
+        opt_level (int): graph optimization level.
 
     Returns:
-        optimized_model_path: the path of optimized model
+        optimized_model_path (str): the path of optimized model
     """
     import onnxruntime
 
@@ -91,12 +90,13 @@ def optimize_by_onnxruntime(onnx_model_path:str, use_gpu:bool=False, optimized_m
     logger.info("Save optimized model by onnxruntime to {}".format(optimized_model_path))
     return optimized_model_path
 
-def get_fusion_statistics(optimized_model_path:str) -> Dict[str,int]:
+
+def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
     """
     Get counter of fused operators in optimized model.
 
     Args:
-        optimized_model_path (str): th path of onnx model.
+        optimized_model_path (str): the path of onnx model.
 
     Returns:
         A dictionary with operator type as key, and count as value
@@ -104,6 +104,7 @@ def get_fusion_statistics(optimized_model_path:str) -> Dict[str,int]:
     model = load_model(optimized_model_path, format=None, load_external_data=True)
     optimizer = BertOnnxModel(model, num_heads=12, hidden_size=768)
     return optimizer.get_fused_operator_statistics()
+
 
 def _parse_arguments():
     parser = argparse.ArgumentParser()
@@ -259,7 +260,7 @@ def optimize_model(input,
 
     input_model_path = input
 
-    if opt_level > 1: # Optimization specified for an execution provider.
+    if opt_level > 1:  # Optimization specified for an execution provider.
         input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
     elif run_onnxruntime:
         # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.

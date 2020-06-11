@@ -316,11 +316,14 @@ mask_index shall not be provided.)DOC";
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
+
         if (hasInputShape(ctx, 0)) {
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
           if (ctx.getNumOutputs() > 1) {
-            propagateElemTypeFromInputToOutput(ctx, 0, 1);
             auto& input_shape = getInputShape(ctx, 0);
             auto& input_dims = input_shape.dim();
             if (input_dims.size() != 3) {

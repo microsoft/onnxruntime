@@ -23,21 +23,21 @@ from OnnxModel import OnnxModel
 BERT_TEST_MODELS = {
     "bert_pytorch_0": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_0.onnx'),
     "bert_pytorch_1": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_1.onnx'),
-    "bert_squad_pytorch1.4_opset10_fp32":
-    ('bert_squad_pytorch1.4_opset10_fp32', 'BertForQuestionAnswering.onnx'),
+    "bert_squad_pytorch1.4_opset10_fp32": ('bert_squad_pytorch1.4_opset10_fp32', 'BertForQuestionAnswering.onnx'),
     "bert_keras_0": ('bert_mrpc_tensorflow2.1_opset10', 'TFBertForSequenceClassification_1.onnx'),
     "bert_keras_squad": ('bert_squad_tensorflow2.1_keras2onnx_opset11', 'TFBertForQuestionAnswering.onnx'),
     "gpt2": ('gpt2_pytorch1.4_opset11_no_past', 'GPT2Model.onnx'),
     "gpt2_past": ('gpt2_pytorch1.5_opset11', 'gpt2_past.onnx'),
 }
 
-skip_on_ort_version = pytest.mark.skipif(
-    onnxruntime.__version__.startswith('1.3.'), reason="skip failed tests. TODO: fix them in 1.4.0."
-)
+skip_on_ort_version = pytest.mark.skipif(onnxruntime.__version__.startswith('1.3.'),
+                                         reason="skip failed tests. TODO: fix them in 1.4.0.")
+
 
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     return os.path.join('test_data', sub_dir, file)
+
 
 class TestBertOptimization(unittest.TestCase):
     def verify_node_count(self, bert_model, expected_node_count, test_name):
@@ -213,6 +213,7 @@ class TestBertOptimization(unittest.TestCase):
             'SkipLayerNormalization': 0
         }
         self.verify_node_count(bert_model, expected_node_count, 'test_gpt2_past')
+
 
 if __name__ == '__main__':
     unittest.main()

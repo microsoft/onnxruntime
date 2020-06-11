@@ -34,14 +34,14 @@ class FusionGptAttention(Fusion):
              helper.make_attribute("unidirectional", 1)])
 
         matmul_node = helper.make_node('MatMul',
-                                            inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
-                                            outputs=[attention_node_name + "_matmul_output"],
-                                            name=attention_node_name + "_matmul")
+                                       inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
+                                       outputs=[attention_node_name + "_matmul_output"],
+                                       name=attention_node_name + "_matmul")
 
         add_node = helper.make_node('Add',
-                                         inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
-                                         outputs=[output],
-                                         name=attention_node_name + "_add")
+                                    inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
+                                    outputs=[output],
+                                    name=attention_node_name + "_add")
         self.nodes_to_add.extend([attention_node, matmul_node, add_node])
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
@@ -86,11 +86,17 @@ class FusionGptAttention(Fusion):
         if not self.model.find_graph_input(past):
             logger.info("expect past to be graph input")
             return
-        unsqueeze_present_v = self.model.find_first_child_by_type(concat_v, 'Unsqueeze', input_name_to_nodes, recursive=False)
+        unsqueeze_present_v = self.model.find_first_child_by_type(concat_v,
+                                                                  'Unsqueeze',
+                                                                  input_name_to_nodes,
+                                                                  recursive=False)
         if not unsqueeze_present_v:
             logger.info("expect unsqueeze for present")
             return
-        concat_present = self.model.find_first_child_by_type(unsqueeze_present_v, 'Concat', input_name_to_nodes, recursive=False)
+        concat_present = self.model.find_first_child_by_type(unsqueeze_present_v,
+                                                             'Concat',
+                                                             input_name_to_nodes,
+                                                             recursive=False)
         if not concat_present:
             logger.info("expect concat for present")
             return
@@ -182,7 +188,8 @@ class FusionGptAttention(Fusion):
             logger.info("expect past to be same")
             return
 
-        self.create_attention_node(gemm, gemm_qkv, past, present, layernorm_before_attention.output[0], reshape_qkv.output[0])
+        self.create_attention_node(gemm, gemm_qkv, past, present, layernorm_before_attention.output[0],
+                                   reshape_qkv.output[0])
 
         # we rely on prune_graph() to clean old subgraph nodes:
         # qk_nodes + q_nodes + k_nodes + v_nodes + mask_nodes + [reshape_qkv, transpose_qkv, matmul_qkv]

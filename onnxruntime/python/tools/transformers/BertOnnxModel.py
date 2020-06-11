@@ -183,7 +183,7 @@ class BertOnnxModel(OnnxModel):
         for node in self.nodes():
             # Before:
             #  input_ids --> Shape --> Gather(indices=0) --> Unsqueeze ------+
-            #          |                                                     | 
+            #          |                                                     |
             #          |                                                     v
             #          +----> Shape --> Gather(indices=1) --> Unsqueeze--->  Concat --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
             # After:

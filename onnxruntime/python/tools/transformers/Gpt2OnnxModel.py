@@ -15,6 +15,7 @@ from fusion_gpt_attention import FusionGptAttention
 
 logger = logging.getLogger(__name__)
 
+
 class Gpt2OnnxModel(BertOnnxModel):
     def __init(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
@@ -65,7 +66,7 @@ class Gpt2OnnxModel(BertOnnxModel):
                                              name=add_node_name)
 
             self.replace_input_of_all_nodes(reshape_after_gemm.output[0], add_node_name + "_output")
-            
+
             # Link root node output with MatMul
             self.replace_input_of_all_nodes(root_node.output[0], matmul_node_name + "_input")
             root_node.output[0] = matmul_node_name + "_input"

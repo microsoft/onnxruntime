@@ -24,26 +24,25 @@ class FusionGptAttentionNoPast(Fusion):
     def create_attention_node(self, gemm, gemm_qkv, input, output):
         attention_node_name = self.model.create_node_name('Attention')
         attention_node = helper.make_node('Attention',
-                                           inputs=[input, gemm.input[1], gemm.input[2]],
-                                           outputs=[attention_node_name + "_output"],
-                                           name=attention_node_name)
+                                          inputs=[input, gemm.input[1], gemm.input[2]],
+                                          outputs=[attention_node_name + "_output"],
+                                          name=attention_node_name)
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend(
             [helper.make_attribute("num_heads", self.num_heads),
              helper.make_attribute("unidirectional", 1)])
 
         matmul_node = helper.make_node('MatMul',
-                                            inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
-                                            outputs=[attention_node_name + "_matmul_output"],
-                                            name=attention_node_name + "_matmul")
+                                       inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
+                                       outputs=[attention_node_name + "_matmul_output"],
+                                       name=attention_node_name + "_matmul")
 
         add_node = helper.make_node('Add',
-                                         inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
-                                         outputs=[output],
-                                         name=attention_node_name + "_add")
+                                    inputs=[attention_node_name + "_matmul_output", gemm_qkv.input[2]],
+                                    outputs=[output],
+                                    name=attention_node_name + "_add")
 
         self.nodes_to_add.extend([attention_node, matmul_node, add_node])
-
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         return_indice = []
