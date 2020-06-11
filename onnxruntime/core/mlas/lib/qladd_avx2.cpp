@@ -153,7 +153,7 @@ MlasQLinearAddS8KernelAvx2(
     int8_t* OutputC,
     size_t LengthA,
     size_t LengthB
-) 
+)
 {
     if (LengthA == 1) {
         MlasQLinearAddKernelAvx2Helper<int8_t, true, false>(

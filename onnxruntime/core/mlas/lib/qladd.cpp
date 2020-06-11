@@ -22,7 +22,7 @@ Abstract:
 
 bool
 CalcQLinearAddParameters(
-    float ScaleRatio_AC, float ScaleRatio_BC, 
+    float ScaleRatio_AC, float ScaleRatio_BC,
     int32_t& Shift, int32_t& MultiplierA, int32_t& MultiplierB)
 {
     constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
@@ -40,7 +40,7 @@ CalcQLinearAddParameters(
     const float MultiplierFloatValue = Fp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
     MultiplierA = (int32_t) lrintf(ScaleRatio_AC * MultiplierFloatValue);
     MultiplierB = (int32_t) lrintf(ScaleRatio_BC * MultiplierFloatValue);
-    return ((MultiplierA < 0x00400000 && MultiplierB < 0x00400000) && 
+    return ((MultiplierA < 0x00400000 && MultiplierB < 0x00400000) &&
            (MultiplierA >= 0x00200000 || MultiplierB >= 0x00200000)); // the greater one must fullfil this check
 }
 
@@ -240,7 +240,7 @@ MlasQLinearAddKernelHelper(
     const int16x8_t VectorZeroPointC = vmovq_n_s16((int16_t)ZeroPointC);
     const int32x4_t vright_shift = vmovq_n_s32(-Shift); // vld1q_dup_s32(&right_shift);
     const int32x4_t vzero_shift_mask = vreinterpretq_s32_u32(vceqq_s32(vright_shift, vmovq_n_s32(0)));
-    
+
     int32x4_t vscalar;
     if (IsScalarA) {
         const typename SUI::i8x8_t VectorA0 = SUI::vmov_n_i8(*InputA);
@@ -574,19 +574,6 @@ MlasQLinearAddKernelHelper(
     MlasQLinearAddKernelRawHelper<DataType,IsScalarA, IsScalarB>(
         InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
 }
-
-#endif
-
-#if defined(MLAS_TARGET_AMD64)
-
-MLAS_INTERNAL_DATA  MLAS_DECLSPEC_ALIGN(const uint8_t MlasPackBytesMM256VpshufbControl[32], 32) = {
-    0,4,8,12,        255,255,255,255, 255,255,255,255, 255,255,255,255,
-    255,255,255,255, 0,4,8,12,        255,255,255,255, 255,255,255,255
-};
-
-MLAS_INTERNAL_DATA  MLAS_DECLSPEC_ALIGN(const int32_t MlasPackBytesMM256VpermpsControl[8], 32) = {
-    0, 5, 2, 3, 4, 1, 6, 7
-};
 
 #endif
 

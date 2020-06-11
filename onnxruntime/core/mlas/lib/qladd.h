@@ -43,6 +43,6 @@ Fp32FromBits(uint32_t u)
 
 bool
 CalcQLinearAddParameters(
-    float ScaleRatio_AC, float ScaleRatio_BC, 
+    float ScaleRatio_AC, float ScaleRatio_BC,
     int32_t& Shift, int32_t& MultiplierA, int32_t& MultiplierB
     );
