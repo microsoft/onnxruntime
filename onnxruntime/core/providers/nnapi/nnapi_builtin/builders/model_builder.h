@@ -37,6 +37,7 @@ class ModelBuilder {
   Shaper& GetShaper() { return shaper_; }
 
   uint32_t AddOperandFromScalar(bool value);
+  uint32_t AddOperandFromScalar(float value);
   uint32_t AddOperandFromScalar(int32_t value);
 
   void AddSkippedInitializer(const std::string& tensor_name);

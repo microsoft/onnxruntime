@@ -9,46 +9,25 @@ Shaper::len_t Shaper::total(const Shape& shape) {
   return Product(shape);
 }
 
-// /**
-//  *  strides: [stride_y, stride_x]
-//  *  paddings: [top, left, bottom, right]
-//  */
-// void Shaper::Conv(const std::string &input_name, const std::string
-// &weight_name,
-//                   const std::vector<int32_t> paddings,
-//                   const std::vector<int32_t> strides,
-//                   const std::string &output_name) {
-//     Shaper::Conv(input_name, strides[1], strides[0], 1, 1, paddings[1],
-//                  paddings[3], paddings[0], paddings[2], weight_name,
-//                  output_name);
-// }
-//
-// void Shaper::Conv(const std::string &input_name,
-//                   const std::vector<int32_t> paddings,
-//                   const std::vector<int32_t> strides,
-//                   const std::vector<int32_t> dilations,
-//                   const std::string &weight_name,
-//                   const std::string &output_name) {
-//     Shaper::Conv(input_name, strides[1], strides[0], dilations[1],
-//     dilations[0],
-//                  paddings[1], paddings[3], paddings[0], paddings[2],
-//                  weight_name, output_name);
-// }
-
 void Shaper::Conv(const std::string& input_name,
                   const std::string& weight_name,
-                  int32_t padding_left,
-                  int32_t padding_right,
-                  int32_t padding_top,
-                  int32_t padding_bottom,
-                  int32_t stride_x,
-                  int32_t stride_y,
-                  int32_t dilation_x,
-                  int32_t dilation_y,
+                  const vector<int32_t>& onnx_pads,
+                  const vector<int32_t>& onnx_strides,
+                  const vector<int32_t>& onnx_dilations,
                   bool nchw,
                   const std::string& output_name) {
   Shape weightDimen =
       shape_map_.at(weight_name);  // num_output, height, width, num_input
+
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
+  int32_t padding_top = onnx_pads[0];
+  int32_t padding_bottom = onnx_pads[2];
+  int32_t stride_x = onnx_strides[1];
+  int32_t stride_y = onnx_strides[0];
+  int32_t dilation_x = onnx_dilations[1];
+  int32_t dilation_y = onnx_dilations[0];
+
   // NHWC
   Shape inputDimen = shape_map_.at(input_name);
   Shape outputDimen;
@@ -100,18 +79,23 @@ void Shaper::Conv(const std::string& input_name,
 
 void Shaper::DepthwiseConv(const std::string& input_name,
                            const std::string& weight_name,
-                           int32_t padding_left,
-                           int32_t padding_right,
-                           int32_t padding_top,
-                           int32_t padding_bottom,
-                           int32_t stride_x,
-                           int32_t stride_y,
-                           int32_t dilation_x,
-                           int32_t dilation_y,
+                           const std::vector<int32_t>& onnx_pads,
+                           const std::vector<int32_t>& onnx_strides,
+                           const std::vector<int32_t>& onnx_dilations,
                            bool nchw,
                            const std::string& output_name) {
   Shape weightDimen =
       shape_map_.at(weight_name);  // 1, height, width, num_output
+
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
+  int32_t padding_top = onnx_pads[0];
+  int32_t padding_bottom = onnx_pads[2];
+  int32_t stride_x = onnx_strides[1];
+  int32_t stride_y = onnx_strides[0];
+  int32_t dilation_x = onnx_dilations[1];
+  int32_t dilation_y = onnx_dilations[0];
+
   // NHWC
   Shape inputDimen = shape_map_.at(input_name);
   Shape outputDimen;
@@ -161,17 +145,21 @@ void Shaper::DepthwiseConv(const std::string& input_name,
 }
 
 void Shaper::Pool(const std::string& input_name,
-                  int32_t padding_left,
-                  int32_t padding_right,
-                  int32_t padding_top,
-                  int32_t padding_bottom,
-                  int32_t stride_x,
-                  int32_t stride_y,
-                  int32_t width,
-                  int32_t height,
+                  const std::vector<int32_t>& onnx_pads,
+                  const std::vector<int32_t>& onnx_strides,
+                  const std::vector<int32_t>& kernel_shape,
                   bool nchw,
                   const std::string& output_name) {
   auto inputDimen = shape_map_.at(input_name);
+
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
+  int32_t padding_top = onnx_pads[0];
+  int32_t padding_bottom = onnx_pads[2];
+  int32_t stride_x = onnx_strides[1];
+  int32_t stride_y = onnx_strides[0];
+  int32_t width = kernel_shape[1];
+  int32_t height = kernel_shape[0];
 
   Shape outputDimen;
   if (nchw) {

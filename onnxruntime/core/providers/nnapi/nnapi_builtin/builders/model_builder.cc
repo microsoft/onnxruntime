@@ -99,6 +99,7 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 
 DEFINE_ADD_OPERAND_FROM_SCALAR(bool, BOOL);
 DEFINE_ADD_OPERAND_FROM_SCALAR(int32_t, INT32);
+DEFINE_ADD_OPERAND_FROM_SCALAR(float, FLOAT32);
 
 #undef DEFINE_ADD_OPERAND_FROM_SCALAR
 

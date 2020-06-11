@@ -74,9 +74,7 @@ void AddPoolOperator(int32_t op_type,
   input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
 
   shaper.Pool(input,
-              onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
-              onnx_strides[1], onnx_strides[0],
-              kernel_shape[1], kernel_shape[0],
+              onnx_pads, onnx_strides, kernel_shape,
               use_nchw,
               output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
@@ -780,17 +778,13 @@ void ConvOpBuilder::AddOperatorImpl() {
   if (conv2d) {
     operationCode = ANEURALNETWORKS_CONV_2D;
     shaper.Conv(input, weight,
-                onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
-                onnx_strides[1], onnx_strides[0],
-                onnx_dilations[1], onnx_dilations[0],
+                onnx_pads, onnx_strides, onnx_dilations,
                 use_nchw,
                 output);
   } else {  // depthwiseConv2D
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
     shaper.DepthwiseConv(input, weight,
-                         onnx_pads[1], onnx_pads[3], onnx_pads[0], onnx_pads[2],
-                         onnx_strides[1], onnx_strides[0],
-                         onnx_dilations[1], onnx_dilations[0],
+                         onnx_pads, onnx_strides, onnx_dilations,
                          use_nchw,
                          output);
   }
@@ -855,6 +849,80 @@ void CastOpBuilder::AddOperatorImpl() {
 
 #pragma endregion
 
+#pragma region op_softmax
+
+class SoftMaxOpBuilder : public BaseOpBuilder {
+ public:
+  SoftMaxOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
+      : BaseOpBuilder(model_builder, node) {}
+
+ private:
+  std::pair<bool, std::string> IsOpSupportedImpl() override;
+  int32_t GetMinSupportedSdkVer() const override { return 29; }
+  void AddOperatorImpl() override;
+};
+
+std::pair<bool, std::string> SoftMaxOpBuilder::IsOpSupportedImpl() {
+  return {true, ""};
+}
+
+void SoftMaxOpBuilder::AddOperatorImpl() {
+  auto& shaper(model_builder_.GetShaper());
+  const auto& operand_indices(model_builder_.GetOperandIndices());
+  const auto& operand_types(model_builder_.GetOperandTypes());
+  NodeAttrHelper helper(node_);
+
+  const auto& input = node_.input(0);
+  const auto& output = node_.output(0);
+  float beta = 1.f;
+  int32_t axis = helper.get("axis", 1);
+  ModelBuilder::IndexSeq input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  input_indices.push_back(model_builder_.AddOperandFromScalar(beta));
+  input_indices.push_back(model_builder_.AddOperandFromScalar(axis));
+
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  model_builder_.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion
+
+#pragma region op_identity
+
+class IdentityOpBuilder : public BaseOpBuilder {
+ public:
+  IdentityOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
+      : BaseOpBuilder(model_builder, node) {}
+
+ private:
+  std::pair<bool, std::string> IsOpSupportedImpl() override;
+  void AddOperatorImpl() override;
+};
+
+std::pair<bool, std::string> IdentityOpBuilder::IsOpSupportedImpl() {
+  return {true, ""};
+}
+
+void IdentityOpBuilder::AddOperatorImpl() {
+  // Identity is not really going to do anything
+  // Just register the dimension and type, with same index and new name
+  auto& shaper(model_builder_.GetShaper());
+  const auto& operand_indices(model_builder_.GetOperandIndices());
+  const auto& operand_types(model_builder_.GetOperandTypes());
+
+  const auto& input = node_.input(0);
+  const auto& output = node_.output(0);
+  ModelBuilder::IndexSeq input_indices;
+  input_indices.push_back(operand_indices.at(input));  // input
+
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  model_builder_.RegisterOperand(output, operand_indices.at(input), output_operand_type);
+}
+
+#pragma endregion
+
 #pragma region CreateOpBuilder
 
 std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
@@ -881,6 +949,10 @@ std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
     return std::make_unique<ConvOpBuilder>(model_builder, node);
   } else if (op == "Cast") {
     return std::make_unique<CastOpBuilder>(model_builder, node);
+  } else if (op == "Softmax") {
+    return std::make_unique<SoftMaxOpBuilder>(model_builder, node);
+  } else if (op == "Identity") {
+    return std::make_unique<IdentityOpBuilder>(model_builder, node);
   }
 
   return std::make_unique<BaseOpBuilder>(model_builder, node);
