@@ -18,10 +18,10 @@ void TestElementwiseGradientOp(
     const std::unordered_map<std::string, float> attrs = {},
     int opset_version = 7, const char* domain = kOnnxDomain) {
   const auto first_input = inputs.begin();
-  ORT_ENFORCE(first_input != inputs.end());
+  ASSERT_NE(first_input, inputs.end());
   for (auto input = first_input; input != inputs.end(); ++input) {
     if (input == first_input) continue;
-    ORT_ENFORCE(first_input->second.size() == input->second.size());
+    ASSERT_EQ(first_input->second.size(), input->second.size());
   }
 
   OpTester test(op, opset_version, domain);
@@ -139,21 +139,32 @@ TEST(BiasFastGeluGradDxTest, Basic) {
 
 namespace {
 template <typename TComputeGeluGradScalarFn>
-void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain, TComputeGeluGradScalarFn compute_gelu_grad_scalar_fn) {
+void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, const std::string& domain,
+                                   const TensorShape& input_shape,
+                                   TComputeGeluGradScalarFn compute_gelu_grad_scalar_fn) {
   OpTester test(op.c_str(), opset_version, domain.c_str());
 
-  const std::vector<float> X{-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f};
-  const std::vector<float> dY(6, 1.0f);
-  const std::vector<float> B{1.0f, 2.0f, 3.0f};
+  ASSERT_TRUE(input_shape.NumDimensions() > 0 && input_shape.Size() > 0);
 
-  const TensorShape input_shape{2, 3};
-  const TensorShape bias_shape{3};
+  const TensorShape bias_shape = input_shape.Slice(input_shape.NumDimensions() - 1);
+  const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
+
+  const std::vector<float> X = [&]() {
+    std::vector<float> result(input_size);
+    std::iota(result.begin(), result.end(), input_size * -0.5f);
+    return result;
+  }();
+  const std::vector<float> dY(input_size, 1.0f);
+  const std::vector<float> B = [&]() {
+    std::vector<float> result(bias_size);
+    std::iota(result.begin(), result.end(), 1.0f);
+    return result;
+  }();
 
   test.AddInput<float>("dY", input_shape.GetDims(), dY);
   test.AddInput<float>("X", input_shape.GetDims(), X);
   test.AddInput<float>("B", bias_shape.GetDims(), B);
 
-  const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
   std::vector<float> expected_dX{};
   for (int64_t i = 0; i < input_size; ++i) {
     expected_dX.push_back(compute_gelu_grad_scalar_fn(dY[i], X[i] + B[i % bias_size]));
@@ -166,11 +177,11 @@ void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, con
 }  // namespace
 
 TEST(BiasGeluGradDxTest, BroadcastBias) {
-  TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, GeluGrad);
+  TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 3, 4, 5}, GeluGrad);
 }
 
 TEST(BiasFastGeluGradDxTest, BroadcastBias) {
-  TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, GeluApproximationGrad);
+  TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 3, 4, 5}, GeluApproximationGrad);
 }
 
 }  // namespace test
