@@ -1040,8 +1040,17 @@ common::Status GenerateSubgraph(Graph& graph, const Node* start_node) {
     }
   }
 
-  // update the grah with only visited inputs and outputs
-  graph.SetInputs({visited_inputs.begin(), visited_inputs.end()});
+  // If the following line is uncommented, middle and last pipeline stages may
+  // have unresolved symbolic shapes. The reason is that some symbolic shapes
+  // are defined for the original inputs, if original inputs are removed, we
+  // loss the hit to resolve symbolic shapes. For example, if an original
+  // input's shape is [batch, sequence, 1024], that input should be provided as
+  // a feed to all pipeline stages. Otherwise, we don't know the actual values
+  // of "batch" and "sequence".
+  //
+  // graph.SetInputs({visited_inputs.begin(), visited_inputs.end()});
+
+  // update the grah with only visited outputs
   graph.SetOutputs({visited_outputs.begin(), visited_outputs.end()});
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
