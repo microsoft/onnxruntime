@@ -2,8 +2,7 @@
 
 #include <string>
 #include <vector>
-#include <iostream>
-#include <map>
+#include <unordered_map>
 
 class Shaper {
  public:
@@ -67,5 +66,5 @@ class Shaper {
   }
 
  private:
-  std::map<std::string, Shape> shape_map_;
+  std::unordered_map<std::string, Shape> shape_map_;
 };

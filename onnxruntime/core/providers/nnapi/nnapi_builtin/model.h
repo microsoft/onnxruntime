@@ -4,7 +4,6 @@
 #pragma once
 #include "builders/Shaper.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
-#include <unordered_map>
 
 struct ANeuralNetworksModel;
 struct ANeuralNetworksCompilation;
@@ -71,12 +70,7 @@ class Model {
   size_t GetMappedInputIdx(const std::string& name) const;
   size_t GetMappedOutputIdx(const std::string& name) const;
 
-  void SetOutputBuffer(const int32_t index, float* buffer);
-  void SetOutputBuffer(const int32_t index, uint8_t* buffer);
-  void SetOutputBuffer(const int32_t index, char* buffer);
-  void SetOutputBuffer(const int32_t index, void* buffer,
-                       const size_t elemsize);
-
+  void SetOutputBuffer(const int32_t index, const InputOutputInfo& output);
   void Predict(const std::vector<InputOutputInfo>& inputs);
 
  private:
@@ -91,7 +85,8 @@ class Model {
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
-  std::map<std::string, android::nn::wrapper::OperandType> operand_types_;
+  std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
+
   Shaper shaper_;
 
   std::unordered_map<std::string, size_t> input_map_;

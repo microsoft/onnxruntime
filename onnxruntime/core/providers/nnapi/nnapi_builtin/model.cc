@@ -74,24 +74,10 @@ void Model::SetInputBuffer(const int32_t index, const InputOutputInfo& input) {
       execution_, index, &input.type.operandType, input.buffer, input.type.GetOperandBlobByteSize()));
 }
 
-void Model::SetOutputBuffer(const int32_t index, float* buffer) {
-  SetOutputBuffer(index, buffer, 4);
-}
-
-void Model::SetOutputBuffer(const int32_t index, uint8_t* buffer) {
-  SetOutputBuffer(index, buffer, 1);
-}
-
-void Model::SetOutputBuffer(const int32_t index, char* buffer) {
-  SetOutputBuffer(index, reinterpret_cast<uint8_t*>(buffer));
-}
-
-void Model::SetOutputBuffer(const int32_t index, void* buffer,
-                            const size_t elemsize) {
+void Model::SetOutputBuffer(const int32_t index, const InputOutputInfo& output) {
   if (!prepared_for_exe_) PrepareForExecution();
-  auto size = shaper_.GetSize(output_names_[index]) * elemsize;
   THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setOutput(
-      execution_, index, nullptr, buffer, size))
+      execution_, index, &output.type.operandType, output.buffer, output.type.GetOperandBlobByteSize()));
 }
 
 void Model::PredictAfterSetInputBuffer() {

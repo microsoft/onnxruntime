@@ -393,7 +393,7 @@ void ReshapeOpBuilder::SkipInitializers() {
 
 std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
   if (!HAS(model_builder_.GetInitializerTensors(), node_.input(1)))
-    return {false, "shape of reshape must be known"};
+    return {false, "New shape of reshape must be known"};
 
   return {true, ""};
 }
@@ -404,23 +404,32 @@ void ReshapeOpBuilder::AddOperatorImpl() {
   const auto& operand_types(model_builder_.GetOperandTypes());
   const auto& initializers(model_builder_.GetInitializerTensors());
 
-  // For reshape we are not really doing anything but
-  // register a new operand with new shape
-  const auto input = node_.input(0);
-  const auto shape_name = node_.input(1);
-  const auto output = node_.output(0);
+  const auto& input = node_.input(0);
+  const auto& output = node_.output(0);
+  ModelBuilder::IndexSeq input_indices;
+  input_indices.push_back(operand_indices.at(input));  // input
 
-  const auto& shape_tensor = initializers.at(shape_name);
+  const auto& shape_tensor = initializers.at(node_.input(1));
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
   const auto size = static_cast<uint32_t>(shape_tensor.dims()[0]);
+
+  ModelBuilder::Shape input_shape = shaper[input];
   std::vector<int32_t> shape(size);
   for (uint32_t i = 0; i < size; i++) {
-    shape[i] = static_cast<int32_t>(rawShape[i]);
+    int32_t dim = static_cast<int32_t>(rawShape[i]);
+    // NNAPI reshape does not support 0 as dimension
+    shape[i] = dim == 0 ? input_shape[i] : dim;
   }
+
+  ModelBuilder::Shape shape_dimen = {size};
+  std::string shape_name = node_.name() + input + "newshape";
+  OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
+  uint32_t shape_idx = model_builder_.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type);
+  input_indices.push_back(shape_idx);
 
   shaper.Reshape(input, shape, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder_.RegisterOperand(output, operand_indices.at(input), output_operand_type);
+  model_builder_.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion op_reshape
