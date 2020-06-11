@@ -81,7 +81,7 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QLinearBinaryOpKernelAvx2.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd_avx2.cpp
     )
   else()
     enable_language(ASM_MASM)
@@ -213,7 +213,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QLinearBinaryOpKernelAvx2.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd_avx2.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 

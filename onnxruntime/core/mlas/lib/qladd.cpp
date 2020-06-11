@@ -18,29 +18,7 @@ Abstract:
 
 --*/
 
-#include "mlasi.h"
-
-union Float32Bits {
-    uint32_t u32;
-    float    fp32;
-};
-
-static
-MLAS_FORCEINLINE
-uint32_t
-BitsOfFp32(float f) {
-    Float32Bits uf;
-    uf.fp32 = f;
-    return uf.u32;
-}
-
-static
-MLAS_FORCEINLINE
-float
-Fp32FromBits(uint32_t u) {
-    Float32Bits uf = { u };
-    return uf.fp32;
-}
+#include "qladd.h"
 
 // Pure C++ helper, back off here in rare case.
 template<typename DataType, bool IsScalarA, bool IsScalarB>
@@ -222,21 +200,10 @@ MlasQLinearAddKernelHelper(
 {
     typedef SignedUnsignedIntOps<DataType> SUI;
 
-    constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
-    constexpr float MaxScaleRatio = 256.0f; //std::stof("0x1.0p+8f");
+    int32_t Shift, MultiplierA, MultiplierB;
     const float ScaleRatio_AC = ScaleA / ScaleC;
     const float ScaleRatio_BC = ScaleB / ScaleC;
-    const float GreaterScaleRatio = std::max(ScaleRatio_AC, ScaleRatio_BC);
-    const int32_t GreaterExponent = (int32_t)(BitsOfFp32(GreaterScaleRatio) >> 23) - 127;
-    const uint32_t Shift = (uint32_t)(21 - GreaterExponent); // Shift is in [13, 31] range.
-    const float MultiplierFloatValue = Fp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
-    const int32_t MultiplierA = (int32_t) lrintf(ScaleRatio_AC * MultiplierFloatValue);
-    const int32_t MultiplierB = (int32_t) lrintf(ScaleRatio_BC * MultiplierFloatValue);
-
-    if (!(ScaleRatio_AC >= MinScaleRatio && ScaleRatio_AC < MaxScaleRatio) || 
-            !(ScaleRatio_BC >= MinScaleRatio && ScaleRatio_BC < MaxScaleRatio) ||
-            !(Shift <= 31 && Shift >= 13) || !(MultiplierA < 0x00400000 && MultiplierB < 0x00400000) || 
-            !(MultiplierA >= 0x00200000 || MultiplierB >= 0x00200000)) {
+    if (!CalcQLinearAddParameters(ScaleRatio_AC, ScaleRatio_BC, Shift, MultiplierA, MultiplierB)) {
         MlasQLinearAddKernelRawHelper<DataType,IsScalarA, IsScalarB>(
             InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
         return;
@@ -247,7 +214,7 @@ MlasQLinearAddKernelHelper(
     const typename SUI::i8x8_t VectorZeroPointA = SUI::vmov_n_i8((DataType)ZeroPointA);
     const typename SUI::i8x8_t VectorZeroPointB = SUI::vmov_n_i8((DataType)ZeroPointB);
     const int16x8_t VectorZeroPointC = vmovq_n_s16((int16_t)ZeroPointC);
-    const int32x4_t vright_shift = vmovq_n_s32(- static_cast<int32_t>(Shift)); // vld1q_dup_s32(&right_shift);
+    const int32x4_t vright_shift = vmovq_n_s32(-Shift); // vld1q_dup_s32(&right_shift);
     const int32x4_t vzero_shift_mask = vreinterpretq_s32_u32(vceqq_s32(vright_shift, vmovq_n_s32(0)));
     
     int32x4_t vscalar;
@@ -470,18 +437,18 @@ template<> MLAS_INT32X4 ShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm) { retu
 template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-UnpackloBytesToShorts(MLAS_INT32X4 v);
+UnpackLowI8ToS16(MLAS_INT32X4 v);
 
-template <> MLAS_INT32X4 UnpackloBytesToShorts<int8_t>(MLAS_INT32X4 v) { return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8); }
-template <> MLAS_INT32X4 UnpackloBytesToShorts<uint8_t>(MLAS_INT32X4 v) { return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8); }
+template <> MLAS_INT32X4 UnpackLowI8ToS16<int8_t>(MLAS_INT32X4 v) { return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8); }
+template <> MLAS_INT32X4 UnpackLowI8ToS16<uint8_t>(MLAS_INT32X4 v) { return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8); }
 
 template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-Pack16Bits(MLAS_INT32X4 a, MLAS_INT32X4 b);
+PackS16(MLAS_INT32X4 a, MLAS_INT32X4 b);
 
-template <> MLAS_INT32X4 Pack16Bits<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packus_epi16(a, b); }
-template <> MLAS_INT32X4 Pack16Bits<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packs_epi16(a, b); }
+template <> MLAS_INT32X4 PackS16<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packus_epi16(a, b); }
+template <> MLAS_INT32X4 PackS16<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packs_epi16(a, b); }
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 void
@@ -495,12 +462,14 @@ MlasQLinearAddKernelHelper(
     float ScaleC,
     int32_t ZeroPointC,
     DataType* OutputC,
-    size_t p_N
+    size_t N
     )
 {
-    const auto VectorScaleRatio_AC = MlasBroadcastFloat32x4(ScaleA / ScaleC);
-    const auto VectorScaleRatio_BC = MlasBroadcastFloat32x4(ScaleB / ScaleC);
-    auto VectorFixedPart = MlasBroadcastFloat32x4((float)ZeroPointC - ScaleA / ScaleC * ZeroPointA - ScaleB / ScaleC * ZeroPointB);
+    const float ScaleRatio_AC = ScaleA / ScaleC;
+    const float ScaleRatio_BC = ScaleB / ScaleC;
+    const auto VectorScaleRatio_AC = MlasBroadcastFloat32x4(ScaleRatio_AC);
+    const auto VectorScaleRatio_BC = MlasBroadcastFloat32x4(ScaleRatio_BC);
+    auto VectorFixedPart = MlasBroadcastFloat32x4((float)ZeroPointC - (ScaleRatio_AC * ZeroPointA + ScaleRatio_BC * ZeroPointB));
 
     MLAS_FLOAT32X4 va_lo, va_hi, vb_lo, vb_hi;
     if (IsScalarA) {
@@ -512,9 +481,9 @@ MlasQLinearAddKernelHelper(
         VectorFixedPart = _mm_add_ps(VectorFixedPart, _mm_mul_ps(vb_lo, VectorScaleRatio_BC));
     }
 
-    atuo N = static_cast<int64_t>(p_N);
+    auto n = static_cast<int64_t>(N);
     MLAS_INT32X4 vc = _mm_setzero_si128();
-    while (N > 0) {
+    while (n > 0) {
         if (!IsScalarA) {
             const auto va_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)InputA);
             const auto va_i16x8 = _mm_unpacklo_epi8(va_low_half, va_low_half);
@@ -542,20 +511,20 @@ MlasQLinearAddKernelHelper(
             r_hi = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)), _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
         }
         const auto vc_i16x8 = _mm_packs_epi32(r_lo, r_hi);
-        vc = Pack16Bits<DataType>(vc_i16x8, vc_i16x8);
+        vc = PackS16<DataType>(vc_i16x8, vc_i16x8);
 
-        N -= 8;
-        if (N < 0) break;
+        n -= 8;
+        if (n < 0) break;
 
         _mm_storel_epi64((MLAS_INT32X4*)OutputC, vc);
         OutputC += 8;
     }
 
-    if (N < 0) {
-        N += 8;
+    if (n < 0) {
+        n += 8;
         uint64_t PackedValueC = (uint64_t)_mm_cvtsi128_si64(vc);
-        for (int64_t n = 0; n < N; ++n) {
-            *((uint8_t*)OutputC + n) = (uint8_t)PackedValueC;
+        for (int64_t i = 0; i < n; ++i) {
+            *((uint8_t*)OutputC + i) = (uint8_t)PackedValueC;
             PackedValueC >>= 8;
         }
     }
