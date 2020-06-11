@@ -39,6 +39,9 @@
     }                                                                   \
   }
 
+#define HAS(map, key) \
+  (map.find(key) != map.end())
+
 inline std::string GetErrorCause(int errorCode) {
   switch (errorCode) {
     case ANEURALNETWORKS_OUT_OF_MEMORY:
