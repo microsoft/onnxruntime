@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
+
 #include <math.h>
 
 #include "gtest/gtest.h"
+
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -102,7 +105,6 @@ TEST(FastGeluGradTest, Basic) {
       {}, 1, kMSDomain);
 }
 
-// TODO also test broadcasting bias
 TEST(BiasGeluGradDxTest, Basic) {
   const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
   const std::vector<float> dY(7, 1.0f);
@@ -149,17 +151,9 @@ void TestBiasGeluGradBroadcastBias(const std::string& op, int opset_version, con
   const TensorShape bias_shape = input_shape.Slice(input_shape.NumDimensions() - 1);
   const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
 
-  const std::vector<float> X = [&]() {
-    std::vector<float> result(input_size);
-    std::iota(result.begin(), result.end(), input_size * -0.5f);
-    return result;
-  }();
+  const std::vector<float> X = ValueRange(input_size, static_cast<float>(-input_size / 2));
   const std::vector<float> dY(input_size, 1.0f);
-  const std::vector<float> B = [&]() {
-    std::vector<float> result(bias_size);
-    std::iota(result.begin(), result.end(), 1.0f);
-    return result;
-  }();
+  const std::vector<float> B = ValueRange(bias_size, 1.0f);
 
   test.AddInput<float>("dY", input_shape.GetDims(), dY);
   test.AddInput<float>("X", input_shape.GetDims(), X);
