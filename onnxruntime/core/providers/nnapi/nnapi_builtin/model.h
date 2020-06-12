@@ -16,43 +16,44 @@ namespace nnapi {
 
 #define USENNAPISHAREDMEM 1
 
-#ifdef USENNAPISHAREDMEM
-// Manage NNAPI shared memory handle
-class NNMemory {
- public:
-  NNMemory(const NnApi* nnapi, const char* name, size_t size);
-  ~NNMemory();
-
-  ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
-  uint8_t* get_data_ptr() { return data_ptr_; }
-
- private:
-  // NnApi instance to use. Not owned by this object.
-  const NnApi* nnapi_{nullptr};
-  int fd_{0};
-  size_t byte_size_{0};
-  uint8_t* data_ptr_{nullptr};
-  ANeuralNetworksMemory* nn_memory_handle_{nullptr};
-};
-#else
-class NNMemory {
- public:
-  NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size);
-  ~NNMemory() = default;
-  uint8_t* get_data_ptr() { return data_->data(); }
-
- private:
-  std::unique_ptr<std::vector<uint8_t>> data_;
-};
-#endif
-
-struct InputOutputInfo {
-  void* buffer{nullptr};
-  android::nn::wrapper::OperandType type;
-};
-
 class Model {
   friend class ModelBuilder;
+
+ public:
+  struct InputOutputInfo {
+    void* buffer{nullptr};
+    android::nn::wrapper::OperandType type;
+  };
+
+#ifdef USENNAPISHAREDMEM
+  // Manage NNAPI shared memory handle
+  class NNMemory {
+   public:
+    NNMemory(const NnApi* nnapi, const char* name, size_t size);
+    ~NNMemory();
+
+    ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
+    uint8_t* get_data_ptr() { return data_ptr_; }
+
+   private:
+    // NnApi instance to use. Not owned by this object.
+    const NnApi* nnapi_{nullptr};
+    int fd_{0};
+    size_t byte_size_{0};
+    uint8_t* data_ptr_{nullptr};
+    ANeuralNetworksMemory* nn_memory_handle_{nullptr};
+  };
+#else
+  class NNMemory {
+   public:
+    NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size);
+    ~NNMemory() = default;
+    uint8_t* get_data_ptr() { return data_->data(); }
+
+   private:
+    std::unique_ptr<std::vector<uint8_t>> data_;
+  };
+#endif
 
  public:
   ~Model();

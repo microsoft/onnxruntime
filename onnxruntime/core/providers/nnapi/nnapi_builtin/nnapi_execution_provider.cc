@@ -279,8 +279,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         LOGS_DEFAULT(VERBOSE) << "system input i is " << i << " system dim is " << GetShape(dimensions);
       }
 
-      std::vector<nnapi::InputOutputInfo> inputs;
-      std::vector<nnapi::InputOutputInfo> outputs;
+      std::vector<nnapi::Model::InputOutputInfo> inputs;
+      std::vector<nnapi::Model::InputOutputInfo> outputs;
 
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const auto& input_name = model->GetInputs()[i];

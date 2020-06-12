@@ -96,7 +96,7 @@ class ModelBuilder {
   void ClearData();
 
   void SetOperandValue(ModelBuilder::Index index,
-                       NNMemory* memory,
+                       Model::NNMemory* memory,
                        size_t size, size_t offset);
 
   uint32_t SetOperandFromScalar(android::nn::wrapper::Type type, const void* value, size_t size);

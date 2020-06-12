@@ -128,7 +128,7 @@ void Model::SetOutputs(const std::vector<InputOutputInfo>& outputs) {
 }
 
 #ifdef USENNAPISHAREDMEM
-NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
+Model::NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
   if (name && size > 0) {
     nnapi_ = nnapi;
     byte_size_ = size;
@@ -140,7 +140,7 @@ NNMemory::NNMemory(const NnApi* nnapi, const char* name, size_t size) {
   }
 }
 
-NNMemory::~NNMemory() {
+Model::NNMemory::~NNMemory() {
   if (nn_memory_handle_) {
     nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
   }
@@ -151,7 +151,7 @@ NNMemory::~NNMemory() {
   if (fd_ > 0) close(fd_);
 }
 #else
-NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {
+Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {
   if (name && size > 0) {
     data_ = std::make_unique<std::vector<uint8_t> >(size);
   }

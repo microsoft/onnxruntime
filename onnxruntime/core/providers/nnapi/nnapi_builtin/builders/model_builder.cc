@@ -210,7 +210,7 @@ void ModelBuilder::RegisterInitializers() {
 
   // 2nd pass copies all the initializer data into NNAPI shared memory
   nnapi_model_->mem_initializers_ =
-      std::make_unique<NNMemory>(nnapi_, "mem_initializers_", sizeAll);
+      std::make_unique<Model::NNMemory>(nnapi_, "mem_initializers_", sizeAll);
 
   // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
@@ -314,7 +314,7 @@ void ModelBuilder::RegisterOperand(const std::string& name,
 }
 
 void ModelBuilder::SetOperandValue(ModelBuilder::Index index,
-                                   NNMemory* memory,
+                                   Model::NNMemory* memory,
                                    size_t size, size_t offset) {
 #ifdef USENNAPISHAREDMEM
   THROW_ON_ERROR(
@@ -348,7 +348,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
             buffer, size));
   } else {
     const size_t paddedSize = getPaddedByteSize(size);
-    auto persist_buffer = std::make_unique<NNMemory>(nnapi_, name.c_str(), paddedSize);
+    auto persist_buffer = std::make_unique<Model::NNMemory>(nnapi_, name.c_str(), paddedSize);
     uint8_t* dest = persist_buffer->get_data_ptr();
     memcpy(dest, buffer, size);
     SetOperandValue(index, persist_buffer.get(), size, 0);
