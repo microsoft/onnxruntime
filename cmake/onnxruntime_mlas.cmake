@@ -259,10 +259,10 @@ else()
           set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -mavx512bw -mavx512dq -mavx512vl")
         endif()
       else()
-        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -DMLAS_AVX512CORE_UNSUPPORTED")
+        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512CORE_UNSUPPORTED")
       endif()
     else()
-      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -DMLAS_AVX512F_UNSUPPORTED")
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
     endif()
 
     set(mlas_platform_srcs
