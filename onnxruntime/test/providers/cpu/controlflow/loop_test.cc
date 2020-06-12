@@ -960,6 +960,80 @@ TEST(Loop, BugFixIssue4031_implicit_input_handling) {
   ASSERT_TRUE(output.Data<float>()[0] == 125.f);
 }
 
+// check the optimization in AllocationPlanner doesn't affect the iteration count when it is passed through
+// and becomes a subgraph output. if we prevent a separate allocation for the output via the optimization
+// the final value will be repeated in the loop output instead of the value from each iteration
+TEST(Loop, IterationCountAsOutput) {
+  auto create_subgraph = []() {
+    Model model("Iter_num_in subgraph output", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    std::vector<NodeArg*> inputs;
+    std::vector<NodeArg*> outputs;
+
+    /* Inputs: iter_num, cond_in, loop carried state variables.
+
+         iter_num_in    cond_in     
+             |             |        
+         [Identity]   [Identity]   
+             |             |        
+     loop_var_0_out    cond_out    
+    */
+
+    // graph inputs types.
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // graph inputs
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+
+    // graph outputs
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& loop_var_0_out = graph.GetOrCreateNodeArg("loop_var_0_out", &int64_scalar);
+
+    // iter_num_in -> loop_var_0_out
+    {
+      inputs = {&iter_num_in};
+      outputs = {&loop_var_0_out};
+
+      graph.AddNode("loop_var_out", "Identity", "Forward cond_in to loop_var_0_out", inputs, outputs);
+    }
+
+    // cond_in -> cond_out
+    {
+      inputs = {&cond_in};
+      outputs = {&cond_out};
+
+      graph.AddNode("cond_in_identity", "Identity", "Forward cond_in to cond_out", inputs, outputs);
+    }
+
+    graph.SetInputs({&iter_num_in, &cond_in});
+    graph.SetOutputs({&cond_out, &loop_var_0_out});
+
+    auto status = graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 11);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {3});
+  test.AddInput<bool>("cond", {1}, {true});
+
+  test.AddOutput<int64_t>("loop_var_0_final", {3, 1}, {0, 1, 2});
+
+  // Disable TensorRT on unsupported data type BOOL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 #ifdef USE_CUDA
 // test that when part of the subgraph run on CUDA it executes successfully
 TEST(Loop, MixedExecutionProviders) {
