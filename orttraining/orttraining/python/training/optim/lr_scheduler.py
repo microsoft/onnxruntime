@@ -1,0 +1,2 @@
+class LRScheduler(object):
+    pass
