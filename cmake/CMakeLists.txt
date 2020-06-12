@@ -107,6 +107,7 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
@@ -958,15 +959,14 @@ if (onnxruntime_ENABLE_TRAINING)
       mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-
-      add_definitions(-DUSE_MPI=1)
-      message( STATUS "MPI is enabled in Linux GPU Build." )
     else ()
-      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, MPI is disabled." )
+      set(onnxruntime_USE_NCCL OFF)
+      set(onnxruntime_USE_HOROVOD OFF)
+      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL or HOROVOD will be disabled." )
     endif()
 
-    # Find NCCL
-    if (onnxruntime_USE_CUDA)
+    # Find NCCL and MPI
+    if (onnxruntime_USE_NCCL AND MPI_FOUND)
       find_path(NCCL_INCLUDE_DIR
         NAMES nccl.h
         HINTS
@@ -1012,12 +1012,13 @@ if (onnxruntime_ENABLE_TRAINING)
         add_definitions(-DUSE_NCCL=1)
         message( STATUS "NCCL is enabled in Linux GPU Build." )
       else ()
+        set(onnxruntime_USE_NCCL OFF)
         message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
       endif()
     endif()
   endif()
 
-  if (onnxruntime_USE_HOROVOD)
+  if (onnxruntime_USE_HOROVOD AND MPI_FOUND)
     if (WIN32)
       message( FATAL_ERROR "Horovod is not supported on Windows." )
     elseif (UNIX)

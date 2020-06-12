@@ -1,6 +1,6 @@
 #pragma once
 
-#ifdef USE_MPI
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 #include <mpi.h>
 #endif
 
@@ -19,7 +19,7 @@ struct MPIContext {
   int local_size;
 };
 
-#ifdef USE_MPI
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 MPIContext setup_mpi();
 void shutdown_mpi();
 #endif

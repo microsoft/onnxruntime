@@ -205,6 +205,12 @@ if (onnxruntime_USE_CUDA)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
       )
+    elseif (NOT onnxruntime_USE_NCCL)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
+      )
     endif()
 
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})

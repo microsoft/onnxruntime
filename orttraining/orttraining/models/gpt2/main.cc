@@ -291,7 +291,7 @@ void setup_training_params(GPT2Parameters& params) {
                                            {/*prediction_name*/ "output",
                                             /*label_name*/ "labels"});
 
-#ifdef USE_MPI
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
   params.mpi_context = setup_mpi();
   ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
   ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
@@ -476,7 +476,7 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#ifdef USE_MPI
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
   shutdown_mpi();
 #endif
 

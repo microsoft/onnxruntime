@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace training {
 MPIContext::MPIContext(int w_rank, int l_rank, int w_size, int l_size) : world_rank(w_rank), local_rank(l_rank), world_size(w_size), local_size(l_size) {}
 
-#ifdef USE_MPI
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 MPIContext setup_mpi() {
   // setup MPI amd horovod
   int is_mpi_initialized = 0;
