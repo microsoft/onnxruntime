@@ -11,10 +11,10 @@ namespace onnxruntime {
 @Class GeluFusion
 Fuse Add + Gelu to GeluFusion
 */
-class BiasGelu : public GraphTransformer {
+class BiasGeluFusion : public GraphTransformer {
  public:
-  BiasGelu(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("BiasGelu", compatible_execution_providers) {
+  BiasGeluFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("BiasGeluFusion", compatible_execution_providers) {
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
