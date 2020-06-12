@@ -1656,7 +1656,41 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         // Right now we only support int32
         y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
 
-        matmulShapeInference(ctx, 0, 1);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicQuantizeMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
+      .Input(
+          2,
+          "b_scale",
+          "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'B'.",
+          "T1")
+      .Input(
+          3,
+          "b_zero_point",
+          "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'B'.",
+          "T2",
+          OpSchema::Optional)
+      .Output(0, "Y", "Matrix multiply results from A * B", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain input A, b_scale and output Y data type as float tensor.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input B data type to 8-bit integer tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
   static const char* TransposeMatMul_doc = R"DOC(

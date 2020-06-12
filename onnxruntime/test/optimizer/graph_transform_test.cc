@@ -7,53 +7,54 @@
 
 #include "core/graph/onnx_protobuf.h"
 
-#include "core/session/inference_session.h"
+#include "asserts.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ml_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
-#include "core/optimizer/conv_add_fusion.h"
-#include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/gemm_activation_fusion.h"
-#include "core/optimizer/bias_gelu_fusion.h"
-#include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gelu_approximation.h"
-#include "core/optimizer/layer_norm_fusion.h"
-#include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/optimizer/expand_elimination.h"
+#include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
+#include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
+#include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/reshape_fusion.h"
-#include "core/optimizer/attention_fusion.h"
-#include "core/optimizer/fast_gelu_fusion.h"
-#include "core/optimizer/expand_elimination.h"
-#include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
+#include "core/session/inference_session.h"
 #include "core/util/math.h"
+#include "gtest/gtest.h"
 #include "test/capturing_sink.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
-#include "test/compare_ortvalue.h"
-#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
-#include "asserts.h"
-#include "gtest/gtest.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -1721,7 +1722,6 @@ TEST_F(GraphTransformationTests, BiasGeluTest) {
   ASSERT_TRUE(op_to_count["BiasGelu"] == 1);
 }
 
-
 // BiasGelu allows input switching based on input dimensions.
 // This test validates the input edges are plugged correct in the optimized graph.
 TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
@@ -2294,6 +2294,25 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
       }
     }
   }
+}
+
+TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
+  auto model_uri = MODEL_FOLDER "fusion/dynamic_quantize_matmul.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["DynamicQuantizeLinear"], 0);
+  EXPECT_EQ(op_to_count["MatMulInteger"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+  EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
 }
 
 #endif
