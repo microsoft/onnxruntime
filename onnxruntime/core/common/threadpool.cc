@@ -53,9 +53,9 @@ public:
                                                                                  _block_size(block_size) {
    assert(sizeof(LoopCounterShard) == 64);
    assert(block_size != 0);
-   assert((num_iterations % block_size) == 0);
 
-   // Divide the iteration space into NUM_SHARDS pieces, in multiples of the block size.
+   // Divide the iteration space into NUM_SHARDS pieces.  If the iteration space does not
+   // divide evenly into shards of multiples of block_size then the final shard is left uneven.
    double iterations_per_shard = static_cast<double>(num_iterations) / NUM_SHARDS;
    uint64_t split = 0;
    for (uint64_t shard = 0; shard < NUM_SHARDS; shard++) {
