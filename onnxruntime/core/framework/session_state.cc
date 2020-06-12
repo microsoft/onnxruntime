@@ -196,18 +196,20 @@ Status ResolveDimParams(const GraphViewer& graph,
   for (const auto* input : graph.GetInputs()) {
     auto* shape = input->Shape();
     auto it = feeds.find(input->Name());
-    if (it == feeds.end())
+    if (it == feeds.end()) {
       return Status(ONNXRUNTIME, FAIL,
                     "Graph input " + input->Name() +
                     " is not found in the feed list, unable to resolve the value for dynamic shape.");
+    }
     if (it->second.NumDimensions() == 0 && !shape) {
       // This is a scalar, which has nothing to do with symbolic shapes. 
       continue;
     }
-    if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions()))
+    if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions())) {
       return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
                     "'s shape is not present or its shape doesn't match feed's shape."
                     "Unable to resolve the value for dynamic shape");
+    }
     for (int k = 0, end = shape->dim_size(); k < end; ++k) {
       if (shape->dim()[k].has_dim_param()) {
         out.insert({shape->dim()[k].dim_param(), it->second.GetDims()[k]});
@@ -328,7 +330,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
 void SessionState::ResolveMemoryPatternFlag() {
   if (enable_mem_pattern_) {
     for (auto* input : graph_viewer_->GetInputs()) {
-      if (!input->Shape()) {
+      if (!input->HasTensorOrScalarShape()) {
         enable_mem_pattern_ = false;
         break;
       }
