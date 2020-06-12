@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
+
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
@@ -30,13 +31,15 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {
-
+namespace training {
 namespace transformer_utils {
 
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(TransformerLevel level,
@@ -63,6 +66,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
+
+      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
+
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
         LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
@@ -179,4 +187,5 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 }
 
 }  // namespace transformer_utils
+}  // namespace training
 }  // namespace onnxruntime

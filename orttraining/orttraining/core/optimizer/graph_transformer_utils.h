@@ -10,6 +10,7 @@
 namespace onnxruntime {
 struct FreeDimensionOverride;
 
+namespace training {
 namespace transformer_utils {
 
 /** Generates all pre-training transformers for this level. */
@@ -24,4 +25,5 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
                                                                     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 }  // namespace transformer_utils
+}  // namespace training
 }  // namespace onnxruntime
