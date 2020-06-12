@@ -5,14 +5,14 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
+#include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 #include "orttraining/training_ops/cuda/activation/gelu_grad_impl_common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename GeluComputationMode>
+template <typename T, typename GeluComputationMode, int num_consecutive_elements_per_group, int num_groups_per_thread>
 __global__ void BiasGeluGradDxKernel(
-    int num_consecutive_elements_per_group, int num_groups_per_thread,
     CUDA_LONG input_size, fast_divmod bias_size_fdm,
     const T* dY, const T* X, const T* B, T* dX) {
   const auto& num_threads_per_block = blockDim.x;
@@ -55,33 +55,26 @@ void LaunchBiasGeluGradDxKernel(
       num_threads_per_block * num_consecutive_elements_per_group * num_groups_per_thread);
   const fast_divmod bias_size_fdm{static_cast<int>(bias_size)};
 
-  BiasGeluGradDxKernel<T, GeluComputationMode><<<num_blocks_per_grid, num_threads_per_block>>>(
-      num_consecutive_elements_per_group, num_groups_per_thread,
-      static_cast<CUDA_LONG>(input_size), bias_size_fdm, dY, X, B, dX);
+  BiasGeluGradDxKernel<T, GeluComputationMode, num_consecutive_elements_per_group, num_groups_per_thread>
+      <<<num_blocks_per_grid, num_threads_per_block>>>(
+          static_cast<CUDA_LONG>(input_size), bias_size_fdm, dY, X, B, dX);
 }
 
 // explicit instantiations
-#define SPECIALIZED_BIAS_GELU_GRAD_IMPL(T)                                     \
-  template void LaunchBiasGeluGradDxKernel<T, gelu_computation_mode::Default>( \
-      int64_t input_size, int64_t bias_size,                                   \
+#define SPECIALIZED_BIAS_GELU_GRAD_IMPL(T, GeluComputationMode)     \
+  template void LaunchBiasGeluGradDxKernel<T, GeluComputationMode>( \
+      int64_t input_size, int64_t bias_size,                        \
       const T* dY, const T* X, const T* B, T* dX)
 
-SPECIALIZED_BIAS_GELU_GRAD_IMPL(half);
-SPECIALIZED_BIAS_GELU_GRAD_IMPL(float);
-SPECIALIZED_BIAS_GELU_GRAD_IMPL(double);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(half, gelu_computation_mode::Default);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(float, gelu_computation_mode::Default);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(double, gelu_computation_mode::Default);
+
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(half, gelu_computation_mode::Approximation);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(float, gelu_computation_mode::Approximation);
+SPECIALIZED_BIAS_GELU_GRAD_IMPL(double, gelu_computation_mode::Approximation);
 
 #undef SPECIALIZED_BIAS_GELU_GRAD_IMPL
-
-#define SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(T)                             \
-  template void LaunchBiasGeluGradDxKernel<T, gelu_computation_mode::Approximation>( \
-      int64_t input_size, int64_t bias_size,                                         \
-      const T* dY, const T* X, const T* B, T* dX)
-
-SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(half);
-SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(float);
-SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL(double);
-
-#undef SPECIALIZED_BIAS_GELU_APPROXIMATION_GRAD_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime
