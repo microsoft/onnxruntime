@@ -17,6 +17,7 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified, const logging::Logg
   // At least currently, some transformers (InsertCastTransformer and MemcpyTransformer) need this to be called
   // after they complete to put the graph back into a valid state for the next transformer.
   if (modified) {
+    std::cout<< "GraphTransformer " << Name() << " has been applied.\n";
     status = graph.Resolve();
   }
 
