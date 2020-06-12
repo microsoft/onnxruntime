@@ -151,12 +151,12 @@ else()
     set(mlas_platform_srcs_sse2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
-    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_OPTIONS "-msse2")
+    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -msse2")
 
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelAvx.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_OPTIONS "-mavx")
+    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -mavx")
 
     set(mlas_platform_srcs
       ${mlas_platform_srcs_sse2}
@@ -177,7 +177,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelSse2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelSse2.S
     )
-    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_OPTIONS "-msse2")
+    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -msse2")
 
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx.S
@@ -189,7 +189,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SoftmaxKernelAvx.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_OPTIONS "-mavx")
+    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -mavx")
 
     set(mlas_platform_srcs_avx2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx2.S
@@ -203,7 +203,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -mavx2 -mfma")
 
     # Some toolchains do not support AVX512 compiler flags but are still able
     # to build the sources. Other toolchains require the AVX512 compiler flags
@@ -231,7 +231,7 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       )
       if(HAS_AVX512F)
-        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_OPTIONS "-mavx512f")
+        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -mavx512f")
       endif()
 
       check_cxx_compiler_flag("-mavx512bw -mavx512dq -mavx512vl" HAS_AVX512CORE)
@@ -256,13 +256,13 @@ else()
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Core.S
         )
         if(HAS_AVX512CORE)
-          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_OPTIONS "-mavx512bw;-mavx512dq;-mavx512vl")
+          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -mavx512bw -mavx512dq -mavx512vl")
         endif()
       else()
-        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_OPTIONS "-DMLAS_AVX512CORE_UNSUPPORTED")
+        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -DMLAS_AVX512CORE_UNSUPPORTED")
       endif()
     else()
-      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_OPTIONS "-DMLAS_AVX512F_UNSUPPORTED")
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "${CMAKE_ASM_FLAGS} -DMLAS_AVX512F_UNSUPPORTED")
     endif()
 
     set(mlas_platform_srcs
