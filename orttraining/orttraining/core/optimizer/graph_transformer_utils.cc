@@ -32,6 +32,7 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
@@ -65,7 +66,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
+
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
+
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(compatible_eps, weights_to_train));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
