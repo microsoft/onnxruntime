@@ -343,36 +343,53 @@ def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_
     result = {}
     runtimes = timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=repeat_times)
     result.update(result_template)
-    result.update({"engine": "onnxruntime"})
+    result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
 
-def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times, ort_output_names,
-                                  last_state_buffer, pooler_buffer, batch_size, sequence_length, hidden_size, device):
+def inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times, ort_output_names, ort_outputs,
+                                  output_buffers, max_last_state_size, max_pooler_size, batch_size, device):
     result = {}
+
     # Bind inputs and outputs to onnxruntime session
     io_binding = ort_session.io_binding()
     # Bind inputs to device
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
         io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
-    # Bind outputs buffers with the sizes needed
-    io_binding.bind_output(ort_output_names[0], last_state_buffer.device.type, 0, numpy.float32,
-                           [batch_size, sequence_length, hidden_size], last_state_buffer.data_ptr())
-    if len(ort_output_names) == 2:
-        io_binding.bind_output(ort_output_names[1], pooler_buffer.device.type, 0, numpy.float32,
-                               [batch_size, hidden_size], pooler_buffer.data_ptr())
+    has_pooler = True if len(ort_output_names) == 2 else False
+    # Bind outputs buffers with the sizes needed if not allocated already
+    if output_buffers["last_state"] is None:
+        allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, device, has_pooler)
+    last_state_buffer = output_buffers["last_state"]
+    pooler_buffer = output_buffers["pooler"]
+    io_binding.bind_output(ort_output_names[0], last_state_buffer.device.type, 0, numpy.float32, ort_outputs[0].shape,
+                           last_state_buffer.data_ptr())
+    if has_pooler:
+        io_binding.bind_output(ort_output_names[1], pooler_buffer.device.type, 0, numpy.float32, ort_outputs[1].shape,
+                               pooler_buffer.data_ptr())
 
     runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     result.update(result_template)
-    result.update({"engine": "onnxruntime_with_io_binding"})
+    result.update({"io_binding": True})
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
 
+def allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, device, has_pooler=False):
+    # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
+    # for each test run.
+    # dummy last state
+    if output_buffers["last_state"] is None:
+        output_buffers["last_state"] = torch.empty(max_last_state_size, dtype=torch.float32, device=device)
+    # create dummy pooler
+    if output_buffers["pooler"] is None and has_pooler:
+        output_buffers["pooler"] = torch.empty(max_pooler_size, dtype=torch.float32, device=device)
+
+
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, run_with_io, run_without_io):
+                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, disable_ort_io_binding):
     import onnxruntime
 
     results = []
@@ -404,24 +421,14 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
             if ort_session is None:
                 continue
 
-            ort_output_names = []
-            last_state_buffer = None
-            pooler_buffer = None
+            ort_output_names = [node_arg.name for node_arg in ort_session.get_outputs()]
+            output_buffers = {"last_state": None, "pooler": None}
             device = "cuda" if use_gpu else "cpu"
             config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-            if run_with_io:
-                # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
-                # for each test run.
-                max_batch_size = max(batch_sizes)
-                max_seq_len = max(sequence_lengths)
-                ort_output_names = [node_arg.name for node_arg in ort_session.get_outputs()]
-                last_state_buffer = torch.empty(numpy.prod([max_batch_size, max_seq_len, config.hidden_size]),
-                                                dtype=torch.float32,
-                                                device=device)
-                if len(ort_output_names) == 2:
-                    pooler_buffer = torch.empty(numpy.prod([max_batch_size, config.hidden_size]),
-                                                dtype=torch.float32,
-                                                device=device)
+            max_last_state_size = numpy.prod(
+                [max(batch_sizes), max(sequence_lengths),
+                 max(vocab_size, config.hidden_size)])
+            max_pooler_size = numpy.prod([max(batch_sizes), config.hidden_size])
             for batch_size in batch_sizes:
                 if batch_size <= 0:
                     continue
@@ -432,29 +439,32 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
                     ort_inputs = create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names)
 
                     result_template = {
+                        "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
                         "device": device,
                         "optimizer": optimize_onnx,
                         "fp16": fp16,
+                        "io_binding": False,
                         "model_name": model_name,
                         "inputs": num_inputs,
                         "batch_size": batch_size,
                         "sequence_length": sequence_length,
                         "datetime": str(datetime.now()),
                     }
-                    if run_without_io:
-                        logger.info("Run onnxruntime on {} with input shape {}".format(
-                            model_name, [batch_size, sequence_length]))
-                        result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
-                        logger.info(result)
-                        results.append(result)
+                    logger.info("Run onnxruntime on {} with input shape {}".format(model_name,
+                                                                                   [batch_size, sequence_length]))
+                    result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
+                    logger.info(result)
+                    results.append(result)
 
-                    if run_with_io:
+                    if not disable_ort_io_binding:
                         logger.info("Run onnxruntime with io binding on {} with input shape {}".format(
                             model_name, [batch_size, sequence_length]))
+                        # Get output sizes from a dummy ort run
+                        ort_outputs = ort_session.run(ort_output_names, ort_inputs)
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
-                                                               ort_output_names, last_state_buffer, pooler_buffer,
-                                                               batch_size, sequence_length, config.hidden_size, device)
+                                                               ort_output_names, ort_outputs, output_buffers,
+                                                               max_last_state_size, max_pooler_size, batch_size, device)
                         logger.info(result)
                         results.append(result)
 
@@ -530,9 +540,9 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "fp16", "optimizer", "model_name", "inputs", "batch_size", "sequence_length",
-            "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile",
-            "latency_95_percentile", "latency_99_percentile"
+            "engine", "version", "device", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
+            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
+            "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -545,7 +555,7 @@ def output_details(results, csv_filename):
 
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
-        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimizer"]
+        header_names = ["model_name", "inputs", "engine", "version", "device", "fp16", "optimizer", "io_binding"]
         data_names = []
         for batch_size in args.batch_sizes:
             for sequence_length in args.sequence_lengths:
@@ -556,21 +566,23 @@ def output_summary(results, csv_filename, args):
         for model_name in args.models:
             for input_count in [1, 2, 3]:
                 for engine_name in args.engines:
-                    row = {}
-                    for result in results:
-                        if result["model_name"] == model_name and result["inputs"] == input_count and result[
-                                "engine"] == engine_name:
-                            headers = {k: v for k, v in result.items() if k in header_names}
-                            if not row:
-                                row.update(headers)
-                                row.update({k: "" for k in data_names})
-                            else:
-                                for k in header_names:
-                                    assert row[k] == headers[k]
-                            b = result["batch_size"]
-                            s = result["sequence_length"]
-                            row[f"b{b}_s{s}"] = result["average_latency_ms"]
-                    csv_writer.writerow(row)
+                    for io_binding in [True, False, ""]:
+                        row = {}
+                        for result in results:
+                            if result["model_name"] == model_name and result["inputs"] == input_count and result[
+                                    "engine"] == engine_name and result["io_binding"] == io_binding:
+                                headers = {k: v for k, v in result.items() if k in header_names}
+                                if not row:
+                                    row.update(headers)
+                                    row.update({k: "" for k in data_names})
+                                else:
+                                    for k in header_names:
+                                        assert row[k] == headers[k]
+                                b = result["batch_size"]
+                                s = result["sequence_length"]
+                                row[f"b{b}_s{s}"] = result["average_latency_ms"]
+                        if row:
+                            csv_writer.writerow(row)
 
     logger.info(f"Summary results are saved to csv file: {csv_filename}")
 
@@ -609,7 +621,7 @@ def parse_arguments():
                         nargs="+",
                         type=str,
                         default=['onnxruntime'],
-                        choices=['onnxruntime', 'onnxruntime_with_io_binding', 'torch', 'torchscript'],
+                        choices=['onnxruntime', 'torch', 'torchscript'],
                         help="Engines to benchmark")
 
     parser.add_argument("-c",
@@ -671,6 +683,12 @@ def parse_arguments():
 
     parser.add_argument("-s", "--sequence_lengths", nargs="+", type=int, default=[8, 16, 32, 64, 128, 256])
 
+    parser.add_argument('--disable_ort_io_binding',
+                        required=False,
+                        action='store_true',
+                        help='Disable running ONNX Runtime with binded inputs and outputs. ')
+    parser.set_defaults(disable_ort_io_binding=False)
+
     args = parser.parse_args()
     return args
 
@@ -702,9 +720,7 @@ def main():
 
     enable_torch = "torch" in args.engines
     enable_torchscript = "torchscript" in args.engines
-    enable_ort_io_binding = "onnxruntime_with_io_binding" in args.engines
-    enable_ort_wo_io_binding = "onnxruntime" in args.engines
-    enable_onnxruntime = enable_ort_wo_io_binding or enable_ort_io_binding
+    enable_onnxruntime = "onnxruntime" in args.engines
 
     results = []
     if enable_torch or enable_torchscript:
@@ -724,7 +740,7 @@ def main():
             results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
                                        args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
-                                       enable_ort_io_binding, enable_ort_wo_io_binding)
+                                       args.disable_ort_io_binding)
         except:
             logger.error(f"Exception", exc_info=True)
 
