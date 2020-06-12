@@ -164,20 +164,6 @@ else()
     )
   elseif(X86_64)
     enable_language(ASM)
-    
-    set (additional_compile_flags "")
-    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-      # CMAKE_OSX_DEPLOYMENT_TARGET being set to 10.12 in the CMakeLists.txt doesn't seem to take effect
-      # for assembly files and leads to linker warnings when the assembled object files are linked to
-      # a library/exe targeting 10.12+ (because of CMAKE_OSX_DEPLOYMENT_TARGET = 10.12) as the assembled 
-      # object files are targeting 10.14 (if built on 10.14 build agents).
-      # TODO: Investigate the cause for this.
-      # As a work-around explicitly set the relevant flag to achieve the desired effect
-      # Note: Currently, we don't support anyhting other than x86_64 on Macs, so not adding this logic 
-      # in any place except here      
-      message("Adding flags so that the assembler will target a minimum deployable Mac OS version of 10.12")
-      set (additional_compile_flags "${additional_compile_flags} -mmacosx-version-min=10.12")
-    endif()
 
     # The LLVM assembler does not support the .arch directive to enable instruction
     # set extensions and also doesn't support AVX-512F instructions without
@@ -191,7 +177,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelSse2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelSse2.S
     )
-    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2 ${additional_compile_flags}")
+    set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
 
     set(mlas_platform_srcs_avx
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx.S
@@ -203,7 +189,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SoftmaxKernelAvx.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx ${additional_compile_flags}")
+    set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
     set(mlas_platform_srcs_avx2
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx2.S
@@ -217,7 +203,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma ${additional_compile_flags}")
+    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
     # Some toolchains do not support AVX512 compiler flags but are still able
     # to build the sources. Other toolchains require the AVX512 compiler flags
@@ -245,7 +231,7 @@ else()
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       )
       if(HAS_AVX512F)
-        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f ${additional_compile_flags}")
+        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
       endif()
 
       check_cxx_compiler_flag("-mavx512bw -mavx512dq -mavx512vl" HAS_AVX512CORE)
@@ -270,13 +256,13 @@ else()
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Core.S
         )
         if(HAS_AVX512CORE)
-          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl ${additional_compile_flags}")
+          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
         endif()
       else()
-        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512CORE_UNSUPPORTED ${additional_compile_flags}")
+        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512CORE_UNSUPPORTED")
       endif()
     else()
-      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED ${additional_compile_flags}")
+      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
     endif()
 
     set(mlas_platform_srcs
