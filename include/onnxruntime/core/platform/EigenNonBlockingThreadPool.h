@@ -468,14 +468,22 @@ void SetGoodWorkerHint(int idx, bool is_good) {
   } while (!u64->compare_exchange_weak(saw, want));
 }
 
-// Retrieve hints for up to n threads to distribute work to
-void GetGoodWorkerHints(int n, std::vector<int>& hints) {
+// Retrieve hints for up to n threads to distribute work to.  Threads in good_hints
+// pass a best-effort check to identify spinning threads via the good_worker_hints_
+// bitmap.  Threads in alt_hint do not pass that test, but are distinct from those in
+// good_hints_, letting the caller avoid distributing more than one work item to
+// any individual thread.
+
+void GetGoodWorkerHints(int n, std::vector<int>& good_hints, std::vector<int>& alt_hints) {
   PerThread* pt = GetPerThread();
-  hints.clear();
+  int need_alt = n;
+  good_hints.clear();
+  alt_hints.clear();
 
   // Iterate through the words of hints, starting from a pseudo-randomly chosen
   // base.  This aims to distribute work across large machines in cases we
   // have multiple threads scheduling work concurrently.
+
   unsigned base = Rand(&pt->rand) % num_hint_words_;
   for (int i = 0; n && (i < num_hint_words_); i++) {
     int u64_idx = (base + i) % num_hint_words_;
@@ -486,10 +494,14 @@ void GetGoodWorkerHints(int n, std::vector<int>& hints) {
     // Pick up to n bits that are set in the current word
     for (int j = 0; n && (j < bits_per_hint_word_); j++) {
       uint64_t bit = 1ull << j;
+      int thread = u64_idx * bits_per_hint_word_ + j;
       if (saw & bit) {
-        hints.push_back(u64_idx * bits_per_hint_word_ + j);
+        good_hints.push_back(thread);
         want &= ~bit;
         n--;
+      } else if (need_alt && thread < num_threads_) {
+        alt_hints.push_back(thread);
+	      need_alt--;
       }
     }
 
@@ -518,18 +530,24 @@ void RunWithHelp(std::function<void()> fn, int n) override {
     }
 
     // Push up to n-1 copies of the work item into the queues
-    std::vector<int>& hints = pt->hints;
-    GetGoodWorkerHints(n - 1, hints);
+    std::vector<int>& good_hints = pt->good_hints;
+    std::vector<int>& alt_hints = pt->alt_hints;
+    GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (int i = 0; i < n - 1; i++) {
       Task t = env_.CreateTask([&b, &fn, pt]() {
         fn();
         b.Notify(1);
       });
       int q_idx;
-      if (i < hints.size()) {
-        q_idx = hints[i];
+      if (i < good_hints.size()) {
+        q_idx = good_hints[i];
       } else {
-        q_idx = Rand(&pt->rand) % num_threads_;
+        int alt_i = i-(int)good_hints.size();
+	if (alt_i < alt_hints.size()) {
+	  q_idx = alt_hints[alt_i];
+        } else {
+	  q_idx = Rand(&pt->rand) % num_threads_;
+	}
       }
       ThreadData& td = thread_data_[q_idx];
       Queue& q = td.queue;
@@ -632,12 +650,13 @@ int CurrentThreadId() const EIGEN_FINAL {
   struct PerThread {
     constexpr PerThread() : pool(nullptr) {
     }
-    ThreadPoolTempl* pool;   // Parent pool, or null for normal threads.
-    uint64_t rand{0};        // Random generator state.
-    int thread_id{-1};       // Worker thread index in pool.
-    Tag tag{};               // Work item tag used to identify this thread.
-    bool in_parallel{false}; // Inside a parallel section (hence tag not unique if we re-use)   
-    std::vector<int> hints;  // Vector used to pass hints of workers to use
+    ThreadPoolTempl* pool;        // Parent pool, or null for normal threads.
+    uint64_t rand{0};             // Random generator state.
+    int thread_id{-1};            // Worker thread index in pool.
+    Tag tag{};                    // Work item tag used to identify this thread.
+    bool in_parallel{false};      // Inside a parallel section (hence tag not unique if we re-use)
+    std::vector<int> good_hints;  // Vector used to pass hints of workers to use
+    std::vector<int> alt_hints;   // Vector used to pass hints of workers to use if not sufficient good hints
   };
 
   struct ThreadData {
@@ -779,7 +798,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
     const int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
-    const int steal_count = 1000;
+    const int steal_count = spin_count/100;
 
     while (!cancelled_ && !should_exit) {
         Task t = q.PopFront();
