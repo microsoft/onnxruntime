@@ -38,7 +38,7 @@ You can load your input data into OnnxTensor objects in several ways. The most e
     float[][] sourceArray = new float[28][28];  // assume your data is loaded into a float array 
     var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
 
-Here is a [complete sample program](../java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
+Here is a [complete sample program](../java/src/test/java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
 
 ## Running on a GPU or with another provider (Optional)
 To enable other execution providers like GPUs simply turn on the appropriate flag on SessionOptions when creating an OrtSession.
