@@ -312,13 +312,9 @@ class UpsampleBase {
         // Enforce that output_dim is 0, given that we cannot scale 0 by any factor to
         // result in any non-zero value
         ORT_ENFORCE(output_dims[i] == 0,
-                    "Input dim is zero but "
-                    "required output dim is non-zero. "
-                    "Cannot scale 0 by any factor to generate a non-zero value. "
-                    "Input dim value: ",
-                    input_dims[i],
-                    " Output dim value: ",
-                    output_dims[i]);
+                    "Input dim is zero but required output dim is non-zero. ",
+                    "Cannot scale 0 by any factor to generate a non-zero value. ",
+                    "Dimension: ", i, " Input dim value: ", input_dims[i], " Output dim value: ", output_dims[i]);
         // Scale can be any arbitrary value as technically scaling 0 by any factor
         // results in 0. Keeping scale as 1 is more intuitive given that input_dim == output_dim.
         scales[i] = 1.f;
