@@ -1304,7 +1304,9 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    MLAS_GEMM_U8X8_WORK_BLOCK LocalWorkBlock{*WorkBlock};
+    MLAS_GEMM_U8X8_WORK_BLOCK LocalWorkBlock;
+
+    memcpy(&LocalWorkBlock, WorkBlock, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
 
     LocalWorkBlock.M = CountM;
     LocalWorkBlock.N = CountN;
