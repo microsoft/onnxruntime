@@ -370,7 +370,8 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  common::Status InsertPipelineOps(std::string& forward_waited_event_name,
+  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
+                                   std::string& forward_waited_event_name,
                                    std::string& forward_recorded_event_name,
                                    std::string& backward_waited_event_name,
                                    std::string& backward_recorded_event_name,

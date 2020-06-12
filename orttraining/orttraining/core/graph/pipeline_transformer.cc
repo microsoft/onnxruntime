@@ -464,6 +464,7 @@ Status AddBackwardRecordBeforeSend(
 }
 
 Status SetInputsOutputsAndResolve(Graph& graph,
+                                  const std::unordered_set<std::string>& weights_to_train,
                                   const std::vector<std::string>& new_input_names,
                                   const std::vector<std::string>& new_output_names) {
   auto fill_node_args = [&](const Graph& graph,
@@ -491,7 +492,14 @@ Status SetInputsOutputsAndResolve(Graph& graph,
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
 
-  return graph.Resolve();
+  Graph::ResolveOptions options;
+  // Reserve the training weights. In mixed precision case, without this field,
+  // the original fp32 initializers could be removed due to not being used
+  // at this point. But we still need to preserve them because later when optimizer is
+  // is constructed, the isolated fp32 initializers will be inputs for optimizer.
+  options.initializer_names_to_preserve = &weights_to_train;
+
+  return graph.Resolve(options);
 }
 
 // This function inserts WaitEvent's and RecordEvent's to the input graph for
@@ -542,6 +550,7 @@ Status SetInputsOutputsAndResolve(Graph& graph,
 //   Record-3: Tell others that backward result has been passed to another stage.
 Status TransformGraphForPipeline(
   Graph& graph,
+  const std::unordered_set<std::string>& weights_to_train,
   std::string& forward_waited_event_name,
   std::string& forward_recorded_event_name,
   std::string& backward_waited_event_name,
@@ -727,7 +736,7 @@ Status TransformGraphForPipeline(
     ));
   }
 
-  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, new_input_names, new_output_names));
+  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, weights_to_train, new_input_names, new_output_names));
   return Status::OK();
 }
 
@@ -887,15 +896,8 @@ common::Status SplitGraph(Graph& graph,
       send_input_args.push_back(updated_node_arg);
 
       auto dtype = original_node_arg->TypeAsProto()->tensor_type().elem_type();
-      switch (dtype) {
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-          element_types.add_ints(static_cast<int64_t>(1));
-          break;
-        default:
-          // Assume all tensors are of type float.
-          // TODO: update if graph supports other data type.
-          ORT_THROW("pipeline partition unsupported 'type' value: ", dtype);
-      }
+
+      element_types.add_ints(static_cast<int64_t>(dtype));
 
       auto& new_receive_output = CreateNodeArg(graph, updated_node_arg);
       const auto old_shape = *(updated_node_arg->Shape());
@@ -957,7 +959,7 @@ common::Status SplitGraph(Graph& graph,
     recv_nodes.push_back(&recv_node);
   }
 
-  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, new_input_names, new_output_names));
+  ORT_RETURN_IF_ERROR(SetInputsOutputsAndResolve(graph, {} /* weights_to_train */, new_input_names, new_output_names));
   return Status::OK();
 }
 

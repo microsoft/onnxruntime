@@ -7,7 +7,13 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-size_t GetAttentionWorkspaceSize(size_t element_size, int batchsize, int num_heads, int head_size, int sequence_length);
+size_t GetAttentionWorkspaceSize(
+    size_t element_size,
+    int batchsize,
+    int num_heads,
+    int head_size,
+    int sequence_length,
+    int past_sequence_length);
 
 bool LaunchAttentionKernel(
     const void* input,         // Input tensor
@@ -20,7 +26,10 @@ bool LaunchAttentionKernel(
     void* workspace,           // Temporary buffer
     cublasHandle_t& cublas,    // Cublas handle
     const size_t element_size, // Element size of input tensor
-    bool is_unidirectional     // Whether there is unidirecitonal mask.
+    bool is_unidirectional,    // Whether there is unidirecitonal mask.
+    int past_sequence_length,  // Sequence length in past state
+    const void* past,          // Past state input
+    void* present              // Present state output
 );
 
 }  // namespace cuda

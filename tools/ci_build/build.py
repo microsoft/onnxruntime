@@ -296,6 +296,9 @@ def parse_arguments():
         "--skip_winml_tests", action='store_true',
         help="Explicitly disable all WinML related tests")
     parser.add_argument(
+        "--skip_nodejs_tests", action='store_true',
+        help="Explicitly disable all Node.js binding tests")
+    parser.add_argument(
         "--enable_msvc_static_runtime", action='store_true',
         help="Enable static linking of MSVC runtimes.")
     parser.add_argument(
@@ -1401,6 +1404,13 @@ def nuphar_run_python_tests(build_dir, configs):
             cwd=cwd, dll_path=dll_path)
 
 
+def run_nodejs_tests(nodejs_binding_dir):
+    args = ['npm', 'test', '--', '--timeout=2000']
+    if is_windows():
+        args = ['cmd', '/c'] + args
+    run_subprocess(args, cwd=nodejs_binding_dir)
+
+
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
@@ -1778,6 +1788,11 @@ def main():
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
+
+        # run node.js binding tests
+        if args.build_nodejs and not args.skip_nodejs_tests:
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:
         if args.build_wheel:
