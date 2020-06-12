@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <chrono>
-#include <random>
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
-#include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+#include <chrono>
+#include <random>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -17,28 +18,6 @@ using namespace std;
 
 namespace onnxruntime {
 namespace test {
-
-static void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tensor, double rtol, double atol) {
-  ORT_ENFORCE(expected_tensor.Shape() == output_tensor.Shape(),
-              "Expected output shape [" + expected_tensor.Shape().ToString() +
-                  "] did not match run output shape [" +
-                  output_tensor.Shape().ToString() + "]");
-
-  ASSERT_TRUE(expected_tensor.DataType() == DataTypeImpl::GetType<float>()) << "Compare with non float number is not supported yet. ";
-  auto expected = expected_tensor.Data<float>();
-  auto output = output_tensor.Data<float>();
-  for (auto i = 0; i < expected_tensor.Shape().Size(); ++i) {
-    const auto expected_value = expected[i], actual_value = output[i];
-    if (std::isnan(expected_value)) {
-      ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i << "; expected is NaN, actual is not NaN";
-    } else if (std::isinf(expected_value)) {
-      ASSERT_EQ(expected_value, actual_value) << "value mismatch at index " << i;
-    } else {
-      double diff = fabs(expected_value - actual_value);
-      ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: " << expected_value << ", actual: " << actual_value;
-    }
-  }
-}
 
 template <typename T>
 class DynamicQuantizeMatMulOpTester : public OpTester {
@@ -81,6 +60,7 @@ class DynamicQuantizeMatMulOpTester : public OpTester {
   }
   void Run() {
 #ifndef NDEBUG
+    // run_called_ to true to avoid a complaining in the destructor of OpTester
     run_called_ = true;
 #endif
     std::vector<MLValue> cpu_fetches;
@@ -107,7 +87,7 @@ class DynamicQuantizeMatMulOpTester : public OpTester {
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Hookup the inputs and outputs
-    std::unordered_map<std::string, MLValue> feeds;
+    NameMLValMap feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
 
@@ -119,32 +99,21 @@ class DynamicQuantizeMatMulOpTester : public OpTester {
     run_options.run_tag = op_;
     run_options.run_log_verbosity_level = 1;
 
-    // run with LayerNormalization
-    InferenceSession layernorm_session_object{so, GetEnvironment()};
+    // run with DynamicQuantizeMatMul
+    InferenceSession session_object{so, GetEnvironment()};
     std::string s1;
     p_model->ToProto().SerializeToString(&s1);
     std::istringstream str(s1);
-    ASSERT_TRUE((status = layernorm_session_object.Load(str)).IsOK()) << status;
-    ASSERT_TRUE((status = layernorm_session_object.Initialize()).IsOK()) << status;
-    ASSERT_TRUE((status = layernorm_session_object.Run(run_options, feeds, output_names, &cpu_fetches)).IsOK());
+    ASSERT_TRUE((status = session_object.Load(str)).IsOK()) << status;
+    ASSERT_TRUE((status = session_object.Initialize()).IsOK()) << status;
+    ASSERT_TRUE((status = session_object.Run(run_options, feeds, output_names, &cpu_fetches)).IsOK());
   }
 
   void ComputeOriginalSubgraph(std::vector<MLValue>& subgraph_fetches) {
     NameMLValMap feeds;
     OrtValue ml_value;
-    std::vector<std::string> output_names{"Y"};
-
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), A_dims_, A_data_, &ml_value);
-    feeds.insert(std::make_pair("A", ml_value));
-
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), B_dims_, B_data_, &ml_value);
-    feeds.insert(std::make_pair("B", ml_value));
-
-    CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, B_scale_, &ml_value);
-    feeds.insert(std::make_pair("b_scale", ml_value));
-
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, B_zero_point_, &ml_value);
-    feeds.insert(std::make_pair("b_zero_point", ml_value));
+    std::vector<std::string> output_names;
+    FillFeedsAndOutputNames(feeds, output_names);
 
     SessionOptions so;
     so.session_logid = op_;
