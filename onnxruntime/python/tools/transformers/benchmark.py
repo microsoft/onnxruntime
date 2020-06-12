@@ -222,7 +222,7 @@ def get_onnx_file_path(onnx_dir: str, model_name: str, input_count: int, optimiz
 
 def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite):
     if overwrite or not os.path.exists(ort_model_path):
-        from optimizer import optimize_model, get_fusion_statistics
+        from optimizer import optimize_by_onnxruntime, get_fusion_statistics
         # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
         opt_model = optimize_by_onnxruntime(onnx_model_path,
                                             use_gpu=use_gpu,
@@ -521,6 +521,7 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
                         "device": "cuda" if use_gpu else "cpu",
                         "optimizer": "",
                         "fp16": fp16,
+                        "io_binding": "",
                         "model_name": model_name,
                         "inputs": 1,
                         "batch_size": batch_size,
