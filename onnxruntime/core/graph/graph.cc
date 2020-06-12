@@ -175,12 +175,13 @@ const TensorShapeProto* NodeArg::Shape() const {
 bool NodeArg::HasTensorOrScalarShape() const {
   const TypeProto* type = TypeAsProto();
   if (!type) return false;
-  const auto typeCase = type->value_case();
-  switch (typeCase) {
+  const auto type_case = type->value_case();
+  switch (type_case) {
     case TypeProto::kTensorType:
     case TypeProto::kSparseTensorType: 
       // Standard tensor has a valid shape field while 
-      // scalar's shape is empty.
+      // scalar's shape is empty. Thus, we don't need to
+      // check shape here.
       return true;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
