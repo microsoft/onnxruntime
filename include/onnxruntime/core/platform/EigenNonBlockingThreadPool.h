@@ -808,7 +808,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           // threads which are not themselves spinning.
 
           SetGoodWorkerHint(thread_id, true);
-          for (int i = 0; i < spin_count && !t.f && !cancelled_; i++) {
+          for (int i = 0; i < spin_count && !t.f && !cancelled_ && !done_; i++) {
             t = (i%steal_count == 0) ? TrySteal() : q.PopFront();
           }
           SetGoodWorkerHint(thread_id, false);
