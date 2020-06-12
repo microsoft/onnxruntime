@@ -31,7 +31,7 @@ __global__ void BiasGeluGradDxKernel(
 #pragma unroll
       for (int element_idx = 0; element_idx < num_consecutive_elements_per_group; ++element_idx) {
         const int input_idx = base_idx + element_idx;
-        if (base_idx < input_size) {
+        if (input_idx < input_size) {
           const int bias_idx =
               base_bias_idx + element_idx - static_cast<int>((base_bias_idx + element_idx) >= bias_size) * bias_size;
           dX[input_idx] = ComputeGeluGradScalar(dY[input_idx], X[input_idx] + B[bias_idx], GeluComputationMode{});
