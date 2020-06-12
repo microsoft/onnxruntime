@@ -105,15 +105,28 @@ RunQLinearMathTestFromFloat(
 }
 
 // total 32 + 31 elements to cover all path
+// for add() usage tensor A
 static std::vector<float> A4Add = {
   0.00f,  0.25f,  0.50f,  0.75f,  1.00f,  1.25f,  1.50f,  1.75f,
-  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  4.00f,  4.25f,  4.50f,
+  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  3.50f,  3.75f,  4.00f,
  -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
- -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -5.00f, -5.50f,
+ -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -3.75f, -3.50f,
   0.00f,  0.25f,  0.50f,  0.75f,  1.00f,  1.25f,  1.50f,  1.75f,
-  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  4.00f,  4.25f,  4.50f,
+  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  3.75f,  4.25f,  4.50f,
  -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
- -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -5.00f
+ -2.00f, -2.25f, -2.50f, -2.75f, -3.00f,  3.75f,  3.00f
+};
+
+// for add() usage tensor B
+static std::vector<float> B4Add = {
+  4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+ -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+  4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+ -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+  4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+ -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+  4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+ -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -3.75f, -4.00f
 };
 
 static auto add_function = [](float a_dequantized, float b_dequantized) {
@@ -124,16 +137,7 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = {
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f
-  };
+  const std::vector<float>& B(B4Add);
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 128;
   float C_scale = 16.0f / 256.0f;
@@ -158,7 +162,7 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {3, 21}, A_scale, A_zero_point, B, {21}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {3, 3, 7}, A_scale, A_zero_point, B, {3, 1, 7}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
@@ -186,7 +190,7 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
   uint8_t C_zero_point = 100;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    B, {3, 1}, B_scale, B_zero_point, A, {3, 21}, A_scale, A_zero_point, C_scale, C_zero_point);
+    B, {3, 1, 1}, B_scale, B_zero_point, A, {3, 7, 3}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
@@ -214,30 +218,21 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {3, 21}, A_scale, A_zero_point, B, {3, 1}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {3, 7, 3}, A_scale, A_zero_point, B, {1, 1, 3}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = {
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
-    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
-   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f
-  };
+  const std::vector<float>& B(B4Add);
   float B_scale = 8.0f / 256.0f;
   int8_t B_zero_point = 0;
   float C_scale = 16.0f / 256.0f;
   int8_t C_zero_point = -16;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {1, 63}, A_scale, A_zero_point, B, {1, 63}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {63}, A_scale, A_zero_point, B, {63}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
@@ -255,7 +250,7 @@ TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
   int8_t C_zero_point = -16;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {3, 21}, A_scale, A_zero_point, B, {21}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {3, 3, 7}, A_scale, A_zero_point, B, {3, 1, 7}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
@@ -283,7 +278,7 @@ TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    B, {3, 1}, B_scale, B_zero_point, A, {3, 21}, A_scale, A_zero_point, C_scale, C_zero_point);
+    B, {3, 1, 1}, B_scale, B_zero_point, A, {3, 7, 3}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
@@ -311,7 +306,7 @@ TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {3, 21}, A_scale, A_zero_point, B, {3, 1}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {3, 7, 3}, A_scale, A_zero_point, B, {1, 1, 3}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 }  // namespace test
