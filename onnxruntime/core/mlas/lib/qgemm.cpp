@@ -163,7 +163,7 @@ Return Value:
                         DepthValue, ZeroMode);
 
                     if (PostProcess && WorkBlock->CTypeIsFloat) {
-                        KernelType::OutputFloat(WorkBlock, c, RowsHandled, CountN);
+                        KernelType::OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
                     }
 
                     c += ldc * RowsHandled;
@@ -710,6 +710,7 @@ void
 MlasGemmU8X8OutputFloatSse(
     const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
     int32_t* C,
+    size_t StartN,
     size_t CountM,
     size_t CountN
     )
@@ -725,6 +726,10 @@ Arguments:
     WorkBlock - Supplies the structure containing the GEMM parameters.
 
     C - Supplies the address of matrix C.
+
+    StartN - Supplies the starting column offset relative to the base of the
+        work block. This is used to offset into column vectors accessed via the
+        work block.
 
     CountM - Supplies the number of rows of the output matrix to process.
 
@@ -747,6 +752,8 @@ Return Value:
 
     if (BiasFloat != nullptr) {
 
+        BiasFloat += StartN;
+
         while (CountM-- > 0) {
 
             const float* bias = BiasFloat;
@@ -757,7 +764,7 @@ Return Value:
 
                 __m128 FloatVector = _mm_cvtepi32_ps(_mm_loadu_si128((__m128i*)c));
                 FloatVector = _mm_mul_ps(FloatVector, ScaleVector);
-                FloatVector = _mm_add_ps(FloatVector, _mm_load_ps(bias));
+                FloatVector = _mm_add_ps(FloatVector, _mm_loadu_ps(bias));
                 _mm_storeu_ps((float*)c, FloatVector);
 
                 bias += 4;
@@ -882,11 +889,12 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
     OutputFloat(
         const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
         int32_t* C,
+        size_t StartN,
         size_t CountM,
         size_t CountN
         )
     {
-        MlasGemmU8X8OutputFloatSse(WorkBlock, C, CountM, CountN);
+        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
     }
 };
 
@@ -1061,11 +1069,12 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
     OutputFloat(
         const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
         int32_t* C,
+        size_t StartN,
         size_t CountM,
         size_t CountN
         )
     {
-        MlasGemmU8X8OutputFloatSse(WorkBlock, C, CountM, CountN);
+        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
     }
 };
 
@@ -1098,7 +1107,8 @@ Return Value:
 
 --*/
 {
-    if (WorkBlock->M == 1 && WorkBlock->offa == 0 && WorkBlock->offb == 0) {
+    if ((WorkBlock->M == 1) && WorkBlock->BTypeIsSigned && !WorkBlock->CTypeIsFloat &&
+        (WorkBlock->offa == 0) && (WorkBlock->offb == 0)) {
 
         if (MlasPlatform.GemvU8S8Kernel != nullptr) {
             MlasPlatform.GemvU8S8Kernel(WorkBlock->A, WorkBlock->B, WorkBlock->C,
@@ -1183,11 +1193,12 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
     OutputFloat(
         const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
         int32_t* C,
+        size_t StartN,
         size_t CountM,
         size_t CountN
         )
     {
-        MlasGemmU8X8OutputFloatSse(WorkBlock, C, CountM, CountN);
+        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
     }
 };
 
