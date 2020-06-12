@@ -124,8 +124,9 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
-  const float scale = 1.0f / total_num_accumulations;
+  const float scale = 1.0f / (total_num_accumulations * 64.0f);
   // No fusion with Adasum
+  // bugbug
   const bool fuse_scaling_outputs = false;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.allreduce_in_fp16, fuse_scaling_outputs));
@@ -151,6 +152,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     const float adasum_scale = 1.0f / opt_graph_config_.local_size;
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
+  //bugbug
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, (int64_t)1));
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
