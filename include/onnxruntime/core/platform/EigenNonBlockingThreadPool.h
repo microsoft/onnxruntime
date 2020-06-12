@@ -47,7 +47,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // then the function will run directly in the caller.  The fork-join
   // synchronization is handled in the thread pool, and so any state captured
   // by fn() is safe from concurrent access once RunWithHelp returns.
-  virtual void RunWithHelp(std::function<void()> fn, int n) = 0;
+  virtual void RunWithHelp(std::function<void()> fn, unsigned n) = 0;
 };
 
 }  // namespace concurrency
@@ -458,7 +458,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 // of new work.
 
 void SetGoodWorkerHint(int idx, bool is_good) {
-  assert(idx >= 0 && idx < num_threads);
+  assert(idx >= 0 && idx < num_threads_);
   std::atomic<uint64_t> *u64 = &good_worker_hints_[idx / bits_per_hint_word_];
   uint64_t bit = 1ull << (idx % bits_per_hint_word_);
   uint64_t saw, want;
@@ -474,7 +474,7 @@ void SetGoodWorkerHint(int idx, bool is_good) {
 // good_hints_, letting the caller avoid distributing more than one work item to
 // any individual thread.
 
-void GetGoodWorkerHints(int n, std::vector<int>& good_hints, std::vector<int>& alt_hints) {
+void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<unsigned>& alt_hints) {
   PerThread* pt = GetPerThread();
   int need_alt = n;
   good_hints.clear();
@@ -513,15 +513,16 @@ void GetGoodWorkerHints(int n, std::vector<int>& good_hints, std::vector<int>& a
   }
 }
 
-void RunWithHelp(std::function<void()> fn, int n) override {
+void RunWithHelp(std::function<void()> fn, unsigned n) override {
   PerThread* pt = GetPerThread();
+  assert(n>=1);
   if (n == 1 || pt->in_parallel) {
     fn();
   } else {
     // We build a list of <thread,idx> pairs for each of the queues that accepts a work
     // item.  This lets us remove any work items that do not get executed by the threads
     // that we push them to.
-    std::vector<std::pair<int, unsigned int>> pending_items;
+    std::vector<std::pair<int, unsigned>> pending_items;
     Barrier b(n);
 
     pt->in_parallel = true;
@@ -530,10 +531,10 @@ void RunWithHelp(std::function<void()> fn, int n) override {
     }
 
     // Push up to n-1 copies of the work item into the queues
-    std::vector<int>& good_hints = pt->good_hints;
-    std::vector<int>& alt_hints = pt->alt_hints;
+    std::vector<unsigned>& good_hints = pt->good_hints;
+    std::vector<unsigned>& alt_hints = pt->alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
-    for (int i = 0; i < n - 1; i++) {
+    for (unsigned i = 0; i < n - 1; i++) {
       Task t = env_.CreateTask([&b, &fn, pt]() {
         fn();
         b.Notify(1);
@@ -542,16 +543,16 @@ void RunWithHelp(std::function<void()> fn, int n) override {
       if (i < good_hints.size()) {
         q_idx = good_hints[i];
       } else {
-        int alt_i = i-(int)good_hints.size();
-	if (alt_i < alt_hints.size()) {
-	  q_idx = alt_hints[alt_i];
+        auto alt_i = i - static_cast<unsigned>(good_hints.size());
+        if (alt_i < alt_hints.size()) {
+          q_idx = alt_hints[alt_i];
         } else {
-	  q_idx = Rand(&pt->rand) % num_threads_;
-	}
+          q_idx = Rand(&pt->rand) % num_threads_;
+        }
       }
       ThreadData& td = thread_data_[q_idx];
       Queue& q = td.queue;
-      unsigned int w_idx;
+      unsigned w_idx;
       t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
       if (t.f) {
         // The queue rejected the work.  Account for the missing capacity for work on the
@@ -560,7 +561,6 @@ void RunWithHelp(std::function<void()> fn, int n) override {
         b.Notify(1);
       } else {
         // The queue accepted the work, ensure that the thread is servicing the queue
-        assert(w_idx != -1);
         pending_items.push_back({q_idx, w_idx});
         td.EnsureAwake();
       }
@@ -650,13 +650,13 @@ int CurrentThreadId() const EIGEN_FINAL {
   struct PerThread {
     constexpr PerThread() : pool(nullptr) {
     }
-    ThreadPoolTempl* pool;        // Parent pool, or null for normal threads.
-    uint64_t rand{0};             // Random generator state.
-    int thread_id{-1};            // Worker thread index in pool.
-    Tag tag{};                    // Work item tag used to identify this thread.
-    bool in_parallel{false};      // Inside a parallel section (hence tag not unique if we re-use)
-    std::vector<int> good_hints;  // Vector used to pass hints of workers to use
-    std::vector<int> alt_hints;   // Vector used to pass hints of workers to use if not sufficient good hints
+    ThreadPoolTempl* pool;             // Parent pool, or null for normal threads.
+    uint64_t rand{0};                  // Random generator state.
+    int thread_id{-1};                 // Worker thread index in pool.
+    Tag tag{};                         // Work item tag used to identify this thread.
+    bool in_parallel{false};           // Inside a parallel section (hence tag not unique if we re-use)
+    std::vector<unsigned> good_hints;  // Vector used to pass hints of workers to use
+    std::vector<unsigned> alt_hints;   // Vector used to pass hints of workers to use if not sufficient good hints
   };
 
   struct ThreadData {
@@ -727,7 +727,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
     void SetSpinning() {
       std::unique_lock<OrtMutex> lk(mutex);
-      status = ThreadStatus::Active;
+      status = ThreadStatus::Spinning;
     }
 
     void SetBlocked(std::function<bool()> should_block,
@@ -735,15 +735,14 @@ int CurrentThreadId() const EIGEN_FINAL {
       std::unique_lock<OrtMutex> lk(mutex);
       assert(status == ThreadStatus::Spinning);
       status = ThreadStatus::Blocking;
-      if (!should_block()) {
-        status = ThreadStatus::Spinning;
-      } else {
+      if (should_block()) {
         status = ThreadStatus::Blocked;
         while (status == ThreadStatus::Blocked) {
           cv.wait(lk);
         }
         post_block();
       }
+      status = ThreadStatus::Spinning;
     }
 
   private:
@@ -778,7 +777,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   // items in the work queues.  
 
   void WakeAllWorkersForExit() {
-    for (int i = 0; i < thread_data_.size(); i++) {
+    for (auto i = 0; i < thread_data_.size(); i++) {
       thread_data_[i].EnsureAwake();
     }
   }
@@ -793,7 +792,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     pt->rand = GlobalThreadIdHash();
     pt->thread_id = thread_id;
     
-    assert(td.status == ThreadStatus::Spinning);
+    assert(td.GetStatus() == ThreadData::ThreadStatus::Spinning);
     SetGoodWorkerHint(thread_id, true /* Is good */);
 
     const int log2_spin = 20;
@@ -899,7 +898,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     PerThread* pt = GetPerThread();
     unsigned size = static_cast<unsigned>(num_threads_);
     unsigned r = Rand(&pt->rand);
-    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[num_threads_ - 1].size()];
+    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
 
     for (int round = 0; round < 2; round++) {
       unsigned victim = r % size;
@@ -929,59 +928,8 @@ int CurrentThreadId() const EIGEN_FINAL {
     return Steal(false);
   }
 
-  // WaitForWork blocks until new work is available (returns true), or if it is
-  // time to exit (returns false). 
-  bool WaitForWork(Task& t) {
-    assert(!t.f);
-    // We already did best-effort emptiness check in Steal, so prepare for
-    // blocking.
-    ec_.Prewait();
-    // Now do a reliable emptiness check.
-    int victim = NonEmptyQueueIndex();
-    if (victim != -1) {
-      ec_.CancelWait();
-      if (cancelled_) {
-        return false;
-      }
-        *t = thread_data_[victim].queue.PopBack();
-        return true;
-    }
-    // Number of blocked threads is used as termination condition.
-    // If we are shutting down and all worker threads blocked without work,
-    // that's we are done.
-    blocked_++;
-    // TODO is blocked_ required to be unsigned?
-    if (done_ && blocked_ == static_cast<unsigned>(num_threads_)) {
-      ec_.CancelWait();
-      // Almost done, but need to re-check queues.
-      // Consider that all queues are empty and all worker threads are preempted
-      // right after incrementing blocked_ above. Now a free-standing thread
-      // submits work and calls destructor (which sets done_). If we don't
-      // re-check queues, we will exit leaving the work unexecuted.
-      if (NonEmptyQueueIndex() != -1) {
-        // Note: we must not pop from queues before we decrement blocked_,
-        // otherwise the following scenario is possible. Consider that instead
-        // of checking for emptiness we popped the only element from queues.
-        // Now other worker threads can start exiting, which is bad if the
-        // work item submits other work. So we just check emptiness here,
-        // which ensures that all worker threads exit at the same time.
-        blocked_--;
-        return true;
-      }
-      // Reached stable termination state.
-      ec_.Notify(true);
-      return false;
-    }
-    ec_.CommitWait(waiter);
-    blocked_--;
-    return true;
-  }
-
   int NonEmptyQueueIndex() {
     PerThread* pt = GetPerThread();
-    // We intentionally design NonEmptyQueueIndex to steal work from
-    // anywhere in the queue so threads don't block in WaitForWork() forever
-    // when all threads in their partition go to sleep. Steal is still local.
     const unsigned size = static_cast<unsigned>(thread_data_.size());
     unsigned r = Rand(&pt->rand);
     unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];

@@ -58,7 +58,7 @@ public:
    // Divide the iteration space into NUM_SHARDS pieces, in multiples of the block size.
    double iterations_per_shard = static_cast<double>(num_iterations) / NUM_SHARDS;
    uint64_t split = 0;
-   for (int shard = 0; shard < NUM_SHARDS; shard++) {
+   for (uint64_t shard = 0; shard < NUM_SHARDS; shard++) {
      _shards[shard]._next = split;
      split = (static_cast<uint64_t>((shard + 1) * iterations_per_shard) / block_size) * block_size;
      _shards[shard]._end = split;
