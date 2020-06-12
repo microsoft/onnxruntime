@@ -5,6 +5,9 @@
 
 #include "core/platform/threadpool.h"
 
+#include <cfenv>
+#include <cmath>
+
 #if defined(_M_AMD64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
 #define MLAS_SUPPORTS_GEMM_U8X8
 #endif
@@ -25,4 +28,11 @@ void QGemm(
     OutputScalar* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool);
+
+inline float RoundHalfToEven(float input) {
+  std::fesetround(FE_TONEAREST);
+  auto result = std::nearbyintf(input);
+  return result;
+}
+
 }  // namespace onnxruntime

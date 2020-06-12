@@ -222,12 +222,13 @@ def get_onnx_file_path(onnx_dir: str, model_name: str, input_count: int, optimiz
 
 def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite):
     if overwrite or not os.path.exists(ort_model_path):
+        from optimizer import optimize_model, get_fusion_statistics
         # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
         opt_model = optimize_by_onnxruntime(onnx_model_path,
                                             use_gpu=use_gpu,
                                             optimized_model_path=ort_model_path,
                                             opt_level=99)
-        model_fusion_statistics[ort_model_path] = opt_model.get_fused_operator_statistics()
+        model_fusion_statistics[ort_model_path] = get_fusion_statistics(ort_model_path)
     else:
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
@@ -235,7 +236,7 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
                         fp16, overwrite):
     if overwrite or not os.path.exists(optimized_model_path):
-        from optimizer import optimize_model, optimize_by_onnxruntime
+        from optimizer import optimize_model
         from BertOnnxModel import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
         if fp16:
