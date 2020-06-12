@@ -48,7 +48,7 @@ REM This script will generate a logs file with a list of commands used in tests.
 >benchmark.log echo echo ort=%run_ort% torch=%run_torch% torchscript=%run_torchscript% gpu_fp32=%run_gpu_fp32% gpu_fp16=%run_gpu_fp16% cpu=%run_cpu% optimizer=%use_optimizer% batch="%batch_sizes%" sequence="%sequence_length%" models="%models_to_test%" input_counts="%input_counts%"
 
 REM Set it to false to skip testing. You can use it to dry run this script with the benchmark.log file.
-set run_tests=false
+set run_tests=true
 
 REM -------------------------------------------
 if %run_cpu% == true if %run_gpu_fp32% == true echo cannot test cpu and gpu at same time & goto :EOF

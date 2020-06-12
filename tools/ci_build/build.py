@@ -296,6 +296,9 @@ def parse_arguments():
         "--skip_winml_tests", action='store_true',
         help="Explicitly disable all WinML related tests")
     parser.add_argument(
+        "--skip_nodejs_tests", action='store_true',
+        help="Explicitly disable all Node.js binding tests")
+    parser.add_argument(
         "--enable_msvc_static_runtime", action='store_true',
         help="Enable static linking of MSVC runtimes.")
     parser.add_argument(
@@ -816,7 +819,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER="
                 + ("ON" if config.lower() == 'debug' and not args.use_tvm
-                   and not args.use_ngraph and
+                   and not args.use_ngraph and not args.use_openvino and
                    not args.enable_msvc_static_runtime
                    else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
             cwd=config_build_dir)
@@ -1233,7 +1236,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
             cmd += ["-j", str(num_parallel_models)]
         if enable_multi_device_test:
             cmd += ['-d', '1']
-        if config != 'Debug' and os.path.exists(model_dir):
+        # Even in release mode nuphar needs 40 minutes to run all the models tests
+        if config != 'Debug' and os.path.exists(model_dir) and provider != 'nuphar':
             cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
             cmd.append(onnx_test_data_dir)
@@ -1398,6 +1402,13 @@ def nuphar_run_python_tests(build_dir, configs):
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
             cwd=cwd, dll_path=dll_path)
+
+
+def run_nodejs_tests(nodejs_binding_dir):
+    args = ['npm', 'test', '--', '--timeout=2000']
+    if is_windows():
+        args = ['cmd', '/c'] + args
+    run_subprocess(args, cwd=nodejs_binding_dir)
 
 
 def build_python_wheel(
@@ -1777,6 +1788,11 @@ def main():
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
+
+        # run node.js binding tests
+        if args.build_nodejs and not args.skip_nodejs_tests:
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:
         if args.build_wheel:

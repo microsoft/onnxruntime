@@ -654,6 +654,10 @@ const NodeAttributes& Node::GetAttributes() const noexcept {
   return attributes_;
 }
 
+NodeAttributes& Node::GetMutableAttributes() noexcept {
+  return attributes_;
+}
+
 Graph* Node::GetMutableGraphAttribute(const std::string& attr_name) {
   Graph* subgraph = nullptr;
 

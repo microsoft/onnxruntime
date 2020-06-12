@@ -59,7 +59,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   const Tensor* i_zp_tensor = context->Input<Tensor>(6);
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, nullptr));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -193,8 +193,12 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
 
+  int past_sequence_length = 0;
+  const T* past_data = nullptr;
+  T* present_data = nullptr;
   ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, static_cast<T*>(mask_data),
-                           batch_size, sequence_length, head_size, num_heads_, is_unidirectional_, tp);
+                           batch_size, sequence_length, past_sequence_length, head_size, num_heads_, is_unidirectional_,
+                           past_data, present_data, tp);
 
   // STEP.3: compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S) x V(B, N, S, H)
   auto out_tmp_data =
@@ -202,7 +206,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
   ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
-                          batch_size, sequence_length, head_size, num_heads_, hidden_size, tp);
+                          batch_size, sequence_length, past_sequence_length, head_size, num_heads_, hidden_size, past_data, present_data, tp);
 
   return Status::OK();
 }

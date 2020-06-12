@@ -13,6 +13,7 @@ void GetPipelineSendOutput(const Graph& graph, std::string& loss_name);
 
 Status TransformGraphForPipeline(
     Graph& graph,
+    const std::unordered_set<std::string>& initializer_names_to_preserve,
     std::string& forward_waited_event_name,
     std::string& forward_recorded_event_name,
     std::string& backward_waited_event_name,
