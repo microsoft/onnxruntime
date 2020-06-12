@@ -288,6 +288,78 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   return out;
 }
 
+inline std::vector<Value> ExperimentalSession::Run(const Value* input_values, const RunOptions& run_options) {
+  size_t output_node_count = GetOutputNames().size();
+  std::vector<Ort::Value> output_values;
+  for (size_t i = 0; i < output_node_count; i++) output_values.emplace_back(nullptr);
+  Run(input_values, output_values.data(), run_options);
+  return output_values;
+}
+
+inline void ExperimentalSession::Run(const Value* input_values, Value* output_values, const RunOptions& run_options) {
+  auto input_names = GetInputNames();
+  auto output_names = GetOutputNames();
+  size_t input_node_count = input_names.size();
+  size_t output_node_count = output_names.size();
+  std::vector<const char*> input_names_(input_node_count, nullptr);
+  for (size_t i=0; i<input_node_count; i++) input_names_[i] = input_names[i].c_str();
+  std::vector<const char*> output_names_(output_node_count, nullptr);
+  for (size_t i=0; i<output_node_count; i++) output_names_[i] = output_names[i].c_str();
+  Session::Run(run_options, input_names_.data(), input_values, input_node_count, output_names_.data(), output_values, output_node_count);
+}
+
+template <typename Tp> inline
+std::vector<Value> ExperimentalSession::Run(const Value* input_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options) {
+  static_assert(std::is_same<typename Tp::value_type, std::string>::value, "expect a sequence STL container of objects of type std::string");
+  size_t output_node_count = GetOutputNames().size();
+  std::vector<Ort::Value> output_values;
+  for (size_t i = 0; i < output_node_count; i++) output_values.emplace_back(nullptr);
+  Run(input_values, output_values.data(), input_names, output_names, run_options);
+  return output_values;
+}
+
+template <typename Tp> inline
+void ExperimentalSession::Run(const Value* input_values, Value* output_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options) {
+  static_assert(std::is_same<typename Tp::value_type, std::string>::value, "expect a sequence STL container of objects of type std::string");
+  size_t input_node_count = input_names.size();
+  size_t output_node_count = output_names.size();
+  std::vector<const char*> input_names_(input_node_count, nullptr);
+  for (size_t i=0; i<input_node_count; i++) input_names_[i] = input_names[i].c_str();
+  std::vector<const char*> output_names_(output_node_count, nullptr);
+  for (size_t i=0; i<output_node_count; i++) output_names_[i] = output_names[i].c_str();
+  Session::Run(run_options, input_names_.data(), input_values, input_node_count, output_names_.data(), output_values, output_node_count);
+}
+
+inline std::vector<std::string> ExperimentalSession::GetInputNames() const {
+  Ort::AllocatorWithDefaultOptions allocator;
+  size_t node_count = GetInputCount();
+  std::vector<std::string> out(node_count);
+  for (size_t i=0; i<node_count; i++) out[i] = GetInputName(i, allocator);
+  return out;
+}
+
+inline std::vector<std::string> ExperimentalSession::GetOutputNames() const {
+  Ort::AllocatorWithDefaultOptions allocator;
+  size_t node_count = GetOutputCount();
+  std::vector<std::string> out(node_count);
+  for (size_t i=0; i<node_count; i++) out[i] = GetOutputName(i, allocator);
+  return out;
+}
+
+inline std::vector< std::vector<int64_t> > ExperimentalSession::GetInputShapes() const {
+  size_t node_count = GetInputCount();
+  std::vector<std::vector<int64_t>> out(node_count);
+  for (size_t i=0; i<node_count; i++) out[i] = GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+  return out;
+}
+
+inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOutputShapes() const {
+  size_t node_count = GetOutputCount();
+  std::vector<std::vector<int64_t>> out(node_count);
+  for (size_t i=0; i<node_count; i++) out[i] = GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+  return out;
+}
+
 inline ModelMetadata Session::GetModelMetadata() const {
   OrtModelMetadata* out;
   ThrowOnError(Global<void>::api_.SessionGetModelMetadata(p_, &out));

@@ -231,6 +231,36 @@ struct Session : Base<OrtSession> {
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;
 };
 
+/**
+ * An experimental wrapper around the C++ API that provides support for modern C++ syntax/features
+ *   at the cost of some (minimal) memory overhead.
+ * Where possible default values are defined by the session's model metadata (i.e. input node names)
+ *   unless otherwise specified by the user.
+ * 
+ * NOTE: Experimental API components provide no guarantee of backwards compatibility in future releases.
+ */
+struct ExperimentalSession : Session {
+  ExperimentalSession(Env& env, ORTCHAR_T* model_path, SessionOptions& options) 
+    : Session(env, model_path, options) {};
+  ExperimentalSession(Env& env, void* model_data, size_t model_data_length, SessionOptions& options)
+    : Session(env, model_data, model_data_length, options) {};
+
+  // overloaded Run() with common defaults
+  std::vector<Value> Run(const Value* input_values, const RunOptions& run_options = RunOptions());
+  void Run(const Value* input_values, Value* output_values, const RunOptions& run_options = RunOptions());
+  // overloaded Run() for when input/output names are specified
+  template <typename Tp>
+  std::vector<Value> Run(const Value* input_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options = RunOptions());
+  template <typename Tp>
+  void Run(const Value* input_values, Value* output_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options = RunOptions());
+
+  // convenience methods that simplify common lower-level API calls
+  std::vector<std::string> GetInputNames() const;
+  std::vector<std::string> GetOutputNames() const;
+  std::vector< std::vector<int64_t> > GetInputShapes() const;
+  std::vector< std::vector<int64_t> > GetOutputShapes() const;
+};
+
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   explicit TensorTypeAndShapeInfo(std::nullptr_t) {}
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : Base<OrtTensorTypeAndShapeInfo>{p} {}
