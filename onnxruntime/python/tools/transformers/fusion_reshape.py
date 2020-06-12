@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from onnx import helper, numpy_helper, TensorProto
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 import numpy as np
 

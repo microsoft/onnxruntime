@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from onnx import TensorProto, helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
