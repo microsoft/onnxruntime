@@ -27,8 +27,6 @@ using namespace onnxruntime;
 using namespace onnxruntime::common;
 using google::protobuf::RepeatedPtrField;
 
-static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
-
 using ORT_VALUE_HOLDER = std::unique_ptr<OrtValue, decltype(Ort::GetApi().ReleaseValue)>;
 
 const std::string TestModelInfo::unknown_version = "unknown version";
