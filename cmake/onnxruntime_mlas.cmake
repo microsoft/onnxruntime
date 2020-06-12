@@ -203,7 +203,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
     )
-    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_OPTIONS "-mavx2 -mfma")
+    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
 
     # Some toolchains do not support AVX512 compiler flags but are still able
     # to build the sources. Other toolchains require the AVX512 compiler flags
@@ -256,7 +256,7 @@ else()
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Core.S
         )
         if(HAS_AVX512CORE)
-          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_OPTIONS "-mavx512bw -mavx512dq -mavx512vl")
+          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_OPTIONS "-mavx512bw;-mavx512dq -mavx512vl")
         endif()
       else()
         set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_OPTIONS "-DMLAS_AVX512CORE_UNSUPPORTED")
