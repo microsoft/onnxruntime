@@ -19,30 +19,30 @@ Abstract:
 
 #include "mlasi.h"
 
-union Float32Bits {
+union MLAS_FLOAT32BITS {
     uint32_t u32;
     float    fp32;
 };
 
 MLAS_FORCEINLINE
 uint32_t
-BitsOfFp32(float f)
+MlasBitsOfFp32(float f)
 {
-    Float32Bits uf;
+    MLAS_FLOAT32BITS uf;
     uf.fp32 = f;
     return uf.u32;
 }
 
 MLAS_FORCEINLINE
 float
-Fp32FromBits(uint32_t u)
+MlasFp32FromBits(uint32_t u)
 {
-    Float32Bits uf = { u };
+    MLAS_FLOAT32BITS uf = { u };
     return uf.fp32;
 }
 
 bool
-CalcQLinearAddParameters(
+MlasCalcQLinearAddParameters(
     float ScaleRatio_AC, float ScaleRatio_BC,
     int32_t& Shift, int32_t& MultiplierA, int32_t& MultiplierB
     );

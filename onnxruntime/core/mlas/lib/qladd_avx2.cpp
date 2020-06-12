@@ -1,22 +1,22 @@
-#include "qladd.h"
+#include "mlasi.h"
 
 template <typename DataType>
 static
 MLAS_FORCEINLINE
 __m256i
-ShiftRight24Epi32(__m256i v);
+MlasShiftRight24Epi32(__m256i v);
 
-template <> __m256i ShiftRight24Epi32<int8_t>(__m256i v) { return _mm256_srai_epi32(v, 24); }
-template <> __m256i ShiftRight24Epi32<uint8_t>(__m256i v) { return _mm256_srli_epi32(v, 24); }
+template <> __m256i MlasShiftRight24Epi32<int8_t>(__m256i v) { return _mm256_srai_epi32(v, 24); }
+template <> __m256i MlasShiftRight24Epi32<uint8_t>(__m256i v) { return _mm256_srli_epi32(v, 24); }
 
 template <typename DataType>
 MLAS_FORCEINLINE
 static
 __m256i
-PackS16(__m256i a, __m256i b);
+MlasPackS16_256(__m256i a, __m256i b);
 
-template <> __m256i PackS16<uint8_t>(__m256i a, __m256i b) { return _mm256_packus_epi16(a, b); }
-template <> __m256i PackS16<int8_t>(__m256i a, __m256i b) { return _mm256_packs_epi16(a, b); }
+template <> __m256i MlasPackS16_256<uint8_t>(__m256i a, __m256i b) { return _mm256_packus_epi16(a, b); }
+template <> __m256i MlasPackS16_256<int8_t>(__m256i a, __m256i b) { return _mm256_packs_epi16(a, b); }
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 void
@@ -65,10 +65,10 @@ MlasQLinearAddKernelAvx2Helper(
         if (IsScalarA) {
             const auto blo_i16x16 = _mm256_unpacklo_epi8(vb_i8x32, vb_i8x32);
             const auto bhi_i16x16 = _mm256_unpackhi_epi8(vb_i8x32, vb_i8x32);
-            lolo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(blo_i16x16, blo_i16x16)));
-            lohi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(blo_i16x16, blo_i16x16)));
-            hilo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(bhi_i16x16, bhi_i16x16)));
-            hihi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(bhi_i16x16, bhi_i16x16)));
+            lolo_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(blo_i16x16, blo_i16x16)));
+            lohi_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(blo_i16x16, blo_i16x16)));
+            hilo_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(bhi_i16x16, bhi_i16x16)));
+            hihi_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(bhi_i16x16, bhi_i16x16)));
             lolo_f32x8 = _mm256_fmadd_ps(lolo_f32x8, VectorScaleRatio_BC, VectorFixedPart);
             lohi_f32x8 = _mm256_fmadd_ps(lohi_f32x8, VectorScaleRatio_BC, VectorFixedPart);
             hilo_f32x8 = _mm256_fmadd_ps(hilo_f32x8, VectorScaleRatio_BC, VectorFixedPart);
@@ -76,10 +76,10 @@ MlasQLinearAddKernelAvx2Helper(
         } else if (IsScalarB) {
             const auto alo_i16x16 = _mm256_unpacklo_epi8(va_i8x32, va_i8x32);
             const auto ahi_i16x16 = _mm256_unpackhi_epi8(va_i8x32, va_i8x32);
-            lolo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(alo_i16x16, alo_i16x16)));
-            lohi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(alo_i16x16, alo_i16x16)));
-            hilo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(ahi_i16x16, ahi_i16x16)));
-            hihi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(ahi_i16x16, ahi_i16x16)));
+            lolo_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(alo_i16x16, alo_i16x16)));
+            lohi_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(alo_i16x16, alo_i16x16)));
+            hilo_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(ahi_i16x16, ahi_i16x16)));
+            hihi_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(ahi_i16x16, ahi_i16x16)));
             lolo_f32x8 = _mm256_fmadd_ps(lolo_f32x8, VectorScaleRatio_AC, VectorFixedPart);
             lohi_f32x8 = _mm256_fmadd_ps(lohi_f32x8, VectorScaleRatio_AC, VectorFixedPart);
             hilo_f32x8 = _mm256_fmadd_ps(hilo_f32x8, VectorScaleRatio_AC, VectorFixedPart);
@@ -87,21 +87,21 @@ MlasQLinearAddKernelAvx2Helper(
         } else {
             const auto blo_i16x16 = _mm256_unpacklo_epi8(vb_i8x32, vb_i8x32);
             const auto bhi_i16x16 = _mm256_unpackhi_epi8(vb_i8x32, vb_i8x32);
-            lolo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(blo_i16x16, blo_i16x16)));
-            lohi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(blo_i16x16, blo_i16x16)));
-            hilo_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(bhi_i16x16, bhi_i16x16)));
-            hihi_f32x8 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(bhi_i16x16, bhi_i16x16)));
+            lolo_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(blo_i16x16, blo_i16x16)));
+            lohi_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(blo_i16x16, blo_i16x16)));
+            hilo_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(bhi_i16x16, bhi_i16x16)));
+            hihi_f32x8 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(bhi_i16x16, bhi_i16x16)));
             lolo_f32x8 = _mm256_fmadd_ps(lolo_f32x8, VectorScaleRatio_BC, VectorFixedPart);
             lohi_f32x8 = _mm256_fmadd_ps(lohi_f32x8, VectorScaleRatio_BC, VectorFixedPart);
             hilo_f32x8 = _mm256_fmadd_ps(hilo_f32x8, VectorScaleRatio_BC, VectorFixedPart);
             hihi_f32x8 = _mm256_fmadd_ps(hihi_f32x8, VectorScaleRatio_BC, VectorFixedPart);
 
             const auto alo_i16x16 = _mm256_unpacklo_epi8(va_i8x32, va_i8x32);
-            const auto alolo_8xfp32 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(alo_i16x16, alo_i16x16)));
-            const auto alohi_8xfp32 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(alo_i16x16, alo_i16x16)));
+            const auto alolo_8xfp32 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(alo_i16x16, alo_i16x16)));
+            const auto alohi_8xfp32 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(alo_i16x16, alo_i16x16)));
             const auto ahi_i16x16 = _mm256_unpackhi_epi8(va_i8x32, va_i8x32);
-            const auto ahilo_8xfp32 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(ahi_i16x16, ahi_i16x16)));
-            const auto ahihi_8xfp32 = _mm256_cvtepi32_ps(ShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(ahi_i16x16, ahi_i16x16)));
+            const auto ahilo_8xfp32 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpacklo_epi16(ahi_i16x16, ahi_i16x16)));
+            const auto ahihi_8xfp32 = _mm256_cvtepi32_ps(MlasShiftRight24Epi32<DataType>(_mm256_unpackhi_epi16(ahi_i16x16, ahi_i16x16)));
             lolo_f32x8 = _mm256_fmadd_ps(alolo_8xfp32, VectorScaleRatio_AC, lolo_f32x8);
             lohi_f32x8 = _mm256_fmadd_ps(alohi_8xfp32, VectorScaleRatio_AC, lohi_f32x8);
             hilo_f32x8 = _mm256_fmadd_ps(ahilo_8xfp32, VectorScaleRatio_AC, hilo_f32x8);
@@ -110,7 +110,7 @@ MlasQLinearAddKernelAvx2Helper(
 
         const auto vc02 = _mm256_packs_epi32(_mm256_cvtps_epi32(lolo_f32x8), _mm256_cvtps_epi32(lohi_f32x8));
         const auto vc13 = _mm256_packs_epi32(_mm256_cvtps_epi32(hilo_f32x8), _mm256_cvtps_epi32(hihi_f32x8));
-        vc = PackS16<DataType>(vc02, vc13);
+        vc = MlasPackS16_256<DataType>(vc02, vc13);
 
         n -= 32;
         if (n < 0) break;

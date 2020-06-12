@@ -21,7 +21,7 @@ Abstract:
 #include "qladd.h"
 
 bool
-CalcQLinearAddParameters(
+MlasCalcQLinearAddParameters(
     float ScaleRatio_AC, float ScaleRatio_BC,
     int32_t& Shift, int32_t& MultiplierA, int32_t& MultiplierB)
 {
@@ -33,11 +33,11 @@ CalcQLinearAddParameters(
     }
 
     const float GreaterScaleRatio = std::max(ScaleRatio_AC, ScaleRatio_BC);
-    const int32_t GreaterExponent = (int32_t)(BitsOfFp32(GreaterScaleRatio) >> 23) - 127;
+    const int32_t GreaterExponent = (int32_t)(MlasBitsOfFp32(GreaterScaleRatio) >> 23) - 127;
     Shift = 21 - GreaterExponent;
     if (Shift > 31 || Shift < 13) return false;
 
-    const float MultiplierFloatValue = Fp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
+    const float MultiplierFloatValue = MlasFp32FromBits((uint32_t)(21 - GreaterExponent + 127) << 23);
     MultiplierA = (int32_t) lrintf(ScaleRatio_AC * MultiplierFloatValue);
     MultiplierB = (int32_t) lrintf(ScaleRatio_BC * MultiplierFloatValue);
     return ((MultiplierA < 0x00400000 && MultiplierB < 0x00400000) &&
@@ -91,10 +91,10 @@ MlasQLinearAddKernelRawHelper(
 #if defined(MLAS_NEON_INTRINSICS)
 
 template <typename DataType>
-class SignedUnsignedIntOps;
+class MLAS_SignedUnsignedIntOps;
 
 template <>
-class SignedUnsignedIntOps<uint8_t>
+class MLAS_SignedUnsignedIntOps<uint8_t>
 {
 public:
     typedef uint8_t T;
@@ -145,7 +145,7 @@ public:
 };
 
 template <>
-class SignedUnsignedIntOps<int8_t>
+class MLAS_SignedUnsignedIntOps<int8_t>
 {
 public:
     typedef int8_t T;
@@ -197,13 +197,13 @@ public:
 
 #if defined(MLAS_NEON64_INTRINSICS)
 
-#define high_s16_to_s32(s16x8) vmovl_high_s16(s16x8)
-#define combine_s16_s32(lo, hi) vqmovn_high_s32(vqmovn_s32(lo), hi)
+#define MlasMoveHighS16S32(s16x8) vmovl_high_s16(s16x8)
+#define MlasCombineS16S32(lo, hi) vqmovn_high_s32(vqmovn_s32(lo), hi)
 
 #else
 
-#define high_s16_to_s32(s16x8) vmovl_s16(vget_high_s16(s16x8))
-#define combine_s16_s32(lo, hi) vcombine_s16(vqmovn_s32(lo), vqmovn_s32(hi))
+#define MlasMoveHighS16S32(s16x8) vmovl_s16(vget_high_s16(s16x8))
+#define MlasCombineS16S32(lo, hi) vcombine_s16(vqmovn_s32(lo), vqmovn_s32(hi))
 
 #endif
 
@@ -222,12 +222,12 @@ MlasQLinearAddKernelHelper(
     size_t N
     )
 {
-    typedef SignedUnsignedIntOps<DataType> SUI;
+    typedef MLAS_SignedUnsignedIntOps<DataType> SUI;
 
     int32_t Shift, MultiplierA, MultiplierB;
     const float ScaleRatio_AC = ScaleA / ScaleC;
     const float ScaleRatio_BC = ScaleB / ScaleC;
-    if (!CalcQLinearAddParameters(ScaleRatio_AC, ScaleRatio_BC, Shift, MultiplierA, MultiplierB)) {
+    if (!MlasCalcQLinearAddParameters(ScaleRatio_AC, ScaleRatio_BC, Shift, MultiplierA, MultiplierB)) {
         MlasQLinearAddKernelRawHelper<DataType,IsScalarA, IsScalarB>(
             InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
         return;
@@ -271,10 +271,10 @@ MlasQLinearAddKernelHelper(
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
             vacc2_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb2_s16x8)), VectorMultiplierB);
             vacc3_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb3_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
-            vacc2_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb2_s16x8), VectorMultiplierB);
-            vacc3_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb3_s16x8), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb1_s16x8), VectorMultiplierB);
+            vacc2_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb2_s16x8), VectorMultiplierB);
+            vacc3_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb3_s16x8), VectorMultiplierB);
         } else if (IsScalarB) {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA);
             const typename SUI::i8x16_t VectorA1 = SUI::vld1q_i8(InputA + 16);
@@ -288,10 +288,10 @@ MlasQLinearAddKernelHelper(
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
             vacc2_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va2_s16x8)), VectorMultiplierA);
             vacc3_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va3_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(va0_s16x8), VectorMultiplierA);
-            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(va1_s16x8), VectorMultiplierA);
-            vacc2_hi = vmlaq_s32(vscalar, high_s16_to_s32(va2_s16x8), VectorMultiplierA);
-            vacc3_hi = vmlaq_s32(vscalar, high_s16_to_s32(va3_s16x8), VectorMultiplierA);
+            vacc0_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va1_s16x8), VectorMultiplierA);
+            vacc2_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va2_s16x8), VectorMultiplierA);
+            vacc3_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va3_s16x8), VectorMultiplierA);
         } else  {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA);
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(InputB);
@@ -312,19 +312,19 @@ MlasQLinearAddKernelHelper(
             vacc1_lo = vmulq_s32(vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
             vacc2_lo = vmulq_s32(vmovl_s16(vget_low_s16(va2_s16x8)), VectorMultiplierA);
             vacc3_lo = vmulq_s32(vmovl_s16(vget_low_s16(va3_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmulq_s32(high_s16_to_s32(va0_s16x8), VectorMultiplierA);
-            vacc1_hi = vmulq_s32(high_s16_to_s32(va1_s16x8), VectorMultiplierA);
-            vacc2_hi = vmulq_s32(high_s16_to_s32(va2_s16x8), VectorMultiplierA);
-            vacc3_hi = vmulq_s32(high_s16_to_s32(va3_s16x8), VectorMultiplierA);
+            vacc0_hi = vmulq_s32(MlasMoveHighS16S32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmulq_s32(MlasMoveHighS16S32(va1_s16x8), VectorMultiplierA);
+            vacc2_hi = vmulq_s32(MlasMoveHighS16S32(va2_s16x8), VectorMultiplierA);
+            vacc3_hi = vmulq_s32(MlasMoveHighS16S32(va3_s16x8), VectorMultiplierA);
 
             vacc0_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
             vacc1_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
             vacc2_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb2_s16x8)), VectorMultiplierB);
             vacc3_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb3_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vacc0_hi, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vacc1_hi, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
-            vacc2_hi = vmlaq_s32(vacc0_hi, high_s16_to_s32(vb2_s16x8), VectorMultiplierB);
-            vacc3_hi = vmlaq_s32(vacc1_hi, high_s16_to_s32(vb3_s16x8), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vacc0_hi, MlasMoveHighS16S32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vacc1_hi, MlasMoveHighS16S32(vb1_s16x8), VectorMultiplierB);
+            vacc2_hi = vmlaq_s32(vacc0_hi, MlasMoveHighS16S32(vb2_s16x8), VectorMultiplierB);
+            vacc3_hi = vmlaq_s32(vacc1_hi, MlasMoveHighS16S32(vb3_s16x8), VectorMultiplierB);
         }
 
         vacc0_lo = vsraq_n_s32(vacc0_lo, vbicq_s32(vacc0_lo, vzero_shift_mask), 31);
@@ -346,10 +346,10 @@ MlasQLinearAddKernelHelper(
         vacc3_hi = vrshlq_s32(vacc3_hi, vright_shift);
 
         // Pack, saturate, and add output zero point.
-        const int16x8_t vacc0 = vqaddq_s16(combine_s16_s32(vacc0_lo, vacc0_hi), VectorZeroPointC);
-        const int16x8_t vacc1 = vqaddq_s16(combine_s16_s32(vacc1_lo, vacc1_hi), VectorZeroPointC);
-        const int16x8_t vacc2 = vqaddq_s16(combine_s16_s32(vacc2_lo, vacc2_hi), VectorZeroPointC);
-        const int16x8_t vacc3 = vqaddq_s16(combine_s16_s32(vacc3_lo, vacc3_hi), VectorZeroPointC);
+        const int16x8_t vacc0 = vqaddq_s16(MlasCombineS16S32(vacc0_lo, vacc0_hi), VectorZeroPointC);
+        const int16x8_t vacc1 = vqaddq_s16(MlasCombineS16S32(vacc1_lo, vacc1_hi), VectorZeroPointC);
+        const int16x8_t vacc2 = vqaddq_s16(MlasCombineS16S32(vacc2_lo, vacc2_hi), VectorZeroPointC);
+        const int16x8_t vacc3 = vqaddq_s16(MlasCombineS16S32(vacc3_lo, vacc3_hi), VectorZeroPointC);
 
         const typename SUI::i8x16_t vc0 = SUI::combine_i8_s16(vacc0, vacc1);
         const typename SUI::i8x16_t vc1 = SUI::combine_i8_s16(vacc2, vacc3);
@@ -372,8 +372,8 @@ MlasQLinearAddKernelHelper(
 
             vacc0_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb1_s16x8), VectorMultiplierB);
         } else if (IsScalarB) {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA); InputA += 16;
             const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
@@ -381,8 +381,8 @@ MlasQLinearAddKernelHelper(
 
             vacc0_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va0_s16x8)), VectorMultiplierA);
             vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmlaq_s32(vscalar, high_s16_to_s32(va0_s16x8), VectorMultiplierA);
-            vacc1_hi = vmlaq_s32(vscalar, high_s16_to_s32(va1_s16x8), VectorMultiplierA);
+            vacc0_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va1_s16x8), VectorMultiplierA);
         } else  {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(InputA); InputA += 16;
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(InputB); InputB += 16;
@@ -393,13 +393,13 @@ MlasQLinearAddKernelHelper(
 
             vacc0_lo = vmulq_s32(vmovl_s16(vget_low_s16(va0_s16x8)), VectorMultiplierA);
             vacc1_lo = vmulq_s32(vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
-            vacc0_hi = vmulq_s32(high_s16_to_s32(va0_s16x8), VectorMultiplierA);
-            vacc1_hi = vmulq_s32(high_s16_to_s32(va1_s16x8), VectorMultiplierA);
+            vacc0_hi = vmulq_s32(MlasMoveHighS16S32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmulq_s32(MlasMoveHighS16S32(va1_s16x8), VectorMultiplierA);
 
             vacc0_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
             vacc1_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
-            vacc0_hi = vmlaq_s32(vacc0_hi, high_s16_to_s32(vb0_s16x8), VectorMultiplierB);
-            vacc1_hi = vmlaq_s32(vacc1_hi, high_s16_to_s32(vb1_s16x8), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vacc0_hi, MlasMoveHighS16S32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vacc1_hi, MlasMoveHighS16S32(vb1_s16x8), VectorMultiplierB);
         }
 
         vacc0_lo = vsraq_n_s32(vacc0_lo, vbicq_s32(vacc0_lo, vzero_shift_mask), 31);
@@ -453,26 +453,26 @@ MlasQLinearAddKernelHelper(
 template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-ShiftRightInt32(MLAS_INT32X4 v, int imm);
+MlasShiftRightInt32(MLAS_INT32X4 v, int imm);
 
-template<> MLAS_INT32X4 ShiftRightInt32<int8_t>(MLAS_INT32X4 v, int imm) { return _mm_srai_epi32(v, imm); }
-template<> MLAS_INT32X4 ShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm) { return _mm_srli_epi32(v, imm); }
-
-template <typename DataType>
-MLAS_FORCEINLINE
-MLAS_INT32X4
-UnpackLowI8ToS16(MLAS_INT32X4 v);
-
-template <> MLAS_INT32X4 UnpackLowI8ToS16<int8_t>(MLAS_INT32X4 v) { return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8); }
-template <> MLAS_INT32X4 UnpackLowI8ToS16<uint8_t>(MLAS_INT32X4 v) { return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8); }
+template<> MLAS_INT32X4 MlasShiftRightInt32<int8_t>(MLAS_INT32X4 v, int imm) { return _mm_srai_epi32(v, imm); }
+template<> MLAS_INT32X4 MlasShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm) { return _mm_srli_epi32(v, imm); }
 
 template <typename DataType>
 MLAS_FORCEINLINE
 MLAS_INT32X4
-PackS16(MLAS_INT32X4 a, MLAS_INT32X4 b);
+MlasUnpackLowI8ToS16(MLAS_INT32X4 v);
 
-template <> MLAS_INT32X4 PackS16<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packus_epi16(a, b); }
-template <> MLAS_INT32X4 PackS16<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packs_epi16(a, b); }
+template <> MLAS_INT32X4 MlasUnpackLowI8ToS16<int8_t>(MLAS_INT32X4 v) { return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8); }
+template <> MLAS_INT32X4 MlasUnpackLowI8ToS16<uint8_t>(MLAS_INT32X4 v) { return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8); }
+
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128(MLAS_INT32X4 a, MLAS_INT32X4 b);
+
+template <> MLAS_INT32X4 MlasPackS16_128<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packus_epi16(a, b); }
+template <> MLAS_INT32X4 MlasPackS16_128<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packs_epi16(a, b); }
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 void
@@ -512,15 +512,15 @@ MlasQLinearAddKernelHelper(
             const auto va_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)InputA);
             const auto va_i16x8 = _mm_unpacklo_epi8(va_low_half, va_low_half);
             InputA += 8;
-            va_lo = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpacklo_epi16(va_i16x8, va_i16x8), 24));
-            va_hi = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpackhi_epi16(va_i16x8, va_i16x8), 24));
+            va_lo = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpacklo_epi16(va_i16x8, va_i16x8), 24));
+            va_hi = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpackhi_epi16(va_i16x8, va_i16x8), 24));
         }
         if (!IsScalarB) {
             const auto vb_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)InputB);
             const auto vb_i16x8 = _mm_unpacklo_epi8(vb_low_half, vb_low_half);
             InputB += 8;
-            vb_lo = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpacklo_epi16(vb_i16x8, vb_i16x8), 24));
-            vb_hi = _mm_cvtepi32_ps(ShiftRightInt32<DataType>(_mm_unpackhi_epi16(vb_i16x8, vb_i16x8), 24));
+            vb_lo = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpacklo_epi16(vb_i16x8, vb_i16x8), 24));
+            vb_hi = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpackhi_epi16(vb_i16x8, vb_i16x8), 24));
         }
 
         MLAS_INT32X4 r_lo, r_hi;
@@ -535,7 +535,7 @@ MlasQLinearAddKernelHelper(
             r_hi = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)), _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
         }
         const auto vc_i16x8 = _mm_packs_epi32(r_lo, r_hi);
-        vc = PackS16<DataType>(vc_i16x8, vc_i16x8);
+        vc = MlasPackS16_128<DataType>(vc_i16x8, vc_i16x8);
 
         n -= 8;
         if (n < 0) break;
@@ -571,6 +571,7 @@ MlasQLinearAddKernelHelper(
     size_t N
     )
 {
+    // Pure C++ implementation.
     MlasQLinearAddKernelRawHelper<DataType,IsScalarA, IsScalarB>(
         InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
 }
