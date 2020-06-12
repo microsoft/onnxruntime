@@ -93,7 +93,9 @@ Status QLinearBroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, 
 
   ThreadPool* tp = context.GetOperatorThreadPool();
   if (output_len == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
-    QLinearBroadcastOneSpan(tp, unit_cost, output.NextSpanOutput(), bc.NextSpan0(), bc.NextSpan1(),
+    auto span0 = bc.IsInput0Scalar() ? gsl::span<const T>(&bc.NextScalar0(), 1) : bc.NextSpan0();
+    auto span1 = bc.IsInput1Scalar() ? gsl::span<const T>(&bc.NextScalar1(), 1) : bc.NextSpan1();
+    QLinearBroadcastOneSpan(tp, unit_cost, output.NextSpanOutput(), span0, span1,
                             input0scalar, input1scalar, general,
                             A_scale, B_scale, C_scale, A_zero_point, B_zero_point, C_zero_point);
   } else {
@@ -114,13 +116,13 @@ template <typename T>
 Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
   return QLinearBroadcastTwo<T>(
       *context,
-      [](gsl::span<T> output, T input0, gsl::span<const T> input1,
+      [](gsl::span<T> output, const T& input0, gsl::span<const T> input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
         MlasQLinearAdd(&input0, A_scale, A_zero_point,
                        input1.data(), B_scale, B_zero_point,
                        C_scale, C_zero_point, output.data(), 1, output.size());
       },
-      [](gsl::span<T> output, gsl::span<const T> input0, T input1,
+      [](gsl::span<T> output, gsl::span<const T> input0, const T& input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
         MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
                        &input1, B_scale, B_zero_point,

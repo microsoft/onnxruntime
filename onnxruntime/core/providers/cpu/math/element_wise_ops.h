@@ -338,6 +338,16 @@ struct BroadcastIterator {
           break;
         counters_[counterIndex] = 0;
       }
+    } else if (counters_[0] > counts_[0]) { // Keep original logic above so that in most case it is faster
+      delta = counters_[0] / counts_[0];
+      counters_[0] = counters_[0] % counts_[0];
+      for (size_t counterIndex = 1; counterIndex < counters_.size(); counterIndex++) {
+        index_ += delta * deltas_[counterIndex];
+        counters_[counterIndex] += delta;
+        if (counters_[counterIndex] < counts_[counterIndex]) break;
+        delta = counters_[counterIndex] / counts_[counterIndex];
+        counters_[counterIndex] = counters_[counterIndex] % counts_[counterIndex];
+      }
     }
     return index;
   }

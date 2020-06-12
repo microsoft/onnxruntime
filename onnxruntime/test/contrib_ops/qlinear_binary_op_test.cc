@@ -104,10 +104,14 @@ RunQLinearMathTestFromFloat(
   test.Run();
 }
 
-// total 30 elements
+// total 32 + 31 elements to cover all path
 static std::vector<float> A4Add = {
   0.00f,  0.25f,  0.50f,  0.75f,  1.00f,  1.25f,  1.50f,  1.75f,
-  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  4.00f,  4.25f,
+  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  4.00f,  4.25f,  4.50f,
+ -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
+ -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -5.00f, -5.50f,
+  0.00f,  0.25f,  0.50f,  0.75f,  1.00f,  1.25f,  1.50f,  1.75f,
+  2.00f,  2.25f,  2.50f,  2.75f,  3.00f,  4.00f,  4.25f,  4.50f,
  -0.00f, -0.25f, -0.50f, -0.75f, -1.00f, -1.25f, -1.50f, -1.75f,
  -2.00f, -2.25f, -2.50f, -2.75f, -3.00f, -4.00f, -5.00f
 };
@@ -116,11 +120,17 @@ static auto add_function = [](float a_dequantized, float b_dequantized) {
   return a_dequantized + b_dequantized;
 };
 
-TEST(QLinearBinaryOpTest, AddU8VectorVector) {
+TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
   std::vector<float> B = {
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
     4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
    -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f
   };
@@ -130,42 +140,94 @@ TEST(QLinearBinaryOpTest, AddU8VectorVector) {
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {2, 15}, A_scale, A_zero_point, B, {15}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {63}, A_scale, A_zero_point, B, {63}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
-TEST(QLinearBinaryOpTest, AddU8ScalarVector) {
+TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = { 0.25f,  -0.25f };
+  std::vector<float> B = {
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+   -0.50f, -1.25f,  0.75f,  1.25f,  2.25f
+  };
+  float B_scale = 8.0f / 256.0f;
+  uint8_t B_zero_point = 128;
+  float C_scale = 16.0f / 256.0f;
+  uint8_t C_zero_point = 128;
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+    A, {3, 21}, A_scale, A_zero_point, B, {21}, B_scale, B_zero_point, C_scale, C_zero_point);
+}
+
+TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  uint8_t A_zero_point = 128;
+  std::vector<float> B = { 0.25f };
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 96;
   float C_scale = 8.0f / 256.0f;
   uint8_t C_zero_point = 100;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    B, {2, 1}, B_scale, B_zero_point, A, {2, 15}, A_scale, A_zero_point, C_scale, C_zero_point);
+    B, {1}, B_scale, B_zero_point, A, {63}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
-TEST(QLinearBinaryOpTest, AddU8VectorScalar) {
+TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   uint8_t A_zero_point = 128;
-  std::vector<float> B = { 0.25f,  -0.25f };
+  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  float B_scale = 8.0f / 256.0f;
+  uint8_t B_zero_point = 96;
+  float C_scale = 8.0f / 256.0f;
+  uint8_t C_zero_point = 100;
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+    B, {3, 1}, B_scale, B_zero_point, A, {3, 21}, A_scale, A_zero_point, C_scale, C_zero_point);
+}
+
+TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  uint8_t A_zero_point = 128;
+  std::vector<float> B = { 0.25f };
   float B_scale = 8.0f / 256.0f;
   uint8_t B_zero_point = 96;
   float C_scale = 16.0f / 256.0f;
   uint8_t C_zero_point = 128;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {2, 15}, A_scale, A_zero_point, B, {2, 1}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {63}, A_scale, A_zero_point, B, {1}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
-TEST(QLinearBinaryOpTest, AddS8VectorVector) {
+TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  uint8_t A_zero_point = 128;
+  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  float B_scale = 8.0f / 256.0f;
+  uint8_t B_zero_point = 96;
+  float C_scale = 16.0f / 256.0f;
+  uint8_t C_zero_point = 128;
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+    A, {3, 21}, A_scale, A_zero_point, B, {3, 1}, B_scale, B_zero_point, C_scale, C_zero_point);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
   std::vector<float> B = {
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
     4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
    -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f
   };
@@ -175,35 +237,81 @@ TEST(QLinearBinaryOpTest, AddS8VectorVector) {
   int8_t C_zero_point = -16;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {2, 15}, A_scale, A_zero_point, B, {15}, B_scale, B_zero_point, C_scale, C_zero_point);
+    A, {1, 63}, A_scale, A_zero_point, B, {1, 63}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
-TEST(QLinearBinaryOpTest, AddS8ScalarVector) {
+TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = { 0.25f, -0.25f };
+  std::vector<float> B = {
+    4.00f,  0.25f,  0.00f, -0.25f,  0.50f, -0.25f, -0.00f,  0.25f,
+   -1.50f, -2.25f,  2.50f,  3.75f, -3.75f, -4.00f,  5.00f,  5.50f,
+   -0.50f, -1.25f,  0.75f,  1.25f,  2.25f
+  };
+  float B_scale = 8.0f / 256.0f;
+  int8_t B_zero_point = 0;
+  float C_scale = 16.0f / 256.0f;
+  int8_t C_zero_point = -16;
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+    A, {3, 21}, A_scale, A_zero_point, B, {21}, B_scale, B_zero_point, C_scale, C_zero_point);
+}
+
+TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  int8_t A_zero_point = 0;
+  std::vector<float> B = { 0.25f };
   float B_scale = 2.0f / 256.0f;
   int8_t B_zero_point = 16;
   float C_scale = 8.0f / 256.0f;
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    B, {2, 1}, B_scale, B_zero_point, A, {2, 15}, A_scale, A_zero_point, C_scale, C_zero_point);
+    B, {1}, B_scale, B_zero_point, A, {63}, A_scale, A_zero_point, C_scale, C_zero_point);
 }
 
-TEST(QLinearBinaryOpTest, AddS8VectorScalar) {
+TEST(QLinearBinaryOpTest, AddS8ScalarVectorBroadcast) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
   int8_t A_zero_point = 0;
-  std::vector<float> B = { 0.25f, -0.25f };
+  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
   float B_scale = 2.0f / 256.0f;
   int8_t B_zero_point = 16;
   float C_scale = 8.0f / 256.0f;
   int8_t C_zero_point = 10;
 
   RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-    A, {2, 15}, A_scale, A_zero_point, B, {2, 1}, B_scale, B_zero_point, C_scale, C_zero_point);
+    B, {3, 1}, B_scale, B_zero_point, A, {3, 21}, A_scale, A_zero_point, C_scale, C_zero_point);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorScalarFull) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  int8_t A_zero_point = 0;
+  std::vector<float> B = { 0.25f };
+  float B_scale = 2.0f / 256.0f;
+  int8_t B_zero_point = 16;
+  float C_scale = 8.0f / 256.0f;
+  int8_t C_zero_point = 10;
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+    A, {63}, A_scale, A_zero_point, B, {1}, B_scale, B_zero_point, C_scale, C_zero_point);
+}
+
+TEST(QLinearBinaryOpTest, AddS8VectorScalarBroadcast) {
+  const std::vector<float>& A(A4Add);
+  float A_scale = 8.0f / 256.0f;
+  int8_t A_zero_point = 0;
+  std::vector<float> B = { 0.25f, -0.25f, -0.00f };
+  float B_scale = 2.0f / 256.0f;
+  int8_t B_zero_point = 16;
+  float C_scale = 8.0f / 256.0f;
+  int8_t C_zero_point = 10;
+
+  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
+    A, {3, 21}, A_scale, A_zero_point, B, {3, 1}, B_scale, B_zero_point, C_scale, C_zero_point);
 }
 
 }  // namespace test
