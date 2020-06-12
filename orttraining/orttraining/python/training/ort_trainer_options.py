@@ -4,6 +4,7 @@ import torch
 from .optim import lr_scheduler
 from .amp import loss_scaler
 
+
 class ORTTrainerOptions(object):
     r"""Settings used by ONNX Runtime training backend
 
@@ -197,22 +198,25 @@ class ORTTrainerOptions(object):
             })
             fp16_enabled = opts.mixed_precision.enabled
      """
+
     def __init__(self, options, _validate=True):
         # Keep a copy of original input for debug
         self._original_opts = dict(options)
 
         # Add an empty dictionary for non specified nested dicts
-        subgroups = [k for k,v in _ORT_TRAINER_OPTIONS_SCHEMA.items() if isinstance(v, dict)
-                                                                            and 'type' in v
-                                                                            and v['type'] == 'dict']
-        # print(subgroups)
+        subgroups = [k for k, v in _ORT_TRAINER_OPTIONS_SCHEMA.items()
+                     if isinstance(v, dict) and 'type' in v and v['type'] == 'dict']
         self._validated_opts = dict(self._original_opts)
         if _validate:
             for name in subgroups:
                 if name not in self._validated_opts:
                     self._validated_opts[name] = {}
+
+            # Validates user input
             validator = ORTTrainerOptionsValidator(_ORT_TRAINER_OPTIONS_SCHEMA)
             self._validated_opts = validator.validated(self._validated_opts)
+            if self._validated_opts is None:
+                self._validated_opts = validator.errors
             _validate = False
 
         # Convert dict in object
@@ -223,7 +227,9 @@ class ORTTrainerOptions(object):
         self._initialized = True
 
     def __repr__(self):
-        return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v)) for (k, v) in self.__dict__.items()))
+        return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
+                                      for (k, v) in self.__dict__.items()
+                                      if k not in ['_original_opts', '_validated_opts', '_initialized']))
 
     def __setattr__(self, k, v):
         if hasattr(self, '_initialized'):
@@ -232,19 +238,24 @@ class ORTTrainerOptions(object):
 
     def _wrap(self, v, validate):
         if isinstance(v, (tuple, list, set, frozenset)):
-            return type(v)([self._wrap(v) for v in v])
+            return type(v)([self._wrap(v, validate) for v in v])
         else:
             return ORTTrainerOptions(v, False) if isinstance(v, dict) else v
 
+
 class ORTTrainerOptionsValidator(cerberus.Validator):
-    _TORCH_DEVICE = cerberus.TypeDefinition('torch_device', (torch.device,), ())
-    _LR_SCHEDULER = cerberus.TypeDefinition('lr_scheduler', (lr_scheduler.LRScheduler,), ())
-    _LOSS_SCALER = cerberus.TypeDefinition('loss_scaler', (loss_scaler.LossScaler,), ())
+    _TORCH_DEVICE = cerberus.TypeDefinition(
+        'torch_device', (torch.device,), ())
+    _LR_SCHEDULER = cerberus.TypeDefinition(
+        'lr_scheduler', (lr_scheduler.LRScheduler,), ())
+    _LOSS_SCALER = cerberus.TypeDefinition(
+        'loss_scaler', (loss_scaler.LossScaler,), ())
 
     types_mapping = cerberus.Validator.types_mapping.copy()
     types_mapping['torch_device'] = _TORCH_DEVICE
     types_mapping['lr_scheduler'] = _LR_SCHEDULER
     types_mapping['loss_scaler'] = _LOSS_SCALER
+
 
 def _check_is_callable(field, value, error):
     result = False
@@ -258,108 +269,109 @@ def _check_is_callable(field, value, error):
     if not result:
         error(field, "Must be callable or None")
 
+
 _ORT_TRAINER_OPTIONS_SCHEMA = {
-    'batch' : {
-        'type' : 'dict',
-        'schema' : {
-            'gradient_accumulation_steps' : {
-                'type' : 'integer',
-                'min' : 0,
-                'default' : 0
+    'batch': {
+        'type': 'dict',
+        'schema': {
+            'gradient_accumulation_steps': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
             }
         },
     },
-    'cuda' : {
-        'type' : 'dict',
-        'schema' : {
-            'device' : {
-                'type' : 'torch_device',
-                'nullable' : True,
-                'default' : None
+    'cuda': {
+        'type': 'dict',
+        'schema': {
+            'device': {
+                'type': 'torch_device',
+                'nullable': True,
+                'default': None
             },
-            'mem_limit' : {
-                'type' : 'integer',
-                'min' : 0,
-                'default' : 0
+            'mem_limit': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
             }
         }
     },
-    'distributed' : {
-        'type' : 'dict',
-        'schema' : {
-            'world_rank' : {
-                'type' : 'integer',
-                'min' : 0,
-                'default' : 0
+    'distributed': {
+        'type': 'dict',
+        'schema': {
+            'world_rank': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
             },
-            'world_size' : {
-                'type' : 'integer',
-                'min' : 1,
-                'default' : 1
+            'world_size': {
+                'type': 'integer',
+                'min': 1,
+                'default': 1
             },
-            'local_rank' : {
-                'type' : 'integer',
-                'min' : 0,
-                'default' : 0
+            'local_rank': {
+                'type': 'integer',
+                'min': 0,
+                'default': 0
             },
-            'allreduce_post_accumulation' : {
-                'type' : 'boolean',
-                'default' : False
+            'allreduce_post_accumulation': {
+                'type': 'boolean',
+                'default': False
             },
-            'enable_partition_optimizer' : {
-                'type' : 'boolean',
-                'default' : False
+            'enable_partition_optimizer': {
+                'type': 'boolean',
+                'default': False
             },
-            'enable_adasum' : {
-                'type' : 'boolean',
-                'default' : False
+            'enable_adasum': {
+                'type': 'boolean',
+                'default': False
             }
 
         }
     },
-    'lr_scheduler' : {
-        'type' : 'lr_scheduler',
-        'nullable' : True,
-        'default' : None
+    'lr_scheduler': {
+        'type': 'lr_scheduler',
+        'nullable': True,
+        'default': None
     },
-    'mixed_precision' : {
-        'type' : 'dict',
-        'schema' : {
-            'enabled' : {
-                'type' : 'boolean',
-                'default' : False
+    'mixed_precision': {
+        'type': 'dict',
+        'schema': {
+            'enabled': {
+                'type': 'boolean',
+                'default': False
             },
-            'loss_scaler' : {
-                'type' : 'loss_scaler',
-                'nullable' : True,
-                'default' : None
+            'loss_scaler': {
+                'type': 'loss_scaler',
+                'nullable': True,
+                'default': None
             }
         }
     },
-    'utils' : {
-        'type' : 'dict',
-        'schema' : {
-            'grad_norm_clip' : {
-                'type' : 'boolean',
-                'default' : False
+    'utils': {
+        'type': 'dict',
+        'schema': {
+            'grad_norm_clip': {
+                'type': 'boolean',
+                'default': False
             }
         }
     },
-    '_internal_use' : {
-        'type' : 'dict',
-        'schema' : {
-            'frozen_weights' : {
-                'type' : 'list',
-                'default' : []
+    '_internal_use': {
+        'type': 'dict',
+        'schema': {
+            'frozen_weights': {
+                'type': 'list',
+                'default': []
             },
-            'enable_internal_postprocess' : {
-                'type' : 'boolean',
-                'default' : True
+            'enable_internal_postprocess': {
+                'type': 'boolean',
+                'default': True
             },
-            'extra_postprocess' : {
-                'check_with' : _check_is_callable,
-                'nullable' : True,
-                'default' : None
+            'extra_postprocess': {
+                'check_with': _check_is_callable,
+                'nullable': True,
+                'default': None
 
             }
         }
