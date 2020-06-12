@@ -107,7 +107,7 @@ struct OperandType {
 
   explicit OperandType(Type type, const std::vector<uint32_t>& d = {}, float scale = 0.0f, int32_t zeroPoint = 0);
   OperandType(const OperandType& other);
-  OperandType& operator=(const OperandType& other) = delete;
+  OperandType& operator=(const OperandType& other);
 
   size_t GetElementByteSize() const;
   size_t GetOperandBlobByteSize() const;

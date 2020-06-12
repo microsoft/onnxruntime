@@ -280,11 +280,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       }
 
       std::vector<nnapi::Model::InputOutputInfo> inputs;
-      std::vector<nnapi::Model::InputOutputInfo> outputs;
-
+      inputs.reserve(model->GetInputs().size());
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const auto& input_name = model->GetInputs()[i];
-        const auto& model_input_type = model->GetType(input_name);
+        const auto& model_input_type = model->GetInputType(input_name);
 
         auto input_idx = model->GetMappedInputIdx(input_name);
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_idx);
@@ -299,7 +298,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(dimensions);
         LOGS_DEFAULT(VERBOSE) << "model dim is " << GetShape(model_input_type.dimensions);
 
-        ORT_ENFORCE(dimensions == model_input_type.dimensions || model_input_type.GetOperandBlobByteSize() == 0,
+        ORT_ENFORCE(dimensions == model_input_type.dimensions ||
+                        model_input_type.GetOperandBlobByteSize() == 0,
                     "dimanesions should match or model input dimension has 0");
 
         // it is possible that the input has the detailed size while
@@ -318,14 +318,25 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         // LOGS_DEFAULT(VERBOSE) << "i is " << i << " input[0] is " << ((float*)inputBuffer)[0];
       }
 
+      std::unordered_map<std::string, uint32_t> input_dim_param_values = model->GetInputDimParamValues(inputs);
+
+      for (const auto& entry : input_dim_param_values)
+        LOGS_DEFAULT(VERBOSE) << "dim_param is " << entry.first << " and size " << entry.second;
+
+      std::vector<nnapi::Model::InputOutputInfo> outputs;
+      outputs.reserve(num_outputs);
       for (size_t i = 0; i < num_outputs; i++) {
         const auto output_name = model->GetOutputs()[i];
-        const auto output_shape = model->GetShape(output_name);
-        const auto& model_output_type = model->GetType(output_name);
+        const auto model_output_type =
+            model->GetOutputType(output_name, input_dim_param_values);
+        const auto output_shape = model_output_type.dimensions;
 
-        std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
+        std::vector<int64_t> int64_output_shape(output_shape.begin(),
+                                                output_shape.end());
         auto output_idx = model->GetMappedOutputIdx(output_name);
-        auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx, int64_output_shape.data(), int64_output_shape.size());
+        auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx,
+                                                          int64_output_shape.data(),
+                                                          int64_output_shape.size());
 
         // remove
         LOGS_DEFAULT(VERBOSE) << "output name is " << output_name << " and i " << i;
@@ -344,22 +355,14 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
             break;
         }
 
-        OperandType type(model_output_type);
-        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(type.dimensions);
-        outputs.push_back({output_buffer, std::move(type)});
+        ORT_ENFORCE(model_output_type.GetOperandBlobByteSize() != 0,
+                    "We do not support dynamic output shape for now");
+
+        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(model_output_type.dimensions);
+        outputs.push_back({output_buffer, std::move(model_output_type)});
       }
 
       model->Predict(inputs, outputs);
-
-      // Remove
-      // for (size_t i = 0; i < num_outputs; i++) {
-      //   const auto output_name = model->GetOutputs()[i];
-      //   const auto output_shape = model->GetShape(output_name);
-      //   std::vector<int64_t> int64_output_shape(output_shape.begin(), output_shape.end());
-      //   auto* output_tensor = ort.KernelContext_GetOutput(context, i, int64_output_shape.data(), int64_output_shape.size());
-      //   float* output = const_cast<float*>(ort.GetTensorData<float>(output_tensor));
-      //   LOGS_DEFAULT(VERBOSE) << "i is " << i << " output[0] is hahaha " << output[0];
-      // }
 
       return Status::OK();
     };

@@ -62,14 +62,18 @@ class Model {
 
   const std::vector<std::string>& GetInputs() const;
   const std::vector<std::string>& GetOutputs() const;
-  const android::nn::wrapper::OperandType& GetType(const std::string& name) const;
-  Shaper::Shape GetShape(const std::string& name);
+  const android::nn::wrapper::OperandType& GetInputType(const std::string& name) const;
+  const android::nn::wrapper::OperandType GetOutputType(
+      const std::string& name, std::unordered_map<std::string, uint32_t> input_dim_param_map) const;
 
   void SetInputMap(std::unordered_map<std::string, size_t>&& input_map);
   void SetOutputMap(std::unordered_map<std::string, size_t>&& output_map);
 
   size_t GetMappedInputIdx(const std::string& name) const;
   size_t GetMappedOutputIdx(const std::string& name) const;
+
+  std::unordered_map<std::string, uint32_t>
+  GetInputDimParamValues(const std::vector<InputOutputInfo>& inputs);
 
   void Predict(const std::vector<InputOutputInfo>& inputs,
                const std::vector<InputOutputInfo>& outputs);
@@ -87,7 +91,13 @@ class Model {
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
-  std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
+  std::unordered_map<std::string, android::nn::wrapper::OperandType>
+      operand_types_;
+
+  std::unordered_map<std::string, std::pair<int32_t, int32_t>>
+      input_dimension_map_;
+  std::unordered_map<std::string, std::unordered_map<int32_t, std::string>>
+      output_dimension_map_;
 
   Shaper shaper_;
 
@@ -104,6 +114,11 @@ class Model {
   void SetOutputs(const std::vector<InputOutputInfo>& outputs);
   void SetInputBuffer(const int32_t index, const InputOutputInfo& input);
   void SetOutputBuffer(const int32_t index, const InputOutputInfo& output);
+
+  void SetInputDimensionMap(int32_t input_idx, int32_t dim_idx,
+                            const std::string& dim_param);
+  void SetOutputDimensionMap(const std::string& output_name, int32_t dim_idx,
+                             const std::string& dim_param);
 
   void PrepareForExecution();
   void ResetExecution();

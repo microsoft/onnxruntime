@@ -240,7 +240,8 @@ void ModelBuilder::RegisterInitializers() {
 }
 
 void ModelBuilder::RegisterModelInputs() {
-  for (const auto& input : model_proto_.graph().input()) {
+  for (int32_t input_idx = 0; input_idx < model_proto_.graph().input_size(); input_idx++) {
+    const auto& input(model_proto_.graph().input(input_idx));
     std::string input_name = input.name();
 
     {  // input should not be an initializer
@@ -252,14 +253,13 @@ void ModelBuilder::RegisterModelInputs() {
     }
 
     Shaper::Shape shape;
-    for (const auto& dim : input.type().tensor_type().shape().dim()) {
-      if (dim.value_case() ==
-          ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue) {
-        shape.push_back(static_cast<uint32_t>(dim.dim_value()));
-      } else {
-        throw std::invalid_argument(
-            "The input of graph doesn't have dim_value");
+    for (int32_t dim_idx = 0; dim_idx < input.type().tensor_type().shape().dim_size(); dim_idx++) {
+      const auto& dim = input.type().tensor_type().shape().dim(dim_idx);
+      if (dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimParam) {
+        nnapi_model_->SetInputDimensionMap(input_idx, dim_idx, dim.dim_param());
       }
+
+      shape.push_back(static_cast<uint32_t>(dim.dim_value()));
     }
 
     shaper_.AddShape(input_name, shape);
@@ -287,11 +287,19 @@ void ModelBuilder::RegisterModelInputs() {
 }
 
 void ModelBuilder::RegisterModelOutputs() {
-  for (const auto& output : model_proto_.graph().output()) {
+  for (int32_t output_idx = 0; output_idx < model_proto_.graph().output_size(); output_idx++) {
+    const auto& output(model_proto_.graph().output(output_idx));
     const std::string& output_name(output.name());
     if (!HAS(operands_, output_name)) {
       throw std::invalid_argument(
           "The output of graph is not registered" + output_name);
+    }
+
+    for (int32_t dim_idx = 0; dim_idx < output.type().tensor_type().shape().dim_size(); dim_idx++) {
+      const auto& dim = output.type().tensor_type().shape().dim(dim_idx);
+      if (dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimParam) {
+        nnapi_model_->SetOutputDimensionMap(output_name, dim_idx, dim.dim_param());
+      }
     }
 
     output_index_vec_.push_back(operand_indices_[output_name]);

@@ -58,6 +58,28 @@ OperandType::OperandType(const OperandType& other) {
   };
 }  // namespace wrapper
 
+OperandType& OperandType::operator=(const OperandType& other) {
+  if (this != &other) {
+    type = other.type;
+    dimensions = other.dimensions;
+    if (dimensions.empty()) {
+      if (!isScalarType(type)) {
+        dimensions = {1};
+      }
+    }
+
+    operandType = {
+        .type = static_cast<int32_t>(type),
+        .dimensionCount = static_cast<uint32_t>(dimensions.size()),
+        .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
+        .scale = other.operandType.scale,
+        .zeroPoint = other.operandType.zeroPoint,
+    };
+  }
+
+  return *this;
+}
+
 size_t OperandType::GetElementByteSize() const {
   size_t element_size;
   switch (type) {
