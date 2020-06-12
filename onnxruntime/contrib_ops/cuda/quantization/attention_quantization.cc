@@ -59,7 +59,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, nullptr));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -117,7 +117,6 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                   w_zp_tensor));
 
   const auto dims = input->Shape().GetDims();
-  /*int input_size = static_cast<int>(input->Shape().Size());*/
   int batch_size = static_cast<int>(dims[0]);
   int sequence_length = static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
@@ -162,7 +161,10 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
       m,
       n);
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length);
+  const int past_sequence_length = 0;
+  const T* past_data = nullptr;
+  T* present_data = nullptr;
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
@@ -175,7 +177,11 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           temp_buffer.get(),
           cublas,
           element_size,
-          false)) {
+          is_unidirectional_,
+          past_sequence_length,
+          past_data,
+          present_data
+      )) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
