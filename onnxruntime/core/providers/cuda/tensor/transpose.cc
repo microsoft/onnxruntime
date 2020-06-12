@@ -98,59 +98,58 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   std::vector<size_t> new_permutations(permutations);
   std::vector<int64_t> new_input_dims(input_dims);
   std::vector<int64_t> new_output_dims(output_dims);
-  // for (auto i = rank - 1; i > 0; i--) {
-  //   auto curr = permutations[i];
-  //   auto prev = permutations[i - 1];
-  //   if (prev + 1 == curr) {
-  //     // all dims bigger than curr need to be reduced by 1 due to the merging.
-  //     for (auto j = 0; j < new_rank; j++) {
-  //       if (new_permutations[j] > curr) {
-  //         new_permutations[j] -= 1;
-  //       }
-  //     }
-  //     for (auto j = i+1; j < new_rank; j++) {
-  //       new_permutations[j-1] = new_permutations[j];
-  //     }
+  for (auto i = rank - 1; i > 0; i--) {
+    auto curr = permutations[i];
+    auto prev = permutations[i - 1];
+    if (prev + 1 == curr) {
+      // all dims bigger than curr need to be reduced by 1 due to the merging.
+      for (auto j = 0; j < new_rank; j++) {
+        if (new_permutations[j] > curr) {
+          new_permutations[j] -= 1;
+        }
+      }
+      for (auto j = i+1; j < new_rank; j++) {
+        new_permutations[j-1] = new_permutations[j];
+      }
 
-  //     new_input_dims[prev] *= new_input_dims[curr];
-  //     new_input_dims[curr] = 1;
-  //     for (auto j = curr+1; j < new_rank; j++) {
-  //       new_input_dims[j-1] = new_input_dims[j];
-  //     }
+      new_input_dims[prev] *= new_input_dims[curr];
+      new_input_dims[curr] = 1;
+      for (auto j = curr+1; j < new_rank; j++) {
+        new_input_dims[j-1] = new_input_dims[j];
+      }
+      new_input_dims[new_rank-1] = 1;
 
-  //     new_output_dims[i-1] *= new_output_dims[i];
-  //     new_output_dims[i] = 1;
-  //     for (auto j = i+1; j < new_rank; j++) {
-  //       new_output_dims[j-1] = new_output_dims[j];
-  //     }
-  //     new_rank--;
-  //   }
-  // }
+      new_output_dims[i-1] *= new_output_dims[i];
+      new_output_dims[i] = 1;
+      for (auto j = i+1; j < new_rank; j++) {
+        new_output_dims[j-1] = new_output_dims[j];
+      }
+      new_output_dims[new_rank-1] = 1;;
+      new_rank--;
+    }
+  }
 
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);
 
-  // Optimize for 4D tensor permutation
+  // Optimize for 4D/3D tensor permutation
   TArray<int64_t> input_shape(new_input_dims);
   TArray<int64_t> tmp_input_strides(new_input_strides);
 
-  TArray<int64_t> tmp_output_strides(new_rank);
-  for (auto i = 0; i < new_rank; i++) {
-    tmp_output_strides[i] = new_output_strides[new_permutations[i]];
-  }
-
   size_t element_size = input.DataType()->Size();
-  // last dim won't be changed.
-  if (rank == 4 && permutations[3] == 3) {
-    // each cuda thread will process the number of elements = 4 * sizeof(float) / element_size
-    int64_t num_elements = input_shape[2] * input_shape[3] / (4 * sizeof(float) / element_size);
-    // num_elements must be aligned with warp size: 32
-    if (num_elements <= kernel.GetDeviceProp().maxThreadsPerBlock && (num_elements & 0x1F) == 0) {
-      return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
-                             tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+  if (canDoTranspose4D(kernel.GetDeviceProp(), element_size, new_rank, new_input_dims, new_permutations)) {
+    TArray<int64_t> tmp_output_strides(new_rank);
+    for (auto i = 0; i < new_rank; i++) {
+      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
+    return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
+                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+  } else if (canDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
+    return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
   }
 
+  // General cases
   TArray<int64_t> input_strides(new_rank);
   for (auto i = 0; i < new_rank; i++) {
     input_strides[i] = new_input_strides[new_permutations[i]];
