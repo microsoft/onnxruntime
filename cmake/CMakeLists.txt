@@ -15,12 +15,14 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment ve
 
 # Project
 project(onnxruntime C CXX)
+# Needed for Java
+set (CMAKE_C_STANDARD 99)
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
 # CentOS compiler is old but it does allow certain C++14 features
-# such as lambda captures and they are convinient
+# such as lambda captures and they are convenient
 # On the other hand it does not allow some others.
 # So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
@@ -973,6 +975,11 @@ endif()
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
   include(onnxruntime_java.cmake)
+endif()
+
+if (onnxruntime_BUILD_NODEJS)
+  message(STATUS "Node.js Build is enabled")
+  include(onnxruntime_nodejs.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be
