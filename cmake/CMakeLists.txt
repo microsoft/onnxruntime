@@ -15,14 +15,12 @@ endif()
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-  # CMAKE_OSX_DEPLOYMENT_TARGET being set to 10.12 in the CMakeLists.txt doesn't seem to take effect
+  # CMAKE_OSX_DEPLOYMENT_TARGET being set to 10.12 doesn't seem to take effect
   # for assembly files and leads to linker warnings when the assembled object files are linked to
   # a library/exe targeting 10.12+ (because of CMAKE_OSX_DEPLOYMENT_TARGET = 10.12) as the assembled 
   # object files are targeting 10.14 (if built on 10.14 build agents).
   # TODO: Investigate the cause for this.
-  # As a work-around explicitly set the relevant flag to achieve the desired effect
-  # Note: Currently, we don't support anyhting other than x86_64 on Macs, so not adding this logic 
-  # in any place except here      
+  # As a work-around explicitly set the relevant flag to achieve the desired effect    
   message("Adding flags so that the assembler will target a minimum deployable Mac OS version of 10.12")
   set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mmacosx-version-min=10.12")
 endif()
