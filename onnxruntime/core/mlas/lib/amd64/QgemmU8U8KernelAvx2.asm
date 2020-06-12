@@ -840,8 +840,8 @@ ComputeBlockLoopExit:
 ;
 ;   C (r8) - Supplies the address of matrix C.
 ;
-;   PairCountK (r9) - Supplies the number of pair columns from matrix A and the
-;       number of pair rows from matrix B to iterate over.
+;   PackedCountK (r9) - Supplies the number of packed columns from matrix A and
+;       the number of packed rows from matrix B to iterate over.
 ;
 ;   CountM - Supplies the maximum number of rows that can be processed for
 ;       matrix A and matrix C. The actual number of rows handled for this

@@ -309,10 +309,49 @@ mask_index shall not be provided.)DOC";
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
       .Input(3, "mask_index", "Attention mask index with shape (batch_size).", "M", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
+
+        if (hasInputShape(ctx, 0)) {
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          if (ctx.getNumOutputs() > 1) {
+            auto& input_shape = getInputShape(ctx, 0);
+            auto& input_dims = input_shape.dim();
+            if (input_dims.size() != 3) {
+              fail_shape_inference("Inputs 0 shall be 3 dimensions");
+            }
+
+            if (hasInputShape(ctx, 4)) {
+              auto& past_shape = getInputShape(ctx, 4);
+              auto& past_dims = past_shape.dim();
+              if (past_dims.size() != 5) {
+                fail_shape_inference("Inputs 4 shall be 5 dimensions");
+              }
+
+              if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+                auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+
+                ONNX_NAMESPACE::TensorShapeProto present_shape;
+                for (auto& dim : past_dims) {
+                  *present_shape.add_dim() = dim;
+                }
+                present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
+
+                updateOutputShape(ctx, 1, present_shape);
+              }
+            }
+          }
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
       .SetDomain(kMSDomain)
@@ -1617,7 +1656,41 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         // Right now we only support int32
         y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
 
-        matmulShapeInference(ctx, 0, 1);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicQuantizeMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
+      .Input(
+          2,
+          "b_scale",
+          "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'B'.",
+          "T1")
+      .Input(
+          3,
+          "b_zero_point",
+          "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of columns of input 'B'.",
+          "T2",
+          OpSchema::Optional)
+      .Output(0, "Y", "Matrix multiply results from A * B", "T1")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain input A, b_scale and output Y data type as float tensor.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input B data type to 8-bit integer tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
   static const char* TransposeMatMul_doc = R"DOC(

@@ -9,6 +9,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/util/qmath.h"
 
 namespace onnxruntime {
 namespace test {
@@ -134,9 +135,11 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
   }
 }
 
@@ -187,6 +190,7 @@ static void RunQAttentionU8U8(
     qp_uint8.input_zero_point = 128;
     qp_uint8.weight_zero_point = 128;
   }
+
   RunQAttention<uint8_t, uint8_t, EP::CPU>(
       input_data, weights_data, bias_data, mask_index_data, output_data, qp_uint8,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional);
