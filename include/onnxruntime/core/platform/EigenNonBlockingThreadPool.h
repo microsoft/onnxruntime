@@ -535,7 +535,7 @@ void RunWithHelp(std::function<void()> fn, unsigned n) override {
     std::vector<unsigned>& alt_hints = pt->alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (unsigned i = 0; i < n - 1; i++) {
-      Task t = env_.CreateTask([&b, &fn, pt]() {
+      Task t = env_.CreateTask([&b, &fn]() {
         fn();
         b.Notify(1);
       });
@@ -777,8 +777,8 @@ int CurrentThreadId() const EIGEN_FINAL {
   // items in the work queues.  
 
   void WakeAllWorkersForExit() {
-    for (auto i = 0; i < thread_data_.size(); i++) {
-      thread_data_[i].EnsureAwake();
+    for (auto &td: thread_data_) {
+      td.EnsureAwake();
     }
   }
 
