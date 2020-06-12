@@ -256,7 +256,7 @@ else()
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Core.S
         )
         if(HAS_AVX512CORE)
-          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_OPTIONS "-mavx512bw;-mavx512dq -mavx512vl")
+          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_OPTIONS "-mavx512bw;-mavx512dq;-mavx512vl")
         endif()
       else()
         set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_OPTIONS "-DMLAS_AVX512CORE_UNSUPPORTED")
