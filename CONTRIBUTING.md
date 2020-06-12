@@ -1,11 +1,11 @@
 # Contributing
 
 We're always looking for your help to fix bugs and improve the product. Create a pull request and we'll be happy to take a look.
-Start by reading the [Engineering Design](docs/HighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
+Start by reading the [Engineering Design](./docs/InferenceHighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
 
 ## Proposing new public APIs
 
- ONNX Runtime has a collection of [public APIs](docs/HighLevelDesign.md).  Some of these APIs make their way back into the Windows OS.  We make compatibility committments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
+ ONNX Runtime has a collection of [public APIs](./docs/InferenceHighLevelDesign.md).  Some of these APIs make their way back into the Windows OS.  We make compatibility committments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
 
 ## Process details
 
