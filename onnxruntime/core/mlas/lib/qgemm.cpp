@@ -1323,7 +1323,7 @@ Return Value:
         MlasPlatform.GemmU8U8Operation(&LocalWorkBlock);
     }
 #else
-    GemmU8X8Operation = MlasGemmU8X8OperationSse(&LocalWorkBlock);
+    MlasGemmU8X8OperationSse(&LocalWorkBlock);
 #endif
 }
 
