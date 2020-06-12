@@ -209,7 +209,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
   }
 }
 
-static std::string GetDeviceName(const OrtDevice& device) {
+static const char* GetDeviceName(const OrtDevice& device) {
   switch (device.Type()) {
     case OrtDevice::CPU:
       return CPU;
@@ -218,7 +218,7 @@ static std::string GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     default:
-      throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
+      ORT_THROW("Unknown device type: ", device.Type());
   }
 }
 
@@ -624,9 +624,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        std::string device_name = GetDeviceName(device);
-
-        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
@@ -644,9 +642,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        std::string device_name = GetDeviceName(device);
-
-        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;

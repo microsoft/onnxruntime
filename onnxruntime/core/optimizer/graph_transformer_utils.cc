@@ -2,34 +2,36 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/graph_transformer_utils.h"
-#include "core/optimizer/identity_elimination.h"
-#include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/conv_mul_fusion.h"
-#include "core/optimizer/conv_bn_fusion.h"
-#include "core/optimizer/conv_add_fusion.h"
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/conv_activation_fusion.h"
-#include "core/optimizer/gemm_activation_fusion.h"
-#include "core/optimizer/matmul_add_fusion.h"
-#include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/relu_clip_fusion.h"
-#include "core/optimizer/shape_to_initializer.h"
-#include "core/optimizer/nchwc_transformer.h"
-#include "core/optimizer/free_dim_override_transformer.h"
-#include "core/optimizer/bias_gelu_fusion.h"
-#include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gelu_approximation.h"
-#include "core/optimizer/fast_gelu_fusion.h"
-#include "core/optimizer/layer_norm_fusion.h"
-#include "core/optimizer/skip_layer_norm_fusion.h"
-#include "core/optimizer/embed_layer_norm_fusion.h"
-#include "core/optimizer/reshape_fusion.h"
-#include "core/optimizer/attention_fusion.h"
-#include "core/optimizer/expand_elimination.h"
-#include "core/optimizer/cast_elimination.h"
+
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/constant_folding.h"
+#include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/conv_add_fusion.h"
+#include "core/optimizer/conv_bn_fusion.h"
+#include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
+#include "core/optimizer/dynamic_quantize_matmul_fusion.h"
+#include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/optimizer/expand_elimination.h"
+#include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/free_dim_override_transformer.h"
+#include "core/optimizer/gelu_approximation.h"
+#include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/relu_clip_fusion.h"
+#include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/unsqueeze_elimination.h"
 
 namespace onnxruntime {
 
@@ -126,6 +128,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_execution_providers));
 
       std::unordered_set<std::string> cpu_acl_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider};
 
@@ -171,8 +174,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
   // These transformers could only be enabled by custom transformer list.
 #ifndef DISABLE_CONTRIB_OPS
   if (level == TransformerLevel::Level2) {
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
+    std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+    transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
   }
 #endif
 
