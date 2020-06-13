@@ -815,7 +815,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
-            engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
+            &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_,
             &max_workspace_size_};
@@ -845,7 +845,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Update shape ranges
       bool dimension_update = false;
-      auto trt_context = trt_state->context;
+      auto trt_context = trt_state->context->get();
       auto trt_builder = trt_state->builder;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
@@ -919,15 +919,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         }
-        trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);
-        if (trt_state->engine == nullptr) {
+        trt_state->context->reset();
+        trt_state->engine->reset();
+        *(trt_state->engine) =  unique_pointer<nvinfer1::ICudaEngine>(
+                                  trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
+
+        if (trt_state->engine->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
-        trt_state->context = trt_state->engine->createExecutionContext();
-        if (trt_state->context == nullptr) {
+        *(trt_state->context) = unique_pointer<nvinfer1::IExecutionContext>(
+                                  trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
         }
-        trt_context = trt_state->context;
+        trt_context = trt_state->context->get();
       }
 
       // Set input shapes and assign input buffers

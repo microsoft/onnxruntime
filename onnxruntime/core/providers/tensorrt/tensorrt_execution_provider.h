@@ -38,6 +38,19 @@ class TensorrtLogger : public nvinfer1::ILogger {
   }
 };
 
+struct InferDeleter {
+  template <typename T>
+  void operator()(T* obj) const {
+    if (obj) {
+      obj->destroy();
+    }
+  }
+};
+
+template <typename T>
+using unique_pointer = std::unique_ptr<T, InferDeleter>;
+
+
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
@@ -49,8 +62,8 @@ struct TensorrtFuncState {
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   nvonnxparser::IParser* parser = nullptr;
-  nvinfer1::ICudaEngine* engine = nullptr;
-  nvinfer1::IExecutionContext* context = nullptr;
+  unique_pointer<nvinfer1::ICudaEngine> * engine = nullptr;
+  unique_pointer<nvinfer1::IExecutionContext> * context = nullptr;
   nvinfer1::IBuilder* builder = nullptr;
   nvinfer1::INetworkDefinition* network = nullptr;
   std::vector<std::vector<int>> input_info;
@@ -89,17 +102,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool fp16_enable_ = false;
   bool dump_subgraphs_ = false;
 
-  struct InferDeleter {
-    template <typename T>
-    void operator()(T* obj) const {
-      if (obj) {
-        obj->destroy();
-      }
-    }
-  };
-
-  template <typename T>
-  using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
   OrtMutex tensorrt_mu_;
   int device_id_;
