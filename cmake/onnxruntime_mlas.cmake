@@ -173,8 +173,8 @@ else()
         # TODO: Investigate the cause for this.
         # As a work-around explicitly set the relevant flag to achieve the desired effect    
         message("Adding flags so that the assembler will target a minimum deployable Mac OS version of 10.12")
-        #set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mmacosx-version-min=10.12")
-        set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")    
+        set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mmacosx-version-min=10.12")
+        #set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")    
     endif()
 
     # The LLVM assembler does not support the .arch directive to enable instruction
