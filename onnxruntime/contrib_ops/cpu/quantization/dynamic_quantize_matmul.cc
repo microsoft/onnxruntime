@@ -69,7 +69,7 @@ Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
   }
 
   // calculate quantization parameter of a
-  const float* a_data = a->template Data<float>();
+  const auto* a_data = a->template Data<float>();
   int64_t num_of_elements = a->Shape().Size();
 
   float a_scale;
@@ -86,8 +86,12 @@ Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
 
-  int32_t* matmul_output = static_cast<int32_t*>(allocator->Alloc(SafeInt<size_t>(helper.OutputShape().Size()) * sizeof(int32_t)));
-  BufferUniquePtr matmul_output_holder(matmul_output, BufferDeleter(allocator));
+  const auto* b_data = b->template Data<T>();
+
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+  auto* y_data = y->template MutableData<float>();
+
+  const float multiplier = a_scale * b_scale;
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
@@ -97,21 +101,16 @@ Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
           a_data_quant + helper.LeftOffsets()[i],
           static_cast<int>(helper.K()),
           a_zp,
-          b->template Data<T>() + helper.RightOffsets()[i],
+          b_data + helper.RightOffsets()[i],
           static_cast<int>(helper.N()),
           b_zp,
-          matmul_output + helper.OutputOffsets()[i],
+          y_data + helper.OutputOffsets()[i],
           static_cast<int>(helper.N()),
+          &multiplier,
+          nullptr,
           thread_pool);
   }
 
-  Tensor* y = ctx->Output(0, helper.OutputShape());
-  float* y_data = y->template MutableData<float>();
-
-  float multiplier = a_scale * b_scale;
-  for (int64_t i = 0; i < helper.OutputShape().Size(); i++) {
-    y_data[i] = matmul_output[i] * multiplier;
-  }
   return Status::OK();
 }
 
