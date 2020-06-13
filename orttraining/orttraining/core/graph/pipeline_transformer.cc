@@ -75,7 +75,7 @@ std::vector<NodeArg*> FindBackwardLeafNodes(Graph& graph) {
 // we need a memory block (as large as a whole model) to store gradient
 // for each trainable tensor until the end of backward pass.
 //
-// The newly created bollean scalar may be appended to signal_args. If
+// The newly created boolean scalar may be appended to signal_args. If
 // signal_args is empty, the source of signal_args[i] would be tensor_args[i].
 void ConvertTensorToBoolSignal(
   Graph& graph,
@@ -105,10 +105,6 @@ void ConvertTensorToBoolSignal(
       output_args,
       nullptr,
       kMSDomain);
-
-    // TODO: remove this break after changining topological sort to depth-first
-    // from inputs.
-    break;
   }
 }
 
@@ -189,6 +185,10 @@ Node* AddBackwardRecord(Graph& graph,
   // For each leaf tensor in the backward pass, we use "Group" operator to
   // convert it to a boolean scalar so that the original leaf's memory can be
   // released earlier.
+
+  // TODO: use full list instead of the first element after changining
+  // topological sort to depth-first from inputs.
+  std::vector<NodeArg*> sub_backward_leaf_node_args{backward_leaf_node_args[0]};
   ConvertTensorToBoolSignal(graph, backward_leaf_node_args, input_args);
 
   // Optimizer will be added after applying pipeline transformer. To support partial graph evaluation,
