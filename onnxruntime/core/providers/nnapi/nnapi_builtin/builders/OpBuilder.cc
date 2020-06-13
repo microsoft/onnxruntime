@@ -139,8 +139,6 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
         "The initializer of graph doesn't have valid type: " + name);
   }
 
-  const float* src = GetTensorFloatData(tensor);
-  float buffer[Product(shape)];
   auto out_t = shape[0], in_t = shape[1],
        h_t = shape[2], w_t = shape[3];
   ModelBuilder::Shape dest_shape;
@@ -149,6 +147,8 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
   else
     dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
 
+  const float* src = GetTensorFloatData(tensor);
+  float* buffer = new float[Product(shape)];
   const OperandType operandType(type, dest_shape);
   for (uint32_t out = 0; out < out_t; out++) {
     for (uint32_t in = 0; in < in_t; in++) {
@@ -175,7 +175,46 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
 
-  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+  delete[] buffer;
+  return operand_idx;
+}
+
+uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
+                                  const std::string& name) {
+  const auto& tensor = model_builder.GetInitializerTensors().at(name);
+  ModelBuilder::Shape shape;
+  for (auto dim : tensor.dims())
+    shape.push_back(static_cast<uint32_t>(dim));
+
+  if (shape.size() != 2)
+    throw std::invalid_argument(
+        "The initializer is not 2D: " + name +
+        " actual dim " + std::to_string(shape.size()));
+
+  // TODO support other data types
+  Type type;
+  if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    type = Type::TENSOR_FLOAT32;
+  } else {
+    throw std::invalid_argument(
+        "The initializer of graph doesn't have valid type: " + name);
+  }
+
+  auto x_t = shape[0], y_t = shape[1];
+  ModelBuilder::Shape dest_shape = {y_t, x_t};
+  const OperandType operandType(type, dest_shape);
+  const float* src = GetTensorFloatData(tensor);
+  float* buffer = new float[Product(shape)];
+  for (uint32_t x = 0; x < x_t; x++) {
+    for (uint32_t y = 0; y < y_t; y++) {
+      buffer[y * x_t + x] = src[x * y_t + y];
+    }
+  }
+  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+
+  delete[] buffer;
+  return operand_idx;
 }
 
 #pragma endregion helpers
@@ -923,6 +962,116 @@ void IdentityOpBuilder::AddOperatorImpl() {
 
 #pragma endregion
 
+#pragma region op_gemm
+
+class GemmOpBuilder : public BaseOpBuilder {
+ public:
+  GemmOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
+      : BaseOpBuilder(model_builder, node) {}
+  void SkipInitializers() override;
+
+ private:
+  std::pair<bool, std::string> IsOpSupportedImpl() override;
+  void AddOperatorImpl() override;
+};
+
+std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
+  const auto& op = node_.op_type();
+  const auto& initializers(model_builder_.GetInitializerTensors());
+
+  if (op == "MatMul") {  // Only support A*B B is an initializer
+    if (!HAS(initializers, node_.input(1)))
+      return {false, "B of MatMul must be known"};
+  } else if (op == "Gemm") {
+    // Only support
+    // 1. A*B'+C
+    // 2. A*B+C and B is an initializer
+    NodeAttrHelper helper(node_);
+    const auto transA = helper.get("transA", 0);
+    const auto transB = helper.get("transB", 0);
+    const auto alpha = helper.get("alpha", 1.0f);
+    const auto beta = helper.get("beta", 1.0f);
+
+    if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
+      return {false,
+              "Only transA == 0, alpha == 1.0 and beta == "
+              "1.0 is supported."};
+    }
+
+    if (transB == 0 && !HAS(initializers, node_.input(1))) {
+      return {false, "B of MatMul must be known if transB != 1"};
+    }
+  }
+
+  return {true, ""};
+}
+
+void GemmOpBuilder::SkipInitializers() {
+  const auto& op = node_.op_type();
+  if (op == "MatMul") {
+    model_builder_.AddSkippedInitializer(node_.input(1));
+  } else if (op == "Gemm") {
+    NodeAttrHelper helper(node_);
+    const auto transB = helper.get("transB", 0);
+    if (transB == 0)
+      model_builder_.AddSkippedInitializer(node_.input(1));
+  }
+}
+
+void GemmOpBuilder::AddOperatorImpl() {
+  const auto& op = node_.op_type();
+  auto& shaper(model_builder_.GetShaper());
+  const auto& operand_indices(model_builder_.GetOperandIndices());
+  const auto& operand_types(model_builder_.GetOperandTypes());
+  NodeAttrHelper helper(node_);
+
+  const auto& input1 = node_.input(0);
+  const auto& input2 = node_.input(1);
+  const auto& output = node_.output(0);
+  const auto transB = helper.get("transB", 0);
+
+  uint32_t input_2_idx;
+  if (transB == 0) {
+    input_2_idx = AddInitializerTransposed(model_builder_, input2);
+  } else {
+    input_2_idx = operand_indices.at(input2);
+  }
+
+  uint32_t bias_idx;
+  if (node_.input_size() == 2) {
+    std::string bias = node_.name() + op + "_bias";
+    const auto& B_type = operand_types.at(input2).type;
+    ModelBuilder::Shape bias_dimen = {shaper[input2][0]};
+    if (B_type == Type::TENSOR_FLOAT32) {
+      float buffer[bias_dimen[0]];
+      for (uint32_t i = 0; i < bias_dimen[0]; i++) {
+        buffer[i] = 0.f;
+      }
+      OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
+      bias_idx = model_builder_.AddOperandFromPersistMemoryBuffer(
+          bias, &buffer[0], operandType);
+    } else {
+      throw std::invalid_argument("Unknown weight type " + typeToStr(B_type));
+    }
+  } else {
+    bias_idx = operand_indices.at(node_.input(2));
+  }
+
+  ModelBuilder::IndexSeq input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // A
+  input_indices.push_back(input_2_idx);                 // B
+  input_indices.push_back(bias_idx);                    // C
+  int32_t fuse_code = model_builder_.FindActivation(output);
+  input_indices.push_back(model_builder_.AddOperandFromScalar(fuse_code));
+
+  shaper.GEMM(input1, input2, output);
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  model_builder_.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED,
+                              input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion
+
 #pragma region CreateOpBuilder
 
 std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
@@ -953,6 +1102,9 @@ std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
     return std::make_unique<SoftMaxOpBuilder>(model_builder, node);
   } else if (op == "Identity") {
     return std::make_unique<IdentityOpBuilder>(model_builder, node);
+  } else if (op == "Gemm" ||
+             op == "MatMul") {
+    return std::make_unique<GemmOpBuilder>(model_builder, node);
   }
 
   return std::make_unique<BaseOpBuilder>(model_builder, node);

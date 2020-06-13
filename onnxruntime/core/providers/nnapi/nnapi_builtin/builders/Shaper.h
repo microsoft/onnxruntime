@@ -43,7 +43,9 @@ class Shaper {
                const std::string& output_name);
   void Identity(const std::string& input_name,
                 const std::string& output_name);
-
+  void GEMM(const std::string& input_name,
+            const std::string& weight_name,
+            const std::string& output_name);
   void AddShape(const std::string& name, const Shape& shape);
   size_t GetSize(const std::string& name);
   void Clear();

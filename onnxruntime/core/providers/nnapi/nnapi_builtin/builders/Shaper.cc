@@ -287,6 +287,15 @@ void Shaper::Identity(const std::string& input_name,
   shape_map_[output_name] = shape_map_.at(input_name);
 }
 
+void Shaper::GEMM(const std::string& input_name, const std::string& weight_name,
+                  const std::string& output_name) {
+  // Currently we only support A*B'+C
+  Shape weightDimen = shape_map_.at(weight_name);  // num_units, input_size
+  auto input_dimen = shape_map_.at(input_name);
+  Shape outputDimen{input_dimen[0], weightDimen[0]};
+  shape_map_[output_name] = outputDimen;
+}
+
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
 }

@@ -275,6 +275,9 @@ void ModelBuilder::RegisterModelInputs() {
           throw std::invalid_argument(
               "The input of graph doesn't have valid type: " + input_name);
       }
+    } else {
+      throw std::invalid_argument(
+          "The input of graph doesn't have elem_type: " + input_name);
     }
 
     OperandType operand_type(type, shape);
