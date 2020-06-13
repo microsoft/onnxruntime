@@ -294,15 +294,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-    # CMAKE_OSX_DEPLOYMENT_TARGET being set to 10.12 doesn't seem to take effect
-    # for assembly files and leads to linker warnings when the assembled object files are linked to
-    # a library/exe targeting 10.12+ (because of CMAKE_OSX_DEPLOYMENT_TARGET = 10.12) as the assembled 
-    # object files are targeting 10.14 (if built on 10.14 build agents).
-    # TODO: Investigate the cause for this.
-    # As a work-around explicitly set the relevant flag to achieve the desired effect    
-    message("Adding flags so that the assembler will target a minimum deployable Mac OS version of 10.12")
-    #set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mmacosx-version-min=10.12")
-    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${CMAKE_CXX_OSX_DEPLOYMENT_TARGET_FLAG}")    
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
