@@ -128,9 +128,9 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
       continue;
     }
+
     // Try to find path [Root] --> Shape --> Gather(indices=i) --> Unsqueeze (axes=0) --> Concat [input i]
     bool matched = ReshapeFusion::Fuse_Subgraph2(graph, root_input, concat, i, shape_value, logger);
-    const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
     if (matched) {
       shape_value.push_back(0);
       // We have matched the pattern for this input into Concat
@@ -141,11 +141,17 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     // If we haven't been able to match the pattern, try and see if this is a candidate for subgraph pattern fusion.
     // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
     // We use shape info (if made available via shape inference) for this.
+    const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
     if (!concat_input_node_arg) {
       // We need NodeArg to be able to lookup any shape info
       // Can't proceed with fusion
       return false;
     }
+
+    // ONNX shape inference runs after Level 1 optimization and hence shape information may not be available
+    // at this point.
+    // The shape inference might be available if the shape info was available via the `value_info` field in GraphProto
+    // or if the model had shape inference run on it which made the shape information available
 
     const auto* input_shape = concat_input_node_arg->Shape();
     if (!input_shape) {
@@ -155,27 +161,24 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     }
 
     // For the number of elements in this input to Concat be 1,
-    // it should be a 1D tensor (scalars are not valid inputs to Concat)
-    // and the dim value of the first dimension must be available and must be 1.
+    // all dim values in the shape must be 1.
     const auto input_rank = concat_input_node_arg->Shape()->dim_size();
-    if (input_rank != 1) {
-      // This tensor holds multi-dimensional input
-      // Can't proceed with fusion
-      return false;
+
+    for (int dim_index = 0; dim_index < input_rank; ++dim_index) {
+      const auto& dim = input_shape->dim()[dim_index];
+      if (!dim.has_dim_value() || dim.dim_value() != 1) {
+        // Dim value is missing or is not 1
+        // Can't proceed with fusion
+        return false;
+      }
     }
 
-    const auto& first_dim = input_shape->dim()[0];
-    if (first_dim.has_dim_value() && first_dim.dim_value() == 1) {
-      // This node could lead to a potential subgraph pattern fusion.
-      shape_value.push_back(-1);
-    } else {
-      // There are potentially more than 1 element in this tensor.
-      // Can't proceed with fusion
-      return false;
-    }
+    // This node has met all required criteria thus far.
+    // This node could lead to a potential subgraph pattern fusion.
+    shape_value.push_back(-1);
   }
 
-  // Check how many -1 are there in shape_value.
+  // Check how many "-1"s there are in shape_value.
   int subgraph_cnt = 0;
   for (auto it = shape_value.begin(); it < shape_value.end(); ++it) {
     if ((*it) == -1) {

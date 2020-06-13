@@ -1199,7 +1199,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionGraphInputsTest) {
   ASSERT_EQ(op_to_count["Concat"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
 }
-  
+
 TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerSubgraphTest) {
   auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_multiple_values_in_initializer_tensor_1.onnx";
   std::shared_ptr<Model> p_model;
@@ -1324,8 +1324,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphMultipleOutputs) {
   ASSERT_EQ(op_to_count["Shape"], 3);
   ASSERT_EQ(op_to_count["Gather"], 1);
   ASSERT_EQ(op_to_count["Unsqueeze"], 1);
-  ASSERT_EQ(op_to_count["Squeeze"], 1);
-  ASSERT_EQ(op_to_count["Div"], 1);
+  ASSERT_EQ(op_to_count["Slice"], 1);
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["Reshape"], 1);
   for (const Node& node : graph.Nodes()) {
@@ -1360,8 +1359,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
   ASSERT_EQ(op_to_count["Shape"], 0);
   ASSERT_EQ(op_to_count["Gather"], 0);
   ASSERT_EQ(op_to_count["Unsqueeze"], 0);
-  ASSERT_EQ(op_to_count["Squeeze"], 0);
-  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Slice"], 0);
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["Reshape"], 1);
   for (const Node& node : graph.Nodes()) {
@@ -1377,6 +1375,37 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
       EXPECT_EQ(val[0], 0);
       EXPECT_EQ(val[1], 0);
       EXPECT_EQ(val[2], -1);
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphNotTriggered) {
+  auto model_uri = MODEL_FOLDER "fusion/reshape_fusion_concat_subgraph_not_triggered.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  // None of the subgraphs leading to the Concat node will not trigger the optimization
+  // as an additional pad value of 1 is inserted thus making the input to the Concat
+  // [1, 10], [1, 20], and [1, 30]
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Shape"], 3);
+  ASSERT_EQ(op_to_count["Gather"], 2);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 2);
+  ASSERT_EQ(op_to_count["Slice"], 1);
+  ASSERT_EQ(op_to_count["Concat"], 1);
+  ASSERT_EQ(op_to_count["Pad"], 3);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto == nullptr);  // No initializer as optimizer is not triggered
     }
   }
 }
@@ -1398,8 +1427,6 @@ TEST_F(GraphTransformationTests, ExpandElimination) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Expand"] == 3);
 }
-
-
 
 TEST_F(GraphTransformationTests, CastElimination) {
   auto model_uri = MODEL_FOLDER "cast_elimination.onnx";
