@@ -31,11 +31,12 @@ class AllreduceOptimizerGraphBuilder : public OptimizerGraphBuilder {
       std::vector<ArgDef>& gradient_argdefs,
       std::unordered_set<std::string>& optimizer_state_initializer_names,
       OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
-  
+  //bugbug
   Status AddHorovodAllReduceForGradients(
       std::vector<ArgDef>& gradient_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,
-      const int64_t horovod_reduce_op);
+      const int64_t horovod_reduce_op,
+      std::string name_suffix="");
 };
 
 }  // namespace training

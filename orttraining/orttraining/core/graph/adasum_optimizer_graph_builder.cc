@@ -153,7 +153,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
   //bugbug
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, (int64_t)1));
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, (int64_t)1, "_sum"));
 
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
@@ -164,7 +164,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       optimizer_state_initializer_names));
 
   // Perform allreduce on deltas after step() for Adasum
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op, "_adasum"));
 
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
