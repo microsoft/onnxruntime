@@ -254,12 +254,7 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 typedef
 void
 (MLASCALL MLAS_GEMM_U8X8_OPERATION)(
-    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    const uint8_t* A,
-    const uint8_t* B,
-    int32_t* C
+    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     );
 
 typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
@@ -334,7 +329,7 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
@@ -357,7 +352,7 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL;
@@ -376,7 +371,7 @@ void
     size_t OutputStride,
     size_t OutputCount,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_POINTWISE_FLOAT_KERNEL* PMLAS_CONV_POINTWISE_FLOAT_KERNEL;

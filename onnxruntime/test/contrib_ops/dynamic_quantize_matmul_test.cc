@@ -7,6 +7,7 @@
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "core/util/qmath.h"
 
 #include <chrono>
 #include <random>
@@ -146,6 +147,7 @@ class DynamicQuantizeMatMulOpTester : public OpTester {
 };
 
 TEST(DynamicQuantizeMatMul, Int8_test) {
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
@@ -155,6 +157,7 @@ TEST(DynamicQuantizeMatMul, Int8_test) {
                                              Y_dims,
                                              "testdata/dynamic_quantize_matmul_int8.onnx");
   test.Run();
+#endif
 }
 
 TEST(DynamicQuantizeMatMul, UInt8_test) {
