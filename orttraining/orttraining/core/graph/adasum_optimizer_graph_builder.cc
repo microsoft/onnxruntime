@@ -99,6 +99,55 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
   return Status::OK();
 }
 
+//bugbug
+static Status AddNcclAllReduceForGradients(
+    std::vector<ArgDef>& gradient_argdefs,
+    ArgDef& fused_gradient_argdef,
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef& fused_allreduce_output) {
+  fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
+
+  // Add NCCL Allreduce node.
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
+                                  {fused_gradient_argdef},
+                                  {fused_allreduce_output},
+                                  NodeAttributes(),
+                                  "NcclAllReduce")});
+
+  std::vector<ArgDef> view_inputs(gradient_argdefs.size() + 1);
+  view_inputs[0] = fused_allreduce_output;
+
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    ArgDef& gradient_shape = view_inputs[i + 1];
+    gradient_shape = ArgDef(gradient_argdefs[i].name + "_Shape");
+
+    graph_defs.AddNodeDefs({NodeDef("Shape",
+                                    {gradient_argdefs[i]},
+                                    {gradient_shape},
+                                    NodeAttributes(),
+                                    gradient_shape.name)});
+  }
+
+  std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
+    allreduced_gradient_type_proto->mutable_tensor_type()->set_elem_type(
+        fused_gradient_argdef.type_proto->tensor_type().elem_type());
+
+    allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
+  }
+
+  graph_defs.AddNodeDefs({NodeDef(OpDef{"View", kMSDomain, 1},
+                                  view_inputs,
+                                  allreduce_outputs,
+                                  NodeAttributes(),
+                                  "AllReduceOutputView")});
+
+  gradient_argdefs = allreduce_outputs;
+  return Status::OK();
+}
+
+
 Status AdasumOptimizerGraphBuilder::BuildInternal(
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
@@ -153,8 +202,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
   }
   //bugbug
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, (int64_t)1, "_sum"));
-
+  ArgDef reduced_fused_gradient_argdef;
+  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
   // add weight update
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
       opt_builder_registry_, weight_argdefs, gradient_argdefs,
@@ -164,7 +213,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       optimizer_state_initializer_names));
 
   // Perform allreduce on deltas after step() for Adasum
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op, "_adasum"));
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
 
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
