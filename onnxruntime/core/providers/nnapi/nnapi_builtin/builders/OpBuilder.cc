@@ -1072,6 +1072,78 @@ void GemmOpBuilder::AddOperatorImpl() {
 
 #pragma endregion
 
+#pragma region op_unary
+
+class UnaryOpBuilder : public BaseOpBuilder {
+ public:
+  UnaryOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
+      : BaseOpBuilder(model_builder, node) {}
+
+ private:
+  int32_t GetMinSupportedSdkVer() const override;
+  std::pair<bool, std::string> IsOpSupportedImpl() override;
+  void AddOperatorImpl() override;
+};
+
+int32_t UnaryOpBuilder::GetMinSupportedSdkVer() const {
+  const auto& op(node_.op_type());
+  if (op == "Abs" ||
+      op == "Exp" ||
+      op == "Neg" ||
+      op == "Sin" ||
+      op == "Sqrt" ||
+      op == "Log") {
+    return 29;
+  }
+
+  return 27;
+}
+
+std::pair<bool, std::string> UnaryOpBuilder::IsOpSupportedImpl() {
+  return {true, ""};
+}
+
+void UnaryOpBuilder::AddOperatorImpl() {
+  auto& shaper(model_builder_.GetShaper());
+  const auto& operand_indices(model_builder_.GetOperandIndices());
+  const auto& operand_types(model_builder_.GetOperandTypes());
+  const auto& op(node_.op_type());
+
+  const auto& input = node_.input(0);
+  const auto& output = node_.output(0);
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+
+  int32_t op_code;
+  if (op == "Abs")
+    op_code = ANEURALNETWORKS_ABS;
+  else if (op == "Exp")
+    op_code = ANEURALNETWORKS_EXP;
+  else if (op == "Floor")
+    op_code = ANEURALNETWORKS_FLOOR;
+  else if (op == "Log")
+    op_code = ANEURALNETWORKS_LOG;
+  else if (op == "Sigmoid")
+    op_code = ANEURALNETWORKS_LOGISTIC;
+  else if (op == "Neg")
+    op_code = ANEURALNETWORKS_NEG;
+  else if (op == "Sin")
+    op_code = ANEURALNETWORKS_SIN;
+  else if (op == "Sqrt")
+    op_code = ANEURALNETWORKS_SQRT;
+  else if (op == "Tanh")
+    op_code = ANEURALNETWORKS_TANH;
+  else {
+    throw std::invalid_argument(
+        "UnaryOpBuilder, unknown op: " + op);
+  }
+  ModelBuilder::IndexSeq input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  model_builder_.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion
+
 #pragma region CreateOpBuilder
 
 std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
@@ -1105,6 +1177,16 @@ std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
   } else if (op == "Gemm" ||
              op == "MatMul") {
     return std::make_unique<GemmOpBuilder>(model_builder, node);
+  } else if (op == "Abs" ||
+             op == "Exp" ||
+             op == "Floor" ||
+             op == "Log" ||
+             op == "Sigmoid" ||
+             op == "Neg" ||
+             op == "Sin" ||
+             op == "Sqrt" ||
+             op == "Tanh") {
+    return std::make_unique<UnaryOpBuilder>(model_builder, node);
   }
 
   return std::make_unique<BaseOpBuilder>(model_builder, node);
