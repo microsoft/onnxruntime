@@ -339,9 +339,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
-      cuda_device_id = 0;
-      cuda_mem_limit = static_cast<size_t>(INT_MAX);
-      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -439,7 +436,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
@@ -514,7 +511,8 @@ void addOpSchemaSubmodule(py::module& m) {
   auto schemadef = m.def_submodule("schemadef");
   schemadef.doc() = "Schema submodule";
 
-  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema");
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema", py::module_local());
   op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
       .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
       .def_property_readonly("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
@@ -540,7 +538,8 @@ void addOpSchemaSubmodule(py::module& m) {
         return v == std::numeric_limits<int>::max();
       });
 
-  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute", py::module_local())
       .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
       .def_readonly("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
@@ -553,7 +552,8 @@ void addOpSchemaSubmodule(py::module& m) {
           })
       .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam", py::module_local())
       .def_readonly(
           "type_param_str", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::type_param_str)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
@@ -561,12 +561,14 @@ void addOpSchemaSubmodule(py::module& m) {
           "allowed_type_strs",
           &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::allowed_type_strs);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption", py::module_local())
       .value("Single", ONNX_NAMESPACE::OpSchema::Single)
       .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
       .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter", py::module_local())
       .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
       .def_property_readonly("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
       .def_property_readonly("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
@@ -576,7 +578,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .def_property_readonly(
           "isHomogeneous", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetIsHomogeneous);
 
-  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType", py::module_local())
       .value("FLOAT", ONNX_NAMESPACE::AttributeProto::FLOAT)
       .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
       .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
@@ -588,7 +591,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("TENSORS", ONNX_NAMESPACE::AttributeProto::TENSORS)
       .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType", py::module_local())
       .value("COMMON", ONNX_NAMESPACE::OpSchema::SupportType::COMMON)
       .value("EXPERIMENTAL", ONNX_NAMESPACE::OpSchema::SupportType::EXPERIMENTAL);
 }
