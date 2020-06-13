@@ -213,7 +213,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       optimizer_state_initializer_names));
 
   // Perform allreduce on deltas after step() for Adasum
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
+  //ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
 
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
