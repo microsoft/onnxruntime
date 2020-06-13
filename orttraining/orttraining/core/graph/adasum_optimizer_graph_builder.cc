@@ -176,7 +176,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   const float scale = 1.0f / (total_num_accumulations * 64.0f);
   // No fusion with Adasum
   // bugbug
-  const bool fuse_scaling_outputs = false;
+  const bool fuse_scaling_outputs = true;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.allreduce_in_fp16, fuse_scaling_outputs));
 
