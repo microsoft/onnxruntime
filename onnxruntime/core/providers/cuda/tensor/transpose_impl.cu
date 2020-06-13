@@ -112,6 +112,7 @@ bool canDoTranspose4D(const cudaDeviceProp& prop,
   int64_t num_threads_per_block = input_dims[2] * input_dims[3] / (4 * sizeof(int) / element_size);
   if (rank == 4 && permutations[3] == 3 &&
       num_threads_per_block <= prop.maxThreadsPerBlock &&
+      num_threads_per_block >= prop.warpSize &&
       // num_threads_per_block must be aligned with warp size: 32
       ((num_threads_per_block & (prop.warpSize - 1)) == 0)) {
     return true;
