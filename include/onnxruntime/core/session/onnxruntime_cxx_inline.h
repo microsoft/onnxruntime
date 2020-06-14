@@ -312,8 +312,7 @@ template <typename Tp> inline
 std::vector<Value> ExperimentalSession::Run(const Value* input_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options) {
   static_assert(std::is_same<typename Tp::value_type, std::string>::value, "expect a sequence STL container of objects of type std::string");
   size_t output_node_count = GetOutputNames().size();
-  std::vector<Ort::Value> output_values;
-  for (size_t i = 0; i < output_node_count; i++) output_values.emplace_back(nullptr);
+  std::vector<Ort::Value> output_values(output_node_count, nullptr);
   Run(input_values, output_values.data(), input_names, output_names, run_options);
   return output_values;
 }
