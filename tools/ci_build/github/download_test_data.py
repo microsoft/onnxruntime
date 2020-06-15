@@ -11,10 +11,10 @@ from urllib.parse import urljoin
 from urllib.parse import urlsplit
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
+REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
-import get_azcopy
+from get_azcopy import get_azcopy  # noqa: E402
 
 
 # Hardcoded map of storage account to azure region endpoint
@@ -54,7 +54,7 @@ def get_azure_region():
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime Data Downloader.")
-    parser.add_argument("--test_data_url", help="Test data URL.")
+    parser.add_argument("--test_data_url", required=True, help="Test data URL.")
     parser.add_argument("--azure_region", help="Azure region")
     parser.add_argument("--build_dir", required=True, help="Path to the build directory.")
     parser.add_argument("--edge_device", action="store_true", help="Edge device with limit disk space.")
@@ -98,7 +98,9 @@ def download_and_unzip(azcopy_path, build_dir, url, dest_folder, use_token=True)
 
     # Download data using AZCopy tool
     try:
-        subprocess.run([azcopy_path, 'cp', '--log-level', 'ERROR', '--recursive', url_with_token, build_dir], check=True)
+        subprocess.run(
+            [azcopy_path, 'cp', '--log-level', 'ERROR', '--recursive', url_with_token, build_dir],
+            check=True)
     except Exception as e:
         print(e)
         print(azcopy_path)

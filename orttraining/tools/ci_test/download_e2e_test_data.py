@@ -17,7 +17,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
-import get_azcopy
+import get_azcopy  # noqa: E402
 
 # update these if the E2E test data changes
 ARCHIVE_BLOB_URL = "https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-04-14T02:10:05.3158245Z"
