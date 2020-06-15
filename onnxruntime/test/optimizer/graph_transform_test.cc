@@ -1390,9 +1390,13 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphNotTriggered) {
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
-  // None of the subgraphs leading to the Concat node will not trigger the optimization
-  // as an additional pad value of 1 is inserted thus making the input to the Concat
-  // [1, 10], [1, 20], and [1, 30]
+  // Two of the branches leading to Concat are candidates to trigger the optimization
+  // (Shape -> Gather -> Unsqueeze -> Concat).
+  // But one of the subgraphs leading to the Concat node will not trigger the optimization
+  // as an additional pad value of 1 is inserted thus making the inputs to the Concat -
+  // [10], [20], and [1, 30]
+  // Since the third branch will match the subgraph fusion, (it has more than 1 value in the tensor)
+  // and hence the optimization will not be triggered eventually
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Shape"], 3);
@@ -1400,7 +1404,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphNotTriggered) {
   ASSERT_EQ(op_to_count["Unsqueeze"], 2);
   ASSERT_EQ(op_to_count["Slice"], 1);
   ASSERT_EQ(op_to_count["Concat"], 1);
-  ASSERT_EQ(op_to_count["Pad"], 3);
+  ASSERT_EQ(op_to_count["Pad"], 1);
   ASSERT_EQ(op_to_count["Reshape"], 1);
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "Reshape") {

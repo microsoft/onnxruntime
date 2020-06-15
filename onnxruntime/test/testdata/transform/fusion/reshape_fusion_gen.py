@@ -1,7 +1,6 @@
 import onnx
 from onnx import helper
 from onnx import TensorProto
-from onnx import shape_inference
 
 def save_model(graph, file_name):
   model = helper.make_model(graph)
@@ -218,8 +217,7 @@ graph = helper.make_graph(
     ]
 )
 
-inferred_model = shape_inference.infer_shapes(helper.make_model(graph))
-onnx.save(inferred_model, 'reshape_fusion_concat_subgraph.onnx')
+save_model(graph, 'reshape_fusion_concat_subgraph.onnx')
 
 graph = helper.make_graph(
     [ # nodes
@@ -254,8 +252,7 @@ graph = helper.make_graph(
     ]
 )
 
-inferred_model = shape_inference.infer_shapes(helper.make_model(graph))
-onnx.save(inferred_model, 'reshape_fusion_concat_subgraph_multiple_outputs.onnx')
+save_model(graph, 'reshape_fusion_concat_subgraph_multiple_outputs.onnx')
 
 graph = helper.make_graph(
     [ # nodes
@@ -265,14 +262,12 @@ graph = helper.make_graph(
         helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
         helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
         helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
-        helper.make_node("Pad", ["unsqueeze0_out", "pads"], ["pad0_out"], "pad0", mode = "constant"),
-        helper.make_node("Pad", ["unsqueeze1_out", "pads"], ["pad1_out"], "pad1", mode = "constant"),
         
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
         helper.make_node("Slice", ["shape2_out", "slice_starts", "slice_ends"], ["slice_out"], "slice1"),
-        helper.make_node("Pad", ["slice_out", "pads"], ["pad2_out"], "pad2", mode = "constant"),
+        helper.make_node("Pad", ["slice_out", "pads"], ["pad0_out"], "pad0", mode = "constant"),
 
-        helper.make_node("Concat", ["pad0_out", "pad1_out", "pad2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Concat", ["unsqueeze0_out", "unsqueeze1_out", "pad0_out"], ["concat_out"], "concat", axis=0),
         helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  #name
@@ -291,5 +286,4 @@ graph = helper.make_graph(
     ]
 )
 
-inferred_model = shape_inference.infer_shapes(helper.make_model(graph))
-onnx.save(inferred_model, 'reshape_fusion_concat_subgraph_not_triggered.onnx')
+save_model(graph, 'reshape_fusion_concat_subgraph_not_triggered.onnx')

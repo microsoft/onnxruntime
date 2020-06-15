@@ -123,6 +123,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion.
   std::vector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
+  bool has_subgraph_fusion = false;
+
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
     if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
@@ -139,19 +141,17 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     }
 
     // If we haven't been able to match the pattern, try and see if this is a candidate for subgraph pattern fusion.
-    // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
-    // We use shape info (if made available via shape inference) for this.
-    const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
-    if (!concat_input_node_arg) {
-      // We need NodeArg to be able to lookup any shape info
+
+    // We can only accommodate one subgraph pattern fusion
+    if (has_subgraph_fusion) {
+      // Already seen one subgraph pattern fusion
       // Can't proceed with fusion
       return false;
     }
 
-    // ONNX shape inference runs after Level 1 optimization and hence shape information may not be available
-    // at this point.
-    // The shape inference might be available if the shape info was available via the `value_info` field in GraphProto
-    // or if the model had shape inference run on it which made the shape information available
+    // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
+    // We use shape info (if made available via shape inference) for this.
+    const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
 
     const auto* input_shape = concat_input_node_arg->Shape();
     if (!input_shape) {
@@ -160,34 +160,18 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       return false;
     }
 
-    // For the number of elements in this input to Concat be 1,
-    // all dim values in the shape must be 1.
-    const auto input_rank = concat_input_node_arg->Shape()->dim_size();
-
-    for (int dim_index = 0; dim_index < input_rank; ++dim_index) {
-      const auto& dim = input_shape->dim()[dim_index];
-      if (!dim.has_dim_value() || dim.dim_value() != 1) {
-        // Dim value is missing or is not 1
-        // Can't proceed with fusion
-        return false;
-      }
+    // Check if number of elements in this input to Concat is 1
+    if (utils::GetTensorShapeFromTensorShapeProto(*concat_input_node_arg->Shape()).Size() != 1) {
+      // Some dim values may be > 1 or some dim values may be missing
+      // Can't proceed with fusion
+      return false;
     }
 
     // This node has met all required criteria thus far.
     // This node could lead to a potential subgraph pattern fusion.
     shape_value.push_back(-1);
-  }
 
-  // Check how many "-1"s there are in shape_value.
-  int subgraph_cnt = 0;
-  for (auto it = shape_value.begin(); it < shape_value.end(); ++it) {
-    if ((*it) == -1) {
-      subgraph_cnt++;
-    }
-  }
-  // If more than one "-1" value is present in shape_value, return false to exit current fusion.
-  if (subgraph_cnt > 1) {
-    return false;
+    has_subgraph_fusion = true;
   }
 
   // Create an initializer with the same name as the concat node output, and replace the concat node
