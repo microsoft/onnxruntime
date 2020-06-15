@@ -123,7 +123,6 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion.
   std::vector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
-  bool has_subgraph_fusion = false;
 
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
@@ -140,14 +139,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       continue;
     }
 
-    // If we haven't been able to match the pattern, try and see if this is a candidate for subgraph pattern fusion.
-
-    // We can only accommodate one subgraph pattern fusion
-    if (has_subgraph_fusion) {
-      // Already seen one subgraph pattern fusion
-      // Can't proceed with fusion
-      return false;
-    }
+    // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern fusion
 
     // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
     // We use shape info (if made available via shape inference) for this.
@@ -170,8 +162,21 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     // This node has met all required criteria thus far.
     // This node could lead to a potential subgraph pattern fusion.
     shape_value.push_back(-1);
+  }
 
-    has_subgraph_fusion = true;
+  // Check how many -1 are there in shape_value.
+  // -1s may be contributed by multiple subgraph pattern fusions
+  // or from values in const initializers (as inputs) to the Concat node.
+  // Only one value of -1 is legal in the shape initializer to the Reshape node,
+  // and hence we can't proceed with the fusion if we do encounter multiple -1s
+  int subgraph_cnt = 0;
+  for (auto it = shape_value.begin(); it < shape_value.end(); ++it) {
+    if ((*it) == -1) {
+      if (++subgraph_cnt > 1) {
+        // If more than one "-1" value is present in shape_value, return false to exit current fusion.
+        return false;
+      }
+    }
   }
 
   // Create an initializer with the same name as the concat node output, and replace the concat node
