@@ -12,6 +12,10 @@ void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, b
     const wchar_t input_name[] = L"data_0";
     const wchar_t output_name[] = L"softmaxout_1";
 
+    auto options = std::make_unique<ml::learning_model_session_options>();
+
+    options->set_batch_size_override(0);
+
     std::unique_ptr<ml::learning_model_session> session = nullptr;
     WINML_EXPECT_NO_THROW(session = std::make_unique<ml::learning_model_session>(model, device));
 

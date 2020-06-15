@@ -597,6 +597,47 @@ private:
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelDevice> m_learning_model_device;
 };
 
+
+class WinMLLearningModelSessionOptions {
+  friend class WinMLLearningModelSession;
+
+ public:
+  WinMLLearningModelSessionOptions() {
+    if (0 != Initialize()) {
+        // This is possible when running downlevel and options are not available.
+        m_learning_model_session_options = nullptr;
+    }
+  }
+
+  void set_batch_size_override(uint32_t batch_size_override) {
+    m_learning_model_session_options->put_BatchSizeOverride(batch_size_override);
+  }
+
+ private:
+  int32_t Initialize() {
+    Microsoft::WRL::ComPtr<IActivationFactory>
+        m_learning_model_session_options_factory;
+    RETURN_HR_IF_FAILED(
+        GetActivationFactory(
+            RuntimeClass_Windows_AI_MachineLearning_LearningModelSessionOptions,
+            IID_IActivationFactory,
+            &m_learning_model_session_options_factory));
+
+    Microsoft::WRL::ComPtr<IInspectable> options_insp;
+
+    RETURN_HR_IF_FAILED(
+        m_learning_model_session_options_factory->ActivateInstance(
+            options_insp.GetAddressOf()));
+
+    RETURN_HR_IF_FAILED(options_insp.As(&m_learning_model_session_options));
+
+    return 0;
+  }
+
+ private:
+  Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelSessionOptions> m_learning_model_session_options;
+};
+
 class WinMLLearningModelSession
 {
     friend class WinMLLearningModelBinding;
@@ -604,16 +645,21 @@ class WinMLLearningModelSession
 public:
     using Model = WinMLLearningModel;
     using Device = WinMLLearningModelDevice;
+    using Options = WinMLLearningModelSessionOptions;
 
 public:
     WinMLLearningModelSession(const Model& model)
     {
-        ML_FAIL_FAST_IF(0 != Initialize(model, Device()));
+        ML_FAIL_FAST_IF(0 != Initialize(model, Device(), Options()));
     }
 
     WinMLLearningModelSession(const Model& model, const Device& device)
     {
-        ML_FAIL_FAST_IF(0 != Initialize(model, device));
+        ML_FAIL_FAST_IF(0 != Initialize(model, device, Options()));
+    }
+
+    WinMLLearningModelSession(const Model& model, const Device& device, const Options& options) {
+        ML_FAIL_FAST_IF(0 != Initialize(model, device, options));
     }
 
     WinMLLearningModelResults evaluate(WinMLLearningModelBinding& binding)
@@ -631,7 +677,7 @@ public:
     }
 
 private:
-    int32_t Initialize(const Model& model, const Device& device)
+    int32_t Initialize(const Model& model, const Device& device, const Options& options)
     {
         // {0f6b881d-1c9b-47b6-bfe0-f1cf62a67579}
         static const GUID IID_ILearningModelSessionFactory =
@@ -645,11 +691,24 @@ private:
                 IID_ILearningModelSessionFactory,
                 &m_learning_model_session_factory));
 
-        RETURN_HR_IF_FAILED(
-            m_learning_model_session_factory->CreateFromModelOnDevice(
+        Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelSessionFactory2> learning_model_session_factory2;
+        m_learning_model_session_factory.As(&learning_model_session_factory2);    
+
+        if (learning_model_session_factory2) {
+            RETURN_HR_IF_FAILED(
+                learning_model_session_factory2->CreateFromModelOnDeviceWithSessionOptions(
                 model.m_learning_model.Get(),
                 device.m_learning_model_device.Get(),
+                options.m_learning_model_session_options.Get(),
                 m_learning_model_session.GetAddressOf()));
+        }
+        else {
+            RETURN_HR_IF_FAILED(
+                m_learning_model_session_factory->CreateFromModelOnDevice(
+                    model.m_learning_model.Get(),
+                    device.m_learning_model_device.Get(),
+                    m_learning_model_session.GetAddressOf()));
+        }
 
         return 0;
     }

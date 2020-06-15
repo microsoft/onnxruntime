@@ -22,6 +22,7 @@ namespace Microsoft { namespace AI { namespace MachineLearning { namespace Detai
     using learning_model = WinMLLearningModel;
     using learning_model_device = WinMLLearningModelDevice;
     using learning_model_session = WinMLLearningModelSession;
+    using learning_model_session_options = WinMLLearningModelSessionOptions;
     using learning_model_binding = WinMLLearningModelBinding;
     using learning_model_results = WinMLLearningModelResults;
 }}}} // namespace Microsoft::AI::MachineLearning::Details
@@ -86,6 +87,18 @@ protected:
 
 private:
     Details::learning_model_device m_device;
+};
+
+struct learning_model_session_options {
+  
+  learning_model_session_options() : m_options() {}
+
+  inline void set_batch_size_override(uint32_t batch_size_override) {
+    m_options.set_batch_size_override(batch_size_override);
+  }
+
+ private:
+  Details::learning_model_session_options m_options;
 };
 
 struct learning_model_session
