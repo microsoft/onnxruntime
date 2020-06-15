@@ -246,13 +246,13 @@ struct ExperimentalSession : Session {
     : Session(env, model_data, model_data_length, options) {};
 
   // overloaded Run() with common defaults
-  std::vector<Value> Run(const Value* input_values, const RunOptions& run_options = RunOptions());
-  void Run(const Value* input_values, Value* output_values, const RunOptions& run_options = RunOptions());
+  std::vector<Value> Run(const Value& input_values, const RunOptions& run_options = RunOptions());
+  void Run(const Value& input_values, Value& output_values, const RunOptions& run_options = RunOptions());
   // overloaded Run() for when input/output names are specified
   template <typename Tp>
-  std::vector<Value> Run(const Value* input_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options = RunOptions());
+  std::vector<Value> Run(const Value& input_values, const Tp& input_names, const Tp& output_names, const RunOptions& run_options = RunOptions());
   template <typename Tp>
-  void Run(const Value* input_values, Value* output_values, const Tp &input_names, const Tp &output_names, const RunOptions& run_options = RunOptions());
+  void Run(const Value& input_values, Value& output_values, const Tp& input_names, const Tp& output_names, const RunOptions& run_options = RunOptions());
 
   // convenience methods that simplify common lower-level API calls
   std::vector<std::string> GetInputNames() const;
