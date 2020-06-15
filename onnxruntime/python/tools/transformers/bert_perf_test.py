@@ -411,7 +411,11 @@ def parse_arguments():
 
     parser.add_argument('--input_ids_name', required=False, type=str, default=None, help="input name for input ids")
     parser.add_argument('--segment_ids_name', required=False, type=str, default=None, help="input name for segment ids")
-    parser.add_argument('--input_mask_name', required=False, type=str, default=None, help="input name for attention mask")
+    parser.add_argument('--input_mask_name',
+                        required=False,
+                        type=str,
+                        default=None,
+                        help="input name for attention mask")
 
     args = parser.parse_args()
     return args
@@ -430,7 +434,8 @@ def main():
     if not min(batch_size_set) >= 1 and max(batch_size_set) <= 128:
         raise Exception("batch_size not in range [1, 128]")
 
-    model_setting = ModelSetting(args.model, args.input_ids_name, args.segment_ids_name, args.input_mask_name, args.opt_level)
+    model_setting = ModelSetting(args.model, args.input_ids_name, args.segment_ids_name, args.input_mask_name,
+                                 args.opt_level)
 
     for batch_size in batch_size_set:
         test_setting = TestSetting(

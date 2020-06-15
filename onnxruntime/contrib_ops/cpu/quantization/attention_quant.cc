@@ -59,7 +59,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   const Tensor* i_zp_tensor = context->Input<Tensor>(6);
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, nullptr));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -86,14 +86,13 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
     weight_zero_point = *w_zp_tensor->template Data<QWeight>();
   }
 
-  const auto dims = input->Shape().GetDims();
-  const int batch_size = static_cast<int>(dims[0]);
-  const int sequence_length = static_cast<int>(dims[1]);
-  const int hidden_size = static_cast<int>(dims[2]);
+  const auto& shape = input->Shape();
+  const int batch_size = static_cast<int>(shape[0]);
+  const int sequence_length = static_cast<int>(shape[1]);
+  const int hidden_size = static_cast<int>(shape[2]);
   const int head_size = hidden_size / num_heads_;
 
-  TensorShape output_shape(dims);
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* output = context->Output(0, shape);
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -109,14 +108,6 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   auto K = Q + batch_size * sequence_length * hidden_size;
   auto V = K + batch_size * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
-
-  auto gemm_data_quant = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * sizeof(int32_t));
-  BufferUniquePtr gemm_buffer_quant(gemm_data_quant, BufferDeleter(allocator));
-
-  auto Q_quant = reinterpret_cast<int32_t*>(gemm_data_quant);
-  auto K_quant = Q_quant + batch_size * sequence_length * hidden_size;
-  auto V_quant = K_quant + batch_size * sequence_length * hidden_size;
-  int32_t* QKV_quant[3] = {Q_quant, K_quant, V_quant};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
@@ -134,7 +125,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
         int input_offset = batch_index * sequence_length * hidden_size;
         int weights_offset = qkv_index * hidden_size + head_index * head_size;
-        int32_t* qkv_dest = QKV_quant[qkv_index];
+        float* qkv_dest = QKV[qkv_index];
         int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
         //                   original           transposed            iteration
@@ -152,19 +143,10 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
               weight_zero_point,              // weight zero point
               qkv_dest + qkv_offset,          // C
               head_size,                      // ldc
+              &dequant_scale,                 // output scale
+              bias_data + weights_offset,     // bias
               nullptr                         // use single-thread
               );
-
-        // dequantize and add bias
-        // broadcast 3NH -> (3.B.N.S.H)
-        const T* bias_src = bias_data + weights_offset;
-        int32_t* gemm_quant_src = QKV_quant[qkv_index] + qkv_offset;
-        T* data_dest = QKV[qkv_index] + qkv_offset;
-        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          for (int head_idx = 0; head_idx < head_size; head_idx++) {
-            *data_dest++ = *gemm_quant_src++ * dequant_scale + bias_src[head_idx];
-          }
-        }
       }
     });
   }
@@ -193,8 +175,12 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
 
+  int past_sequence_length = 0;
+  const T* past_data = nullptr;
+  T* present_data = nullptr;
   ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, static_cast<T*>(mask_data),
-                           batch_size, sequence_length, head_size, num_heads_, is_unidirectional_, tp);
+                           batch_size, sequence_length, past_sequence_length, head_size, num_heads_, is_unidirectional_,
+                           past_data, present_data, tp);
 
   // STEP.3: compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S) x V(B, N, S, H)
   auto out_tmp_data =
@@ -202,7 +188,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
   ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
-                          batch_size, sequence_length, head_size, num_heads_, hidden_size, tp);
+                          batch_size, sequence_length, past_sequence_length, head_size, num_heads_, hidden_size, past_data, present_data, tp);
 
   return Status::OK();
 }
