@@ -126,6 +126,11 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "ThresholdedRelu",
       "Upsample",
       "Xor",
+      "RoiAlign",
+      "NonZero",
+      "Tile",
+      "GatherND",
+      "ScatterND",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
@@ -140,6 +145,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "SinFloat",
       "Sinh",
       "Softsign",
+      "ReverseSequence",
   };
 
   std::set<std::string> unsupported_ops_vpu = {
@@ -361,25 +367,20 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.count("axes") == 0)
       return true;
   } else if (optype == "Slice") {
-    //Slice in opset 10 is currently not supported.
-    //unsupported inputs: starts, ends, axes, steps
-    if (node->InputDefs().size() > 1) {
-      return true;
+    //start, end, axes need to be a initializer
+    const auto &start_arg = node->InputDefs()[1];
+    const auto &end_arg = node->InputDefs()[2];
+    
+    bool cond_for_slice = false;
+    cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
+    cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
+      
+    if (node->InputDefs().size() > 3) {
+      const auto &axes_arg = node->InputDefs()[3];
+      cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
     }
-    //nGraph does not properly handle the situation where any value of the "starts" attribute
-    //is higher than a corresponding value in the "ends"
-    const auto& attributes = node->GetAttributes();
-    if (attributes.count("starts") == 0 || attributes.count("ends") == 0) {
-      return true;
-    }
-
-    const auto& starts = attributes.find("starts")->second.ints();
-    const auto& ends = attributes.find("ends")->second.ints();
-    for (int i = 0; i < starts.size(); ++i) {
-      if (starts.Get(i) > ends.Get(i)) {
-        return true;
-      }
-    }
+     
+    return cond_for_slice; 
   } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in nGraph
     const auto& attributes = node->GetAttributes();
@@ -475,11 +476,14 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
     };
 
     std::set<int> supported_types_gpu = {
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32};
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+    };
     auto dtype = type_proto->tensor_type().elem_type();
 
     if (device_id == "CPU" || device_id == "MYRIAD" || device_id == "HDDL") {
@@ -862,7 +866,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     const auto& nodes = graph_viewer.GetNodesInTopologicalOrder();
     if (nodes.size() == 1) {
       const auto& node = graph_viewer.GetNode(nodes[0]);
-      if (node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
+      if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
         return result;
     }
 
@@ -906,7 +910,7 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if (this_cluster.size() == 1) {
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if (node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
+        if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);

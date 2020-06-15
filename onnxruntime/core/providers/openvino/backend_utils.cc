@@ -17,6 +17,7 @@
 #include "core/common/logging/logging.h"
 
 #include "backend_utils.h"
+//#include <ngraph/serializer.hpp>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -47,6 +48,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
 
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
+
   try {
     ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
@@ -56,6 +58,11 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string devi
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 
+  /*std::string json_string = serialize(ng_function, 4);
+
+  std::ofstream out("serialize_function_before_PM.json");
+
+  out << json_string;*/
 
   if (device_id == "GPU" && precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
@@ -88,6 +95,8 @@ InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::
     return InferenceEngine::Precision::U16;
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
+  } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
+    return InferenceEngine::Precision::I32;
   } else {
     ORT_THROW(log_tag + "Unsupported Data type");
   }

@@ -969,7 +969,7 @@ TEST(MathOpTest, Min_12_Int64) {
                           {-1, -1, -1,
                            1, 2, 3,
                            -70, -80, -90});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
 TEST(MathOpTest, Min_12_UInt32) {
@@ -1146,7 +1146,7 @@ TEST(MathOpTest, Max_12_Int64) {
                           {10, 20, 30,
                            40, 50, 60,
                            300, 300, 300});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Input batch size is inconsistent
 }
 
 TEST(MathOpTest, Max_12_UInt32) {
