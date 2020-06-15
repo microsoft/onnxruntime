@@ -3,6 +3,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 import urllib.parse
@@ -70,5 +71,7 @@ def get_azcopy(local_azcopy_path="azcopy"):
             shutil.unpack_archive(downloaded_path, extracted_path)
 
             azcopy_path = _find_azcopy(extracted_path)
+
+            os.chmod(azcopy_path, stat.S_IXUSR)
 
         yield azcopy_path
