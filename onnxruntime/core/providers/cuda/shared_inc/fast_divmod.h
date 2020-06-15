@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <iostream>
 #include <limits>
 #include <cuda_runtime.h>
 #include <cmath>
@@ -20,13 +21,13 @@ namespace cuda {
 struct fast_divmod {
   fast_divmod(int d = 1) {
     d_ = d == 0 ? 1 : d;
-    ORT_ENFORCE(d_ >= 1 && d_ <= std::numeric_limits<int>::max());
+    ORT_ENFORCE(d_ >= 1 && d_ <= static_cast<uint32_t>(std::numeric_limits<int>::max()));
 
     for (l_ = 0; l_ < 32; l_++) if ((1U << l_) >= d_) break;
 
     uint64_t one = 1;
     uint64_t m = ((one << 32) * ((one << l_) - d_)) / d_ + 1;
-    M_ = m;
+    M_ = static_cast<uint32_t>(m);
     // according to paper, the value of m' should fit in a unsigned integer.
     ORT_ENFORCE(M_ > 0 && M_ == m);
   }
@@ -38,7 +39,7 @@ struct fast_divmod {
 #else
     // Using uint64_t for t, then t + n won't overflow.
     uint64_t t = ((uint64_t) M_ * n) >> 32;
-    return (t + n) >> l_;
+    return static_cast<int>((t + n) >> l_);
 #endif
   }
 
