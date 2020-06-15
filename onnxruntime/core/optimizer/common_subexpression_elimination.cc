@@ -207,7 +207,9 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
 
 std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
   std::size_t hash = 0;
-  UpdateHash(attr.type(), hash);
+  UpdateHash(
+      static_cast<std::underlying_type_t<std::decay_t<decltype(attr.type())>>>(attr.type()),
+      hash);
   UpdateHash(attr.name(), hash);
   switch (attr.type()) {
     case onnx::AttributeProto_AttributeType_FLOAT:
