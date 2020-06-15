@@ -37,16 +37,17 @@ def _find_azcopy(start_dir):
         for file_name in file_names:
             if file_name == "azcopy" or file_name == "azcopy.exe":
                 return os.path.join(root, file_name)
-    raise RuntimeError("Failed to azcopy in {}.".format(start_dir))
+    raise RuntimeError("Failed to azcopy in '{}'.".format(start_dir))
 
 
 @contextlib.contextmanager
 def get_azcopy(local_azcopy_path="azcopy"):
     """
-    Creates a context manager that gets a path to a particular version of
+    Creates a context manager that returns a path to a particular version of
     azcopy (specified in AZCOPY_VERSION). Downloads a temporary copy if needed.
 
-    :param local_path: Path to a local azcopy to try first.
+    :param local_azcopy_path: Path to a local azcopy to try first.
+
     Example usage:
         with get_azcopy() as azcopy_path:
             subprocess.run([azcopy_path, "--version"])
