@@ -915,6 +915,20 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AdasumAllReduce)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
+      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
