@@ -11,9 +11,8 @@ jobs:
       b:
         letter: "B"
 
-  condition: always()  #eq(variables['letter'], 'A')
-
   steps:
   - script: |
       echo $letter
+    condition: eq(variables['letter'], 'A')
 
