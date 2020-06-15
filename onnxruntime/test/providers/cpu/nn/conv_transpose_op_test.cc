@@ -705,7 +705,9 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
                         -0.08531736f, -0.051284637f, -0.04354899f, -0.06810297f, -0.083224006f, -0.11702064f, -0.08514082f,
                         -0.06071842f, -0.07496775f, -0.03626109f, -0.07785503f, -0.07243007f, -0.041736744f, -0.052593358f};
 
-  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
+                      OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kCudaExecutionProvider});
 }
 
 }  // namespace test
