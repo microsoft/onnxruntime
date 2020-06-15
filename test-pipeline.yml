@@ -2,8 +2,18 @@ trigger: none
 
 pool: Linux-GPU-CUDA10
 
-steps:
-- script: |
-    df
-    docker info
-    docker image ls
+jobs:
+- job: Job
+  strategy:
+    matrix:
+      a:
+        letter: "A"
+      b:
+        letter: "B"
+
+  condition: eq($letter, "A")
+
+  steps:
+  - script: |
+      echo $letter
+
