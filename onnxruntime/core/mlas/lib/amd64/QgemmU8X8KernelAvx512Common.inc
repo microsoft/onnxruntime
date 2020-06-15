@@ -11,7 +11,7 @@
 ; Abstract:
 ;
 ;   This module contains common kernel macros and structures for the quantized
-;   integer matrix/matrix multiply operation (QGEMM) for the AVX512BW and
+;   integer matrix/matrix multiply operation (QGEMM) for the AVX512 core and
 ;   AVX512VNNI kernels.
 ;
 ;--
@@ -309,8 +309,8 @@ GemmU8X8KernelAvx512Function MACRO Type, Isa
 ;
 ;   C (r8) - Supplies the address of matrix C.
 ;
-;   QuadCountK (r9) - Supplies the number of quad columns from matrix A and the
-;       number of quad rows from matrix B to iterate over.
+;   PackedCountK (r9) - Supplies the number of packed columns from matrix A and
+;       the number of packed rows from matrix B to iterate over.
 ;
 ;   CountM - Supplies the maximum number of rows that can be processed for
 ;       matrix A and matrix C. The actual number of rows handled for this
@@ -369,7 +369,7 @@ GemmU8X8KernelAvx512Function MACRO Type, Isa
         mov     esi,-1
         kmovw   k1,esi                      ; update mask to write all columns
 IFIDNI <Type>, <U8S8>
-IFIDNI <Isa>, <Avx512BW>
+IFIDNI <Isa>, <Avx512Core>
         neg     esi
         vpbroadcastw zmm5,esi               ; generate 512-bit word vector [0x0001]
 ENDIF

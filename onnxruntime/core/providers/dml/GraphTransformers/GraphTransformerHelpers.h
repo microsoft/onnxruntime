@@ -5,5 +5,5 @@
 
 namespace GraphTransformerHelpers
 {
-    void RegisterGraphTransformers(onnxruntime::InferenceSession* lotusSession, bool registerLotusTransforms);
+    void RegisterGraphTransformers(onnxruntime::InferenceSession* lotusSession);
 }

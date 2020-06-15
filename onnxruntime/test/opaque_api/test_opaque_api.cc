@@ -27,7 +27,7 @@ extern "C" struct ExperimentalDataContainer {
   // by the client code
   OrtValue* str_;
 };
-
+extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 // A new Opaque type representation
 extern const char kMsTestDomain[] = "com.microsoft.test";
@@ -153,9 +153,10 @@ static void RegisterCustomKernel() {
   // Register kernel directly to KernelRegistry
   // because we can not create custom ops with Opaque types
   // as input
+  // TODO: But that registry is process-wide, such modification is super dangerous.
   BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSFeaturizersDomain, 1, OpaqueCApiTestKernel)>;
   auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
-  kernel_registry->Register(fn());
+  ORT_ENFORCE(kernel_registry->Register(fn()).IsOK());
 }
 
 namespace test {
@@ -190,22 +191,13 @@ std::string CreateModel() {
   return serialized_model;
 }
 
-class OpaqueApiTest : public ::testing::Test {
- protected:
-  Ort::Env env_{nullptr};
-
-  void SetUp() override {
-    env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
-  }
-};
-
-TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
+TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
   std::string model_str = CreateModel();
 
   try {
     // initialize session options if needed
     Ort::SessionOptions session_options;
-    Ort::Session session(env_, model_str.data(), model_str.size(), session_options);
+    Ort::Session session(*ort_env.get(), model_str.data(), model_str.size(), session_options);
 
     Ort::AllocatorWithDefaultOptions allocator;
 
@@ -273,8 +265,3 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

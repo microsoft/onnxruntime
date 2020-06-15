@@ -36,12 +36,21 @@ set(onnxruntime_pybind_srcs_pattern
     "${ONNXRUNTIME_ROOT}/python/*.h"
 )
 
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_pybind_srcs_pattern
+    "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
+    "${ORTTRAINING_ROOT}/orttraining/python/*.h"
+  )
+endif()
+
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-#TODO(): enable cuda and test it
 add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
+if(MSVC)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
@@ -57,8 +66,11 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
+target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+if (onnxruntime_ENABLE_TRAINING)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
+endif()
+
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
@@ -73,10 +85,13 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_CUDA}
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     onnxruntime_optimizer
     onnxruntime_providers
@@ -87,35 +102,39 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    ${pybind11_lib}
 )
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  list(INSERT onnxruntime_pybind11_state_libs 1 onnxruntime_training)
+endif()
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
-    pybind11
+    ${pybind11_dep}
 )
-
+set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 
 if (MSVC)
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
-          ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
+          ${PYTHON_LIBRARY_RELEASE} ${onnxruntime_EXTERNAL_LIBRARIES})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES}
-          ${ONNXRUNTIME_SO_LINK_FLAG})
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY}
-          ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-Xlinker -rpath=\$ORIGIN")
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
+  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\$ORIGIN")
 endif()
 
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
@@ -133,14 +152,37 @@ endif()
 file(GLOB onnxruntime_backend_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/backend/*.py"
 )
-file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/*.py"
-)
+    "${ORTTRAINING_SOURCE_DIR}/python/*.py"
+  )
+else()
+  file(GLOB onnxruntime_python_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/*.py"
+  )
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
+  )
+else()
+  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/training/*.py"
+  )
+endif()
+
 file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/test/python/*.py"
+    "${ORTTRAINING_SOURCE_DIR}/test/python/*.py"
 )
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
+)
+file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/featurizer_ops/*.py"
 )
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
@@ -150,19 +192,16 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
-# adjust based on what target/s onnxruntime_unittests.cmake created
-if (SingleUnitTestProject)
-  set(test_data_target onnxruntime_test_all)
-else()
-  set(test_data_target onnxruntime_test_ir)
-endif()
+set(test_data_target onnxruntime_test_all)
 
 add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/backend
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -185,6 +224,9 @@ add_custom_command(
       ${onnxruntime_python_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_capi_training_srcs}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/training/
+  COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -197,6 +239,9 @@ add_custom_command(
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_tools_featurizers_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>
 )
@@ -204,7 +249,8 @@ add_custom_command(
 if (onnxruntime_USE_DNNL)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${DNNL_DLL_PATH} $<TARGET_FILE:onnxruntime_providers_dnnl>
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()
@@ -225,13 +271,16 @@ if (onnxruntime_USE_NGRAPH)
   )
 endif()
 
+
 if (onnxruntime_USE_OPENVINO)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${OPENVINO_CPU_EXTENSION_DIR}/${OPENVINO_CPU_EXTENSION_LIB}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
+  if(NOT WIN32)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB}
+          $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
+    )
+  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -266,7 +315,7 @@ if (onnxruntime_USE_NUPHAR)
 endif()
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)  
+  include(onnxruntime_language_interop_ops.cmake)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

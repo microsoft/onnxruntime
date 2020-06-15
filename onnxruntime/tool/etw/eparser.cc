@@ -171,7 +171,7 @@ DWORD GetPropertyLength(PEVENT_RECORD pEvent, PTRACE_EVENT_INFO pInfo, USHORT i,
                  (pInfo->EventPropertyInfoArray[i].Flags & PropertyStruct) == PropertyStruct) {
         *PropertyLength = pInfo->EventPropertyInfoArray[i].length;
       } else {
-        wprintf(L"Unexpected length of 0 for intype %d and outtype %d\n",
+        wprintf(L"Unexpected length of 0 for intype %ud and outtype %ud\n",
                 pInfo->EventPropertyInfoArray[i].nonStructType.InType,
                 pInfo->EventPropertyInfoArray[i].nonStructType.OutType);
 

@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework Condition="'$(TargetFramework)' == ''">netcoreapp2.1</TargetFramework>
-    <RuntimeIdentifier Condition="'$(TargetFramework)' == 'net461'">win-x64</RuntimeIdentifier>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(MSBuildThisFileDirectory)..\..</OnnxRuntimeCsharpRoot>
     <Platform>AnyCPU</Platform>
@@ -13,7 +12,7 @@
     <PackageName Condition="'$(PackageName)' == ''">Microsoft.ML.OnnxRuntime</PackageName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.11.2" />
+    <PackageReference Include="Google.Protobuf" Version="3.11.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
     <PackageReference Include="xunit" Version="2.4.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />

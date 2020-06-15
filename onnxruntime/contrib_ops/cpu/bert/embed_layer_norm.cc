@@ -25,12 +25,14 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
-EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& info) : OpKernel(info) {}
+EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ORT_ENFORCE(epsilon_ >= 0);
+}
 
 template <typename T>
 Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
-
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
   const Tensor* word_embedding = context->Input<Tensor>(2);
@@ -40,20 +42,13 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
-  const auto input_dims = input_ids->Shape().GetDims();
+  const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
 
-  std::vector<int64_t> out_dims;
-  out_dims.reserve(3);
-  out_dims.push_back(input_dims[0]);
-  out_dims.push_back(input_dims[1]);
-  out_dims.push_back(hidden_size);
-  TensorShape output_shape(out_dims);
+  TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> mask_index_dims;
-  mask_index_dims.push_back(input_dims[0]);
-  TensorShape mask_index_shape(mask_index_dims);
+  TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
@@ -77,7 +72,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
     std::atomic_bool failed{false};
 
     int n = batch_size * sequence_length;
-    concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), n, [=, &failed](int index) {
+    concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), n, [=, &failed](ptrdiff_t index) {
       int word_col_index = input_ids_data[index];
       if (word_col_index < 0 || word_col_index >= word_embedding_length) {
         failed.store(true, std::memory_order_release);
@@ -112,11 +107,11 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         y[i] = a;
         sum += a * a;
       }
-      T e = sqrt(sum / hidden_size + static_cast<T>(1.0e-13));
+      T e = sqrt(sum / hidden_size + static_cast<T>(epsilon_));
       for (int i = 0; i < hidden_size; i++) {
         y[i] = y[i] / e * gamma_data[i] + beta_data[i];
       }
-    });
+    }, 0);
 
     if (failed.load(std::memory_order_acquire)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input index out of range");

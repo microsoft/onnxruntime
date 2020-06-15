@@ -10,6 +10,6 @@ jobs:
       displayName: Clone submodules
     - script: echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install 'ndk-bundle'
       displayName: Install Android NDK
-    - script: tools/ci_build/build.py --android --build_dir build --android_ndk $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --skip_submodule_sync --parallel --use_dnnlibrary
+    - script: tools/ci_build/build.py --android --build_dir build --android_sdk_path $ANDROID_HOME --android_ndk_path $ANDROID_HOME/ndk-bundle --android_abi=x86_64 --skip_submodule_sync --parallel --use_dnnlibrary
       displayName: Build and Test on Android Emulator
 

@@ -1,23 +1,34 @@
 parameters:
-  DoDebugBuild: 'true'
+  DoDebugBuild: 'true' # Unused. Use BuildConfigurations instead.
   DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev'
+  BuildCSharp: 'true'
   DoNugetPack:  'false'
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
+  DoNodejsPack: 'false'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64' # Optional. Options: x86, x64
-  sln_platform: 'x64' # Options: Win32, x64
+  sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
   AgentPool: 'Win-CPU-2019'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
+  BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
+  RunTests : 'true'
+  EnableLto: true
 jobs:
 - job: ${{ parameters.JobName }}
-  timeoutInMinutes: 120
+  timeoutInMinutes: 160
+  strategy:
+    maxParallel: 2
+    matrix:
+      ${{ each BuildConfiguration in parameters.BuildConfigurations }}:
+        ${{ BuildConfiguration }}:
+          BuildConfig: ${{ BuildConfiguration }}
   workspace:
     clean: all
   pool:
@@ -30,10 +41,14 @@ jobs:
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    PlatformTarget: ${{ parameters.BuildArch }}
-    RuntimeIdentifier: win-${{ parameters.BuildArch }}
+    ${{ if eq(parameters.EnableLto, true) }}:
+      build_py_lto_flag: --enable_lto
 
   steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
     - powershell: |
         if($env:TELEMETRYGUID)
         {
@@ -46,6 +61,11 @@ jobs:
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
       env:
         TELEMETRYGUID: $(TELEMETRYGUID)
+
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '12.x'
+
     - task: UsePythonVersion@0
       inputs: 
         versionSpec: '3.7' 
@@ -60,97 +80,111 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy     
+       python -m pip install -q pyopenssl setuptools wheel numpy scipy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
-
+    - powershell: |
+       $Env:USE_MSVC_STATIC_RUNTIME=1
+       $Env:ONNX_ML=1
+       $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.BuildArch }}-windows-static"
+       python setup.py bdist_wheel
+       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
+      workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+      displayName: 'Install ONNX'
+    
     - task: PythonScript@0
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(BuildCommand) --update --config RelWithDebInfo'
+        arguments: '$(BuildCommand) --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
         workingDirectory: '$(Build.BinariesDirectory)'
+
+    - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
+      # Use cross-compiled protoc
+      - script: |
+         @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\host_protoc\Release
 
     - task: VSBuild@1
       displayName: 'Build'
       inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
         platform: ${{ parameters.sln_platform }}
-        configuration: RelWithDebInfo
+        configuration: $(BuildConfig)
         msbuildArchitecture: ${{ parameters.BuildArch }}
         maximumCpuCount: true
         logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
         createLogFile: true
 
-    # Build RelWithDebInfo -- this variable required to build C#
-    - script: |
-       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+    # The Configuration variable is required to build C#
+    - ${{ if eq(parameters.BuildCSharp, true) }}:
+      - script: |
+         @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
+        displayName: 'Set Configuration variable'
 
     - template: set-test-data-variables-step.yml
 
-    - task: NuGetToolInstaller@0
-      displayName: Use Nuget 4.9
-      inputs:
-        versionSpec: 4.9.4   
+    - ${{ if eq(parameters.BuildCSharp, true) }}:
+      - task: NuGetToolInstaller@0
+        displayName: Use Nuget 4.9
+        inputs:
+          versionSpec: 4.9.4
 
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-        workingDirectory: $(Build.BinariesDirectory)
+    - ${{ if eq(parameters.BuildCSharp, true) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Restore nuget packages'
+        inputs:
+          command: restore
+          projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          configuration: '$(BuildConfig)'
+          arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Restore nuget packages'
-      inputs:
-        command: restore
-        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: 'RelWithDebInfo'
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+    - ${{ if eq(parameters.BuildCSharp, true) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Build C#'
+        inputs:
+          command: build
+          projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          configuration: '$(BuildConfig)'
+          arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Build C#'    
-      inputs:
-        command: build
-        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: 'RelWithDebInfo'          
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+    - ${{ if and(eq(parameters.BuildCSharp, true), in(parameters['sln_platform'], 'Win32', 'x64')) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Test C#'
+        inputs:
+          command: test
+          projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+          configuration: '$(BuildConfig)'
+          arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Test C#'  
-      inputs:
-        command: test
-        projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
-        configuration: 'RelWithDebInfo'          
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      - ${{ if eq(parameters.RunTests, true) }}:
+        - script: |
+           mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
+           DIR dist\ /S /B > wheel_filename_file
+           set /p WHEEL_FILENAME=<wheel_filename_file
+           del wheel_filename_file
+           python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+           set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+           @echo %PATH%
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
+          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+          displayName: 'Run tests'
 
-    - script: |
-       mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models  
-       DIR dist\ /S /B > wheel_filename_file
-       set /p WHEEL_FILENAME=<wheel_filename_file
-       del wheel_filename_file
-       python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-       set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
-       @echo %PATH%
-       python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo   
-      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-      displayName: 'Run tests' 
-
-    - task: PublishTestResults@2
-      displayName: 'Publish unit test results'
-      inputs:
-        testResultsFiles: '**\*.results.xml'
-        searchFolder: '$(Build.BinariesDirectory)'
-        testRunTitle: 'Unit Test Run'
-      condition: succeededOrFailed()
+    - ${{ if eq(parameters.RunTests, true) }}:
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**\*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
 
     # Nuget packaging if needed
-    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+    - ${{ if and(eq(parameters.BuildCSharp, true), eq(parameters['DoNugetPack'], 'true')) }}:
       - task: BatchScript@1
         displayName: 'Setup VS2019 env vars'
         inputs:
@@ -158,15 +192,15 @@ jobs:
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
       # Esrp signing
-      - template: esrp_dll.yml
+      - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
-      - template: esrp_dll.yml
+      - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
@@ -176,7 +210,44 @@ jobs:
         displayName: 'Create NuGet Package'
 
       - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: drop-nuget'
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishSymbols@2
+        displayName: 'Publish Build Symbols'
+        condition: eq(variables['IsReleaseBuild'], 'true')
+        inputs:
+          symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          searchPattern: '**/*.pdb'
+          symbolServerType: teamServices
+
+    # Node.js Publish
+    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
+      - task: BatchScript@1
+        displayName: 'Setup VS2019 env vars'
+        inputs:
+          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: ${{ parameters.BuildArch }}
+          modifyEnvironment: true
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64'
+          DisplayName: 'ESRP - Sign Node.js binding binaries'
+          DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: '*.dll,*.node'
+
+      - script: |
+         del /Q $(Build.SourcesDirectory)\nodejs\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+         call npm pack
+         copy $(Build.SourcesDirectory)\nodejs\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         xcopy /E /I $(Build.SourcesDirectory)\nodejs\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)\nodejs'
+        displayName: 'Create NPM Package'
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'

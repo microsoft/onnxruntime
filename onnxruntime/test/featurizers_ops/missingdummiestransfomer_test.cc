@@ -6,7 +6,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 #include "Featurizers/MissingDummiesFeaturizer.h"
 
 namespace ft = Microsoft::Featurizer;
@@ -14,6 +14,7 @@ namespace ft = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace test {
 
+namespace {
 template <typename T>
 std::vector<uint8_t> GetStream() {
   ft::Archive ar;
@@ -21,6 +22,7 @@ std::vector<uint8_t> GetStream() {
   inst.save(ar);
   return ar.commit();
 }
+}  // namespace
 
 TEST(FeaturizersTests, MissingDummiesTransformer_float) {
   OpTester test("MissingDummiesTransformer", 1, onnxruntime::kMSFeaturizersDomain);

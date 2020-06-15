@@ -34,7 +34,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     bool create_arena = info.create_arena;
 
 #ifdef USE_JEMALLOC
-#if defined(USE_MIMALLOC)
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
 #error jemalloc and mimalloc should not both be enabled
 #endif
     //JEMalloc already has memory pool, so just use device allocator.

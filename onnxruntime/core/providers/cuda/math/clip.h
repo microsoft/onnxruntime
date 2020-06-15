@@ -3,36 +3,32 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cpu/math/clip.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
+class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>,  public CudaKernel {
+ public:
+  explicit Clip_6(const OpKernelInfo& info) : onnxruntime::clip_internal::Clip_6Base<T>(info), CudaKernel{info} {
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+// Since version 11. Min and Max are inputs
+// version 12 adds type support
 class Clip final : public CudaKernel {
  public:
-  Clip(const OpKernelInfo& info) : CudaKernel{info}, is_min_max_input_(false) {
-    int start_version;
-    int end_version;
-    info.GetKernelDef().SinceVersion(&start_version, &end_version);
-
-    if (start_version < 11) {
-      auto min_val = -std::numeric_limits<T>::infinity();
-      auto max_val = std::numeric_limits<T>::infinity();
-      info.GetAttrOrDefault("min", &min_, min_val);
-      info.GetAttrOrDefault("max", &max_, max_val);
-      ORT_ENFORCE(min_ <= max_);
-    } else {
-      min_ = -std::numeric_limits<T>::infinity();
-      max_ = std::numeric_limits<T>::infinity();
-      is_min_max_input_ = true;
-    }
+  explicit Clip(const OpKernelInfo& info) : CudaKernel{info} {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  T min_, max_;
-  bool is_min_max_input_;
+  template<typename T>
+  struct ComputeImpl;
 };
 
 }  // namespace cuda

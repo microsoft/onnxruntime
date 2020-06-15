@@ -37,7 +37,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<int64_t>& output_dims) const {
   const Tensor* X = context->Input<Tensor>(0);
   const std::vector<int64_t>& X_dims = X->Shape().GetDims();
-  auto rank = X_dims.size();
+  int32_t rank = static_cast<int32_t>(X_dims.size());
 
   ORT_ENFORCE(output_dims.size() == rank, "Rank of input and output tensor should be same.");
   if (rank == 0)
@@ -51,28 +51,31 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
   Tensor* Y = context->Output(0, output_dims);
+
+  // Return early if the output tensor is going to be of size 0
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // kernel
   TensorPitches input_pitches(X_dims);
-  CudaAsyncBuffer<int64_t> input_strides(this, rank);
-  gsl::span<int64_t> input_stride_span = input_strides.CpuSpan();
+  TArray<int64_t> input_strides(input_pitches);
 
   TensorPitches output_pitches(output_dims);
-  CudaAsyncBuffer<fast_divmod> output_div_pitches(this, rank);
-  gsl::span<fast_divmod> div_strides_span = output_div_pitches.CpuSpan();
+  TArray<fast_divmod> output_div_pitches(rank);
 
-  for (size_t i = 0; i < rank; ++i) {
-    input_stride_span[i] = input_pitches[i];
-    div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+  for (int32_t i = 0; i < rank; ++i) {
+    output_div_pitches[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
   }
   size_t output_count = Y->Shape().Size();
 
   if (is_resize_) {
-    CudaAsyncBuffer<int64_t> input_shape(this, X_dims);
-    CudaAsyncBuffer<int64_t> output_shape(this, output_dims);
-    CudaAsyncBuffer<float> roi_vals(this, roi);
-    CudaAsyncBuffer<float> scales_vals(this, scales);
+    TArray<int64_t> input_shape(X_dims);
+    TArray<int64_t> output_shape(output_dims);
+    TArray<float> roi_vals(roi);
+    TArray<float> scales_vals(scales);
 
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
     auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size);
@@ -86,23 +89,18 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                coordinate_transform_mode_, nearest_mode_,
                dims_mapping);
   } else {
-    input_strides.CopyToGpu();
-    output_div_pitches.CopyToGpu();
+    TArray<fast_divmod> scales_div(rank);
 
-    CudaAsyncBuffer<fast_divmod> scales_div(this, rank);
-    gsl::span<fast_divmod> scales_div_span = scales_div.CpuSpan();
-
-    for (size_t i = 0; i < rank; ++i) {
-      scales_div_span[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
+    for (int32_t i = 0; i < rank; ++i) {
+      scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
-    scales_div.CopyToGpu();
 
     UpampleImpl(mode_,
                 rank,
                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
-                input_strides.GpuPtr(),
-                output_div_pitches.GpuPtr(),
-                scales_div.GpuPtr(),
+                input_strides,
+                output_div_pitches,
+                scales_div,
                 reinterpret_cast<const CudaT*>(X->template Data<T>()),
                 reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
                 output_count);

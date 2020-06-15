@@ -15,7 +15,7 @@
 #endif
 
 #include <core/graph/constants.h>
-#include <core/framework/path_lib.h>
+#include <core/platform/path_lib.h>
 #include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"
@@ -25,12 +25,13 @@ namespace perftest {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
-      "perf_test [options...] model_path result_file\n"
+      "perf_test [options...] model_path [result_file]\n"
       "Options:\n"
       "\t-m [test_mode]: Specifies the test mode. Value could be 'duration' or 'times'.\n"
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
+      "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
@@ -39,7 +40,7 @@ namespace perftest {
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
-      "\t-s: Show statistics result, like P75, P90.\n"
+      "\t-s: Show statistics result, like P75, P90. If no result_file provided this defaults to on.\n"
       "\t-v: Show verbose information.\n"
       "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
@@ -52,7 +53,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPIvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -84,12 +85,11 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
+        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -98,6 +98,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
         } else {
           return false;
         }
@@ -172,6 +174,9 @@ namespace perftest {
       case 'u':
         test_config.run_config.optimized_model_path = optarg;
         break;
+      case 'I':
+        test_config.run_config.generate_model_input_binding = true;
+        break;
       case '?':
       case 'h':
       default:
@@ -182,10 +187,19 @@ namespace perftest {
   // parse model_path and result_file_path
   argc -= optind;
   argv += optind;
-  if (argc != 2) return false;
+
+  switch (argc) {
+    case 2:
+      test_config.model_info.result_file_path = argv[1];
+      break;
+    case 1:
+      test_config.run_config.f_dump_statistics = true;
+      break;
+    default:
+      return false;
+  }
 
   test_config.model_info.model_file_path = argv[0];
-  test_config.model_info.result_file_path = argv[1];
 
   return true;
 }

@@ -7,7 +7,6 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
-#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -78,12 +77,6 @@ class DeepCpuLstmOp final : public OpKernel {
 
   rnn::detail::ActivationFuncs activation_funcs_;
 
-  // Threadpool for operator. If concurrent Compute calls are possible, it will be shared
-  // across them. mutable due to this.
-  // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
-  // cost on every call.
-  mutable onnxruntime::concurrency::ThreadPool lstm_tp_{"DEEPCPU_LSTM",
-                                                        static_cast<int>(std::thread::hardware_concurrency())};
 };
 
 }  // namespace onnxruntime

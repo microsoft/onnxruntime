@@ -1,4 +1,4 @@
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 #include "mimalloc.h"
 #include "core/framework/mimalloc_arena.h"
 

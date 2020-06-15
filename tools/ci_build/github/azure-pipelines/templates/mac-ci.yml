@@ -1,8 +1,11 @@
 parameters:
   JobName: 'MacOS_CI_Dev'
+  SubmoduleCheckoutMode: ''
   BuildCommand: ''
+  DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
+  ArtifactName: 'drop-osx'
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -14,7 +17,12 @@ jobs:
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
   steps:
-    - template: mac-set-variables-and-download.yml
+    - checkout: self
+      ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
+        submodules: ${{ parameters.SubmoduleCheckoutMode }}
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '12.x'
     - script: |
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
         java --version
@@ -24,15 +32,48 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
          ${{ parameters.NuPackScript }}
         displayName: 'Copy MacOS libs to Artifact Staging'
       - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact'
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
-          artifactName: 'drop-osx'
+          artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
+      # Esrp signing
+      #
+      # TODO: ESRP team is working on enable signing workflow on Mac. Should enable the following step when it's ready.
+      #
+      # - template: mac-esrp-dll.yml
+      #   parameters:
+      #     FolderPath: '$(Build.SourcesDirectory)/nodejs/bin/napi-v3/darwin/x64'
+      #     DisplayName: 'ESRP - Sign Node.js binding binaries'
+      #     DoEsrp: ${{ parameters.DoEsrp }}
+      #     Pattern: '*.dylib,*.node'
+
+      - script: |
+         npm pack
+         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+        displayName: 'Create NPM Package'
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

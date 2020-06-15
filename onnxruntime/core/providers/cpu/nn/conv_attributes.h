@@ -183,6 +183,15 @@ struct ConvAttributes {
     return Status::OK();
   }
 
+  bool HasStridesOneAndNoPadding() const {
+    if (std::all_of(strides.begin(), strides.end(), [](int64_t v) { return v == 1; })) {
+      if (std::all_of(pads.begin(), pads.end(), [](int64_t v) { return v == 0; })) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   AutoPadType auto_pad;
   int64_t group;
   bool kernel_shape_specified;

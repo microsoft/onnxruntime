@@ -1,0 +1,221 @@
+plugins {
+	id 'java-library'
+	id 'maven-publish'
+	id 'signing'
+	id 'jacoco'
+	id 'com.diffplug.gradle.spotless' version '3.26.0'
+}
+
+allprojects {
+	repositories {
+		mavenCentral()
+	}
+}
+
+project.group = "com.microsoft.onnxruntime"
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+
+// cmake runs will inform us of the build directory of the current run
+def cmakeBuildDir = System.properties['cmakeBuildDir']
+def useCUDA = System.properties['USE_CUDA']
+def cmakeJavaDir = "${cmakeBuildDir}/java"
+def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
+def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
+def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
+def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
+
+def mavenUser = System.properties['mavenUser']
+def mavenPwd = System.properties['mavenPwd']
+
+def mavenArtifactId = useCUDA != null ? project.name + "_gpu" : project.name
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_1_8
+	targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+// This jar tasks serves as a CMAKE signalling
+// mechanism. The jar will be overwritten by allJar task
+jar {
+}
+
+// Add explicit sources jar with pom file.
+task sourcesJar(type: Jar, dependsOn: classes) {
+	classifier = "sources"
+	from sourceSets.main.allSource
+	into("META-INF/maven/$project.group/$mavenArtifactId") {
+		from { generatePomFileForMavenPublication }
+		rename ".*", "pom.xml"
+	}
+}
+
+// Add explicit javadoc jar with pom file
+task javadocJar(type: Jar, dependsOn: javadoc) {
+	classifier = "javadoc"
+	from javadoc.destinationDir
+	into("META-INF/maven/$project.group/$mavenArtifactId") {
+		from { generatePomFileForMavenPublication }
+		rename ".*", "pom.xml"
+	}
+}
+
+wrapper {
+	gradleVersion = '6.1.1'
+}
+
+spotless {
+	java {
+		removeUnusedImports()
+		googleJavaFormat()
+	}
+	format 'gradle', {
+		target '**/*.gradle'
+		trimTrailingWhitespace()
+		indentWithTabs()
+	}
+}
+
+compileJava {
+	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
+}
+
+sourceSets.test {
+	// add test resource files
+	resources.srcDirs += [
+		"${rootProject.projectDir}/../csharp/testdata",
+		"${rootProject.projectDir}/../onnxruntime/test/testdata",
+		"${rootProject.projectDir}/../java/testdata"
+	]
+	if (cmakeBuildDir != null) {
+		// add compiled native libs
+		resources.srcDirs += [
+			cmakeNativeLibDir,
+			cmakeNativeJniDir,
+			cmakeNativeTestDir
+		]
+	}
+}
+
+if (cmakeBuildDir != null) {
+	// generate tasks to be called from cmake
+
+	// Overwrite jar location
+	task allJar(type: Jar) {
+		manifest {
+			attributes('Automatic-Module-Name': project.group,
+					'Implementation-Title': 'onnxruntime',
+					'Implementation-Version': project.version)
+		}
+		into("META-INF/maven/$project.group/$mavenArtifactId") {
+			from { generatePomFileForMavenPublication }
+			rename ".*", "pom.xml"
+		}
+		from sourceSets.main.output
+		from cmakeNativeJniDir
+		from cmakeNativeLibDir
+	}
+
+	task cmakeBuild(type: Copy) {
+		from project.buildDir
+		include 'libs/**'
+		include 'docs/**'
+		into cmakeBuildOutputDir
+	}
+	cmakeBuild.dependsOn allJar
+	cmakeBuild.dependsOn sourcesJar
+	cmakeBuild.dependsOn javadocJar
+	cmakeBuild.dependsOn javadoc
+
+	task cmakeCheck(type: Copy) {
+		from project.buildDir
+		include 'reports/**'
+		into cmakeBuildOutputDir
+	}
+	cmakeCheck.dependsOn check
+
+}
+
+dependencies {
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
+	testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
+}
+
+test {
+	useJUnitPlatform()
+	if (cmakeBuildDir != null) {
+		workingDir cmakeBuildDir
+	}
+	systemProperties System.getProperties().subMap(['USE_CUDA'])
+	testLogging {
+		events "passed", "skipped", "failed"
+		showStandardStreams = true
+	}
+}
+
+jacocoTestReport {
+	reports {
+		xml.enabled true
+		csv.enabled true
+		html.destination file("${buildDir}/jacocoHtml")
+	}
+}
+
+publishing {
+	publications {
+		maven(MavenPublication) {
+			groupId = project.group
+			artifactId = mavenArtifactId
+
+			from components.java
+			pom {
+				name = 'onnx-runtime'
+				description = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
+				url = 'https://microsoft.github.io/onnxruntime/'
+				licenses {
+					license {
+						name = 'MIT License'
+						url = 'https://opensource.org/licenses/MIT'
+					}
+				}
+				organization {
+					name = 'Microsoft'
+					url = 'http://www.microsoft.com'
+				}
+				scm {
+					connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
+					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
+					url = 'http://github.com/microsoft/onnxruntime'
+				}
+				developers {
+					developer {
+						id = 'onnxruntime'
+						name = 'ONNX Runtime'
+						email = 'onnxruntime@microsoft.com'
+					}
+				}
+			}
+		}
+	}
+	repositories {
+		maven {
+			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+			credentials {
+				username mavenUser
+				password mavenPwd
+			}
+		}
+	}
+}
+
+// Generates a task signMavenPublication that will
+// build all artifacts.
+signing {
+	// Queries env vars:
+	// ORG_GRADLE_PROJECT_signingKey
+	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
+	def signingKey = findProperty("signingKey")
+	def signingPassword = findProperty("signingPassword")
+	useInMemoryPgpKeys(signingKey, signingPassword)
+	sign publishing.publications.maven
+}

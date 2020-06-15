@@ -6,7 +6,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
-#include "onnx/defs/operator_sets-ml.h"
+#include "onnx/defs/operator_sets_ml.h"
+#include "onnx/defs/operator_sets_training.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -18,9 +19,18 @@
 #endif
 
 #include "core/platform/env.h"
+#include "core/util/thread_utils.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
+#include "orttraining/core/graph/optimizer_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -29,16 +39,36 @@ using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
 
-std::atomic<bool> Environment::is_initialized_{false};
-
-Status Environment::Create(std::unique_ptr<Environment>& environment) {
+Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
+                           std::unique_ptr<Environment>& environment,
+                           const OrtThreadingOptions* tp_options,
+                           bool create_global_thread_pools) {
   environment = std::unique_ptr<Environment>(new Environment());
-  auto status = environment->Initialize();
+  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
 }
 
-Status Environment::Initialize() {
+Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
+                               const OrtThreadingOptions* tp_options,
+                               bool create_global_thread_pools) {
   auto status = Status::OK();
+
+  logging_manager_ = std::move(logging_manager);
+
+  // create thread pools
+  if (create_global_thread_pools) {
+    create_global_thread_pools_ = true;
+    OrtThreadPoolParams to = tp_options->intra_op_thread_pool_params;
+    if (to.name == nullptr) {
+      to.name = ORT_TSTR("intra-op");
+    }
+    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+    to = tp_options->inter_op_thread_pool_params;
+    if (to.name == nullptr) {
+      to.name = ORT_TSTR("inter-op");
+    }
+    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+  }
 
   try {
     // Register Microsoft domain with min/max op_set version as 1/1.
@@ -49,8 +79,8 @@ Status Environment::Initialize() {
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
-      // Register contributed schemas.
-      // The corresponding kernels are registered inside the appropriate execution provider.
+// Register contributed schemas.
+// The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
 #endif
@@ -62,6 +92,16 @@ Status Environment::Initialize() {
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
+      RegisterOnnxTrainingOperatorSetSchema();
+
+#ifdef ENABLE_TRAINING
+      // preserve this order: this depends on operatorsetschema registration.
+      training::RegisterGradientSchemas();
+      training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
+      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
+      training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
+      training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
+#endif
     });
 
     // Register MemCpy schema;
@@ -94,8 +134,6 @@ Internal copy node
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
-
-    is_initialized_ = true;
   } catch (std::exception& ex) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
   } catch (...) {
@@ -103,10 +141,6 @@ Internal copy node
   }
 
   return status;
-}
-
-Environment::~Environment() {
-  ::google::protobuf::ShutdownProtobufLibrary();
 }
 
 }  // namespace onnxruntime

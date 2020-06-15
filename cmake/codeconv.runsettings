@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- File name extension must be .runsettings -->
+<RunSettings>
+<GoogleTestAdapterSettings>
+		<SolutionSettings>
+			<Settings>
+			<OutputMode>Verbose</OutputMode>
+			<TestDiscoveryTimeoutInSeconds>120</TestDiscoveryTimeoutInSeconds>
+			</Settings>
+		</SolutionSettings>
+	</GoogleTestAdapterSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.DynamicCoverageDataCollector, Microsoft.VisualStudio.TraceCollector, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+        <Configuration>
+          <CodeCoverage>
+            <!-- Match fully qualified names of functions: -->
+            <!-- (Use "\." to delimit namespaces in C# or Visual Basic, "::" in C++.)  -->
+            <Functions>
+              <Exclude>
+                <Function>^std::.*</Function>
+                <Function>^ATL::.*</Function>
+                <Function>^gsl::.*</Function>
+                <Function>^google::.*</Function>
+                <Function>^onnx::.*</Function>
+                <Function>^nlohmann::.*</Function>
+                <Function>^Microsoft::Featurizer.*</Function>
+                <Function>^Eigen::.*</Function>
+                <Function>^onnxruntime::test::.*</Function>
+                <Function>.*::__GetTestMethodInfo.*</Function>
+                <Function>^Microsoft::VisualStudio::CppCodeCoverageFramework::.*</Function>
+                <Function>^Microsoft::VisualStudio::CppUnitTestFramework::.*</Function>
+              </Exclude>
+            </Functions>
+            <!-- Match the path of the source files in which each method is defined: -->
+            <Sources>
+              <Include>
+                <Source>.*\\include\\onnxruntime\\core\\.*</Source>
+                <Source>.*\\onnxruntime\\core\\.*</Source>
+                <Source>.*\\onnxruntime\\featurizers_ops\\.*</Source>
+                <Source>.*\\onnxruntime\\contrib_ops\\.*</Source>
+              </Include>
+              <Exclude>
+                <Source>.*\\atlmfc\\.*</Source>
+                <Source>.*\\vctools\\.*</Source>
+                <Source>.*\\public\\sdk\\.*</Source>
+                <Source>.*\\microsoft sdks\\.*</Source>
+                <Source>.*\\vc\\include\\.*</Source>
+                <Source>.*\\vc\\tools\\msvc\\.*</Source>
+                <Source>.*\\cmake\\external\\.*</Source>
+              </Exclude>
+            </Sources>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

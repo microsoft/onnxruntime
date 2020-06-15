@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module contains common kernel macros and structures for the quantized
-    integer matrix/matrix multiply operation (QGEMM) for the AVX512BW and
+    integer matrix/matrix multiply operation (QGEMM) for the AVX512 core and
     AVX512VNNI kernels.
 
 --*/
@@ -291,8 +291,8 @@ Arguments:
 
     C (rdx) - Supplies the address of matrix C.
 
-    PairedCountK (rcx) - Supplies the number of paired columns from matrix A and
-        the number of paired rows from matrix B to iterate over.
+    PackedCountK (rcx) - Supplies the number of packed columns from matrix A and
+        the number of packed rows from matrix B to iterate over.
 
     CountM (r8) - Supplies the maximum number of rows that can be processed for
         matrix A and matrix C. The actual number of rows handled for this
@@ -343,7 +343,7 @@ C_UNDERSCORE(MlasGemm\Type\()Kernel\Isa\()):
         mov     ebp,-1
         kmovw   k1,ebp                      # update mask to write all columns
 .ifeqs "\Type\()", "U8S8"
-.ifeqs "\Isa\()", "Avx512BW"
+.ifeqs "\Isa\()", "Avx512Core"
         neg     ebp
         vpbroadcastw zmm5,ebp               # generate 512-bit word vector [0x0001]
 .endif

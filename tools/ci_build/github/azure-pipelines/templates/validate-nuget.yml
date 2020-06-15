@@ -2,6 +2,7 @@ parameters:
   NugetPath: ''
   PlatformsSupported: ''
   VerifyNugetSigning: ''
+  NugetPackage: '*'
 
 steps:
     - task: UsePythonVersion@0
@@ -13,5 +14,5 @@ steps:
       displayName: 'Validate Nuget'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py'
-        arguments: '--nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
+        arguments: '--nuget_package ${{parameters.NugetPackage}} --nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
         workingDirectory: "$(Build.BinariesDirectory)"

@@ -12,6 +12,7 @@
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
@@ -25,6 +26,7 @@
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
+class Model;
 class OpSignature;
 
 /**
@@ -262,6 +264,9 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept;
 
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept;
+
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
   @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
@@ -281,7 +286,7 @@ class Node {
     return !attr_to_subgraph_map_.empty();
   }
 
-  /** Get the const subgraphs from a node. 
+  /** Get the const subgraphs from a node.
   @remarks Creates a new vector so calling ContainsSubgraphs first is preferred. */
   std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const;
 
@@ -299,7 +304,7 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
-  /** Gets the NodeProto representation of this Node. 
+  /** Gets the NodeProto representation of this Node.
   @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
                           If graph optimization has been run this is most likely required
                           to ensure the complete Graph is valid.
@@ -469,19 +474,6 @@ and the edges connecting the nodes.
 */
 class Graph {
  public:
-  /**
-  Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
-  1. Run through all validation rules.
-      a. Node name and node output's names should be unique.
-      b. Attribute match between node and op definition.
-      c. Input/Output match between node and op definition.
-      d. Graph is acyclic and sort nodes in topological order.
-  2. Check & Setup inner nodes' dependency.
-  3. Cleanup function definition lists.
-  @returns common::Status with success or error information.
-  */
-  common::Status Resolve();
-
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
   /** Sets the Graph name. */
@@ -491,6 +483,9 @@ class Graph {
   const std::string& Description() const noexcept;
   /** Gets the Graph description. */
   void SetDescription(const std::string& description);
+
+  /** Gets the path of the owning model, if any. */
+  const Path& ModelPath() const;
 
   /** Add an initializer tensor to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -533,8 +528,13 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
+  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+  }
+
   /** Gets the Graph inputs that are initializers
-  These are overridable initializers. This is a difference between 
+  These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetOverridableInitializers() const {
@@ -544,6 +544,10 @@ class Graph {
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
+
+  bool IsOutput(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
+  }
 
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
@@ -564,6 +568,8 @@ class Graph {
   These are the values that are neither Graph inputs nor outputs.
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+
+  void AddValueInfo(const NodeArg* new_value_info);
 
   /** Gets the Node with the specified node index.
   @returns Node instance if found. nullptr if node_index is invalid or node has been freed.
@@ -734,6 +740,20 @@ class Graph {
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
 
+  /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
+  up to their source node/s.
+  @param from Set of Nodes to traverse from.
+  @param enter Visit function that will be invoked on a node when it is visited but its parents haven't been.
+  @param leave Visit function invoked on the node after its parents have all been visited.
+  @param stop Stop traversal from node n to input node p if stop(n, p) is true.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void ReverseDFSFrom(const std::vector<const Node*>& from,
+                      const std::function<void(const Node*)>& enter,
+                      const std::function<void(const Node*)>& leave,
+                      const std::function<bool(const Node*, const Node*)>& comp,
+                      const std::function<bool(const Node*, const Node*)>& stop) const;
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
@@ -771,17 +791,19 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
-  /** When programmatically constructing a Graph, explicitly set graph inputs.
+  /** Explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
-  @remarks If the Graph was loaded from a GraphProto this has no effect.*/
+  @remarks Note that the input order matters for subgraphs.
+  */
   void SetInputs(const std::vector<const NodeArg*>& inputs);
 
-  /** When programmatically constructing a Graph, explicitly set graph outputs.
+  /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
-  @remarks If the Graph was loaded from a GraphProto this has no effect.*/
+  @remarks Note that the output order matters for subgraphs.
+  */
   void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
-  /** Returns true if this is a subgraph or fase if it is a high-level graph. */
+  /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
 
   /** Returns the parent graph if this is a subgraph */
@@ -789,6 +811,80 @@ class Graph {
 
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
+
+  /** Sets the type of a NodeArg, replacing existing type/shape if any */
+  void SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto);
+
+  const Node* GetProducerNode(const std::string& node_arg_name) const {
+    return GetProducerNodeImpl(*this, node_arg_name);
+  }
+
+  Node* GetMutableProducerNode(const std::string& node_arg_name) {
+    return GetProducerNodeImpl(*this, node_arg_name);
+  }
+
+  void UpdateProducerNode(const std::string& node_arg_name, NodeIndex node_index) {
+    auto iter = node_arg_to_producer_node_.find(node_arg_name);
+
+    if (iter != node_arg_to_producer_node_.end()) {
+      iter->second = node_index;
+    } else {
+      node_arg_to_producer_node_[node_arg_name] = node_index;
+    }
+  }
+
+  std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
+    return GetConsumerNodesImpl(*this, node_arg_name);
+  }
+
+  std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
+    return GetConsumerNodesImpl(*this, node_arg_name);
+  }
+
+  void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
+    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != node_arg_to_consumer_nodes_.end()) {
+      node_arg_to_consumer_nodes_.erase(node_arg_name);
+    }
+    for (Node* node : nodes) {
+      node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
+    }
+  }
+
+  /** During constant folding it may become possible to infer the shape for a node.
+      To avoid running a full Resolve allow an individual node to have the shape inferencing re-run.
+  */
+  Status UpdateShapeInference(Node& node);
+
+  // Options to control Graph::Resolve.
+  struct ResolveOptions {
+    // Whether to override existing types with inferred types.
+    bool override_types = false;
+    // Names of initializers to keep even if unused (optional).
+    const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr;
+    // Whether to set that no proto sync is required after resolving.
+    // Useful for resolving right after loading from a GraphProto.
+    bool no_proto_sync_required = false;
+  };
+
+  /**
+  Resolve this Graph to ensure it is completely valid, fully initialized, and able to be executed.
+  1. Run through all validation rules.
+    a. Node name and node output's names should be unique.
+    b. Attribute match between node and op definition.
+    c. Input/Output match between node and op definition.
+    d. Graph is acyclic and sort nodes in topological order.
+  2. Check & Setup inner nodes' dependency.
+  3. Cleanup function definition lists.
+  Note: the weights for training can't be cleaned during resolve.
+  @returns common::Status with success or error information.
+  */
+  common::Status Resolve(const ResolveOptions& options);
+
+  common::Status Resolve() {
+    ResolveOptions default_options;
+    return Resolve(default_options);
+  }
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
@@ -819,22 +915,26 @@ class Graph {
 
   // Constructor: Given a <GraphProto> loaded from model file, construct
   // a <Graph> object. Used by Model to create a Graph instance.
-  Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
+  Graph(const Model& owning_model,
+        ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
 
   // internal use by the Graph class only
-  Graph(ONNX_NAMESPACE::GraphProto* graph_proto,
+  Graph(const Model& owning_model,
+        ONNX_NAMESPACE::GraphProto* graph_proto,
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
         const logging::Logger& logger,
-        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
+        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions);
+
+  void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
@@ -905,9 +1005,7 @@ class Graph {
   // order if <Status> returned is "OK", otherwise it's undefined.
   common::Status PerformTopologicalSortAndCheckIsAcyclic();
 
-  common::Status PerformTypeAndShapeInferencing();
-
-  common::Status Resolve(bool no_proto_sync_required);
+  common::Status PerformTypeAndShapeInferencing(const ResolveOptions& options);
 
   // Recursively find all subgraphs including nested subgraphs
   void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
@@ -915,12 +1013,13 @@ class Graph {
   // Iterate this Graph instance and all subgraphs, calling the provided function for each.
   common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
 
-  common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op);
+  common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
   static common::Status InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
                                                     const std::vector<const ONNX_NAMESPACE::TypeProto*>& input_types,
-                                                    std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types);
+                                                    std::vector<const ONNX_NAMESPACE::TypeProto*>& output_types,
+                                                    const Graph::ResolveOptions& options);
 
   // Apply type-inference and type-checking to all inputs and initializers:
   common::Status TypeCheckInputsAndInitializers();
@@ -930,13 +1029,13 @@ class Graph {
 
   // Infer and set type information across <*this> graph if needed, and verify type/attribute
   // information matches between node and op.
-  common::Status VerifyNodeAndOpMatch();
+  common::Status VerifyNodeAndOpMatch(const ResolveOptions& options);
 
   // Set graph inputs/outputs when resolving a graph..
   common::Status SetGraphInputsOutputs();
 
   // Clear all unused initializers
-  void CleanUnusedInitializers();
+  void CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   gsl::not_null<Node*> AllocateNode();
 
@@ -960,6 +1059,33 @@ class Graph {
   void AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+
+  template <typename TInstance>
+  static auto GetProducerNodeImpl(
+      TInstance& instance, const std::string& node_arg_name) -> decltype(instance.GetNode(0)) {
+    auto iter = instance.node_arg_to_producer_node_.find(node_arg_name);
+    if (iter != instance.node_arg_to_producer_node_.end()) {
+      auto node_index = iter->second;
+      return instance.GetNode(node_index);
+    }
+    return nullptr;
+  }
+
+  template <typename TInstance>
+  static auto GetConsumerNodesImpl(
+      TInstance& instance, const std::string& node_arg_name) -> std::vector<decltype(instance.GetNode(0))> {
+    std::vector<decltype(instance.GetNode(0))> results;
+    auto iter = instance.node_arg_to_consumer_nodes_.find(node_arg_name);
+    if (iter != instance.node_arg_to_consumer_nodes_.end()) {
+      results.reserve(iter->second.size());
+      for (auto node_index : iter->second) {
+        results.push_back(instance.GetNode(node_index));
+      }
+    }
+    return results;
+  }
+
+  const Model& owning_model_;
 
   // GraphProto to store name, version, initializer.
   // When serializing <*this> Graph to a GraphProto, the nodes and
@@ -1013,8 +1139,22 @@ class Graph {
   // Graph value_info.
   std::vector<const NodeArg*> value_info_;
 
+  // Strings which have been used as node names.
+  // New node name should not conflict with this set.
+  std::unordered_set<std::string> generated_node_names_;
+
+  // Strings which have been used as node_arg names.
+  // New node_arg name should not conflict this this set.
+  std::unordered_set<std::string> generated_node_arg_names_;
+
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
+
+  // node arg to its producer node
+  std::unordered_map<std::string, NodeIndex> node_arg_to_producer_node_;
+
+  // node arg to its consumer nodes
+  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
 
   const std::unordered_map<std::string, int> domain_to_version_;
 
@@ -1043,6 +1183,11 @@ class Graph {
   int num_resolves_ = 0;
 
   const logging::Logger& logger_;
+
+  // distinguishes between graph loaded from model file and graph created from scratch
+  const bool is_loaded_from_model_file_;
 };
+
+std::ostream& operator<<(std::ostream& out, const Graph& graph);
 
 }  // namespace onnxruntime

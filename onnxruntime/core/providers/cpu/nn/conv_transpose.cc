@@ -17,6 +17,7 @@
 
 #include "core/providers/cpu/nn/conv_transpose.h"
 
+#include "core/common/safeint.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -48,6 +49,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
   ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
+  // Bail out early if one of the dimensions is zero.
+  if (p.Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   const int64_t input_image_size = p.input_shape.Size();
   const int64_t X_offset = p.num_input_channels / conv_transpose_attrs_.group * input_image_size;
   const int64_t Y_offset = p.Y->Shape().Size() / p.Y->Shape()[0] / conv_transpose_attrs_.group;
@@ -60,7 +66,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   const int64_t col_buffer_size = kernel_dim * p.input_shape.Size();
-  auto col_data = alloc->Alloc(sizeof(T) * col_buffer_size);
+  auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
@@ -154,7 +160,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
 
       if (p.B != nullptr) {
-
         auto Ymatrix = EigenMatrixMap<T>(Ydata, output_size, p.num_output_channels);
         auto Bvec = ConstEigenVectorMap<T>(p.B->template Data<T>(), p.num_output_channels);
         Ymatrix.rowwise() += Bvec.transpose();

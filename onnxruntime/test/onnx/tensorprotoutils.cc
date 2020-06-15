@@ -7,9 +7,9 @@
 #include <algorithm>
 #include <limits>
 #include <gsl/gsl>
+#include "core/common/safeint.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
-#include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "callback.h"
@@ -63,12 +63,31 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tens
   return tensor_shape_vec;
 }
 
+static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) {
+  bool ok = true;
+
+  try {
+    SafeInt<size_t> alloc_size(size);
+    if (alignment == 0) {
+      *out = alloc_size * nmemb;
+    } else {
+      size_t alignment_mask = alignment - 1;
+      *out = (alloc_size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
+    }
+  } catch (const OnnxRuntimeException&) {
+    // overflow in calculating the size thrown by SafeInt.
+    ok = false;
+  }
+
+  return ok;
+}
+
 // This function doesn't support string tensors
 template <typename T>
 static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length, size_t expected_size,
                                     /*out*/ T* p_data) {
   size_t expected_size_in_bytes;
-  if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
+  if (!CalcMemSizeForArrayWithAlignment(expected_size, sizeof(T), 0, &expected_size_in_bytes)) {
     throw Ort::Exception("size overflow", OrtErrorCode::ORT_FAIL);
   }
   if (raw_data_length != expected_size_in_bytes)
@@ -237,11 +256,11 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
   return;
 }
 
-#define CASE_PROTO_TRACE(X, Y)                                                            \
-  case onnx::TensorProto_DataType::TensorProto_DataType_##X:                              \
-    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) { \
-      throw Ort::Exception("Invalid TensorProto", OrtErrorCode::ORT_FAIL);                \
-    }                                                                                     \
+#define CASE_PROTO_TRACE(X, Y)                                                \
+  case onnx::TensorProto_DataType::TensorProto_DataType_##X:                  \
+    if (!CalcMemSizeForArrayWithAlignment(size, sizeof(Y), alignment, out)) { \
+      throw Ort::Exception("Invalid TensorProto", OrtErrorCode::ORT_FAIL);    \
+    }                                                                         \
     break;
 
 template <size_t alignment>
@@ -252,7 +271,7 @@ Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_p
     if (dim < 0 || static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max()) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");
     }
-    if (!IAllocator::CalcMemSizeForArray(size, static_cast<size_t>(dim), &size)) {
+    if (!CalcMemSizeForArrayWithAlignment(size, static_cast<size_t>(dim), 0, &size)) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid TensorProto");
     }
   }
@@ -428,8 +447,8 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
   value = Ort::Value::CreateTensor(&allocator, tensor_data, m.GetLen(), tensor_shape_vec.data(), tensor_shape_vec.size(), (ONNXTensorElementDataType)tensor_proto.data_type());
   return Status::OK();
 }
-template Status GetSizeInBytesFromTensorProto<256>(const onnx::TensorProto& tensor_proto,
-                                                   size_t* out);
+
+template Status GetSizeInBytesFromTensorProto<256>(const onnx::TensorProto& tensor_proto, size_t* out);
 template Status GetSizeInBytesFromTensorProto<0>(const onnx::TensorProto& tensor_proto, size_t* out);
 }  // namespace test
 }  // namespace onnxruntime

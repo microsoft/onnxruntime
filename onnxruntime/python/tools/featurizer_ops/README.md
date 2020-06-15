@@ -16,12 +16,14 @@ from feed_inputs import DataFrameTool
 # Load the onnx model
 sess_options = onnxrt.SessionOptions()
 sess_options.enable_profiling = args.profile
-sess = onnxrt.InferenceSession(args.model_path, sess_options)
 
-df = pd.DataFrame([['string_input', True, np.float32(0.25)]], index=[0], columns=['F2', 'Label', 'F1'])
+df_tool = DataFrameTool(args.model_path, sess_options)
 
-feed_helper = DataFrameTool(sess)
-feeds = feed_helper.feed_nputs(df)
+# Create a DataFrame that holds 3 inputs, string, bool, float in their respective columns
+df = pd.DataFrame([['string_input', 3.25, 8, 16, 32, 64, True, 0.25]], 
+                  columns=['StringInput', 'DoubleInput', 'Int8Input', 'Int16Input', 'Int32Input', 'Int64Input', 'BoolInput', 'Float32Input'])
 
-sess.run([], feeds)
+outputs = df_tool.execute(df, [])
+print('Outputs: ', outputs)
+
 ```

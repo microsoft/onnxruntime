@@ -6,7 +6,7 @@
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
 
-using namespace winrt::Windows::AI::MachineLearning::implementation;
+using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
 {
@@ -68,8 +68,8 @@ namespace Dml
             ComPtr<IDMLDevice> device;
             THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
 
-            ComPtr<IDMLDevicePreview> devicePreview;
-            THROW_IF_FAILED(device.As(&devicePreview));
+            ComPtr<IDMLDevice1> device1;
+            THROW_IF_FAILED(device.As(&device1));
 
             const uint32_t graphInputCount = kernelInfo.GetInputCount();
 
@@ -131,7 +131,7 @@ namespace Dml
 
             // Walk through each graph edge and mark used inputs
             m_inputsUsed.assign(graphInputCount, false);
-            for (const DML_PREVIEW_INPUT_GRAPH_EDGE& edge : graphDesc.inputEdges)
+            for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges)
             {
                 m_inputsUsed[edge.GraphInputIndex] = true;
             }
@@ -170,7 +170,7 @@ namespace Dml
                     }
                     else
                     {
-                        std::tie(unpackedTensor, tensorByteSize) = winrt::Windows::AI::MachineLearning::implementation::UnpackTensor(initializer);
+                        std::tie(unpackedTensor, tensorByteSize) = UnpackTensor(initializer);
                         tensorPtr = unpackedTensor.get(); 
                     }
 
@@ -227,35 +227,35 @@ namespace Dml
             // All initializers should have been consumed and freed above
             assert(transferredInitializerMap.empty());
 
-            std::vector<DML_PREVIEW_OPERATOR_GRAPH_NODE> dmlOperatorGraphNodes(graphDesc.nodes.size());
-            std::vector<DML_PREVIEW_GRAPH_NODE> dmlGraphNodes(graphDesc.nodes.size());
+            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
+            std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
 
-            std::vector<DML_PREVIEW_GRAPH_EDGE> dmlInputEdges(graphDesc.inputEdges.size());
-            std::vector<DML_PREVIEW_GRAPH_EDGE> dmlOutputEdges(graphDesc.outputEdges.size());
-            std::vector<DML_PREVIEW_GRAPH_EDGE> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
+            std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
+            std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
+            std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
 
             for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
             {
-                dmlOperatorGraphNodes[i] = DML_PREVIEW_OPERATOR_GRAPH_NODE{ graphDesc.nodes[i].op.Get() };
-                dmlGraphNodes[i] = DML_PREVIEW_GRAPH_NODE{ DML_PREVIEW_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i] };
+                dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{ graphDesc.nodes[i].op.Get() };
+                dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{ DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i] };
             }
 
             for (size_t i = 0; i < graphDesc.inputEdges.size(); ++i)
             {
-                dmlInputEdges[i] = DML_PREVIEW_GRAPH_EDGE{ DML_PREVIEW_GRAPH_EDGE_TYPE_INPUT, &graphDesc.inputEdges[i] };
+                dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{ DML_GRAPH_EDGE_TYPE_INPUT, &graphDesc.inputEdges[i] };
             }
 
             for (size_t i = 0; i < graphDesc.outputEdges.size(); ++i)
             {
-                dmlOutputEdges[i] = DML_PREVIEW_GRAPH_EDGE{ DML_PREVIEW_GRAPH_EDGE_TYPE_OUTPUT, &graphDesc.outputEdges[i] };
+                dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{ DML_GRAPH_EDGE_TYPE_OUTPUT, &graphDesc.outputEdges[i] };
             }
 
             for (size_t i = 0; i < graphDesc.intermediateEdges.size(); ++i)
             {
-                dmlIntermediateEdges[i] = DML_PREVIEW_GRAPH_EDGE{ DML_PREVIEW_GRAPH_EDGE_TYPE_INTERMEDIATE, &graphDesc.intermediateEdges[i] };
+                dmlIntermediateEdges[i] = DML_GRAPH_EDGE_DESC{ DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &graphDesc.intermediateEdges[i] };
             }
 
-            DML_PREVIEW_GRAPH_DESC dmlGraphDesc = {};
+            DML_GRAPH_DESC dmlGraphDesc = {};
             dmlGraphDesc.InputCount = graphInputCount;
             dmlGraphDesc.OutputCount = kernelInfo.GetOutputCount();
             dmlGraphDesc.NodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
@@ -279,7 +279,7 @@ namespace Dml
                 executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
             }
 
-            THROW_IF_FAILED(devicePreview->CompileGraph(
+            THROW_IF_FAILED(device1->CompileGraph(
                 &dmlGraphDesc,
                 executionFlags,
                 IID_PPV_ARGS(&m_compiledExecutionPlanOperator)));
@@ -289,7 +289,7 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    persistentResourceSize,
+                    static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
                     m_persistentResourceAllocatorUnk.GetAddressOf()));
@@ -589,7 +589,7 @@ namespace Dml
                 // which is scheduled up to the point that this method returns has completed.
                 ComPtr<IUnknown> tempAlloc;
                 uint64_t tempAllocId = 0;
-                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(execBindingProps.TemporaryResourceSize, tempAlloc.GetAddressOf(), &tempAllocId));
+                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
                 ComPtr<IUnknown> tempResourceUnk;
                 m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
@@ -726,7 +726,7 @@ namespace Dml
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         std::vector<bool> m_inputsUsed;
         const void* m_executionHandle = nullptr;
-        ComPtr<winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider> m_winmlProvider;
+        ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
         EdgeShapes m_outputShapes;
 

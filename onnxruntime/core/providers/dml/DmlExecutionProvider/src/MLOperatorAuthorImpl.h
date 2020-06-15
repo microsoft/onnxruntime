@@ -21,7 +21,7 @@ namespace WRL
         >;
 }
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 { 
 
 using namespace Microsoft::WRL;
@@ -380,7 +380,7 @@ private:
     bool m_allowOutputShapeQuery = false;
 
     bool m_internalOperator = false;
-    ComPtr<winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider> m_winmlProvider;
+    ComPtr<IWinmlExecutionProvider> m_winmlProvider;
 
     const onnxruntime::OpKernelInfo* m_impl = nullptr;
     
@@ -435,7 +435,7 @@ private:
 
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
-    ComPtr<winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider> m_winmlProvider;
+    ComPtr<IWinmlExecutionProvider> m_winmlProvider;
     bool m_internalOperator = false;
 
     // The execution object returned through the ABI, which may vary according to kernel
@@ -477,7 +477,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     std::vector<ComPtr<TensorWrapper>> m_outputTensors;
 
     const onnxruntime::IExecutionProvider* m_provider = nullptr;
-    ComPtr<winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider> m_winmlProvider;
+    ComPtr<IWinmlExecutionProvider> m_winmlProvider;
     bool m_internalOperator = false;
 
     // The execution object returned to the kernel may vary according to kernel execution options
@@ -542,7 +542,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
     mutable std::mutex m_mutex;
     mutable EdgeShapes m_inferredOutputShapes;
 
-    ComPtr<winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider> m_winmlProvider;
+    ComPtr<IWinmlExecutionProvider> m_winmlProvider;
     bool m_internalOperator = false;
     std::vector<uint32_t> m_requiredConstantCpuInputs;
     
@@ -640,4 +640,4 @@ bool TryGetStaticOutputShapes(const onnxruntime::Node& node, EdgeShapes& outputS
 bool ContainsEmptyDimensions(const EdgeShapes& shapes);
 
 std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer);
-}    // namespace winrt::Windows::AI::MachineLearning::implementation
+}    // namespace Windows::AI::MachineLearning::Adapter

@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "test_fixture.h"
+#include <gtest/gtest.h>
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 static void TestModelInfo(const Ort::Session& session, bool is_input, const std::vector<int64_t>& dims) {
   size_t input_count;
@@ -28,10 +31,10 @@ static void TestModelInfo(const Ort::Session& session, bool is_input, const std:
   ASSERT_EQ(real_dims, dims);
 }
 
-TEST_F(CApiTest, input_output_type_info) {
-  constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
+TEST(CApiTest, input_output_type_info) {
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");
   Ort::SessionOptions session_options;
-  Ort::Session session(env_, model_uri, session_options);
+  Ort::Session session(*ort_env, model_uri, session_options);
   TestModelInfo(session, true, {1, 3, 224, 224});
   TestModelInfo(session, false, {1, 1000, 1, 1});
 }

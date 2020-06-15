@@ -11,74 +11,29 @@ using namespace ::onnxruntime::common;
 using namespace std;
 
 namespace onnxruntime {
-#define ADD_TYPED_SLICE_V9_OP(data_type)                                                \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                             \
-      Slice,                                                                            \
-      1, 9,                                                                             \
-      data_type,                                                                        \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
-      Slice<data_type, false>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Slice,
+    1, 9,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Slice1);
 
-ADD_TYPED_SLICE_V9_OP(uint8_t);
-ADD_TYPED_SLICE_V9_OP(uint16_t);
-ADD_TYPED_SLICE_V9_OP(uint32_t);
-ADD_TYPED_SLICE_V9_OP(uint64_t);
-ADD_TYPED_SLICE_V9_OP(int8_t);
-ADD_TYPED_SLICE_V9_OP(int16_t);
-ADD_TYPED_SLICE_V9_OP(int32_t);
-ADD_TYPED_SLICE_V9_OP(int64_t);
-ADD_TYPED_SLICE_V9_OP(float);
-ADD_TYPED_SLICE_V9_OP(double);
-ADD_TYPED_SLICE_V9_OP(MLFloat16);
-ADD_TYPED_SLICE_V9_OP(bool);
-ADD_TYPED_SLICE_V9_OP(string);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Slice,
+    10, 10,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    Slice10);
 
-#define ADD_TYPED_SLICE_V10_OP(data_type)                                                                                                                                                        \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                                                                                                      \
-      Slice,                                                                                                                                                                                     \
-      10,                                                                                                                                                                                        \
-      10,                                                                                                                                                                                        \
-      data_type,                                                                                                                                                                                 \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
-      Slice<data_type, true>);
-
-ADD_TYPED_SLICE_V10_OP(uint8_t);
-ADD_TYPED_SLICE_V10_OP(uint16_t);
-ADD_TYPED_SLICE_V10_OP(uint32_t);
-ADD_TYPED_SLICE_V10_OP(uint64_t);
-ADD_TYPED_SLICE_V10_OP(int8_t);
-ADD_TYPED_SLICE_V10_OP(int16_t);
-ADD_TYPED_SLICE_V10_OP(int32_t);
-ADD_TYPED_SLICE_V10_OP(int64_t);
-ADD_TYPED_SLICE_V10_OP(float);
-ADD_TYPED_SLICE_V10_OP(double);
-ADD_TYPED_SLICE_V10_OP(MLFloat16);
-ADD_TYPED_SLICE_V10_OP(bool);
-ADD_TYPED_SLICE_V10_OP(string);
-
-#define ADD_TYPED_SLICE_V11_OP(data_type)                                                                            \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                    \
-      Slice,                                                                                                         \
-      11,                                                                                                            \
-      data_type,                                                                                                     \
-      KernelDefBuilder()                                                                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>())                                             \
-          .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
-      Slice<data_type, true>);
-
-ADD_TYPED_SLICE_V11_OP(uint8_t);
-ADD_TYPED_SLICE_V11_OP(uint16_t);
-ADD_TYPED_SLICE_V11_OP(uint32_t);
-ADD_TYPED_SLICE_V11_OP(uint64_t);
-ADD_TYPED_SLICE_V11_OP(int8_t);
-ADD_TYPED_SLICE_V11_OP(int16_t);
-ADD_TYPED_SLICE_V11_OP(int32_t);
-ADD_TYPED_SLICE_V11_OP(int64_t);
-ADD_TYPED_SLICE_V11_OP(float);
-ADD_TYPED_SLICE_V11_OP(double);
-ADD_TYPED_SLICE_V11_OP(MLFloat16);
-ADD_TYPED_SLICE_V11_OP(bool);
-ADD_TYPED_SLICE_V11_OP(string);
+ONNX_CPU_OPERATOR_KERNEL(
+    Slice,
+    11,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    Slice10);
 
 namespace {
 // std::clamp doesn't exist until C++17 so create a local version
@@ -260,26 +215,21 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // Slice V10 & DynamicSlice
-void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
+void SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
+                                     const Tensor& ends_tensor,
+                                     const Tensor* axes_tensor,
+                                     const Tensor* steps_tensor,
                                      std::vector<int64_t>& input_starts,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
                                      std::vector<int64_t>& input_steps) const {
-  const auto* start_tensor = context->Input<Tensor>(1);
-  const auto* ends_tensor = context->Input<Tensor>(2);
-  const auto* axes_tensor = context->Input<Tensor>(3);
-  const Tensor* steps_tensor = nullptr;
-  // check if this is Slice V10 - only Slice V10 has this optional input
-  if (context->InputCount() == 5)
-    steps_tensor = context->Input<Tensor>(4);
+  ORT_ENFORCE(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
+  ORT_ENFORCE(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
+  ORT_ENFORCE(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
+  ORT_ENFORCE(nullptr == axes_tensor || start_tensor.Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
+  ORT_ENFORCE(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(), "Starts and steps shape mismatch");
 
-  ORT_ENFORCE(nullptr != start_tensor && start_tensor->Shape().NumDimensions() == 1, "Starts must be a 1-D array");
-  ORT_ENFORCE(nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1, "Ends must be a 1-D array");
-  ORT_ENFORCE(start_tensor->Shape() == ends_tensor->Shape(), "Starts and ends shape mismatch");
-  ORT_ENFORCE(nullptr == axes_tensor || start_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
-  ORT_ENFORCE(nullptr == steps_tensor || start_tensor->Shape() == steps_tensor->Shape(), "Starts and steps shape mismatch");
-
-  const auto& size = start_tensor->Shape().Size();
+  const auto& size = start_tensor.Shape().Size();
   input_starts.resize(size);
   input_ends.resize(size);
   if (nullptr != axes_tensor)
@@ -288,9 +238,9 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   if (nullptr != steps_tensor)
     input_steps.resize(size);
 
-  if (start_tensor->IsDataType<int32_t>()) {
-    std::copy(start_tensor->Data<int32_t>(), start_tensor->Data<int32_t>() + size, input_starts.begin());
-    std::copy(ends_tensor->Data<int32_t>(), ends_tensor->Data<int32_t>() + size, input_ends.begin());
+  if (start_tensor.IsDataType<int32_t>()) {
+    std::copy(start_tensor.Data<int32_t>(), start_tensor.Data<int32_t>() + size, input_starts.begin());
+    std::copy(ends_tensor.Data<int32_t>(), ends_tensor.Data<int32_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
       std::copy(axes_tensor->Data<int32_t>(), axes_tensor->Data<int32_t>() + size, input_axes.begin());
     // Slice V10
@@ -298,9 +248,9 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
       std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
   }
 
-  else if (start_tensor->IsDataType<int64_t>()) {
-    std::copy(start_tensor->Data<int64_t>(), start_tensor->Data<int64_t>() + size, input_starts.begin());
-    std::copy(ends_tensor->Data<int64_t>(), ends_tensor->Data<int64_t>() + size, input_ends.begin());
+  else if (start_tensor.IsDataType<int64_t>()) {
+    std::copy(start_tensor.Data<int64_t>(), start_tensor.Data<int64_t>() + size, input_starts.begin());
+    std::copy(ends_tensor.Data<int64_t>(), ends_tensor.Data<int64_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
       std::copy(axes_tensor->Data<int64_t>(), axes_tensor->Data<int64_t>() + size, input_axes.begin());
     // Slice V10
@@ -310,17 +260,17 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
 
   // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
   else {
-    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", start_tensor->DataType());
+    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", start_tensor.DataType());
   }
 }
 
 template <typename T>
-Status SliceImpl(OpKernelContext* ctx,
-                 const Tensor& input_tensor,
-                 std::vector<int64_t>& output_dims,
-                 std::vector<int64_t>* flattened_output_dims,
-                 const std::vector<int64_t>& starts,
-                 const std::vector<int64_t>& steps) {
+static Status SliceImpl(OpKernelContext* ctx,
+                        const Tensor& input_tensor,
+                        std::vector<int64_t>& output_dims,
+                        std::vector<int64_t>* flattened_output_dims,
+                        const std::vector<int64_t>& starts,
+                        const std::vector<int64_t>& steps) {
   TensorShape output_shape(output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
 
@@ -328,7 +278,8 @@ Status SliceImpl(OpKernelContext* ctx,
   if (output_shape.Size() == 0)
     return Status::OK();
 
-  auto* output = output_tensor.template MutableData<T>();
+  // use MutableDataRaw as actual data type in tensor may not match as we templatize on data size
+  T* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
   const auto* output_end = output + output_tensor.Shape().Size();
 
   auto create_output = [&output, &output_end](SliceIterator<T>& input_iterator) {
@@ -363,8 +314,7 @@ Status SliceImpl(OpKernelContext* ctx,
   return Status::OK();
 }
 
-template <typename T, bool dynamic>
-Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
+Status SliceBase::Compute(OpKernelContext* ctx) const {
   const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Missing input tensor to be processed");
   const auto& input_tensor = *input_tensor_ptr;
@@ -379,12 +329,14 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t>* p_flattened_output_dims = &flattened_output_dims;
 
   // Slice V10 & DynamicSlice
-  if (dynamic) {
+  if (dynamic_) {
     std::vector<int64_t> input_starts;
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
     std::vector<int64_t> input_steps;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
+    FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                         ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
                                           input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
@@ -396,6 +348,31 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
                                           p_flattened_output_dims));
   }
 
-  return SliceImpl<T>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+  Status status = Status::OK();
+
+  if (input_tensor.IsDataTypeString()) {
+    status = SliceImpl<std::string>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+  } else {
+    const auto element_size = input_tensor.DataType()->Size();
+
+    switch (element_size) {
+      case sizeof(uint32_t):
+        status = SliceImpl<uint32_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        break;
+      case sizeof(uint64_t):
+        status = SliceImpl<uint64_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        break;
+      case sizeof(uint16_t):
+        status = SliceImpl<uint16_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        break;
+      case sizeof(uint8_t):
+        status = SliceImpl<uint8_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        break;
+      default:
+        ORT_THROW("Unsupported input data type of ", input_tensor.DataType());
+    }
+  }
+  return status;
 }
+
 }  // namespace onnxruntime

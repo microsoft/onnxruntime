@@ -1,77 +1,39 @@
-# Jobs to run on master after every successful merge is committed
 jobs:
-- job: Windows_Debug_CPU_x64
-  pool: 'Win-CPU-2019'
-  timeoutInMinutes: 120
-  variables:
-    - group: dashboard_mysql_secret
-    - name: buildDirectory
-      value: '$(Build.BinariesDirectory)'
-    - name: BuildConfig
-      value: 'Debug'
-    - name: buildArch
-      value: 'x64'
-    - name: EnvSetupScript
-      value: 'setup_env.bat'
-
+- job: CodeCoverage
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Linux-CPU'
   steps:
-    - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
-    - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
-        architecture: $(buildArch)
-
-    - task: BatchScript@1
-      displayName: 'setup env'
+    - task: CmdLine@2
       inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+        script: |
+          set -e
+          sudo apt-get install -y python3-pip
+          sudo python3 -m pip install mysql-connector-python
+          ln -s /data/models .
+          #Build onnxruntime and run the instrumented program(unitests)
+          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests
 
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+          cd Debug
+          ./onnxruntime_mlas_test
+          #Run the model tests(It will take long because it is in debug mode)
+          LLVM_PROFILE_FILE="testrunner.profraw" ./onnx_test_runner -j 1 -c 2 /data/models
+          #Merge the mulitple prof data into a single indexed profile data file
+          llvm-profdata merge -sparse -o ort.profdata *.profraw
+          #Create coverage report, output the result to 'report.json'
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnx_test_runner -object onnxruntime_test_all  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
         workingDirectory: $(Build.BinariesDirectory)
 
-
-    - powershell: 'Start-Process -FilePath "$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe" -ArgumentList ''/SP-'', ''/VERYSILENT'', ''/SUPPRESSMSGBOXES'', ''/NORESTART'', ''/DIR="$(Build.BinariesDirectory)\OpenCppCoverage'' -NoNewWindow -Wait'
-      displayName: 'Run OpenCPPCoverage installer'
-
-    - task: PythonScript@0
-      displayName: 'Generate cmake config'
+    - task: CmdLine@2
+      displayName: 'Post code coverage data to the Dashboard'
       inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests'
-        workingDirectory: '$(Build.BinariesDirectory)'
+        script: |
+          python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py  --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
+        workingDirectory: $(Build.BinariesDirectory)
+      env: 
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-    - task: VSBuild@1
-      displayName: 'Build'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-        platform: 'x64'
-        configuration: $(BuildConfig)
-        msbuildArchitecture: $(buildArch)
-        maximumCpuCount: true
-        logProjectEvents: false
-        workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-        createLogFile: true    
-
-    - task: PythonScript@0
-      displayName: 'test'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests'
-        workingDirectory: '$(Build.BinariesDirectory)'
-
-    - template: templates/windows-code-coverage-steps.yml
-      parameters:
-        OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
-        GitCommitHash: $(OnnxRuntimeGitCommitHash)    
-        PublishReport: true
-        PostToDashboard: true
-
+    - template: templates/clean-agent-build-directory-step.yml

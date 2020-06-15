@@ -1,37 +1,50 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include <atomic>
 #include "dnnl_execution_provider.h"
-#include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
 
+extern onnxruntime::ProviderHost* g_host;
+
 namespace onnxruntime {
-struct DnnlProviderFactory : IExecutionProviderFactory {
+
+void SetProviderHost(ProviderHost& host);
+
+struct DnnlProviderFactory : Provider_IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<Provider_IExecutionProvider> CreateProvider() override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
+std::unique_ptr<Provider_IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return onnxruntime::make_unique<DNNLExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(bool use_arena) {
-  return std::make_shared<onnxruntime::DnnlProviderFactory>(use_arena);
-}
+struct Dnnl_Provider : Provider {
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(bool use_arena) override {
+    return std::make_shared<DnnlProviderFactory>(use_arena);
+  }
+
+  void SetProviderHost(ProviderHost& host) {
+    onnxruntime::SetProviderHost(host);
+  }
+} g_provider;
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(static_cast<bool>(use_arena)));
-  return nullptr;
+extern "C" {
+
+ORT_API(onnxruntime::Provider*, GetProvider) {
+  return &onnxruntime::g_provider;
+}
 }

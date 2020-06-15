@@ -10,21 +10,17 @@ dim = output.type.tensor_type.shape.dim.add()
 print(dim)
 
 graph_def = helper.make_graph(
-    nodes = [
-        helper.make_node(op_type = "Reshape", inputs = ['A', 'B'], outputs = ['C'], name = 'reshape'),
+    nodes=[
+        helper.make_node(op_type="Reshape", inputs=['A', 'B'], outputs=['C'], name='reshape'),
     ],
-    name = 'test-model',
-    inputs = [
+    name='test-model',
+    inputs=[
         # create inputs with symbolic dims
         helper.make_tensor_value_info("A", TensorProto.FLOAT, ['n', 2]),
         helper.make_tensor_value_info("B", TensorProto.INT64, ['m']),
     ],
-    outputs = [
-        output
-    ],
-    initializer = [
-    ]
-)
+    outputs=[output],
+    initializer=[])
 
 model = helper.make_model(graph_def, opset_imports=[helper.make_operatorsetid("", 11)])
 onnx.checker.check_model(model)

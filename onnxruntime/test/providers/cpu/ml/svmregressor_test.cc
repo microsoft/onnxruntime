@@ -60,14 +60,46 @@ TEST(MLOpTest, SVMRegressorNuSVC) {
 TEST(MLOpTest, SVMRegressorNuSVCPolyKernel) {
   OpTester test("SVMRegressor", 1, onnxruntime::kMLDomain);
 
-  std::vector<float> dual_coefficients = {-2.74322388e+01f, 5.81893108e+01f, -1.00000000e+02f, 6.91693781e+01f, 7.62161261e-02f, -2.66618042e-03f};
-  std::vector<float> support_vectors = {0.f, 0.5f, 32.f, 1.f, 1.5f, 1.f, 2.f, 2.9f, -32.f, 3.f, 13.3f, -11.f, 12.f, 12.9f, -312.f, 43.f, 413.3f, -114.f};
+  std::vector<float> dual_coefficients = {-2.74322388e+01f, 5.81893108e+01f, -1.00000000e+02f,
+                                          6.91693781e+01f, 7.62161261e-02f, -2.66618042e-03f};
+  std::vector<float> support_vectors = {0.f, 0.5f, 32.f,
+                                        1.f, 1.5f, 1.f,
+                                        2.f, 2.9f, -32.f,
+                                        3.f, 13.3f, -11.f,
+                                        12.f, 12.9f, -312.f,
+                                        43.f, 413.3f, -114.f};
   std::vector<float> rho = {1.5004596f};
   std::vector<float> kernel_params = {0.001f, 0.f, 3.f};  //gamma, coef0, degree
 
-  //three estimates, for 3 points each, so 9 predictions
-  std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
-  std::vector<float> predictions = {1.50041863e+00f, 3.49624795e-01f, 2.75850969e+00f, -2.28659294e+02f, -2.28659294e+02f, -6.09640826e+05f, -2.28659294e+02f, 3.89055773e+00f};
+  // 8 batches with 3 features in each
+  std::vector<float> X = {1.f, 0.0f, 0.4f,
+                          3.0f, 44.0f, -3.f,
+                          12.0f, 12.9f, 112.f,
+                          23.0f, 11.3f, -222.f,
+                          23.0f, 11.3f, -222.f,
+                          23.0f, 3311.3f, -222.f,
+                          23.0f, 11.3f, -222.f,
+                          43.0f, 413.3f, -114.f};
+
+  /*
+  # batched_dot_product calculations
+  first = np.matmul(X, np.transpose(support_vectors))
+  first *= gamma
+  first += coef0
+  POLY_dot_product = np.power(first, degree)
+
+  # second GEMM call in SVMRegressor code
+  predictions = np.matmul(POLY_dot_product, np.transpose(coefficients))
+  predictions += rho
+  */
+  std::vector<float> predictions = {1.50041862e+00f,
+                                    3.49624789e-01f,
+                                    -1.36680453e+02f,
+                                    -2.28659315e+02f,
+                                    -2.28659315e+02f,
+                                    -6.09640827e+05f,
+                                    -2.28659315e+02f,
+                                    3.89055458e+00f};
 
   test.AddAttribute("kernel_type", std::string("POLY"));
   test.AddAttribute("coefficients", dual_coefficients);

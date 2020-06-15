@@ -12,26 +12,20 @@
 namespace onnxruntime {
 using namespace common;
 
-#ifdef USE_MIMALLOC
-using TArenaAllocator = MiMallocArena;
-#else
-using TArenaAllocator = BFCArena;
-#endif
-
-AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id, bool use_arena) {
+AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, OrtDevice::DeviceId device_id, bool use_arena) {
   auto device_allocator = std::unique_ptr<IDeviceAllocator>(info.factory(device_id));
 
   if (use_arena) {
+#ifdef USE_MIMALLOC
     return std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<TArenaAllocator>(std::move(device_allocator), info.max_mem));
+          onnxruntime::make_unique<MiMallocArena>(std::move(device_allocator), info.max_mem));
+#else
+    return std::shared_ptr<IArenaAllocator>(
+          onnxruntime::make_unique<BFCArena>(std::move(device_allocator), info.max_mem, info.arena_extend_strategy));
+#endif
   }
 
   return AllocatorPtr(std::move(device_allocator));
-}
-
-DeviceAllocatorRegistry& DeviceAllocatorRegistry::Instance() {
-  static DeviceAllocatorRegistry s_instance;
-  return s_instance;
 }
 
 }  // namespace onnxruntime

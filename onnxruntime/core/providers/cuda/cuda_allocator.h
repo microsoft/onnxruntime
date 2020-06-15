@@ -9,12 +9,11 @@ namespace onnxruntime {
 
 class CUDAAllocator : public IDeviceAllocator {
  public:
-  CUDAAllocator(int device_id, const char* name)
+  CUDAAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IDeviceAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
                           device_id, OrtMemTypeDefault)) {}
-
   void* Alloc(size_t size) override;
   void Free(void* p) override;
   FencePtr CreateFence(const SessionState* session_state) override;
@@ -26,7 +25,7 @@ class CUDAAllocator : public IDeviceAllocator {
 //TODO: add a default constructor
 class CUDAPinnedAllocator : public IDeviceAllocator {
  public:
-  CUDAPinnedAllocator(int device_id, const char* name)
+  CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IDeviceAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),

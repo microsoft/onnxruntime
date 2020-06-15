@@ -104,7 +104,8 @@ TEST(Random, RandomUniform1DFloat) {
 
   test.AddOutput<float>("Y", dims, expected_output);
 
-  test.Run();
+  // TensorRT does not support manual seed overrides and there will be result mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {

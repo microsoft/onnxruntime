@@ -6,13 +6,14 @@
 
 #include "Featurizers/HashOneHotVectorizerFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace NS = Microsoft::Featurizer;
 
 namespace onnxruntime {
 namespace test {
 
+namespace {
 template <typename T>
 std::vector<uint8_t> GetStream() {
   NS::Featurizers::HashOneHotVectorizerTransformer<T> hvtransformer(2, 100);
@@ -20,6 +21,7 @@ std::vector<uint8_t> GetStream() {
   hvtransformer.save(ar);
   return ar.commit();
 }
+}  // namespace
 
 TEST(FeaturizersTests, HashOneHotVectorizerTransformer_int8) {
   using Type = int8_t;

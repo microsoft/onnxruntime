@@ -213,7 +213,7 @@ Return Value:
 
     for (size_t i = InputChannels; i > 0;) {
 
-        const size_t InputChannelsThisIteration = (std::min)(i, BlockSize);
+        const size_t InputChannelsThisIteration = std::min(i, BlockSize);
         i -= InputChannelsThisIteration;
 
         const float* s = S;
@@ -269,7 +269,7 @@ Return Value:
 
 void
 MLASCALL
-MlasReorderOutput(
+MlasReorderOutputNchw(
     const int64_t* OutputShape,
     const float* S,
     float* D
@@ -308,7 +308,7 @@ Return Value:
 
         for (size_t o = OutputChannels; o > 0;) {
 
-            const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+            const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
             const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
             o -= OutputChannelsThisIteration;
 
@@ -362,6 +362,81 @@ Return Value:
             S += BlockSize * OutputSize;
             D += OutputChannelsThisIteration * OutputSize;
         }
+    }
+}
+
+void
+MLASCALL
+MlasReorderOutputNhwc(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    )
+/*++
+
+Routine Description:
+
+    This routine reorders an output buffer from NCHWc to NHWC format.
+
+Arguments:
+
+    OutputShape - Supplies the shape of the output tensor.
+
+    S - Supplies the address of the source tensor.
+
+    D - Supplies the address of the destination tensor.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t BatchCount = size_t(OutputShape[0]);
+    const size_t OutputChannels = size_t(OutputShape[3]);
+    const size_t OutputSize = size_t(OutputShape[1]) * size_t(OutputShape[2]);
+
+    const size_t AlignedOutputChannels = (OutputChannels + BlockSize - 1) & ~(BlockSize - 1);
+
+    //
+    // Copy NCHWc blocks from the source buffer to the destination buffer.
+    //
+
+    for (size_t batch = 0; batch < BatchCount; batch++) {
+
+        const float* s = S;
+        size_t OutputSizeRemaining = OutputSize;
+
+        for (; OutputSizeRemaining > 0; OutputSizeRemaining--) {
+
+            const float* ss = s;
+
+            for (size_t o = OutputChannels; o > 0;) {
+
+                const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
+                const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
+                o -= OutputChannelsThisIteration;
+
+                size_t bc = 0;
+
+                for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
+                    MlasStoreFloat32x4(&D[bc], MlasLoadFloat32x4(&ss[bc]));
+                }
+
+                for (; bc < OutputChannelsThisIteration; bc += 1) {
+                    D[bc] = ss[bc];
+                }
+
+                ss += BlockSize * OutputSize;
+                D += OutputChannelsThisIteration;
+            }
+
+            s += BlockSize;
+        }
+
+        S += AlignedOutputChannels * OutputSize;
     }
 }
 
@@ -448,7 +523,7 @@ Return Value:
 
     for (size_t o = OutputChannels; o > 0;) {
 
-        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
         const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
         o -= OutputChannelsThisIteration;
 
@@ -463,7 +538,7 @@ Return Value:
 
         for (size_t i = InputChannels; i > 0;) {
 
-            const size_t InputChannelsThisIteration = (std::min)(i, BlockSize);
+            const size_t InputChannelsThisIteration = std::min(i, BlockSize);
             i -= InputChannelsThisIteration;
 
             //
@@ -596,7 +671,7 @@ Return Value:
 
     for (size_t o = OutputChannels; o > 0;) {
 
-        const size_t OutputChannelsThisIteration = (std::min)(o, BlockSize);
+        const size_t OutputChannelsThisIteration = std::min(o, BlockSize);
         const size_t AlignedOutputChannelsThisIteration = OutputChannelsThisIteration & (~3);
         o -= OutputChannelsThisIteration;
 

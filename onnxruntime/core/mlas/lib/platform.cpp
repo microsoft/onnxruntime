@@ -38,6 +38,24 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = 
 MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint64_t MlasMaskMoveAvx64[4], 32) = { 0, 1, 2, 3 };
 
 //
+// Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableAvx[16], 32) = {
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+};
+
+//
+// Stores a table of AVX512 opmask register values.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[16], 32) = {
+    0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F,
+    0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF,
+};
+
+//
 // Reads the processor extended control register to determine platform
 // capabilities.
 //
@@ -97,12 +115,8 @@ Return Value:
     //
 
     this->GemmFloatKernel = MlasGemmFloatKernelSse;
-    this->GemmU8S8CopyPackARoutine = MlasGemmU8S8CopyPackASse;
-    this->GemmU8S8CopyPackBRoutine = MlasGemmU8S8CopyPackBSse;
-    this->GemmU8S8Kernel = MlasGemmU8S8KernelSse;
-    this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackASse;
-    this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBSse;
-    this->GemmU8U8Kernel = MlasGemmU8U8KernelSse;
+    this->GemmU8S8Operation = MlasGemmU8X8OperationSse;
+    this->GemmU8U8Operation = MlasGemmU8X8OperationSse;
 
 #if defined(MLAS_TARGET_AMD64)
 
@@ -115,9 +129,14 @@ Return Value:
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
+    this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ErfKernelRoutine = MlasErfKernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
@@ -159,6 +178,9 @@ Return Value:
             this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx;
             this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx;
             this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx;
+            this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelAvx;
+            this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
+            this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
 
             //
             // Check if the processor supports AVX2/FMA3 features.
@@ -173,12 +195,10 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
-                this->GemmU8S8CopyPackARoutine = MlasGemmU8S8CopyPackAAvx2;
-                this->GemmU8S8CopyPackBRoutine = MlasGemmU8S8CopyPackBAvx2;
+                this->GemmU8S8Operation = MlasGemmU8S8OperationAvx2;
                 this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
-                this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackAAvx2;
-                this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBAvx2;
+                this->GemmU8U8Operation = MlasGemmU8U8OperationAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
@@ -187,9 +207,11 @@ Return Value:
                 this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelFma3;
                 this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
                 this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
+                this->ComputeExpF32Kernel = MlasComputeExpF32KernelFma3;
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
+                this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
 
 #if !defined(MLAS_AVX512F_UNSUPPORTED)
 
@@ -209,18 +231,23 @@ Return Value:
                     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx512F;
                     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
+                    this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
+                    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
-                    //
-                    // Check if the processor supports AVX512BW.
-                    //
-#if !defined(MLAS_AVX512BW_UNSUPPORTED)
 
-                    if ((Cpuid7[1] & 0x40000000) != 0) {
+                    //
+                    // Check if the processor supports AVX512 core features
+                    // (AVX512BW/AVX512DQ/AVX512VL).
+                    //
 
-                        this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512BW;
-                        this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512BW;
-                        this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512BW;
+#if !defined(MLAS_AVX512CORE_UNSUPPORTED)
+
+                    if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
+
+                        this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
+                        this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
+                        this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -228,13 +255,16 @@ Return Value:
 
                         if ((Cpuid7[2] & 0x800) != 0) {
 
+                            this->GemmU8U8Operation = MlasGemmU8S8OperationAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
-                            this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Vnni;
                         }
                     }
-#endif // MLAS_AVX512BW_UNSUPPORTED
+
+#endif // MLAS_AVX512CORE_UNSUPPORTED
+
                 }
+
 #endif // MLAS_AVX512F_UNSUPPORTED
 
             }

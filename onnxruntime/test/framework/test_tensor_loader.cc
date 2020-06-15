@@ -16,7 +16,7 @@ const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 namespace onnxruntime {
 namespace test {
 
-TEST(CApiTest, load_simple_float_tensor_not_enough_space) {
+TEST(CApiTensorTest, load_simple_float_tensor_not_enough_space) {
   // construct a tensor proto
   onnx::TensorProto p;
   p.mutable_float_data()->Add(1.0f);
@@ -40,7 +40,7 @@ TEST(CApiTest, load_simple_float_tensor_not_enough_space) {
   }
 }
 
-TEST(CApiTest, load_simple_float_tensor) {
+TEST(CApiTensorTest, load_simple_float_tensor) {
   // construct a tensor proto
   onnx::TensorProto p;
   p.mutable_float_data()->Add(1.0f);
@@ -131,7 +131,7 @@ static void run_external_data_test() {
   }
 }
 
-TEST(CApiTest, load_float_tensor_with_external_data) {
+TEST(CApiTensorTest, load_float_tensor_with_external_data) {
   run_external_data_test<true>();
   run_external_data_test<false>();
 }
@@ -139,7 +139,7 @@ TEST(CApiTest, load_float_tensor_with_external_data) {
 #if defined(__amd64__) || defined(_M_X64)
 #ifndef __ANDROID__
 #ifdef NDEBUG
-TEST(CApiTest, load_huge_tensor_with_external_data) {
+TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   FILE* fp;
   std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
   CreateTestFile(fp, filename);

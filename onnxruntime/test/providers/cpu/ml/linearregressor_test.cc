@@ -73,7 +73,7 @@ TEST_P(LinearRegressorTest, LinearRegressorUniTarget) {
 }
 
 // For PROBIT, all the output values are NaN.
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     LinearRegressorTest, LinearRegressorTest,
     testing::Values(LinearRegressorParam("NONE", {32.0f, 14.0f, -166.0f}, 1),
                     LinearRegressorParam("SOFTMAX", {32.0f, 14.0f, -166.0f}, 1),

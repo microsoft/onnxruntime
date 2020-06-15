@@ -13,4 +13,6 @@ struct OrtTensorTypeAndShapeInfo {
   OrtTensorTypeAndShapeInfo() = default;
   OrtTensorTypeAndShapeInfo(const OrtTensorTypeAndShapeInfo& other) = delete;
   OrtTensorTypeAndShapeInfo& operator=(const OrtTensorTypeAndShapeInfo& other) = delete;
+
+  OrtStatus* Clone(OrtTensorTypeAndShapeInfo** out);
 };

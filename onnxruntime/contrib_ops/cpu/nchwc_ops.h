@@ -12,7 +12,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
 class ReorderInput : public OpKernel {
  public:
   ReorderInput(const OpKernelInfo& info) : OpKernel(info) {
@@ -21,18 +20,19 @@ class ReorderInput : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
 class ReorderOutput : public OpKernel {
  public:
   ReorderOutput(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("channels", &channels_).IsOK());
     ORT_ENFORCE(channels_ > 0, "invalid channel count");
+    ORT_ENFORCE(info.GetAttr<int64_t>("channels_last", &channels_last_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   int64_t channels_;
+  int64_t channels_last_;
 };
 
 class NchwcConv : public OpKernel {
@@ -52,8 +52,9 @@ class NchwcConv : public OpKernel {
 class NchwcPoolBase : public PoolBase {
  public:
   NchwcPoolBase(const OpKernelInfo& info) : PoolBase(info) {
-    if (!pool_attrs_.global_pooling)
+    if (!pool_attrs_.global_pooling) {
       ORT_ENFORCE(pool_attrs_.kernel_shape.size() == 2, "kernel_shape num_dims is not compatible with X num_dims.");
+    }
   }
 
   Status NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind) const;
@@ -73,6 +74,21 @@ class NchwcAveragePool : public OpKernel, public NchwcPoolBase {
   }
 
   Status Compute(OpKernelContext* context) const override;
+};
+
+class NchwcUpsample : public OpKernel {
+ public:
+  NchwcUpsample(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_ENFORCE(info.GetAttrs<int64_t>("scales", scales_).IsOK());
+    ORT_ENFORCE(scales_.size() == 4);
+    // Batch and channel dimensions cannot scale and spatial scaling must be positive.
+    ORT_ENFORCE(scales_[0] == 1 && scales_[1] == 1 && scales_[2] >= 1 && scales_[3] >= 1);
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  std::vector<int64_t> scales_;
 };
 
 }  // namespace contrib

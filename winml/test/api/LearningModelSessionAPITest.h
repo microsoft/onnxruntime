@@ -1,0 +1,41 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "test.h"
+
+struct LearningModelSessionAPITestsApi {
+  SetupClass LearningModelSessionAPITestsClassSetup;
+  VoidTest CreateSessionDeviceDefault;
+  VoidTest CreateSessionDeviceCpu;
+  VoidTest CreateSessionWithModelLoadedFromStream;
+  VoidTest CreateSessionDeviceDirectX;
+  VoidTest CreateSessionDeviceDirectXHighPerformance;
+  VoidTest CreateSessionDeviceDirectXMinimumPower;
+  VoidTest AdapterIdAndDevice;
+  VoidTest EvaluateFeatures;
+  VoidTest EvaluateFeaturesAsync;
+  VoidTest EvaluationProperties;
+  VoidTest CreateSessionWithCastToFloat16InModel;
+  VoidTest CreateSessionWithFloat16InitializersInModel;
+  VoidTest EvaluateSessionAndCloseModel;
+  VoidTest CloseSession;
+};
+const LearningModelSessionAPITestsApi& getapi();
+
+WINML_TEST_CLASS_BEGIN(LearningModelSessionAPITests)
+WINML_TEST_CLASS_SETUP_CLASS(LearningModelSessionAPITestsClassSetup)
+WINML_TEST_CLASS_BEGIN_TESTS
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDefault)
+WINML_TEST(LearningModelSessionAPITests,CreateSessionDeviceCpu)
+WINML_TEST(LearningModelSessionAPITests,CreateSessionWithModelLoadedFromStream)
+WINML_TEST(LearningModelSessionAPITests,EvaluateFeatures)
+WINML_TEST(LearningModelSessionAPITests,EvaluateFeaturesAsync)
+WINML_TEST(LearningModelSessionAPITests,EvaluationProperties)
+WINML_TEST(LearningModelSessionAPITests,EvaluateSessionAndCloseModel)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectX)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXHighPerformance)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXMinimumPower)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionWithFloat16InitializersInModel)
+WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
+WINML_TEST_CLASS_END()

@@ -4,16 +4,19 @@
 import numpy as np
 
 DebugOutput = False
-np.set_printoptions(suppress=True) #, precision=16, floatmode='maxprec')
+np.set_printoptions(suppress=True)  #, precision=16, floatmode='maxprec')
+
 
 def print_with_shape(name, a, force_output=False):
     if (force_output or DebugOutput):
         print(name + " [shape: ", a.shape, "]\n", a)
 
+
 def print_results(Y):
     print("*************************")
     print_with_shape("Y", Y, True)
     print("*************************")
+
 
 class GRU_Helper():
 
@@ -35,8 +38,10 @@ class GRU_Helper():
         X = params['X']
         W = params['W']
         R = params['R']
-        B = params['B'] if 'B' in params else np.zeros(num_directions * 6 * hidden_size).reshape(num_directions, 6 * hidden_size)
-        H_0 = params['initial_h'] if 'initial_h' in params else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
+        B = params['B'] if 'B' in params else np.zeros(num_directions * 6 *
+                                                       hidden_size).reshape(num_directions, 6 * hidden_size)
+        H_0 = params['initial_h'] if 'initial_h' in params else np.zeros(
+            (num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
         LBR = params['linear_before_reset'] if 'linear_before_reset' in params else 0
         self.direction = params['direction'] if 'direction' in params else 'forward'
 
@@ -45,7 +50,7 @@ class GRU_Helper():
                 self.one = OneDirectionGRU(X, W, R, B, H_0, LBR)
             else:
                 # flip input so we process in reverse
-                self.one = OneDirectionGRU(np.flip(X,0), W, R, B, H_0, LBR)
+                self.one = OneDirectionGRU(np.flip(X, 0), W, R, B, H_0, LBR)
 
             self.two = None
 
@@ -87,6 +92,7 @@ class GRU_Helper():
                 output = np.flip(output, 0)
 
         return output
+
 
 class OneDirectionGRU():
 
@@ -156,6 +162,7 @@ class OneDirectionGRU():
 
         return output
 
+
 class ONNXRuntimeTestContext():
 
     @staticmethod
@@ -163,23 +170,32 @@ class ONNXRuntimeTestContext():
 
         hidden_size = 2
 
-        W = np.array([[[-0.494659, 0.0453352],  # Wz
-                       [-0.487793, 0.417264],
-                       [-0.0091708, -0.255364],  # Wr
-                       [-0.106952, -0.266717],
-                       [-0.0888852, -0.428709],  # Wh
-                       [-0.283349, 0.208792]]]).astype(np.float32)
+        W = np.array([[
+            [-0.494659, 0.0453352],  # Wz
+            [-0.487793, 0.417264],
+            [-0.0091708, -0.255364],  # Wr
+            [-0.106952, -0.266717],
+            [-0.0888852, -0.428709],  # Wh
+            [-0.283349, 0.208792]
+        ]]).astype(np.float32)
 
-        R = np.array([[[0.146626, -0.0620289],  # Rz
-                       [-0.0815302, 0.100482],
-                       [-0.228172, 0.405972],  # Rr
-                       [0.31576, 0.281487],
-                       [-0.394864, 0.42111],  # Rh
-                       [-0.386624, -0.390225]]]).astype(np.float32)
+        R = np.array([[
+            [0.146626, -0.0620289],  # Rz
+            [-0.0815302, 0.100482],
+            [-0.228172, 0.405972],  # Rr
+            [0.31576, 0.281487],
+            [-0.394864, 0.42111],  # Rh
+            [-0.386624, -0.390225]
+        ]]).astype(np.float32)
 
-        W_B = np.array([[0.381619, 0.0323954,  # Wbz
-                         -0.258721, 0.45056,  # Wbr
-                         -0.250755, 0.0967895]]).astype(np.float32)  # Wbh
+        W_B = np.array([[
+            0.381619,
+            0.0323954,  # Wbz
+            -0.258721,
+            0.45056,  # Wbr
+            -0.250755,
+            0.0967895
+        ]]).astype(np.float32)  # Wbh
         R_B = np.zeros((1, 3 * hidden_size)).astype(np.float32)
         B = np.concatenate((W_B, R_B), axis=1)
 
@@ -195,9 +211,10 @@ class ONNXRuntimeTestContext():
 
         W = np.tile(W1, (2, 1)).reshape(2, 3 * hidden_size, input_size)
         R = np.tile(R1, (2, 1)).reshape(2, 3 * hidden_size, hidden_size)
-        B = np.tile(B1, (2,1))
+        B = np.tile(B1, (2, 1))
 
         return W, R, B
+
 
 # replicate ONNXRuntime unit tests inputs to validate output
 class GRU_ONNXRuntimeUnitTests():
@@ -218,7 +235,7 @@ class GRU_ONNXRuntimeUnitTests():
         weight_scale = 0.1
         R = weight_scale * np.ones((1, 3 * hidden_size, hidden_size)).astype(np.float32)
 
-        gru = GRU_Helper(X=input,W=W,R=R,direction='forward')
+        gru = GRU_Helper(X=input, W=W, R=R, direction='forward')
         fw_output = gru.run()
         print_results(fw_output)
 
@@ -231,31 +248,32 @@ class GRU_ONNXRuntimeUnitTests():
         batch_size = 2
         input_size = 1
         hidden_size = 3
-        input = np.array([[[1.], [2.]],
-                          [[10.], [11.]]]).astype(np.float32)
-
+        input = np.array([[[1.], [2.]], [[10.], [11.]]]).astype(np.float32)
 
         W = np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, 3 * hidden_size, hidden_size)).astype(np.float32)
 
-        gru = GRU_Helper(X=input,W=W,R=R,direction='reverse')
+        gru = GRU_Helper(X=input, W=W, R=R, direction='reverse')
         fw_output = gru.run()
         print_results(fw_output)
 
     @staticmethod
-    def BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows():
+    def BidirectionalDefaultActivationsSimpleWeightsNoBias(linear_before_reset=0):
 
-        print(GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows.__name__)
+        print(GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias.__name__ +
+              '.linear_before_reset=' + str(linear_before_reset))
 
         seq_length = 2
-        batch_size = 2
+        batch_size = 3 if linear_before_reset else 2
         input_size = 1
         hidden_size = 3
 
-        input = np.array([[[1.], [2.]],
-                          [[10.], [11.]]]).astype(np.float32)
+        if linear_before_reset:
+            input = np.array([[[1.], [2.], [3.]], [[10.], [11.], [12.]]]).astype(np.float32)
+        else:
+            input = np.array([[[1.], [2.]], [[10.], [11.]]]).astype(np.float32)
 
         W = np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
 
@@ -264,9 +282,10 @@ class GRU_ONNXRuntimeUnitTests():
 
         # duplicate the W and R inputs so we use the same values for both forward and reverse
         gru = GRU_Helper(X=input,
-                         W=np.tile(W,(2,1)).reshape(2, 3 * hidden_size, input_size),
-                         R=np.tile(R,(2,1)).reshape(2, 3 * hidden_size, hidden_size),
-                         direction='bidirectional')
+                         W=np.tile(W, (2, 1)).reshape(2, 3 * hidden_size, input_size),
+                         R=np.tile(R, (2, 1)).reshape(2, 3 * hidden_size, hidden_size),
+                         direction='bidirectional',
+                         linear_before_reset=linear_before_reset)
 
         fw_output = gru.run()
         print_results(fw_output)
@@ -274,10 +293,8 @@ class GRU_ONNXRuntimeUnitTests():
     @staticmethod
     def DefaultActivationsSimpleWeightsWithBias(rows=2, direction="forward", linear_before_reset=0):
 
-        print(GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias.__name__ +
-              " batch_parallel=" + str(rows != 1) +
-              " direction=" + direction +
-              " linear_before_reset=" + str(linear_before_reset))
+        print(GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias.__name__ + " batch_parallel=" +
+              str(rows != 1) + " direction=" + direction + " linear_before_reset=" + str(linear_before_reset))
 
         seq_length = 2
         batch_size = rows
@@ -291,16 +308,18 @@ class GRU_ONNXRuntimeUnitTests():
 
         input = np.array(input).astype(np.float32).reshape(seq_length, batch_size, input_size)
 
-        W = np.array([0.1, 0.2, 0.3, 0.2, 0.3, 0.1, 0.3, 0.1, 0.2]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
+        W = np.array([0.1, 0.2, 0.3, 0.2, 0.3, 0.1, 0.3, 0.1,
+                      0.2]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, 3 * hidden_size, hidden_size)).astype(np.float32)
 
         # Wb[zrh] Rb[zrh]
-        B = np.array([-0.01, 0.1, 0.01, -0.2, -0.02, 0.02, 0.3, -0.3, -0.3,
-                      -0.03, 0.5, -0.7, 0.05, -0.7, 0.3, 0.07, -0.03, 0.5 ]).astype(np.float32).reshape(1, 6 * hidden_size)
+        B = np.array(
+            [-0.01, 0.1, 0.01, -0.2, -0.02, 0.02, 0.3, -0.3, -0.3, -0.03, 0.5, -0.7, 0.05, -0.7, 0.3, 0.07, -0.03,
+             0.5]).astype(np.float32).reshape(1, 6 * hidden_size)
 
-        gru = GRU_Helper(X=input,W=W,R=R, B=B, direction=direction, linear_before_reset=linear_before_reset)
+        gru = GRU_Helper(X=input, W=W, R=R, B=B, direction=direction, linear_before_reset=linear_before_reset)
         fw_output = gru.run()
         print_results(fw_output)
 
@@ -314,7 +333,7 @@ class GRU_ONNXRuntimeUnitTests():
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(linear_before_reset=1)
 
     @staticmethod
-    def ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset(linear_before_reset=0):
+    def ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset():
 
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(direction="reverse", linear_before_reset=1)
 
@@ -324,17 +343,18 @@ class GRU_ONNXRuntimeUnitTests():
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(rows=1, linear_before_reset=1)
 
     @staticmethod
-    def ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset(linear_before_reset=0):
+    def ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset():
 
-        GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(rows=1, direction="reverse", linear_before_reset=1)
+        GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(rows=1,
+                                                                         direction="reverse",
+                                                                         linear_before_reset=1)
 
     @staticmethod
     def Legacy_TestGRUOpForwardBasic():
 
         print(GRU_ONNXRuntimeUnitTests.Legacy_TestGRUOpForwardBasic.__name__)
 
-        input = np.array([[[-0.455351, -0.276391]],
-                          [[-0.185934, -0.269585]]]).astype(np.float32)
+        input = np.array([[[-0.455351, -0.276391]], [[-0.185934, -0.269585]]]).astype(np.float32)
 
         W, R, B = ONNXRuntimeTestContext.OneDirectionWeights()
         gru = GRU_Helper(X=input, W=W, R=R, B=B)
@@ -345,8 +365,7 @@ class GRU_ONNXRuntimeUnitTests():
     def Legacy_TestGRUOpBackwardBasic():
         print(GRU_ONNXRuntimeUnitTests.Legacy_TestGRUOpBackwardBasic.__name__)
 
-        input = np.array([[[-0.185934, -0.269585]],
-                          [[-0.455351, -0.276391]]]).astype(np.float32)
+        input = np.array([[[-0.185934, -0.269585]], [[-0.455351, -0.276391]]]).astype(np.float32)
 
         W, R, B = ONNXRuntimeTestContext.OneDirectionWeights()
         gru = GRU_Helper(X=input, W=W, R=R, B=B, direction='reverse')
@@ -358,17 +377,18 @@ class GRU_ONNXRuntimeUnitTests():
 
         print(GRU_ONNXRuntimeUnitTests.Legacy_TestGRUOpBidirectionalBasic.__name__)
 
-        input = np.array([[[-0.455351, -0.276391]],
-                          [[-0.185934, -0.269585]]]).astype(np.float32)
+        input = np.array([[[-0.455351, -0.276391]], [[-0.185934, -0.269585]]]).astype(np.float32)
 
         W, R, B = ONNXRuntimeTestContext.BidirectionalWeights()
         gru = GRU_Helper(X=input, W=W, R=R, B=B, direction='bidirectional')
         output = gru.run()
         print_results(output)
 
+
 GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows()
 GRU_ONNXRuntimeUnitTests.ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows()
-GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBiasTwoRows()
+GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias()
+GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias(linear_before_reset=1)
 
 GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallel()
 GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset()

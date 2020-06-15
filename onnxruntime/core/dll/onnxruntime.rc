@@ -1,0 +1,45 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// This file REQUIRES the following external definitions:
+// VER_MAJOR, VER_MINOR, VER_BUILD, VER_PRIVATE, and VER_STRING
+
+#include <Winver.h>
+
+#if defined(DEBUG) || defined(_DEBUG)
+#define VER_DEBUG VS_FF_DEBUG
+#else
+#define VER_DEBUG 0
+#endif
+
+// -----------------------------------------------------------------------------
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     VER_MAJOR, VER_MINOR, VER_BUILD, VER_PRIVATE
+PRODUCTVERSION  VER_MAJOR, VER_MINOR, VER_BUILD, VER_PRIVATE
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       VER_DEBUG
+FILEOS          VOS__WINDOWS32
+FILETYPE        VFT_DLL
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "CompanyName",      "Microsoft Corporation"
+            VALUE "FileDescription",  "ONNX Runtime"
+            VALUE "FileVersion",      VER_STRING
+            VALUE "InternalName",     "ONNX Runtime"
+            VALUE "LegalCopyright",   "\251 Microsoft Corporation. All rights reserved."
+            VALUE "OriginalFilename", "onnxruntime.dll"
+            VALUE "ProductName",      "Microsoft\256 Windows\256 Operating System"
+            VALUE "ProductVersion",   VER_STRING
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/cuda/cudnn_common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
@@ -31,6 +30,8 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+  ORT_ENFORCE(epsilon_ >= 0);
 }
 
 template <typename T>
@@ -46,20 +47,13 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* beta = context->Input<Tensor>(6);
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
-  const auto input_dims = input_ids->Shape().GetDims();
+  const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
 
-  std::vector<int64_t> out_dims;
-  out_dims.reserve(3);
-  out_dims.push_back(input_dims[0]);
-  out_dims.push_back(input_dims[1]);
-  out_dims.push_back(hidden_size);
-  TensorShape output_shape(out_dims);
+  TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> mask_index_dims;
-  mask_index_dims.push_back(input_dims[0]);
-  TensorShape mask_index_shape(mask_index_dims);
+  TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
@@ -77,6 +71,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           word_embedding->template Data<T>(),
           position_embedding->template Data<T>(),
           segment_embedding->template Data<T>(),
+          epsilon_,
           static_cast<int>(hidden_size),
           batch_size,
           sequence_length,

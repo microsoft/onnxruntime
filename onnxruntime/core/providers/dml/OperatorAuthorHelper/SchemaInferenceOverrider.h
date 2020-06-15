@@ -29,7 +29,7 @@ namespace SchemaInferenceOverrider
         schema->TypeAndShapeInferenceFunction([=](onnx::InferenceContext& ctx) {
             onnxruntime::OpNodeProtoHelper<onnx::InferenceContext> nodeInfo(&ctx);
 
-            if (winrt::Windows::AI::MachineLearning::implementation::InputTensorShapesDefinedOnNode(nodeInfo))
+            if (Windows::AI::MachineLearning::Adapter::InputTensorShapesDefinedOnNode(nodeInfo))
             {
                 // Check that required constant CPU inputs exist
                 for (uint32_t inputIndex : constantCpuInputsCapture)
@@ -41,7 +41,7 @@ namespace SchemaInferenceOverrider
                 }
 
                 auto abiContext =
-                    wil::MakeOrThrow<winrt::Windows::AI::MachineLearning::implementation::MLSchemaInferenceContext>(
+                    wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::MLSchemaInferenceContext>(
                         &nodeInfo, &ctx, constantCpuInputsCapture);
 
                 THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));
@@ -66,7 +66,7 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( 
     #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, gsl::span<uint32_t>());
     
 #pragma push_macro("OVERRIDE_SCHEMA_EX")
-#define OVERRIDE_SCHEMA_EX(version, isLatest, opName, shapeInferenceName, ...) \
+#define OVERRIDE_SCHEMA_EX(version, isLatest, opName, shapeInferenceName, /*CPU constant tensor indices*/ ...) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInferenceName>( \
     #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, std::vector<uint32_t>({##__VA_ARGS__}));
 
@@ -78,15 +78,16 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInfe
         OVERRIDE_SCHEMA(    7,  false, MaxPool);
         OVERRIDE_SCHEMA(    7,  true,  LpPool);
         OVERRIDE_SCHEMA(    7,  true,  Crop);
-        OVERRIDE_SCHEMA(    7,  false, Upsample);
-        OVERRIDE_SCHEMA_EX( 9,  true,  Upsample, Resize, 1); // Upsample v9 uses Resize's shape inference function.
-        OVERRIDE_SCHEMA(    7,  true,  Slice);
+        OVERRIDE_SCHEMA_EX( 7,  false, Upsample, Upsample7);
+        OVERRIDE_SCHEMA_EX( 9,  true,  Upsample, Upsample9, 1);
+        OVERRIDE_SCHEMA_EX( 7,  true,  Slice, Slice7);
         OVERRIDE_SCHEMA(    7,  true,  Split);
         OVERRIDE_SCHEMA_EX( 7,  true,  Tile, Tile, 1);
         OVERRIDE_SCHEMA_EX( 8,  true,  Expand, Expand, 1);
         OVERRIDE_SCHEMA(    8,  true,  MaxPool);
         OVERRIDE_SCHEMA_EX( 9,  true,  OneHot, OneHot, 1);
-        OVERRIDE_SCHEMA_EX( 10, true,  Resize, Resize, 1);
+        OVERRIDE_SCHEMA_EX( 10, false, Resize, Resize10, 1);
+
     }
 #pragma pop_macro("OVERRIDE_SCHEMA_EX")
 #pragma pop_macro("REGISTER_FUSED_OP_SCHEMA")

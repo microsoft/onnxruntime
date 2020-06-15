@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module contains common kernel macros and structures for the quantized
-    integer matrix/matrix multiply operation (QGEMM) for the AVX512BW and
+    integer matrix/matrix multiply operation (QGEMM) for the AVX512 core and
     AVX512VNNI kernels.
 
 --*/

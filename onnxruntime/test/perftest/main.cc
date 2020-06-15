@@ -6,14 +6,17 @@
 #include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
+#include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
+const OrtApi* g_ort = NULL;
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
 #else
 int real_main(int argc, char* argv[]) {
 #endif
+  g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   perftest::PerformanceTestConfig test_config;
   if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
     perftest::CommandLineParser::ShowUsage();
@@ -28,6 +31,16 @@ int real_main(int argc, char* argv[]) {
   } catch (const Ort::Exception& e) {
     fprintf(stderr, "Error creating environment: %s \n", e.what());
     return -1;
+  }
+  if(test_config.machine_config.provider_type_name == onnxruntime::kOpenVINOExecutionProvider){
+    if(test_config.run_config.concurrent_session_runs != 1){
+      fprintf(stderr, "OpenVINO doesn't support more than 1 session running simultaneously default value of 1 will be set \n");
+      test_config.run_config.concurrent_session_runs = 1;
+    }
+    if(test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL){
+      fprintf(stderr, "OpenVINO doesn't support parallel executor using sequential executor\n");
+      test_config.run_config.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    }
   }
   std::random_device rd;
   perftest::PerformanceRunner perf_runner(env, test_config, rd);
@@ -54,5 +67,8 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
+
+  ::google::protobuf::ShutdownProtobufLibrary();
+
   return retval;
 }

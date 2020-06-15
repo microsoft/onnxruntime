@@ -1,0 +1,58 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+import "oaidl.idl";
+
+cpp_quote( "#include <winapifamily.h>" )
+
+#pragma region Desktop Family
+cpp_quote( "#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)" )
+
+[uuid(fd7ae883-38f0-47e5-879c-5eb23336e507), object, local]
+interface IMetacommandsController : IUnknown
+{
+    HRESULT SetMetacommandsEnabled(
+        [in] boolean enabled);
+};
+
+[uuid(b42a6c5d-cf8b-4d1f-9375-0de92c0c9996), object, local]
+interface IDeviceFenceValidator : IUnknown
+{
+    boolean SharedHandleInitialized();
+};
+
+[uuid(259caa2f-44fd-4525-8102-e8a10012fb88), object, local]
+interface ILearningModelStaticsNative : IUnknown
+{
+    HRESULT Load(
+        [in, size_is(cchModelPath)] const wchar_t *modelPath,
+        [in] UINT32 cchModelPath,
+        IUnknown **model);
+};
+
+[uuid(0ccc204e-3424-42c9-a008-9e7f0756d647), object, local]
+interface ILearningModelBindingNative : IUnknown
+{
+    HRESULT Bind(
+        [in, size_is(cchName)] const wchar_t *name,
+        [in] UINT32 cchName,
+        IUnknown* value);
+};
+
+[uuid(871c531b-0eb1-4fb4-8c61-fbf9e6f8ba6b), object, local]
+interface ILearningModelFeatureDescriptorNative : IUnknown
+{
+    HRESULT GetName([out, size_is(, *cchName)] const wchar_t **name, [out] UINT32 *cchName);
+    HRESULT GetDescription([out, size_is(, *cchDescription)] const wchar_t **description, [out] UINT32 *cchDescription);
+};
+
+[uuid(9972a361-b185-40e2-b1bc-23a667d5fb97), object, local]
+interface ILearningModelEvaluationResultNative : IUnknown
+{
+    HRESULT GetOutput(
+        [in, size_is(cchName)] const wchar_t *name,
+        [in] UINT32 cchName,
+        [out] IUnknown ** result);
+};
+
+cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")

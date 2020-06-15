@@ -16,9 +16,6 @@
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #endif
-#if USE_BRAINSLICE
-#include "core/providers/brainslice/brainslice_provider_factory.h"
-#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -34,3 +31,10 @@
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
+#ifdef USE_ARMNN
+#include "core/providers/armnn/armnn_provider_factory.h"
+#endif
+#ifdef USE_MIGRAPHX
+#include "core/providers/migraphx/migraphx_provider_factory.h"
+#endif
+

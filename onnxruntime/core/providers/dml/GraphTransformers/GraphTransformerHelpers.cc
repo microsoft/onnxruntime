@@ -25,48 +25,17 @@
 
 namespace GraphTransformerHelpers
 {
-    void RegisterGraphTransformers(onnxruntime::InferenceSession* lotusSession, bool registerLotusTransforms)
+    void RegisterGraphTransformers(onnxruntime::InferenceSession* lotusSession)
     {
         // Register Lotus graph transformers
+        // we were able to combine all of the winml/dml/ort work except for 2 transformers.
+        // these 2 are tracked by :
+        // Bug 22973884 : Fix issues with BatchNorm + Add and BatchNorm + Mul handling implicit inputs, and move from Winml to ORT
         //
-        // TODO: Work out issues controlling graph optimization passes through ORT's optimization level
-        // and rule list.  In the meantime (and before new transformers are tested in Winml), passes
-        // are registered explicitly, and the optimization level is set to default above (no optimization).
-        // 
-        // Issues:
-        // Why is UnsqueezeElimination not registered by name in ORT?
-        // Why are level 2 (default) transformers not run before partitioning, which the DML XP requires?  
-        // Why are level2 transformers only enabled on the CPU provider in GenerateTransformers?
-        // Why does name filtering only apply to rule based graph transformers?        
-        // Why is Matmul+Add not used when contrib ops are disabled?
-
-        if (registerLotusTransforms)
-        {
-            lotusSession->RegisterGraphTransformer(std::move(std::make_unique<onnxruntime::ConstantFolding>()), onnxruntime::TransformerLevel::Level1);
-        }
-
         std::unique_ptr<onnxruntime::RuleBasedGraphTransformer> rule_transformer =
             std::make_unique<onnxruntime::RuleBasedGraphTransformer>("WinmlRuleTransformer");
-        
-        if (registerLotusTransforms)
-        {
-            rule_transformer->Register(std::make_unique<onnxruntime::EliminateIdentity>());
-            rule_transformer->Register(std::make_unique<onnxruntime::UnsqueezeElimination>());
-            rule_transformer->Register(std::make_unique<onnxruntime::EliminateDropout>());
-            rule_transformer->Register(std::make_unique<onnxruntime::EliminateSlice>());
-            rule_transformer->Register(std::make_unique<onnxruntime::ConvBNFusion>());
-            rule_transformer->Register(std::make_unique<onnxruntime::ConvMulFusion>());
-            rule_transformer->Register(std::make_unique<onnxruntime::ConvAddFusion>());
-        }
-
         rule_transformer->Register(std::make_unique<onnxruntime::BatchNormalizationMulFusion>());
         rule_transformer->Register(std::make_unique<onnxruntime::BatchNormalizationAddFusion>());
-
         lotusSession->RegisterGraphTransformer(std::move(rule_transformer), onnxruntime::TransformerLevel::Level1);
-
-        if (registerLotusTransforms)
-        {
-            lotusSession->RegisterGraphTransformer(std::move(std::make_unique<onnxruntime::MatMulAddFusion>()), onnxruntime::TransformerLevel::Level1);
-        }
     }
 }

@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "slice.h"
+#include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "slice_impl.h"
+#include "core/providers/cuda/tensor/slice_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -17,7 +17,7 @@ namespace cuda {
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, false>);
+      Slice<false>);
 
 REGISTER_VERSIONED_TYPED_SLICE(int32_t)
 REGISTER_VERSIONED_TYPED_SLICE(int64_t)
@@ -37,7 +37,7 @@ REGISTER_VERSIONED_TYPED_SLICE(float)
           .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, true>);
+      Slice<true>);
 
 REGISTER_V10_TYPED_SLICE(int32_t)
 REGISTER_V10_TYPED_SLICE(int64_t)
@@ -57,17 +57,19 @@ REGISTER_V10_TYPED_SLICE(float)
           .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
-      Slice<TIND, true>);
+      Slice<true>);
 
 REGISTER_V11_TYPED_SLICE(int32_t)
 REGISTER_V11_TYPED_SLICE(int64_t)
 REGISTER_V11_TYPED_SLICE(float)
 
-template <typename Tind, bool dynamic>
-Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
-  const auto* input_tensor = ctx->Input<Tensor>(0);
+template <bool dynamic>
+Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* input_tensor = GetSlicedOrUnslicedTensor(ctx);
+
   ORT_ENFORCE(nullptr != input_tensor);
-  const auto& input_dimensions = input_tensor->Shape().GetDims();
+
+  auto& input_dimensions = input_tensor->Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
   size_t dimension_count = input_dimensions.size();
@@ -79,22 +81,15 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
+    FillInputVectors(ctx, input_starts, input_ends, input_axes, input_steps);
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
                                           input_steps, input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
 
   } else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
+    ORT_RETURN_IF_ERROR(PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(),
                                           input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));
-  }
-
-  TensorShape output_shape(output_dims);
-  auto output_tensor = ctx->Output(0, output_shape);
-  int64_t output_size = output_shape.Size();
-  if (output_size == 0) {
-    return Status::OK();
   }
 
   // if we are able to flatten the output dims we updated 'starts' and 'steps' to match the smaller number of dims.
@@ -103,21 +98,10 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     dimension_count = flattened_output_dims.size();
   }
 
-  CudaAsyncBuffer<int64_t> starts_buffer(this, dimension_count);
-  gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
-  for (size_t i = 0; i < dimension_count; ++i) {
-    starts_buffer_span[i] = starts[i];
-  }
-  starts_buffer.CopyToGpu();
-
-  CudaAsyncBuffer<int64_t> steps_buffer(this, dimension_count);
-  gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
-  for (size_t i = 0; i < dimension_count; ++i) {
-    steps_buffer_span[i] = steps[i];
-  }
-  steps_buffer.CopyToGpu();
-
-  CudaAsyncBuffer<int64_t> input_strides(this, dimension_count);
+  TArray<int64_t> starts_buffer(starts);
+  TArray<int64_t> steps_buffer(steps);
+  TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
+  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
@@ -130,35 +114,63 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     auto flattened_input_dims(input_dimensions);
     flattened_input_dims.resize(dimension_count);
     flattened_input_dims.back() = aggregated_last_dim;
-    ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), flattened_input_dims));
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, flattened_input_dims));
   } else {
-    ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, input_dimensions));
   }
 
-  input_strides.CopyToGpu();
-
-  TensorPitches output_pitches(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
-
-  CudaAsyncBuffer<fast_divmod> div_strides(this, dimension_count);
-  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  for (size_t i = 0; i < dimension_count; ++i) {
-    div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+  TensorPitches original_output_strides(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
+  TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
+  for (int32_t i = 0; i < static_cast<int32_t>(original_output_strides.size()); ++i) {
+    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
-  div_strides.CopyToGpu();
 
   size_t element_size = input_tensor->DataType()->Size();
 
-  ORT_RETURN_IF_ERROR(SliceImpl(element_size,
-                                gsl::narrow_cast<int32_t>(dimension_count),
-                                starts_buffer.GpuPtr(),
-                                steps_buffer.GpuPtr(),
-                                input_strides.GpuPtr(),
-                                div_strides.GpuPtr(),
-                                input_tensor->DataRaw(),
-                                output_tensor->MutableDataRaw(),
-                                output_size));
+  ORT_RETURN_IF_ERROR(CallSliceImp(element_size,
+                                   gsl::narrow_cast<int32_t>(dimension_count),
+                                   starts_buffer,
+                                   steps_buffer,
+                                   input_strides,
+                                   output_strides,
+                                   ctx,
+                                   TensorShape(output_dims)));
 
   return Status::OK();
+}
+
+template <bool dynamic>
+const Tensor* Slice<dynamic>::GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const {
+  return ctx->Input<Tensor>(0);
+}
+
+template <bool dynamic>
+void Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
+                                      std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
+                                      std::vector<int64_t>& input_steps) const {
+  FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                       ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+}
+
+template <bool dynamic>
+Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
+                                    const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
+                                    const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
+                                    TensorShape output_shape) const {
+  auto* output_tensor = ctx->Output(0, output_shape);
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  return SliceImpl(element_size,
+                   gsl::narrow_cast<int32_t>(dimension_count),
+                   starts_buffer,
+                   steps_buffer,
+                   input_strides,
+                   output_strides,
+                   ctx->Input<Tensor>(0)->DataRaw(),
+                   output_tensor->MutableDataRaw(),
+                   output_shape.Size());
 }
 
 }  // namespace cuda

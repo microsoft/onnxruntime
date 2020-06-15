@@ -12,10 +12,10 @@ git add onnx
 ```
 (Change the <commit_id> to yours. If you are not sure, use 'origin/master'. Like 'git reset --hard origin/master')
 
-2. Update [cgmanifest.json](/cgmanifest.json)
-Search 'https://github.com/onnx/onnx.git', update the commitHash with it.
+2. Update [cgmanifests/submodules/cgmanifest.json](/cgmanifests/submodules/cgmanifest.json).
+This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) for instructions.
 
-3. Update [tools/ci_build/github/linux/docker/scripts/install_onnx.sh](/tools/ci_build/github/linux/docker/scripts/install_onnx.sh) 
+3. Update [tools/ci_build/github/linux/docker/scripts/install_onnx.sh](/tools/ci_build/github/linux/docker/scripts/install_onnx.sh).
 Search 'for version2tag', update the commit hashes. The list should contain every release version from ONNX 1.2, and the latest one in our cmake/external/onnx folder.
 
 4. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, update onnxruntime/core/protobuf as follows : 
@@ -29,13 +29,4 @@ Search 'for version2tag', update the commit hashes. The list should contain ever
 
 6. If there is any unitest failure, caught by onnx_test_runner. Please also update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
-- [onnxruntime/test/python/onnx_backend_test_series.py](/onnxruntime/test/python/onnx_backend_test_series.py)
-
-
-
-
-
-
-
-
-
+- [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)

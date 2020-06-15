@@ -9,7 +9,8 @@ namespace onnxruntime {
 
 class SliceBase {
  protected:
-  SliceBase(const OpKernelInfo& info, bool dynamic = false) {
+  SliceBase(const OpKernelInfo& info, bool dynamic = false)
+      : dynamic_(dynamic) {
     if (!dynamic) {
       auto has_starts = info.GetAttrs("starts", attr_starts_).IsOK();
       auto has_ends = info.GetAttrs("ends", attr_ends_).IsOK();
@@ -43,19 +44,35 @@ class SliceBase {
                            std::vector<int64_t>*& flattened_output_dims) const;
 
   // Slice V10 & DynamicSlice
-  void FillVectorsFromInput(const OpKernelContext* context,
+  void FillVectorsFromInput(const Tensor& start_tensor,
+                            const Tensor& ends_tensor,
+                            const Tensor* axes_tensor,
+                            const Tensor* steps_tensor,
                             std::vector<int64_t>& input_starts,
                             std::vector<int64_t>& input_ends,
                             std::vector<int64_t>& input_axes,
                             std::vector<int64_t>& input_steps) const;
 
+  Status Compute(OpKernelContext* context) const;
+
+ protected:
+  const std::vector<int64_t>& StartsAttribute() const { return attr_starts_; }
+  const std::vector<int64_t>& EndsAttribute() const { return attr_ends_; }
+  const std::vector<int64_t>& AxesAttribute() const { return attr_axes_; }
+
+ private:
+  bool dynamic_;
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
 };
 
-template <typename T, bool dynamic>
-struct Slice final : public OpKernel, public SliceBase {
-  Slice(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, dynamic) {}
-  Status Compute(OpKernelContext* context) const override;
-};  // namespace onnxruntime
+struct Slice1 final : public OpKernel, public SliceBase {
+  Slice1(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, false) {}
+  Status Compute(OpKernelContext* context) const override { return SliceBase::Compute(context); }
+};
+
+struct Slice10 final : public OpKernel, public SliceBase {
+  Slice10(const OpKernelInfo& info) : OpKernel(info), SliceBase(info, true) {}
+  Status Compute(OpKernelContext* context) const override { return SliceBase::Compute(context); }
+};
 
 }  // namespace onnxruntime

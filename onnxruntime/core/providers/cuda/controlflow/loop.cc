@@ -36,7 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                         Loop);
 
 static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
-                                   void* output, size_t output_size_in_bytes) {
+                                   void* output, ptrdiff_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
   size_t bytes_per_iteration = first_output.SizeInBytes();
