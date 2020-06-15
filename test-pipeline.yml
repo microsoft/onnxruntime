@@ -11,7 +11,7 @@ jobs:
       b:
         letter: "B"
 
-  condition: eq(variables['letter'], 'A')
+  condition: always()  #eq(variables['letter'], 'A')
 
   steps:
   - script: |
