@@ -30,7 +30,7 @@ namespace concurrency {
 // the loop is divided (perhaps unevenly) between the shards.  Each thread has a home shard (perhaps not uniquely
 // to it), and it claims iterations via atomic operations on its home shard.  It them proceeds through the other
 // shards until all of the shards' iterations are complete.  This approach serves to purposes.  First, compared
-// with atomic operations on a single counter, it reduces contention on a single counter in the case of loops with 
+// with atomic operations on a single counter, it reduces contention on a single counter in the case of loops with
 // large numbers of short-running iteration.  Second, by having a thread work on its home shard initially, it
 // promotes affinity between the work that a thread performs in one loop and the work that it performs in the next.
 
@@ -142,7 +142,7 @@ ThreadPool::ThreadPool(ExtendedThreadPoolInterface* user_threadpool)
 ThreadPool::~ThreadPool() = default;
 
 // Base case for parallel loops, running iterations 0..total, divided into blocks
-// of block_size iterations, and calling into a function that takes a start..end 
+// of block_size iterations, and calling into a function that takes a start..end
 // range of indices to run.
 void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
                                                      const std::ptrdiff_t block_size,

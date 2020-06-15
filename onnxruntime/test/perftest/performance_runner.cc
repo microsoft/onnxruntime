@@ -132,12 +132,12 @@ Status PerformanceRunner::Run() {
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
-  std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n" 
+  std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
             << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
             << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
-            << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n" 
+            << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
             // Time between start and end of run. Less than Total time cost when running requests in parallel.
-            << "Total inference run time: " << inference_duration.count() << " s\n" 
+            << "Total inference run time: " << inference_duration.count() << " s\n"
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;

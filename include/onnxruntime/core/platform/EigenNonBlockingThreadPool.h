@@ -213,7 +213,7 @@ class RunQueue {
           back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
           revoked = true;
         }
-      } else { 
+      } else {
         // Tag mismatch, i.e. work queue slot re-used
         e->state.store(kReady, std::memory_order_release);
       }
@@ -318,7 +318,7 @@ static std::atomic<uint32_t> next_tag{1};
 
 template <typename Environment>
 class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInterface {
-  
+
  private:
   static unsigned WorkerLoop(int id, Eigen::ThreadPoolInterface* param) {
     // unsafe downcast
@@ -340,7 +340,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Allocate a new tag to use to identify work items from a given thread
     // in RunWithHelp.  Ideally, threads will have unique tags, but re-use
     // is not incorrect if the counter wraps (for intsance, if a long-running
-    // workload is calling into ORT from a fresh thread for each request). 
+    // workload is calling into ORT from a fresh thread for each request).
     // We must not re-use the default tag 0 which is used to identify work
     // items added via Schedule as opposed to requests for help in RunWithHelp.
 
@@ -359,13 +359,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     bool operator==(Tag& other) const {
       return v_ == other.v_;
     }
-        
+
     uint32_t v_ = 0;
   };
-  
-   static Tag GetNextTag() {
-      return Tag(next_tag++);
-    }
+
+  static Tag GetNextTag() {
+    return Tag(next_tag++);
+  }
 
   typedef RunQueue<Task, Tag, 1024> Queue;
 #ifdef _WIN32
@@ -444,7 +444,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       t = q.PushBack(std::move(t));
       if (t.f) {
         // The queue rejected the work; run it directly
-        env_.ExecuteTask(t); 
+        env_.ExecuteTask(t);
       } else {
         // The queue accepted the work; ensure that the thread will pick it up
         td.EnsureAwake();
@@ -627,7 +627,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     assert(end <= num_threads_);
   }
 #endif
-  
+
   void ComputeCoprimes(int N, Eigen::MaxSizeVector<unsigned>* coprimes) {
     for (int i = 1; i <= N; i++) {
       unsigned a = i;
@@ -759,11 +759,11 @@ int CurrentThreadId() const EIGEN_FINAL {
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
   std::atomic<bool> cancelled_;
-  
-  // Allow control over how many bits to use in each entry in good_worker_hints_. 
-  // We reduce this below the full 64-bit word size for two reasons.  First, it 
-  // helps test coverage on machines without 64 vCPUS.  Second, it lets us 
-  // reduce contention by having different threads start work searching for hints 
+
+  // Allow control over how many bits to use in each entry in good_worker_hints_.
+  // We reduce this below the full 64-bit word size for two reasons.  First, it
+  // helps test coverage on machines without 64 vCPUS.  Second, it lets us
+  // reduce contention by having different threads start work searching for hints
   // at different locations in the bitmap.
 
   static const int bits_per_hint_word_ = 4;
@@ -772,9 +772,9 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For an
   // abrupt exit, cancelled_==true and threads will exit their worker loops.  For
-  // a clean exit, each thread will observe (1) done_ set, indicating that the 
+  // a clean exit, each thread will observe (1) done_ set, indicating that the
   // destructor has been called, (2) all threads blocked, and (3) no
-  // items in the work queues.  
+  // items in the work queues.
 
   void WakeAllWorkersForExit() {
     for (auto &td: thread_data_) {
@@ -791,7 +791,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     pt->pool = this;
     pt->rand = GlobalThreadIdHash();
     pt->thread_id = thread_id;
-    
+
     assert(td.GetStatus() == ThreadData::ThreadStatus::Spinning);
     SetGoodWorkerHint(thread_id, true /* Is good */);
 
@@ -814,7 +814,7 @@ int CurrentThreadId() const EIGEN_FINAL {
           SetGoodWorkerHint(thread_id, false);
 
           if (!t.f) {
-            // No work passed to us while spinning; make a further full attempt to 
+            // No work passed to us while spinning; make a further full attempt to
             // steal work from other threads prior to blocking.
             if (num_threads_ != 1) {
               t = Steal(true /* true => check all queues */);
@@ -880,12 +880,12 @@ int CurrentThreadId() const EIGEN_FINAL {
         WakeAllWorkersForExit();
       }
     }
-  
+
   // Steal tries to steal work from other worker threads in the range [start,
   // limit) in best-effort manner.  We make two passes over the threads:
   //
   // - round 0 : we attempt to steal from threads that are running in
-  //   user code (ThreadStatus::Active).  The intuition behind this is that 
+  //   user code (ThreadStatus::Active).  The intuition behind this is that
   //   the thread is busy with other work, and that by preferring to
   //   steel from busy victims we will avoid "snatching" work from a
   //   thread which is just about to notice the work itself.
