@@ -464,11 +464,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
-        auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+        auto trt_builder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
         const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-        auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+        auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
-        auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+        auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list);
 
         SubGraphCollection_t next_nodes_list;
@@ -682,11 +682,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     // Create TensorRT engine
     TensorrtLogger& trt_logger = GetTensorrtLogger();
-    auto trt_builder = unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    auto trt_builder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto trt_network = unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
-    auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-    auto trt_parser = unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+    auto trt_network = tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+    auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+    auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
@@ -734,14 +734,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }
 
-    auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
+    auto trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not build Engine for fused node: " + fused_node->Name());
     }
 
     // Build TensorRT context
-    auto trt_context = unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+    auto trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
     if (trt_context == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not build Execution Context for fused node: " + fused_node->Name());
@@ -913,7 +913,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Regenerate engine and context
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (dimension_update) {
-        auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+        auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
         if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
@@ -921,13 +921,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
         trt_state->context->reset();
         trt_state->engine->reset();
-        *(trt_state->engine) =  unique_pointer<nvinfer1::ICudaEngine>(
+        *(trt_state->engine) =  tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
                                   trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
         if (trt_state->engine->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
-        *(trt_state->context) = unique_pointer<nvinfer1::IExecutionContext>(
+        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
                                   trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
