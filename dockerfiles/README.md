@@ -249,7 +249,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
   ```
 
 ## MIGraphX 
-**Ubuntu 16.04, rocm3.3, AMDMIGraphX v0.7 **
+**Ubuntu 16.04, rocm3.3, AMDMIGraphX v0.7**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
