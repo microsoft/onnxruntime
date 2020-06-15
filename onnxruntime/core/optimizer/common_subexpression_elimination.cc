@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "common_subexpression_elimination.h"
-#include "core/optimizer/optimizer_utils.h"
+#include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 
 #include <memory>
@@ -317,7 +317,7 @@ struct NodeArgPtrEquality {
 };
 
 bool IsNodeSupported(const Node& node) {
-  return !node.ContainsSubgraph() && IsOperationDeterministic(node.Domain(), node.OpType());
+  return !node.ContainsSubgraph() && optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType());
 }
 }  // namespace
 
@@ -439,7 +439,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
     if (node_output_replaced) {
       modified = true;
-      if (node->GetOutputEdgesCount() == 0) {
+      if (optimizer_utils::CheckOutputEdges(graph, *node, 0)) {
         graph.RemoveNode(node_index);
       }
     }
