@@ -99,7 +99,8 @@ Status Transpose::DoTranspose(const cublasHandle_t cublas_handle,
 
   auto rank = static_cast<int32_t>(input_dims.size());
 
-  // flatten some continguous dimensions
+  // flatten the adjacent dimensions which are contiguous
+  // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
   std::vector<size_t> new_permutations(permutations);
   std::vector<int64_t> new_input_dims(input_dims);
@@ -138,21 +139,21 @@ Status Transpose::DoTranspose(const cublasHandle_t cublas_handle,
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);
 
-  // Optimize for 4D/3D tensor permutation
+  // Optimize the permutation of 3D/4D tensor
   TArray<int64_t> input_shape(new_input_dims);
   TArray<int64_t> tmp_input_strides(new_input_strides);
 
   size_t element_size = input.DataType()->Size();
-  if (canDoTranspose4D(kernel.GetDeviceProp(), element_size, new_rank, new_input_dims, new_permutations)) {
+  if (canDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
+    return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
+  }  else if (canDoTranspose4D(kernel.GetDeviceProp(), element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
     return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
                            tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
-  } else if (canDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
-    return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
-                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
   }
 
   // General cases
