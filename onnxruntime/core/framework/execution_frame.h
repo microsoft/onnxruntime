@@ -129,6 +129,18 @@ class ExecutionFrame final : public IExecutionFrame {
     return planner_ != nullptr;
   }
 
+  // Return the size of physical memory allocated in runtime.
+  // The memory is usually used for activations in forward and backward passes.
+  size_t GetDynamicMemorySize() {
+    return dynamic_activation_memory_in_bytes_;
+  }
+
+  // Return the size of physical memory allocated before computation.
+  // The memory is usually used for activations in forward and backward passes.
+  size_t GetStaticMemorySize() {
+    return static_activation_memory_in_bytes_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
@@ -168,5 +180,11 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
+
+  // Record planned (static) and dynamic memory allocations happen through
+  // ExecutionFrame.
+
+  size_t static_activation_memory_in_bytes_;
+  size_t dynamic_activation_memory_in_bytes_;
 };
 }  // namespace onnxruntime

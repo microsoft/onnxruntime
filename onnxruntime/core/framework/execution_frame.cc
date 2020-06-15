@@ -201,7 +201,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
-      planner_(nullptr) {
+      planner_(nullptr),
+      static_activation_memory_in_bytes_(0),
+      dynamic_activation_memory_in_bytes_(0) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
 
   // map the custom allocators to ort_value_idx entries
@@ -254,8 +256,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              buffer = alloc->Alloc(mem_patterns_->patterns[i].PeakSize());
-
+              static_activation_memory_in_bytes_ = mem_patterns_->patterns[i].PeakSize();
+              buffer = alloc->Alloc(static_activation_memory_in_bytes_);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do
@@ -374,6 +376,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (!utils::IsDataTypeString(element_type)) {
     TraceAllocate(ort_value_index, size);
   }
+
+  dynamic_activation_memory_in_bytes_ += size;
 
   return Status::OK();
 }

@@ -446,6 +446,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
+  LOGS(logger, INFO) << "[Memory] ExecutionFrame statically / dynamically allocates "
+                     << frame.GetStaticMemorySize()
+                     << " / "
+                     << frame.GetDynamicMemorySize()
+                     << " bytes.";
+
   return Status::OK();
 }
 
