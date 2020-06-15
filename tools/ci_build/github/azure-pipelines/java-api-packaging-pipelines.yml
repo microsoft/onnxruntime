@@ -216,6 +216,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
+        @echo on
         pushd onnxruntime-java-linux-x64
         jar uf  $(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64\testing.jar libcustom_op_library.so
         del /F /Q libcustom_op_library.so

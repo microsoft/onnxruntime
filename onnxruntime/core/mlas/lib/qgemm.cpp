@@ -34,21 +34,19 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     size_t ldb;
     int32_t* C;
     size_t ldc;
+    const float* Scale;
+    const float* BiasFloat;
     uint8_t offa;
     uint8_t offb;
     bool BTypeIsSigned;
+    bool CTypeIsFloat;
 };
 
 template<typename KernelType>
 MLAS_FORCEINLINE
 void
 MlasGemmU8X8Operation(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    const uint8_t* A,
-    const uint8_t* B,
-    int32_t* C
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     )
 /*++
 
@@ -61,16 +59,6 @@ Arguments:
 
     WorkBlock - Supplies the structure containing the GEMM parameters.
 
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    A - Supplies the address of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    C - Supplies the address of matrix C.
-
 Return Value:
 
     None.
@@ -82,6 +70,10 @@ Return Value:
 
     MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[KernelType::StrideM], 64);
     MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[KernelType::StrideN], 64);
+
+    const uint8_t* A = WorkBlock->A;
+    const uint8_t* B = WorkBlock->B;
+    int32_t* C = WorkBlock->C;
 
     const size_t lda = WorkBlock->lda;
     const size_t ldb = WorkBlock->ldb;
@@ -103,6 +95,8 @@ Return Value:
     // Step through each slice of matrix B along the K dimension.
     //
 
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
     const size_t K = WorkBlock->K;
     size_t CountK;
 
@@ -124,7 +118,7 @@ Return Value:
             // Copy a panel of matrix B to a local packed buffer.
             //
 
-            KernelType::CopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK,
+            KernelType::CopyPackB(PanelB, B + n, ldb, CountN, CountK,
                 ColumnSumVector, -offa, WorkBlock->BTypeIsSigned);
 
             //
@@ -146,8 +140,8 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                KernelType::CopyPackA(PanelA, A + k + m * lda, lda, CountM,
-                    CountK, RowSumVector, -offb);
+                KernelType::CopyPackA(PanelA, A + m * lda, lda, CountM, CountK,
+                    RowSumVector, -offb);
 
                 //
                 // Step through the rows of the local packed buffer.
@@ -157,13 +151,20 @@ Return Value:
                 int32_t* RowSums = RowSumVector;
                 size_t RowsRemaining = CountM;
 
+                bool ZeroMode = (k == 0);
+                bool PostProcess = (k + CountK == K);
+
                 while (RowsRemaining > 0) {
 
                     size_t RowsHandled;
 
                     RowsHandled = KernelType::Kernel(pa, PanelB, c, PackedCountK,
                         RowsRemaining, CountN, ldc, RowSums, ColumnSumVector,
-                        DepthValue, k == 0);
+                        DepthValue, ZeroMode);
+
+                    if (PostProcess && WorkBlock->CTypeIsFloat) {
+                        KernelType::OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
+                    }
 
                     c += ldc * RowsHandled;
                     pa += KernelType::PackedK * PackedCountK * RowsHandled;
@@ -172,6 +173,9 @@ Return Value:
                 }
             }
         }
+
+        A += CountK;
+        B += CountK * ldb;
     }
 }
 
@@ -702,6 +706,112 @@ Return Value:
     }
 }
 
+void
+MlasGemmU8X8OutputFloatSse(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+    int32_t* C,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    )
+/*++
+
+Routine Description:
+
+    This routine is an inner kernel to compute matrix multiplication for a
+    single row.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
+
+    C - Supplies the address of matrix C.
+
+    StartN - Supplies the starting column offset relative to the base of the
+        work block. This is used to offset into column vectors accessed via the
+        work block.
+
+    CountM - Supplies the number of rows of the output matrix to process.
+
+    CountN - Supplies the number of columns of the output matrix to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t ldc = WorkBlock->ldc;
+    __m128 ScaleVector = _mm_load_ps1(WorkBlock->Scale);
+
+    //
+    // Check if the optional bias vector was supplied.
+    //
+
+    const float* BiasFloat = WorkBlock->BiasFloat;
+
+    if (BiasFloat != nullptr) {
+
+        BiasFloat += StartN;
+
+        while (CountM-- > 0) {
+
+            const float* bias = BiasFloat;
+            int32_t* c = C;
+            size_t n = CountN;
+
+            while (n >= 4) {
+
+                __m128 FloatVector = _mm_cvtepi32_ps(_mm_loadu_si128((__m128i*)c));
+                FloatVector = _mm_mul_ps(FloatVector, ScaleVector);
+                FloatVector = _mm_add_ps(FloatVector, _mm_loadu_ps(bias));
+                _mm_storeu_ps((float*)c, FloatVector);
+
+                bias += 4;
+                c += 4;
+                n -= 4;
+            }
+
+            for (size_t offset = 0; offset < n; offset++) {
+
+                __m128 FloatVector = _mm_set_ss(float(c[offset]));
+                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
+                FloatVector = _mm_add_ss(FloatVector, _mm_load_ss(&bias[offset]));
+                _mm_store_ss((float*)&c[offset], FloatVector);
+            }
+
+            C += ldc;
+        }
+
+    } else {
+
+        while (CountM-- > 0) {
+
+            int32_t* c = C;
+            size_t n = CountN;
+
+            while (n >= 4) {
+
+                __m128 FloatVector = _mm_cvtepi32_ps(_mm_loadu_si128((__m128i*)c));
+                FloatVector = _mm_mul_ps(FloatVector, ScaleVector);
+                _mm_storeu_ps((float*)c, FloatVector);
+
+                c += 4;
+                n -= 4;
+            }
+
+            for (size_t offset = 0; offset < n; offset++) {
+
+                __m128 FloatVector = _mm_set_ss((float)c[offset]);
+                FloatVector = _mm_mul_ss(FloatVector, ScaleVector);
+                _mm_store_ss((float*)&c[offset], FloatVector);
+            }
+
+            C += ldc;
+        }
+    }
+}
+
 struct MLAS_GEMM_U8X8_KERNEL_SSE
 {
     typedef int16_t PackedAType;
@@ -772,6 +882,20 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
 
         return 1;
     }
+
+    MLAS_FORCEINLINE
+    static
+    void
+    OutputFloat(
+        const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+        int32_t* C,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN
+        )
+    {
+        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
+    }
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::PackedK;
@@ -782,12 +906,7 @@ constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::StrideK;
 void
 MLASCALL
 MlasGemmU8X8OperationSse(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    const uint8_t* A,
-    const uint8_t* B,
-    int32_t* C
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     )
 /*++
 
@@ -802,23 +921,13 @@ Arguments:
 
     WorkBlock - Supplies the structure containing the GEMM parameters.
 
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    A - Supplies the address of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    C - Supplies the address of matrix C.
-
 Return Value:
 
     None.
 
 --*/
 {
-    return MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(WorkBlock, M, N, A, B, C);
+    return MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>(WorkBlock);
 }
 
 #endif
@@ -953,6 +1062,20 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
         return MlasPlatform.GemmU8S8Kernel(A, B, C, PackedCountK, CountM, CountN,
             ldc, RowSumVector, ColumnSumVector, DepthValue, ZeroMode);
     }
+
+    MLAS_FORCEINLINE
+    static
+    void
+    OutputFloat(
+        const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+        int32_t* C,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN
+        )
+    {
+        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
+    }
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -963,12 +1086,7 @@ constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::StrideK;
 void
 MLASCALL
 MlasGemmU8S8OperationAvx2(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    const uint8_t* A,
-    const uint8_t* B,
-    int32_t* C
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     )
 /*++
 
@@ -983,31 +1101,23 @@ Arguments:
 
     WorkBlock - Supplies the structure containing the GEMM parameters.
 
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    A - Supplies the address of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    C - Supplies the address of matrix C.
-
 Return Value:
 
     None.
 
 --*/
 {
-    if (M == 1 && WorkBlock->offa == 0 && WorkBlock->offb == 0) {
+    if ((WorkBlock->M == 1) && WorkBlock->BTypeIsSigned && !WorkBlock->CTypeIsFloat &&
+        (WorkBlock->offa == 0) && (WorkBlock->offb == 0)) {
 
         if (MlasPlatform.GemvU8S8Kernel != nullptr) {
-            MlasPlatform.GemvU8S8Kernel(A, B, C, WorkBlock->K, N, WorkBlock->ldb);
+            MlasPlatform.GemvU8S8Kernel(WorkBlock->A, WorkBlock->B, WorkBlock->C,
+                WorkBlock->K, WorkBlock->N, WorkBlock->ldb);
             return;
         }
     }
 
-    return MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>(WorkBlock, M, N, A, B, C);
+    return MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>(WorkBlock);
 }
 
 struct MLAS_GEMM_U8U8_KERNEL_AVX2
@@ -1076,6 +1186,20 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
         return MlasPlatform.GemmU8U8Kernel(A, B, C, PackedCountK, CountM, CountN,
             ldc, RowSumVector, ColumnSumVector, DepthValue, ZeroMode);
     }
+
+    MLAS_FORCEINLINE
+    static
+    void
+    OutputFloat(
+        const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
+        int32_t* C,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN
+        )
+    {
+        MlasGemmU8X8OutputFloatSse(WorkBlock, C, StartN, CountM, CountN);
+    }
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
@@ -1086,12 +1210,7 @@ constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::StrideK;
 void
 MLASCALL
 MlasGemmU8U8OperationAvx2(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    const uint8_t* A,
-    const uint8_t* B,
-    int32_t* C
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     )
 /*++
 
@@ -1106,23 +1225,13 @@ Arguments:
 
     WorkBlock - Supplies the structure containing the GEMM parameters.
 
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    A - Supplies the address of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    C - Supplies the address of matrix C.
-
 Return Value:
 
     None.
 
 --*/
 {
-    return MlasGemmU8X8Operation<MLAS_GEMM_U8U8_KERNEL_AVX2>(WorkBlock, M, N, A, B, C);
+    return MlasGemmU8X8Operation<MLAS_GEMM_U8U8_KERNEL_AVX2>(WorkBlock);
 }
 
 #endif
@@ -1195,23 +1304,29 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    const uint8_t* a = WorkBlock->A + m * WorkBlock->lda;
-    const uint8_t* b = WorkBlock->B + n;
-    int32_t* c = WorkBlock->C + n + m * WorkBlock->ldc;
+    MLAS_GEMM_U8X8_WORK_BLOCK LocalWorkBlock;
 
-    PMLAS_GEMM_U8X8_OPERATION GemmU8X8Operation;
+    memcpy(&LocalWorkBlock, WorkBlock, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
+
+    LocalWorkBlock.M = CountM;
+    LocalWorkBlock.N = CountN;
+    LocalWorkBlock.A += m * LocalWorkBlock.lda;
+    LocalWorkBlock.B += n;
+    LocalWorkBlock.C += m * LocalWorkBlock.ldc + n;
+
+    if (LocalWorkBlock.BiasFloat != nullptr) {
+        LocalWorkBlock.BiasFloat += n;
+    }
 
 #if defined(MLAS_TARGET_AMD64)
     if (WorkBlock->BTypeIsSigned) {
-        GemmU8X8Operation = MlasPlatform.GemmU8S8Operation;
+        MlasPlatform.GemmU8S8Operation(&LocalWorkBlock);
     } else {
-        GemmU8X8Operation = MlasPlatform.GemmU8U8Operation;
+        MlasPlatform.GemmU8U8Operation(&LocalWorkBlock);
     }
 #else
-    GemmU8X8Operation = MlasGemmU8X8OperationSse;
+    MlasGemmU8X8OperationSse(&LocalWorkBlock);
 #endif
-
-    GemmU8X8Operation(WorkBlock, CountM, CountN, a, b, c);
 }
 
 void
@@ -1360,6 +1475,8 @@ Return Value:
     // Capture the GEMM parameters to the work block.
     //
 
+    memset(&WorkBlock, 0, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
+
     WorkBlock.M = M;
     WorkBlock.N = N;
     WorkBlock.K = K;
@@ -1413,6 +1530,137 @@ MlasGemm(
     uint8_t offb,
     int32_t* C,
     size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template<typename AType, typename BType>
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const AType* A,
+    size_t lda,
+    AType offa,
+    const BType* B,
+    size_t ldb,
+    BType offb,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    offa - Supplies the zero point offset of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    offb - Supplies the zero point offset of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
+
+    //
+    // Capture the GEMM parameters to the work block.
+    //
+
+    memset(&WorkBlock, 0, sizeof(MLAS_GEMM_U8X8_WORK_BLOCK));
+
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+    WorkBlock.K = K;
+    WorkBlock.A = A;
+    WorkBlock.lda = lda;
+    WorkBlock.B = (const uint8_t*)B;
+    WorkBlock.ldb = ldb;
+    WorkBlock.C = (int32_t*)C;
+    WorkBlock.ldc = ldc;
+    WorkBlock.Scale = Scale;
+    WorkBlock.BiasFloat = Bias;
+    WorkBlock.offa = offa;
+    WorkBlock.offb = offb;
+    WorkBlock.BTypeIsSigned = std::is_signed<BType>::value;
+    WorkBlock.CTypeIsFloat = true;
+
+    //
+    // Schedule the operation across a set of worker threads.
+    //
+
+    MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
+}
+
+template
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const int8_t* B,
+    size_t ldb,
+    int8_t offb,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    uint8_t offb,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
     MLAS_THREADPOOL* ThreadPool
     );
 

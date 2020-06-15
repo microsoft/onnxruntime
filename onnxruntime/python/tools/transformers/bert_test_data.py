@@ -237,7 +237,11 @@ def parse_arguments():
 
     parser.add_argument('--input_ids_name', required=False, type=str, default=None, help="input name for input ids")
     parser.add_argument('--segment_ids_name', required=False, type=str, default=None, help="input name for segment ids")
-    parser.add_argument('--input_mask_name', required=False, type=str, default=None, help="input name for attention mask")
+    parser.add_argument('--input_mask_name',
+                        required=False,
+                        type=str,
+                        default=None,
+                        help="input name for attention mask")
 
     parser.add_argument('--samples', required=False, type=int, default=1, help="number of test cases to be generated")
 

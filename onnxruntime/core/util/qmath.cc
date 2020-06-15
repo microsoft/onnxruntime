@@ -69,4 +69,73 @@ void QGemm<uint8_t, uint8_t, int32_t>(
 #endif
 }
 
+template <typename LeftScalar, typename RightScalar>
+void QGemm(
+    int M,
+    int N,
+    int K,
+    const LeftScalar* lhs_data,
+    int lda,
+    const LeftScalar lhs_offset,
+    const RightScalar* rhs_data,
+    int ldb,
+    const RightScalar rhs_offset,
+    float* result_data,
+    int ldc,
+    const float* result_scale,
+    const float* bias,
+    concurrency::ThreadPool* thread_pool) {
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+  MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, result_data, ldc, result_scale, bias, thread_pool);
+#else
+  QGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, reinterpret_cast<int32_t*>(result_data), ldc, thread_pool);
+  for (int m = 0; m < M; m++) {
+    if (bias != nullptr) {
+      for (int n = 0; n < N; n++) {
+        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * result_scale[0] + bias[n];
+      }
+    } else {
+      for (int n = 0; n < N; n++) {
+        result_data[n] = static_cast<float>(reinterpret_cast<int32_t*>(result_data)[n]) * result_scale[0];
+      }
+    }
+    result_data += ldc;
+  }
+#endif
+}
+
+template
+void QGemm<uint8_t, int8_t>(
+    int M,
+    int N,
+    int K,
+    const uint8_t* lhs_data,
+    int lda,
+    const uint8_t lhs_offset,
+    const int8_t* rhs_data,
+    int ldb,
+    const int8_t rhs_offset,
+    float* result_data,
+    int ldc,
+    const float* result_scale,
+    const float* bias,
+    concurrency::ThreadPool* thread_pool);
+
+template
+void QGemm<uint8_t, uint8_t>(
+    int M,
+    int N,
+    int K,
+    const uint8_t* lhs_data,
+    int lda,
+    const uint8_t lhs_offset,
+    const uint8_t* rhs_data,
+    int ldb,
+    const uint8_t rhs_offset,
+    float* result_data,
+    int ldc,
+    const float* result_scale,
+    const float* bias,
+    concurrency::ThreadPool* thread_pool);
+
 }  // namespace onnxruntime
