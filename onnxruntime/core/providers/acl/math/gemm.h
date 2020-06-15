@@ -21,25 +21,6 @@
 //NEON
 #include "arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h"
 
-template <typename T>
-void importDataFromTensor(arm_compute::Tensor* tensor, T* data){
-
-  arm_compute::Window aclInpuWindow;
-  aclInpuWindow.use_tensor_dimensions(tensor->info()->tensor_shape());
-
-  arm_compute::Iterator aclInputIt(tensor, aclInpuWindow);
-  const unsigned int aclWidth = tensor->info()->dimension(0);
-  const unsigned int aclHeight = tensor->info()->dimension(1);
-
-  // copy input tensor into the larger buffer
-  arm_compute::execute_window_loop(
-      aclInpuWindow,
-      [&](const arm_compute::Coordinates& co) {
-        data[co.z() * (aclWidth * aclHeight) + co.y() * aclWidth + co.x()] = *reinterpret_cast<float*>(aclInputIt.ptr());
-      },
-      aclInputIt);
-}
-
 namespace onnxruntime {
 namespace acl {
 
