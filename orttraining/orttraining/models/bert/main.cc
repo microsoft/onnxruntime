@@ -510,8 +510,8 @@ void setup_training_params(BertParameters& params) {
   params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
 
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  params.mpi_context = setup_mpi();
 
   if (params.pipeline_parallel_size > 1) {
     auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(params.mpi_context.world_rank));
@@ -519,7 +519,6 @@ void setup_training_params(BertParameters& params) {
     params.model_with_training_graph_path = pipeline_model_name_base + ORT_TSTR("_bw.onnx");
     params.model_actual_running_graph_path = pipeline_model_name_base + ORT_TSTR("_bw_running.onnx");
   }
-
   ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
   ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
   if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
@@ -795,8 +794,8 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#ifdef USE_HOROVOD
-  shutdown_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  shutdown_mpi();
 #endif
 
   return 0;
