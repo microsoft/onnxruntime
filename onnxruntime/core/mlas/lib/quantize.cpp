@@ -422,3 +422,53 @@ Return Value:
 }
 
 #endif
+
+void
+MLASCALL
+MlasMinMaxElement(
+   const float* a,
+   float* min,
+   float* max,
+   size_t len)
+{
+   if( len <= 0 )
+   {
+      *min = 0.0f;
+      *max = 0.0f;
+      return;
+   }
+
+   float temp_min = *a, temp_max = *a;
+   int i = 0;
+
+//#ifdef __AVX__
+   __m256 min_v = _mm256_set1_ps( *a );
+   __m256 max_v = _mm256_set1_ps( *a );
+   constexpr int VLEN = 8;
+   if( len >= VLEN )
+   {
+      for( ; i < len / VLEN * VLEN; i += VLEN )
+      {
+         min_v = _mm256_min_ps( min_v, _mm256_loadu_ps( a + i ) );
+         max_v = _mm256_max_ps( max_v, _mm256_loadu_ps( a + i ) );
+      }
+
+      float min_buf[ VLEN ], max_buf[ VLEN ];
+      _mm256_storeu_ps( min_buf, min_v );
+      _mm256_storeu_ps( max_buf, max_v );
+      for( int j = 0; j < VLEN; ++j )
+      {
+         temp_min = std::min( temp_min, min_buf[ j ] );
+         temp_max = std::max( temp_max, max_buf[ j ] );
+      }
+   }
+//#endif
+
+   for( ; i < len; i++ )
+   {
+      temp_min = std::min( temp_min, a[ i ] );
+      temp_max = std::max( temp_max, a[ i ] );
+   }
+   *min = temp_min;
+   *max = temp_max;
+}

@@ -465,3 +465,12 @@ MlasRequantizeOutput(
     float Scale,
     uint8_t ZeroPoint
     );
+
+void
+MLASCALL
+MlasMinMaxElement(
+   const float* Input,
+   float* Min,
+   float* Max,
+   size_t N
+);
