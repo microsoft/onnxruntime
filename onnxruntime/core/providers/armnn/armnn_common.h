@@ -7,7 +7,8 @@
 #include "core/framework/op_kernel.h"
 
 #include "armnn/ArmNN.hpp"
-
+#include <iostream>
+#include <sstream>
 
 namespace onnxruntime {
 namespace armnn_ep {

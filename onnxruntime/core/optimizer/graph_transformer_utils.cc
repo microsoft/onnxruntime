@@ -25,6 +25,7 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -105,7 +106,8 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
                                                                     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
-                                                                    const std::vector<std::string>& transformers_and_rules_to_enable) {
+                                                                    const std::vector<std::string>& transformers_and_rules_to_enable,
+                                                                    __attribute__ ((unused)) const std::vector<std::string>& registered_execution_providers) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
   switch (level) {
@@ -152,6 +154,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
+      } else {
+#if defined(USE_ACL) || defined(USE_ARMNN)
+       transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>(registered_execution_providers));
+#endif
       }
 #endif
     } break;

@@ -1469,8 +1469,9 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register =
-        optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides, custom_list);
+    auto transformers_to_register = optimizer_utils::GenerateTransformers(level, session_options_.free_dimension_overrides,
+       custom_list, GetRegisteredProviderTypes());
+
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

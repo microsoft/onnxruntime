@@ -50,6 +50,14 @@ IExecutionProvider* TestRknpuExecutionProvider() {
 }
 #endif
 
+#ifdef USE_ACL
+IExecutionProvider* TestACLExecutionProvider() {
+  static ACLExecutionProviderInfo info;
+  static ACLExecutionProvider acl_provider(info);
+  return &acl_provider;
+}
+#endif
+
 static void CountOpsInGraphImpl(
     const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
   for (auto& node : graph.Nodes()) {

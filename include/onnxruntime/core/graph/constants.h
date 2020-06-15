@@ -19,6 +19,7 @@ constexpr const char* kOnnxDomainAlias = "ai.onnx";
 constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kMSNchwcDomain = "com.microsoft.nchwc";
+constexpr const char* kMSNhwcDomain = "com.microsoft.nhwc";
 constexpr const char* kMSFeaturizersDomain = "com.microsoft.mlfeaturizers";
 constexpr const char* kMSDmlDomain = "com.microsoft.dml";
 constexpr const char* kNGraphDomain = "com.intel.ai";
