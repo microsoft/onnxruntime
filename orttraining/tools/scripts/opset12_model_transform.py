@@ -74,7 +74,7 @@ def add_const(model, name, output, t_value = None, f_value = None):
     return const_node
 
 def process_trainabledropout(model):
-    delete_nodels = []  
+    delete_nodes = []  
     index = 0
     for node in model.graph.node:
         if node.op_type == 'TrainableDropout':
@@ -88,7 +88,7 @@ def process_trainabledropout(model):
             # find old ratio node
             ratio_node = find_input_node(model, node.input[1])
             assert ratio_node.op_type == 'Constant'
-            delete_nodels.append(get_node_index(model, ratio_node))
+            delete_nodes.append(get_node_index(model, ratio_node))
             # make ratio scalar node 
             ratio_attr = ratio_node.attribute
             ratio_data = numpy_helper.to_array(ratio_attr[0].t)
@@ -104,11 +104,11 @@ def process_trainabledropout(model):
 
             new_dropout.input.extend([node.input[0], new_ratio_node.output[0], training_mode_node.output[0]])
             new_dropout.output.extend(node.output)
-            delete_nodels.append(get_node_index(model, node))
+            delete_nodes.append(get_node_index(model, node))
             index += 1
 
-    delete_nodels.sort(reverse=True)
-    for d in delete_nodels:
+    delete_nodes.sort(reverse=True)
+    for d in delete_nodes:
         del model.graph.node[d]
 
 def align_attention_mask_dim(model):
@@ -125,9 +125,8 @@ align_attention_mask_dim(model)
 #set opset version to 12
 model.opset_import[0].version = 12
 
-f = open(output_model_name, "wb")
-f.write(model.SerializeToString())
-f.close()
+with open (output_model_name, "wb") as f:
+    f.write(model.SerializeToString())
 
 #
 # To verify the converted model in case of bert, refer to the code at the end of model_transform.py 
