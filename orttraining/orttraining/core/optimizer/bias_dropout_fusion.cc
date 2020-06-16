@@ -52,7 +52,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     if (input1_shape->dim_size() == 1) {
-      dropout_input.push_back(node.MutableInputDefs()[1]);  // droput input
+      dropout_input.push_back(node.MutableInputDefs()[1]);  // dropout input
       dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
     } else if (input2_shape->dim_size() == 1) {
       dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
@@ -86,7 +86,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     dropout_output.push_back(dropout_node.MutableOutputDefs()[0]);
     dropout_output.push_back(dropout_node.MutableOutputDefs()[1]);
 
-    bool is_onnx_dropout = dropout_node.OpType().compare("Dropout") == 0;
+    bool is_onnx_dropout = (dropout_node.OpType() == "Dropout");
 
     // matching for residual Add node
     bool has_residual_add = false;
@@ -95,21 +95,21 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7}) &&
           last_node.GetExecutionProviderType() == node.GetExecutionProviderType()) {
-        const TensorShapeProto* input1_shape = last_node.InputDefs()[0]->Shape();
-        const TensorShapeProto* input2_shape = last_node.InputDefs()[1]->Shape();
+        const TensorShapeProto* residual_input1_shape = last_node.InputDefs()[0]->Shape();
+        const TensorShapeProto* residual_input2_shape = last_node.InputDefs()[1]->Shape();
 
-        if (input1_shape == nullptr ||
-            input2_shape == nullptr ||
-            input1_shape->dim_size() < 1 ||
-            input2_shape->dim_size() < 1 ||
-            input1_shape->dim_size() != input2_shape->dim_size()) {
+        if (residual_input1_shape == nullptr ||
+            residual_input2_shape == nullptr ||
+            residual_input1_shape->dim_size() < 1 ||
+            residual_input2_shape->dim_size() < 1 ||
+            residual_input1_shape->dim_size() != residual_input2_shape->dim_size()) {
           continue;
         }
 
         // Inputs of Residual Add must match in shape
         bool match = true;
-        for (int i = 0; i < input1_shape->dim_size(); ++i) {
-          match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
+        for (int i = 0; i < residual_input1_shape->dim_size(); ++i) {
+          match &= ONNX_NAMESPACE::operator==(residual_input1_shape->dim(i), residual_input2_shape->dim(i));
         }
         if (!match) {
           continue;

@@ -33,7 +33,7 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
   return ort_value.Get<Tensor>();
 }
 
-void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
+void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                     bool training_mode = true, bool use_float16_ratio = false) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
@@ -73,12 +73,12 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
     const auto& output_tensor = FetchTensor(fetches[0]);
     auto output_span = output_tensor.DataAsSpan<float>();
 
-    const auto num_output_zeros = std::count(output_span.begin(), output_span.end(), 0.0f);
+    const auto num_dropped_values = std::count(output_span.begin(), output_span.end(), 0.0f);
 
     if (ratio == 1.0f) {
-      ASSERT_EQ(num_output_zeros, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
+      ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_output_zeros) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
@@ -96,7 +96,7 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;
 
       const auto num_mask_zeros = std::count(mask_span.begin(), mask_span.end(), false);
-      ASSERT_EQ(num_output_zeros, num_mask_zeros) << "provider: " << provider_type;
+      ASSERT_EQ(num_dropped_values, num_mask_zeros) << "provider: " << provider_type;
 
       for (decltype(mask_span.size()) i = 0; i < mask_span.size(); ++i) {
         ASSERT_TRUE(
@@ -110,9 +110,9 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
 
-void RunBiasDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
+void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
                         bool training_mode = true, bool use_float16_ratio = false, bool has_residual = true) {
-  OpTester t{op, 1, kMSDomain};
+  OpTester t{"BiasDropout", 1, kMSDomain};
   const int64_t seed = 42;
   t.AddAttribute("seed", seed);
 
@@ -167,12 +167,12 @@ void RunBiasDropoutTest(const char* op, const bool use_mask, const std::vector<i
     const auto& output_tensor = FetchTensor(fetches[0]);
     auto output_span = output_tensor.DataAsSpan<float>();
 
-    const auto num_output_zeros = std::count(output_span.begin(), output_span.end(), residual_value);
+    const auto num_dropped_values = std::count(output_span.begin(), output_span.end(), residual_value);
 
     if (ratio == 1.0f) {
-      ASSERT_EQ(num_output_zeros, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
+      ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_output_zeros) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
@@ -190,7 +190,7 @@ void RunBiasDropoutTest(const char* op, const bool use_mask, const std::vector<i
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;
 
       const auto num_mask_zeros = std::count(mask_span.begin(), mask_span.end(), false);
-      ASSERT_EQ(num_output_zeros, num_mask_zeros) << "provider: " << provider_type;
+      ASSERT_EQ(num_dropped_values, num_mask_zeros) << "provider: " << provider_type;
 
       for (decltype(mask_span.size()) i = 0; i < mask_span.size(); ++i) {
         ASSERT_TRUE(
@@ -209,11 +209,11 @@ void RunBiasDropoutTest(const char* op, const bool use_mask, const std::vector<i
 // Dropout
 
 TEST(DropoutTest, Basic) {
-  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75);
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f);
 }
 
 TEST(DropoutTest, Mask) {
-  RunDropoutTest("Dropout", true, {1000}, 0.25);
+  RunDropoutTest("Dropout", true, {1000}, 0.25f);
 }
 
 TEST(DropoutTest, RatioLimit) {
@@ -225,11 +225,11 @@ TEST(DropoutTest, EmptyRatio) {
 }
 
 TEST(TrainableDropoutTest, Basic) {
-  RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75);
+  RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75f);
 }
 
 TEST(TrainableDropoutTest, Mask) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.25);
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.25f);
 }
 
 TEST(TrainableDropoutTest, RatioLimit) {
@@ -237,27 +237,27 @@ TEST(TrainableDropoutTest, RatioLimit) {
 }
 
 TEST(TrainableDropoutTest, EmptyRatio) {
-  RunDropoutTest("TrainableDropout", true, {1000}, -1);
+  RunDropoutTest("TrainableDropout", true, {1000}, -1.0f);
 }
 
 TEST(BiasDropoutTest, Basic) {
-  RunBiasDropoutTest("BiasDropout", false, {10, 10, 10}, 0.75);
+  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }
 
 TEST(BiasDropoutTest, BasicWihtoutResidual) {
-  RunBiasDropoutTest("BiasDropout", false, {10, 10, 10}, 0.75, true, false, false);
+  RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, true, false, false);
 }
 
 TEST(BiasDropoutTest, Mask) {
-  RunBiasDropoutTest("BiasDropout", true, {3, 5, 768}, 0.25);
+  RunBiasDropoutTest(true, {3, 5, 768}, 0.25f);
 }
 
 TEST(BiasDropoutTest, RatioLimit) {
-  RunBiasDropoutTest("BiasDropout", true, {4, 8, 1024}, 0.0f, false);
+  RunBiasDropoutTest(true, {4, 8, 1024}, 0.0f, false);
 }
 
 TEST(BiasDropoutTest, EmptyRatio) {
-  RunBiasDropoutTest("BiasDropout", true, {2, 7, 1024});
+  RunBiasDropoutTest(true, {2, 7, 1024});
 }
 
 namespace {

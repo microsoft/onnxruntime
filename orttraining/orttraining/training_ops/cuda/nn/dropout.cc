@@ -72,18 +72,18 @@ REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, double)
 
 template <typename T1, typename T2>
 Status DropoutGrad<T1, T2>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T1>::MappedType CudaT;
+  typedef typename ToCudaType<T1>::MappedType CudaT1;
 
   auto dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
-  auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T1>());
+  auto dY_data = reinterpret_cast<const CudaT1*>(dY->template Data<T1>());
   const int64_t N = shape.Size();
 
   auto mask = context->Input<Tensor>(1);
   ORT_ENFORCE(mask->Shape().Size() == N);
 
   auto dX = context->Output(0, shape);
-  auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T1>());
+  auto dX_data = reinterpret_cast<CudaT1*>(dX->template MutableData<T1>());
   float ratio_data;
   auto ratio = context->Input<Tensor>(2);
 
@@ -125,13 +125,14 @@ REGISTER_BIAS_DROPOUT_KERNEL_TYPED(float, float)
 
 template <typename T1, typename T2>
 Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T1>::MappedType CudaT;
+  typedef typename ToCudaType<T1>::MappedType CudaT1;
  
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
+  ORT_RETURN_IF_NOT(X, "X Input is not available.");
+
   const TensorShape& x_shape = X->Shape();
-  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T1>());
+  auto X_data = reinterpret_cast<const CudaT1*>(X->template Data<T1>());
   const int64_t N = x_shape.Size();
 
  //Get bias_data
@@ -145,26 +146,25 @@ Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   if (dim != x_shape.GetDims().back()){
     return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
   }
-  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T1>());
+  auto bias_data = reinterpret_cast<const CudaT1*>(bias->template Data<T1>());
 
   //Get residual_data
   const Tensor* residual = context->Input<Tensor>(2);
-  const CudaT* residual_data = nullptr;
+  const CudaT1* residual_data = nullptr;
   if (residual != nullptr) {
     const TensorShape& residual_shape = residual->Shape();
     if (residual_shape != x_shape) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Residual input shape does not match X input shape.");
     }
-    residual_data = reinterpret_cast<const CudaT*>(residual->template Data<T1>());
+    residual_data = reinterpret_cast<const CudaT1*>(residual->template Data<T1>());
   }
 
   //Get Y_data
   auto Y = context->Output(0, x_shape);
-  auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T1>());
+  auto Y_data = reinterpret_cast<CudaT1*>(Y->template MutableData<T1>());
 
   //Get mask_data
   auto mask = context->Output(1, x_shape);
-  ORT_ENFORCE(!mask || mask->Shape().Size() == N);
 
   //Get the ratio_data
   float ratio_data;
@@ -180,21 +180,6 @@ Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   }
   ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
-  // const Tensor* training_mode = context->Input<Tensor>(4);
-  // //Check for inference mode.
-  // if (training_mode == nullptr || *(training_mode->Data<bool>()) == false) {
-  //   if (Y_data != X_data) {
-  //     CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T1), cudaMemcpyDeviceToDevice));
-  //   }
-
-  //   // If mask is requested, return all 1s.
-  //   if (mask != nullptr) {
-  //     ORT_ENFORCE(cudaMemset(mask->MutableData<bool>(), true, N * sizeof(bool)) == cudaSuccess);
-  //   }
-
-  //   return Status::OK();
-  // }
-
   IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
   bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableData<bool>();
@@ -203,7 +188,7 @@ Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   }();
 
   const fast_divmod fdm_dim(gsl::narrow_cast<int>(dim));
-  PhiloxGenerator& generator = generator_ != nullptr ? *generator_.get() : PhiloxGenerator::Default();
+  PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
   BiasDropoutKernelImpl(GetDeviceProp(), N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
 
   return Status::OK();

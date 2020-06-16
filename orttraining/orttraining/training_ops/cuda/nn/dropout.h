@@ -12,7 +12,7 @@ namespace cuda {
 template <typename T1, typename T2>
 class DropoutGrad final : public CudaKernel {
  public:
-  DropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
+  DropoutGrad(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5f) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -24,7 +24,7 @@ class DropoutGrad final : public CudaKernel {
 template <typename T1, typename T2>
 class BiasDropout final : public CudaKernel {
  public:
-  BiasDropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5) {
+  BiasDropout(const OpKernelInfo& info) : CudaKernel(info), default_ratio_(0.5f) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
       generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));

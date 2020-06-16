@@ -15,6 +15,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/asserts.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 
 #include <random>
@@ -45,31 +46,31 @@ TEST_F(GraphTransformationTests, GistEncodeDecode) {
   ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
 }
 
-static void TestBiasDropoutFusion(const std::basic_string<ORTCHAR_T>& file_path, logging::Logger* logger, const int add_count = 0) {
+static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger);
-  ASSERT_TRUE(ret.IsOK());
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger);
+  ASSERT_STATUS_OK(ret);
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-  ASSERT_TRUE(op_to_count["Add"] == add_count);
-  ASSERT_TRUE(op_to_count["Dropout"] == 0);
-  ASSERT_TRUE(op_to_count["TrainableDropout"] == 0);
-  ASSERT_TRUE(op_to_count["BiasDropout"] == 1);
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], 0);
+  ASSERT_EQ(op_to_count["TrainableDropout"], 0);
+  ASSERT_EQ(op_to_count["BiasDropout"], 1);
 }
 
 TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion1.onnx", logger_.get());
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion2.onnx", logger_.get());
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", logger_.get());
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", logger_.get());
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", logger_.get(), 1);
-  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", logger_.get());
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion1.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion2.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", *logger_);
 }
 
 Node* GetNodeByName(Graph& graph, std::string node_name) {

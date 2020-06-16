@@ -53,8 +53,8 @@ onnx.save(model, 'bias_dropout_fusion2.onnx')
 
 # Create the model (ModelProto)
 bias = helper.make_node("Add", ["A", "B"], ["add0_out"], "add0")
-dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["drouput_out", "mask"], "dropout0")
-residual = helper.make_node("Add", ["drouput_out", "R"], ["C"], "add1")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["dropout_out", "R"], ["C"], "add1")
 
 graph = helper.make_graph(
     [bias, dropout_12, residual],
@@ -68,8 +68,8 @@ onnx.save(model, 'bias_dropout_residual_fusion1.onnx')
 
 # Create the model (ModelProto)
 bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
-dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["drouput_out", "mask"], "dropout0")
-residual = helper.make_node("Add", ["R", "drouput_out"], ["C"], "add1")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
 
 graph = helper.make_graph(
     [bias, dropout_12, residual],
@@ -85,8 +85,8 @@ onnx.save(model, 'bias_dropout_residual_fusion2.onnx')
 R_mismatch = helper.make_tensor_value_info('R', TensorProto.FLOAT, [3072])
 
 bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
-dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["drouput_out", "mask"], "dropout0")
-residual = helper.make_node("Add", ["R", "drouput_out"], ["C"], "add1")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
 
 graph = helper.make_graph(
     [bias, dropout_12, residual],
@@ -100,8 +100,8 @@ onnx.save(model, 'bias_dropout_residual_fusion_mismatch.onnx')
 
 # Create the model (ModelProto)
 bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
-trainable_dropout = helper.make_node("TrainableDropout", ["add0_out", "ratio_const"], ["drouput_out", "mask"], "dropout0")
-residual = helper.make_node("Add", ["R", "drouput_out"], ["C"], "add1")
+trainable_dropout = helper.make_node("TrainableDropout", ["add0_out", "ratio_const"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
 
 graph = helper.make_graph(
     [bias, trainable_dropout, residual],

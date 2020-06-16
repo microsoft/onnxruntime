@@ -85,7 +85,7 @@ Status Dropout<T1, T2, trainable_dropout>::ComputeInternal(OpKernelContext* cont
     return temp_mask_buffer.get();
   }();
 
-  PhiloxGenerator& generator = generator_ != nullptr ? *generator_.get() : PhiloxGenerator::Default();
+  PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
   DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator, X_data, Y_data, mask_data);
 
   return Status::OK();

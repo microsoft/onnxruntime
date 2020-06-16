@@ -105,6 +105,7 @@ __global__ void BiasDropoutKernel(
   for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
     float4 rand = curand_uniform4(&state);
 
+  #pragma unroll
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
