@@ -166,6 +166,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("true"))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
         cxxopts::value<bool>()->default_value("true"));
+      ("use_invertible_layernorm", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -458,12 +460,15 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
+
+    params.use_invertible_layernorm = flags["use_invertible_layernorm"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
+
   return Status::OK();
 }
 

@@ -6,6 +6,7 @@
 #include "core/graph/schema_registry.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -22,9 +23,11 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& y_node_arg_names,
                                            const unordered_set<string>& x_node_arg_names,
                                            string loss_node_arg_name,
+                                           const GradientGraphConfiguration& gradient_graph_config,
                                            const bool set_gradient_as_graph_output)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
+      gradient_graph_config_(gradient_graph_config),
       set_gradient_as_graph_output_(set_gradient_as_graph_output) {
   auto rule_based_graph_transformer =
       onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
@@ -187,7 +190,7 @@ Status GradientGraphBuilder::Build() {
       }
     }
 
-    GradientDef node_defs = GetGradientForOp(node, output_args_need_grad, input_args_need_grad);
+    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, node, output_args_need_grad, input_args_need_grad);
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {

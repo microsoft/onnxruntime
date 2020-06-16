@@ -169,6 +169,8 @@ class TrainingRunner {
 
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
+  
+    bool use_invertible_layernorm = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);

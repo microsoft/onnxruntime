@@ -45,9 +45,11 @@ template <typename T, typename U>
 void HostLayerNormGradient(
     const cudaDeviceProp& prop,
     const T* dout,
+    const T* input,
     const T* output,
     const T* gamma,
     const T* beta,
+    const U* mean,
     const U* invvar,
     int64_t n1,
     int64_t n2,
