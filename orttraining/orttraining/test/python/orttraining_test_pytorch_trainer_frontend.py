@@ -9,7 +9,7 @@ from onnxruntime.capi.training import pytorch_trainer_options as pt_options
 @pytest.mark.parametrize("test_input", [
     ({}),
     ({'batch': {},
-      'cuda': {},
+      'device': {},
       'distributed': {},
       'mixed_precision': {},
       'utils': {},
@@ -22,8 +22,8 @@ def testDefaultValues(test_input):
         'batch': {
             'gradient_accumulation_steps': 0
         },
-        'cuda': {
-            'device': None,
+        'device': {
+            'id': None,
             'mem_limit': 0
         },
         'distributed': {

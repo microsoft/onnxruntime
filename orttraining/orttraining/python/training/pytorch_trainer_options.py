@@ -33,11 +33,11 @@ class PytorchTrainerOptions(object):
                         }
                     },
                 },
-                'cuda' : {
+                'device' : {
                     'type' : 'dict',
                     'schema' : {
-                        'device' : {
-                            'type' : 'torch.device',
+                        'id' : {
+                            'type' : 'string',
                             'nullable' : True,
                             'default' : None
                         },
@@ -133,12 +133,12 @@ class PytorchTrainerOptions(object):
             batch related settings
         batch.gradient_accumulation_steps (int, 0):
             number of steps to accumulate before do collective gradient reduction
-        cuda (dict):
-            cuda related settings
-        cuda.device (torch.device):
+        device (dict):
+            compute device related settings
+        device.id (string, default is None):
             device to run training
-        cuda.mem_limit (int):
-            maximum memory size (in bytes) used by cuda.device
+        device.mem_limit (int):
+            maximum memory size (in bytes) used by device.id
         distributed (dict):
             distributed training options
         distributed.world_rank (int, default is 0):
@@ -186,8 +186,8 @@ class PytorchTrainerOptions(object):
                                'batch' : {
                                    'gradient_accumulation_steps' : 128
                                },
-                               'cuda' : {
-                                   'device' : torch.device("cuda", 0),
+                               'device' : {
+                                   'id' : 'cuda:0',
                                    'mem_limit' : 2*1024*1024*1024,
                                },
                                'lr_scheduler' : optim.lr_scheduler.LinearWarmupLRScheduler(),
@@ -244,15 +244,12 @@ class PytorchTrainerOptions(object):
 
 
 class PytorchTrainerOptionsValidator(cerberus.Validator):
-    _TORCH_DEVICE = cerberus.TypeDefinition(
-        'torch_device', (torch.device,), ())
     _LR_SCHEDULER = cerberus.TypeDefinition(
         'lr_scheduler', (lr_scheduler.LRScheduler,), ())
     _LOSS_SCALER = cerberus.TypeDefinition(
         'loss_scaler', (loss_scaler.LossScaler,), ())
 
     types_mapping = cerberus.Validator.types_mapping.copy()
-    types_mapping['torch_device'] = _TORCH_DEVICE
     types_mapping['lr_scheduler'] = _LR_SCHEDULER
     types_mapping['loss_scaler'] = _LOSS_SCALER
 
@@ -281,11 +278,11 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
             }
         },
     },
-    'cuda': {
+    'device': {
         'type': 'dict',
         'schema': {
-            'device': {
-                'type': 'torch_device',
+            'id': {
+                'type': 'string',
                 'nullable': True,
                 'default': None
             },

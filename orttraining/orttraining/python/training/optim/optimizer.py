@@ -1,2 +1,2 @@
-class Optimizer(object):
+class _OptimizerConfig(object):
     pass
