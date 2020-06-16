@@ -7,7 +7,6 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
@@ -577,7 +576,7 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def(py::init<InferenceSession*>())
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object numpy_arr_on_cpu) -> void {
         OrtValue mlvalue;
-        CreateTensorMLValue(GetAllocator(), name, &numpy_arr_on_cpu, &mlvalue);
+        CreateTensorMLValue(GetAllocator(), name, reinterpret_cast<PyArrayObject*>(numpy_arr_on_cpu.ptr()), &mlvalue);
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -637,7 +636,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
-        for (const auto& _ : outputs) {
+        for (auto _ : outputs) {
           if (_.IsTensor()) {
             AddTensorAsPyObj(_, rfetch);
           } else {
