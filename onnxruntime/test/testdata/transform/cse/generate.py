@@ -194,6 +194,30 @@ def cse_merge_constants():
   )
   _onnx_export(graph_def, 'cse_merge_constants.onnx')
 
+def cse_only_one_graph_output():
+  graph_def = helper.make_graph(
+    nodes = [
+      helper.make_node(op_type = "Split", inputs = ['x'], outputs = ['Split1Output1', 'Split1Output2'], name = 'split_1'),
+      helper.make_node(op_type = "Split", inputs = ['x'], outputs = ['Split2Output1', 'Split2Output2'], name = 'split_2'),
+      helper.make_node(op_type = "ReduceSum", inputs = ['Split1Output1'], outputs = ['ReduceSum1'], name = 'reducesum_1'),
+      helper.make_node(op_type = "ReduceSum", inputs = ['Split2Output1'], outputs = ['ReduceSum2'], name = 'reducesum_2'),
+      helper.make_node(op_type = "Add", inputs = ['ReduceSum1', 'ReduceSum2'], outputs = ['Add'], name = 'add_1'),
+    ],
+    name = 'cse_only_one_graph_output',
+    inputs = [
+      helper.make_tensor_value_info("x", TensorProto.FLOAT, [4, 4])
+    ],
+    outputs = [
+      helper.make_tensor_value_info('Split1Output2', TensorProto.FLOAT, [2, 4]),
+      helper.make_tensor_value_info('Split2Output2', TensorProto.FLOAT, [2, 4]),
+      helper.make_tensor_value_info('Add', TensorProto.FLOAT, [1, 1]),
+    ],
+    initializer = [
+    ]
+  )
+  _onnx_export(graph_def, 'cse_only_one_graph_output.onnx')
+
+
 def generate_all():
   cse1()
   cse_graph_output()
@@ -201,7 +225,9 @@ def generate_all():
   cse_subgraph()
   cse_random()
   cse_merge_constants()
+  cse_only_one_graph_output()
 
 if __name__ == '__main__':
   generate_all()
+
 

@@ -219,6 +219,32 @@ TEST(CseTests, Subgraph) {
   ASSERT_EQ(op_count["Sum"], 1);
 }
 
+TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse_only_one_graph_output.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
+  Graph& graph = model->MainGraph();
+  ApplyCse(*model);
+
+  const auto& graph_inputs = graph.GetInputs();
+  ASSERT_EQ(graph_inputs.size(), 1);
+  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+
+  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names.size(), 3);
+  ASSERT_EQ(output_names[0], "Add");
+  ASSERT_EQ(output_names[1], "Split1Output2");
+  ASSERT_EQ(output_names[2], "Split2Output2");
+
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count["ReduceSum"], 1);
+  ASSERT_EQ(op_count["Add"], 1);
+  // In current implementation we don't collapse nodes that produce graph outputs.
+  ASSERT_EQ(op_count["Split"], 2);
+}
+
 TEST(CseTests, MergeConstants) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_merge_constants.onnx");
   std::shared_ptr<Model> model;
