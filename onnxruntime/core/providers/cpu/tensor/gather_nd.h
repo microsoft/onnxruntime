@@ -11,7 +11,7 @@ namespace concurrency {
 class ThreadPool;
 }
 class GatherNDBase {
- protected:
+ public:
   struct Prepare {
     const uint8_t* input_base;
     const std::string* input_str_base;
@@ -33,7 +33,8 @@ class GatherNDBase {
   };  // struct Prepare
 
   template <typename Tind>
-  Status PrepareForCompute(OpKernelContext* context, Prepare& p, concurrency::ThreadPool* tp) const;
+  Status PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor,
+                           const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const;
   int64_t batch_dims_;
 };  // class GatherNDBase
 

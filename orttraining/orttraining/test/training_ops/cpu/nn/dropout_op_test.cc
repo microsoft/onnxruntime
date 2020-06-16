@@ -176,6 +176,12 @@ void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>&
   test.AddInput<bool>("mask", input_shape.GetDims(), mask_buffer.get(), input_shape.Size());
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
+  } else {
+    test.AddMissingOptionalInput<float>();
+  }
+
+  if (strcmp(op, "TrainableDropoutGrad") != 0) {
+    test.AddInput<bool>("training_mode", {}, {true});
   }
 
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);

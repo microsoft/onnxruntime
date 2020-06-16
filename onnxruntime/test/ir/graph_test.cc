@@ -360,13 +360,14 @@ TEST_F(GraphTest, ReverseDFS) {
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.
+   *
    *                 SouceNode
    *                 /       \
-   *  node_1 (Variable)      node_2 (Variable)
-   *                 \       /
-   *                 node_3 (Add)
-   *                     |
-   *                 node_4 (NoOp)
+   *  node_1 (Variable)      node_2 (Variable)    node_5 (Variable)
+   *                 \       /                        |
+   *                 node_3 (Add)                 node_6 (NoOp)
+   *                     |                            |
+   *                 node_4 (Add)  -------------------  <-- request stop
    *                     |
    *                  SinkNode
   */
@@ -399,12 +400,31 @@ TEST_F(GraphTest, ReverseDFS) {
   outputs.push_back(&output_arg3);
   auto& node_3 = graph.AddNode("node_3", "Add_DFS", "node 3", inputs, outputs);
 
+  // side path
+  inputs.clear();
+  auto& input_arg5 = graph.GetOrCreateNodeArg("node_5_in_1", &tensor_int32);
+  inputs.push_back(&input_arg5);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+  outputs.clear();
+  outputs.push_back(&output_arg5);
+  graph.AddNode("node_5", "Variable_DFS", "node 5", inputs, outputs);
+
+  inputs.clear();
+  inputs.push_back(&output_arg5);
+  auto& output_arg6 = graph.GetOrCreateNodeArg("node_6_out_1", &tensor_int32);
+  outputs.clear();
+  outputs.push_back(&output_arg6);
+  graph.AddNode("node_6", "NoOp_DFS", "node 6", inputs, outputs);
+
+  // merged
   inputs.clear();
   inputs.push_back(&output_arg3);
+  inputs.push_back(&output_arg6);
   auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
   outputs.clear();
   outputs.push_back(&output_arg4);
-  graph.AddNode("node_4", "NoOp_DFS", "node 4", inputs, outputs);
+  graph.AddNode("node_4", "Add_DFS", "node 4", inputs, outputs);
+
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -440,7 +460,11 @@ TEST_F(GraphTest, ReverseDFS) {
         s += n->Name();
         enter_leave_sequence.push_back(s);
       },
-      NodeCompareName());
+      NodeCompareName(),
+      // don't traverse side path
+      [](const Node* from, const Node* to) {
+        return from->Name() == "node_4" && to->Name() == "node_6";
+      });
 
   EXPECT_EQ(enter_leave_sequence.size(), 8u);
   EXPECT_EQ("enter:node_4", enter_leave_sequence.at(0));
