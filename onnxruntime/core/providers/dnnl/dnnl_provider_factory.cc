@@ -31,8 +31,8 @@ std::unique_ptr<Provider_IExecutionProvider> DnnlProviderFactory::CreateProvider
 }
 
 struct Dnnl_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(bool use_arena) override {
-    return std::make_shared<DnnlProviderFactory>(use_arena);
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
+    return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
   void SetProviderHost(ProviderHost& host) {

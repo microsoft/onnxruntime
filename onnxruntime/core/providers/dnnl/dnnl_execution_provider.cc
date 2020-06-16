@@ -27,11 +27,12 @@ constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
+    : Provider_IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
   Provider_DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
        [](int) {
-         return onnxruntime::CreateCPUAllocator(onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator));
+         return onnxruntime::CreateCPUAllocator(
+             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator));
        },
        std::numeric_limits<size_t>::max()});
 
@@ -39,7 +40,8 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
       {OrtMemTypeCPUOutput,
        [](int) {
          return onnxruntime::CreateCPUAllocator(
-             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0, OrtMemTypeCPUOutput));
+             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0,
+                                                         OrtMemTypeCPUOutput));
        },
        std::numeric_limits<size_t>::max()});
 
