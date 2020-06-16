@@ -5,7 +5,7 @@ from .optim import lr_scheduler
 from .amp import loss_scaler
 
 
-class ORTTrainerOptions(object):
+class PytorchTrainerOptions(object):
     r"""Settings used by ONNX Runtime training backend
 
     The parameters are hierarchically organized to facilitate configuration through semantic groups
@@ -182,7 +182,7 @@ class ORTTrainerOptions(object):
     Example:
         .. code-block:: python
 
-            opts = ORTTrainerOptions({
+            opts = PytorchTrainerOptions({
                                'batch' : {
                                    'gradient_accumulation_steps' : 128
                                },
@@ -204,7 +204,7 @@ class ORTTrainerOptions(object):
         self._original_opts = dict(options)
 
         # Add an empty dictionary for non specified nested dicts
-        subgroups = [k for k, v in _ORT_TRAINER_OPTIONS_SCHEMA.items()
+        subgroups = [k for k, v in _PYTORCH_TRAINER_OPTIONS_SCHEMA.items()
                      if isinstance(v, dict) and 'type' in v and v['type'] == 'dict']
         self._validated_opts = dict(self._original_opts)
         if _validate:
@@ -213,7 +213,7 @@ class ORTTrainerOptions(object):
                     self._validated_opts[name] = {}
 
             # Validates user input
-            validator = ORTTrainerOptionsValidator(_ORT_TRAINER_OPTIONS_SCHEMA)
+            validator = PytorchTrainerOptionsValidator(_PYTORCH_TRAINER_OPTIONS_SCHEMA)
             self._validated_opts = validator.validated(self._validated_opts)
             if self._validated_opts is None:
                 self._validated_opts = validator.errors
@@ -240,10 +240,10 @@ class ORTTrainerOptions(object):
         if isinstance(v, (tuple, list, set, frozenset)):
             return type(v)([self._wrap(v, validate) for v in v])
         else:
-            return ORTTrainerOptions(v, False) if isinstance(v, dict) else v
+            return PytorchTrainerOptions(v, False) if isinstance(v, dict) else v
 
 
-class ORTTrainerOptionsValidator(cerberus.Validator):
+class PytorchTrainerOptionsValidator(cerberus.Validator):
     _TORCH_DEVICE = cerberus.TypeDefinition(
         'torch_device', (torch.device,), ())
     _LR_SCHEDULER = cerberus.TypeDefinition(
@@ -270,7 +270,7 @@ def _check_is_callable(field, value, error):
         error(field, "Must be callable or None")
 
 
-_ORT_TRAINER_OPTIONS_SCHEMA = {
+_PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'batch': {
         'type': 'dict',
         'schema': {

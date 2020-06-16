@@ -3,7 +3,7 @@ import torch
 
 from onnxruntime.capi.training.optim import lr_scheduler
 from onnxruntime.capi.training.amp import loss_scaler
-from onnxruntime.capi.training import ort_trainer_options as ort_options
+from onnxruntime.capi.training import pytorch_trainer_options as pt_options
 
 
 @pytest.mark.parametrize("test_input", [
@@ -49,7 +49,7 @@ def testDefaultValues(test_input):
         }
     }
 
-    actual_values = ort_options.ORTTrainerOptions(test_input)
+    actual_values = pt_options.PytorchTrainerOptions(test_input)
     assert actual_values._validated_opts == expected_values
 
 
@@ -57,6 +57,6 @@ def testInvalidMixedPrecisionEnabledSchema():
     '''Test an invalid input based on schema validation error message'''
 
     expected_msg = 'must be of boolean type'
-    actual_values = ort_options.ORTTrainerOptions(
+    actual_values = pt_options.PytorchTrainerOptions(
         {'mixed_precision': {'enabled': 1}})
     assert actual_values.mixed_precision[0].enabled[0] == expected_msg
