@@ -156,6 +156,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     aclStrides[1] = strides[0];
 
     std::vector<int64_t> aclPads(4);
+    // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
     if (pads.size() == 2) {
       if (strides.size() == 1) {
         aclPads[0] = 0;
@@ -170,8 +171,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       }
     } else {
       aclPads[0] = pads[1];
-      aclPads[1] = pads[0];
-      aclPads[2] = pads[3];
+      aclPads[1] = pads[3];
+      aclPads[2] = pads[0];
       aclPads[3] = pads[2];
     }
 

@@ -24,8 +24,3 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
 endif()
-
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND onnxruntime_ENABLE_PYTHON)
-  target_compile_definitions(onnxruntime_session PUBLIC ENABLE_LANGUAGE_INTEROP_OPS)
-endif()

@@ -172,6 +172,26 @@ const TensorShapeProto* NodeArg::Shape() const {
   }
 }
 
+bool NodeArg::HasTensorOrScalarShape() const {
+  const TypeProto* type = TypeAsProto();
+  if (!type) return false;
+  const auto type_case = type->value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+    case TypeProto::kSparseTensorType: 
+      // Standard tensor has a valid shape field while 
+      // scalar's shape is empty. Thus, we don't need to
+      // check shape here.
+      return true;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return false;
+  }
+}
+
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
@@ -651,6 +671,10 @@ Status Node::UpdateInputArgCount() {
 }
 
 const NodeAttributes& Node::GetAttributes() const noexcept {
+  return attributes_;
+}
+
+NodeAttributes& Node::GetMutableAttributes() noexcept {
   return attributes_;
 }
 
@@ -1283,13 +1307,22 @@ void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
     node_vec.push_back(GetNode(i));
   }
 
-  ReverseDFSFrom(node_vec, enter, leave, comp);
+  ReverseDFSFrom(node_vec, enter, leave, comp, {});
 }
 
 void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
+
+  ReverseDFSFrom(from, enter, leave, comp, {});
+}
+
+void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+                           const std::function<void(const Node*)>& enter,
+                           const std::function<void(const Node*)>& leave,
+                           const std::function<bool(const Node*, const Node*)>& comp,
+                           const std::function<bool(const Node* from, const Node* to)>& stop) const {
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
   std::vector<WorkEntry> stack(from.size());
   for (size_t i = 0; i < from.size(); i++) {
@@ -1323,6 +1356,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (comp) {
       std::vector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+        if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
       }
       std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
@@ -1334,6 +1368,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
       }
     } else {
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+        if (stop && stop(&n, &(*iter))) continue;
         const NodeIndex idx = (*iter).Index();
         if (!visited[idx]) {
           stack.emplace_back(GetNode(idx), false);

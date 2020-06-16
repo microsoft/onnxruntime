@@ -36,7 +36,7 @@ ImageScaler<T>::ImageScaler(const OpKernelInfo& info) : CudaKernel(info) {
 template <typename T>
 Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  const auto dims = X->Shape().GetDims();
+  const auto& dims = X->Shape().GetDims();
 
   if (dims.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
