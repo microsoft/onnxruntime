@@ -325,6 +325,9 @@ stages:
         - checkout: self
           clean: true
           submodules: recursive
+
+        - script: set # TODO REMOVE
+
         - template: enable-telemetry.yml
 
         - task: UsePythonVersion@0
@@ -467,6 +470,10 @@ stages:
           Py35:
             python.version: '3.5'
       steps:
+        - checkout: self
+          clean: true
+          submodules: recursive
+
         - template: set-py-packaging-variables-step.yml
 
         - template: set-nightly-build-option-variable-step.yml
