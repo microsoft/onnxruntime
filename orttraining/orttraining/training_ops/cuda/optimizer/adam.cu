@@ -59,7 +59,6 @@ __global__ void _AdamOptimizer_mode0(
 
   // Compute the new weight.
   if (weights_out) {
-    printf("Weights out");
     weights_out[id] = weights[id] + T3(delta);
 
     if (fp16_weights_out) {
