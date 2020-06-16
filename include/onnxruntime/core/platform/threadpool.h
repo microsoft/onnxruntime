@@ -355,8 +355,8 @@ class ThreadPool {
   // Return whether or not the calling thread should run a loop of
   // num_iterations divided in chunks of block_size in parallel.  If not,
   // the caller should run the loop sequentially.
-  bool ThreadPool::ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
-                                         const std::ptrdiff_t block_size = 1) const;
+  bool ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
+                             const std::ptrdiff_t block_size = 1) const;
 
   ThreadOptions thread_options_;
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
