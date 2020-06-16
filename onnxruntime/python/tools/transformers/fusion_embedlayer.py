@@ -6,7 +6,7 @@
 from typing import Dict
 from logging import getLogger
 from onnx import helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
 
@@ -36,9 +36,7 @@ class FusionEmbedLayerNoMask(Fusion):
                                   v            v
                               SkipLayerNormalization
     """
-    def __init__(self,
-                 model: OnnxModel,
-                 description='no mask'):
+    def __init__(self, model: OnnxModel, description='no mask'):
         super().__init__(model, "EmbedLayerNormalization", "SkipLayerNormalization", description)
         self.utils = FusionUtils(model)
 
