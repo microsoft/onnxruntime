@@ -47,8 +47,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // help.  The degree-of-parallelism includes the caller, and so if n==1
   // then the function will run directly in the caller.  The fork-join
   // synchronization is handled in the thread pool, and so any state captured
-  // by fn() is safe from concurrent access once RunWithHelp returns.
-  virtual void RunWithHelp(std::function<void()> fn, unsigned n) = 0;
+  // by fn() is safe from concurrent access once RunInParallel returns.
+  virtual void RunInParallel(std::function<void()> fn, unsigned n) = 0;
 };
 
 }  // namespace concurrency
@@ -61,7 +61,7 @@ class RunQueue {
     assert((kSize & (kSize - 1)) == 0);
     assert(kSize > 2);            // why would you do this?
     assert(kSize <= (64 << 10));  // leave enough space for counter
-    for (unsigned i = 0; i < kSize; i++) array_[i].state.store(kEmpty, std::memory_order_relaxed);
+    for (unsigned i = 0; i < kSize; i++) array_[i].state.store(ElemState::kEmpty, std::memory_order_relaxed);
   }
 
   ~RunQueue() {
@@ -72,14 +72,15 @@ class RunQueue {
   // If queue is full returns w, otherwise returns default-constructed Work.
   Work PushFront(Work w) {
     unsigned front = front_.load(std::memory_order_relaxed);
-    Elem* e = &array_[front & kMask];
-    uint8_t s = e->state.load(std::memory_order_relaxed);
-    if (s != kEmpty || !e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire))
+    Elem& e = array_[front & kMask];
+    ElemState s = e.state.load(std::memory_order_relaxed);
+    if (s != ElemState::kEmpty ||
+        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return w;
     front_.store(front + 1 + (kSize << 1), std::memory_order_relaxed);
-    e->w = std::move(w);
-    e->tag = Tag();
-    e->state.store(kReady, std::memory_order_release);
+    e.w = std::move(w);
+    e.tag = Tag();
+    e.state.store(ElemState::kReady, std::memory_order_release);
     return Work();
   }
 
@@ -88,7 +89,7 @@ class RunQueue {
   Work PopFront() {
     unsigned front;
     Elem *e;
-    uint8_t s;
+    ElemState s;
 
     // Drain revoked items from the front of the queue.  CAS to busy to synchronize with
     // any attempt to take the same item from the back of the queue.
@@ -96,20 +97,22 @@ class RunQueue {
       front = front_.load(std::memory_order_relaxed);
       e = &array_[(front - 1) & kMask];
       s = e->state.load(std::memory_order_relaxed);
-      if (s == kRevoked && e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire)) {
-        e->state.store(kEmpty, std::memory_order_release);
+      if (s == ElemState::kRevoked &&
+          e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
+        e->state.store(ElemState::kEmpty, std::memory_order_release);
         front = ((front - 1) & kMask2) | (front & ~kMask2);
         front_.store(front, std::memory_order_relaxed);
       }
-    } while (s == kRevoked);
+    } while (s == ElemState::kRevoked);
 
     // Attempt to take next item.  State kEmpty shows the queue is empty, kBusy shows
     // the work is in progress on the item at the front of the queue.
-    if (s != kReady || !e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire))
+    if (s != ElemState::kReady ||
+        !e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return Work();
     Work w = std::move(e->w);
     e->tag = Tag();
-    e->state.store(kEmpty, std::memory_order_release);
+    e->state.store(ElemState::kEmpty, std::memory_order_release);
     front = ((front - 1) & kMask2) | (front & ~kMask2);
     front_.store(front, std::memory_order_relaxed);
     return w;
@@ -120,31 +123,39 @@ class RunQueue {
   Work PushBack(Work w) {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
-    Elem* e = &array_[(back - 1) & kMask];
-    uint8_t s = e->state.load(std::memory_order_relaxed);
-    if (s != kEmpty || !e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire))
+    Elem& e = array_[(back - 1) & kMask];
+    ElemState s = e.state.load(std::memory_order_relaxed);
+    if (s != ElemState::kEmpty ||
+        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return w;
     back = ((back - 1) & kMask2) | (back & ~kMask2);
     back_.store(back, std::memory_order_relaxed);
-    e->w = std::move(w);
-    e->tag = Tag();
-    e->state.store(kReady, std::memory_order_release);
+    e.w = std::move(w);
+    e.tag = Tag();
+    e.state.store(ElemState::kReady, std::memory_order_release);
     return Work();
   }
 
+  // PushBackWithTag adds w at the end of the queue.  The tag value can be used on a 
+  // subsequent call to RevokeWithTag to remove the item from the queue in combination
+  // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
+  // submitted from different threads.
+  //
+  // If the queue is full, returns w, otherwise returns default-constructed work.
   Work PushBackWithTag(Work w, Tag tag, unsigned &w_idx) {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back-1) & kMask;
-    Elem* e = &array_[w_idx];
-    uint8_t s = e->state.load(std::memory_order_relaxed);
-    if (s != kEmpty || !e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire))
+    Elem& e = array_[w_idx];
+    ElemState s = e.state.load(std::memory_order_relaxed);
+    if (s != ElemState::kEmpty ||
+        !e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return w;
     back = ((back - 1) & kMask2) | (back & ~kMask2);
     back_.store(back, std::memory_order_relaxed);
-    e->w = std::move(w);
-    e->tag = tag;
-    e->state.store(kReady, std::memory_order_release);
+    e.w = std::move(w);
+    e.tag = tag;
+    e.state.store(ElemState::kReady, std::memory_order_release);
     return Work();
   }
 
@@ -155,7 +166,7 @@ class RunQueue {
     std::unique_lock<OrtMutex> lock(mutex_);
     unsigned back;
     Elem *e;
-    uint8_t s;
+    ElemState s;
 
     // Drain revoked items from the back of the queue.  CAS to busy to synchronize with
     // any attempt to take the same item from the front of the queue.
@@ -163,17 +174,19 @@ class RunQueue {
       back = back_.load(std::memory_order_relaxed);
       e = &array_[back & kMask];
       s = e->state.load(std::memory_order_relaxed);
-      if (s == kRevoked && e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire)) {
-        e->state.store(kEmpty, std::memory_order_release);
+      if (s == ElemState::kRevoked &&
+          e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
+        e->state.store(ElemState::kEmpty, std::memory_order_release);
         back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
       }
-    } while (s == kRevoked);
+    } while (s == ElemState::kRevoked);
 
-    if (s != kReady || !e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire))
+    if (s != ElemState::kReady ||
+        !e->state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire))
       return Work();
     Work w = std::move(e->w);
     e->tag = Tag();
-    e->state.store(kEmpty, std::memory_order_release);
+    e->state.store(ElemState::kEmpty, std::memory_order_release);
     back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
     return w;
   }
@@ -193,30 +206,31 @@ class RunQueue {
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
     std::unique_lock<OrtMutex> lock(mutex_);
-    Elem* e = &array_[w_idx];
-    uint8_t s = e->state.load(std::memory_order_relaxed);
-    if (s == kReady && e->state.compare_exchange_strong(s, kBusy, std::memory_order_acquire)) {
-      if (e->tag == tag) {
+    Elem& e = array_[w_idx];
+    ElemState s = e.state.load(std::memory_order_relaxed);
+    if (s == ElemState::kReady &&
+        e.state.compare_exchange_strong(s, ElemState::kBusy, std::memory_order_acquire)) {
+      if (e.tag == tag) {
         unsigned back = back_.load(std::memory_order_relaxed);
         unsigned back_idx = back & kMask;
         if (back_idx != w_idx) {
           // Item is not at the back of the queue, mark it in-place as revoked
-          e->tag = Tag();
-          e->w = Work();
-          e->state.store(kRevoked, std::memory_order_release);
+          e.tag = Tag();
+          e.w = Work();
+          e.state.store(ElemState::kRevoked, std::memory_order_release);
           revoked = true;
         } else {
           // Item being removed as still at the back; shift the back pointer over it,
           // and bump the version number.
-          e->tag = Tag();
-          e->w = Work();
-          e->state.store(kEmpty, std::memory_order_release);
+          e.tag = Tag();
+          e.w = Work();
+          e.state.store(ElemState::kEmpty, std::memory_order_release);
           back_.store(back + 1 + (kSize << 1), std::memory_order_relaxed);
           revoked = true;
         }
       } else {
         // Tag mismatch, i.e. work queue slot re-used
-        e->state.store(kReady, std::memory_order_release);
+        e.state.store(ElemState::kReady, std::memory_order_release);
       }
     }
     return revoked;
@@ -244,17 +258,27 @@ class RunQueue {
  private:
   static const unsigned kMask = kSize - 1;
   static const unsigned kMask2 = (kSize << 1) - 1;
-  struct Elem {
-    std::atomic<uint8_t> state;
-    Tag tag;
-    Work w;
-  };
-  enum {
+
+  enum class ElemState : uint8_t {
     kEmpty,
     kBusy,
     kReady,
     kRevoked,
   };
+
+  // Updates to an element are bracketed by a std::memory_order_acquire
+  // load from the state, and a std::memory_order_release store.  Accesses
+  // to the front/back indices for the work queue use relaxed semantics,
+  // with the state of the elements being authoritative.
+  //
+  // TODO: Revisit whether there is a significant benefit for the current
+  // workloads in the complexity here.
+  struct Elem {
+    std::atomic<ElemState> state;
+    Tag tag;
+    Work w;
+  };
+
   OrtMutex mutex_;
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
   // front/back, respectively. The remaining bits contain modification counters
@@ -339,11 +363,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
 
     // Allocate a new tag to use to identify work items from a given thread
-    // in RunWithHelp.  Ideally, threads will have unique tags, but re-use
+    // in RunInParallel.  Ideally, threads will have unique tags, but re-use
     // is not incorrect if the counter wraps (for intsance, if a long-running
     // workload is calling into ORT from a fresh thread for each request).
     // We must not re-use the default tag 0 which is used to identify work
-    // items added via Schedule as opposed to requests for help in RunWithHelp.
+    // items added via Schedule as opposed to requests for help in RunInParallel.
 
     static Tag GetNext() {
       Tag t = Tag(next_tag++);
@@ -400,7 +424,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Allocate space for per-thread bits to indicate which threads to consider
     // preferable for pushing work.  We use a regular array given that a std::vector
     // cannot contain std::atomic.
-    num_hint_words_ = (int)((num_threads_ + bits_per_hint_word_ - 1) / bits_per_hint_word_);
+    num_hint_words_ = static_cast<int>((num_threads_ + bits_per_hint_word_ - 1) / bits_per_hint_word_);
     good_worker_hints_ = onnxruntime::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
 
     thread_data_.resize(num_threads_);
@@ -460,19 +484,19 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
 void SetGoodWorkerHint(int idx, bool is_good) {
   assert(idx >= 0 && idx < num_threads_);
-  std::atomic<uint64_t> *u64 = &good_worker_hints_[idx / bits_per_hint_word_];
+  std::atomic<uint64_t>& u64 = good_worker_hints_[idx / bits_per_hint_word_];
   uint64_t bit = 1ull << (idx % bits_per_hint_word_);
   uint64_t saw, want;
   do {
-    saw = u64->load();
+    saw = u64.load();
     want = is_good ? (saw|bit) : (saw&~bit);
-  } while (!u64->compare_exchange_weak(saw, want));
+  } while (!u64.compare_exchange_weak(saw, want));
 }
 
 // Retrieve hints for up to n threads to distribute work to.  Threads in good_hints
 // pass a best-effort check to identify spinning threads via the good_worker_hints_
 // bitmap.  Threads in alt_hint do not pass that test, but are distinct from those in
-// good_hints_, letting the caller avoid distributing more than one work item to
+// good_hints, letting the caller avoid distributing more than one work item to
 // any individual thread.
 
 void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<unsigned>& alt_hints) {
@@ -514,7 +538,7 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
   }
 }
 
-void RunWithHelp(std::function<void()> fn, unsigned n) override {
+void RunInParallel(std::function<void()> fn, unsigned n) override {
   PerThread* pt = GetPerThread();
   assert(n>=1);
   if (n == 1 || pt->in_parallel) {
@@ -556,9 +580,11 @@ void RunWithHelp(std::function<void()> fn, unsigned n) override {
       unsigned w_idx;
       t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
       if (t.f) {
-        // The queue rejected the work.  Account for the missing capacity for work on the
-        // synchronization barrier.  The work itself will be performed in the current thread after
-        // finishing adding work to the pool.
+        // The queue rejected the work.  Account for the missing capacity for work
+        // on the synchronization barrier.  The semantics for RunInParallel are that
+        // the function is called with up to n-way parallelism, and so the
+        // work itself will be performed in the current thread's call to fn()
+        // after finishing adding work to the pool.
         b.Notify(1);
       } else {
         // The queue accepted the work, ensure that the thread is servicing the queue
@@ -670,11 +696,11 @@ int CurrentThreadId() const EIGEN_FINAL {
     // by the mutex field below for updates.  The status is used for three
     // purposes:
     //
-    // 1. The identify threads that are good candidates to push work to.  We prefer
-    //    to push work to threads that are actively spinning (no need for an OS
-    //    wake-up, and no need for current work to finish).  After that, we prefer
-    //    to push work to threads that are blocked (no need to wait for the current
-    //    work to finish.
+    // 1. To identify threads that are good candidates to push work to.
+    //    We prefer to push work to threads that are actively spinning (no need
+    //    for an OS wake-up, and no need for current work to finish).  After that, we
+    //    prefer to push work to threads that are blocked (no need to wait for the
+    //    current work to finish).
     //
     // 2. To identify threads that are good candidates to steal work from.  We
     //    prefer to steal work from threads that are active outside the worker loop.
@@ -686,7 +712,7 @@ int CurrentThreadId() const EIGEN_FINAL {
     //    need for mutex / condvar operations in the case where the thread pool
     //    remains busy.
 
-    enum class ThreadStatus {
+    enum class ThreadStatus : uint8_t {
       Spinning,  // Spinning in the work loop, and other cases (initialization) where
                  // the thread will soon be in the loop
       Active,    // Running user code, not waiting for work
@@ -695,7 +721,7 @@ int CurrentThreadId() const EIGEN_FINAL {
       Waking,    // Not yet back in the worker loop, but wake-up notification sent
     };
 
-    ThreadStatus GetStatus() {
+    ThreadStatus GetStatus() const {
       return status;
     }
 
