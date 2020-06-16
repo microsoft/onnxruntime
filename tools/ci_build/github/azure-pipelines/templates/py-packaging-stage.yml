@@ -116,9 +116,9 @@ stages:
           inputs:
             ArtifactName: onnxruntime
 
-        - template: templates/component-governance-component-detection-steps.yml
+        - template: component-governance-component-detection-steps.yml
 
-        - template: templates/clean-agent-build-directory-step.yml
+        - template: clean-agent-build-directory-step.yml
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
@@ -188,9 +188,9 @@ stages:
           inputs:
             ArtifactName: onnxruntime_gpu
 
-        - template: templates/component-governance-component-detection-steps.yml
+        - template: component-governance-component-detection-steps.yml
 
-        - template: templates/clean-agent-build-directory-step.yml
+        - template: clean-agent-build-directory-step.yml
 
   - ${{ if eq(parameters.enable_windows_cpu, true) }}:
     - job: Windows_py_Wheels
@@ -221,7 +221,7 @@ stages:
       - checkout: self
         clean: true
         submodules: recursive
-      - template: templates/enable-telemetry.yml
+      - template: enable-telemetry.yml
 
       - task: UsePythonVersion@0
         inputs:
@@ -271,7 +271,7 @@ stages:
           workingDirectory: '$(Build.BinariesDirectory)'
 
       # Esrp signing
-      - template: templates/win-esrp-dll.yml
+      - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
@@ -297,11 +297,11 @@ stages:
         inputs:
           ArtifactName: onnxruntime
 
-      - template: templates/component-governance-component-detection-steps.yml
+      - template: component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
-      - template: templates/clean-agent-build-directory-step.yml
+      - template: clean-agent-build-directory-step.yml
 
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - job: Windows_py_GPU_Wheels
@@ -325,7 +325,7 @@ stages:
         - checkout: self
           clean: true
           submodules: recursive
-        - template: templates/enable-telemetry.yml
+        - template: enable-telemetry.yml
 
         - task: UsePythonVersion@0
           inputs:
@@ -376,7 +376,7 @@ stages:
             workingDirectory: '$(Build.BinariesDirectory)'
 
         # Esrp signing
-        - template: templates/win-esrp-dll.yml
+        - template: win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
             DisplayName: 'ESRP - Sign Native dlls'
@@ -402,9 +402,9 @@ stages:
           inputs:
             ArtifactName: onnxruntime_gpu
 
-        - template: templates/component-governance-component-detection-steps.yml
+        - template: component-governance-component-detection-steps.yml
 
-        - template: templates/clean-agent-build-directory-step.yml
+        - template: clean-agent-build-directory-step.yml
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
@@ -450,7 +450,7 @@ stages:
           inputs:
             ArtifactName: onnxruntime
 
-        - template: templates/component-governance-component-detection-steps.yml
+        - template: component-governance-component-detection-steps.yml
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
     - job: Linux_ARM_py_Wheels
@@ -531,4 +531,4 @@ stages:
           inputs:
             PathtoPublish: '$(Build.BinariesDirectory)/dist'
             ArtifactName: onnxruntime
-        - template: templates/clean-agent-build-directory-step.yml
+        - template: clean-agent-build-directory-step.yml
