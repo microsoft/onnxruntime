@@ -7,6 +7,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/allocatormgr.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/env.h"
@@ -504,11 +505,26 @@ struct ProviderHostImpl : ProviderHost {
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename) {
-
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename);
     Env::Default().LoadDynamicLibrary(full_path, &handle_);
     if (!handle_)
       return;
+
+#if defined(_WIN32) && !defined(_OPENMP)
+    {
+      // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
+      // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
+      // To avoid this, we pin the OpenMP DLL so that it unloads as late as possible.
+      HMODULE handle{};
+#ifdef _DEBUG
+      constexpr const char* dll_name = "vcomp140d.dll";
+#else
+      constexpr const char* dll_name = "vcomp140.dll";
+#endif
+      ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, dll_name, &handle);
+      assert(handle);  // It should exist
+    }
+#endif
 
     Provider* (*PGetProvider)();
     Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);

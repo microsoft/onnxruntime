@@ -128,8 +128,8 @@ IF RowCount GT 3
 ENDIF
         ComputeBlockLoop ColumnCount, RowCount
 IF RowCount GT 3
-        lea     rbx,[r8+rax*2]              ; compute matrix C plus 3 rows
-        add     rbx,rax
+        lea     rbx,[rax*2+rax]
+        add     rbx,r8                      ; compute matrix C plus 3 rows
 ENDIF
 
         ENDM

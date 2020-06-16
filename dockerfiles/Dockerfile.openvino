@@ -30,7 +30,7 @@ ENV LANG en_US.UTF-8
 
 RUN apt update && \
     apt -y install git sudo wget locales \
-    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev autoconf automake libtool && \
+    zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev autoconf automake libtool libudev-dev libjson-c-dev && \
     cd ${MY_ROOT} && \
     git clone --recursive -b $ONNXRUNTIME_BRANCH $ONNXRUNTIME_REPO onnxruntime && \
     cp onnxruntime/docs/Privacy.md /code/Privacy.md && \
@@ -52,5 +52,5 @@ RUN apt update && \
     cd ${MY_ROOT} && \
     locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8 && \
     cd ${MY_ROOT} && \
-    cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino $DEVICE --build_wheel --use_full_protobuf && \
+    cd onnxruntime && ./build.sh --use_openmp --config Release --update --build --parallel --use_openvino $DEVICE --build_wheel --use_full_protobuf && \
     pip install build/Linux/Release/dist/*-linux_x86_64.whl && rm -rf /code/onnxruntime /code/cmake-3.14.3-Linux-x86_64

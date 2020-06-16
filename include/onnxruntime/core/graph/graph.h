@@ -264,6 +264,9 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept;
 
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept;
+
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
   @returns nullptr if the Graph instance has not been instantiated or attribute does not contain a GraphProto.
@@ -525,6 +528,11 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
+  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+  }
+
   /** Gets the Graph inputs that are initializers
   These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
@@ -536,6 +544,10 @@ class Graph {
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
+
+  bool IsOutput(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
+  }
 
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
@@ -556,6 +568,8 @@ class Graph {
   These are the values that are neither Graph inputs nor outputs.
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+
+  void AddValueInfo(const NodeArg* new_value_info);
 
   /** Gets the Node with the specified node index.
   @returns Node instance if found. nullptr if node_index is invalid or node has been freed.
@@ -725,6 +739,20 @@ class Graph {
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
+
+  /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
+  up to their source node/s.
+  @param from Set of Nodes to traverse from.
+  @param enter Visit function that will be invoked on a node when it is visited but its parents haven't been.
+  @param leave Visit function invoked on the node after its parents have all been visited.
+  @param stop Stop traversal from node n to input node p if stop(n, p) is true.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void ReverseDFSFrom(const std::vector<const Node*>& from,
+                      const std::function<void(const Node*)>& enter,
+                      const std::function<void(const Node*)>& leave,
+                      const std::function<bool(const Node*, const Node*)>& comp,
+                      const std::function<bool(const Node*, const Node*)>& stop) const;
 
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {

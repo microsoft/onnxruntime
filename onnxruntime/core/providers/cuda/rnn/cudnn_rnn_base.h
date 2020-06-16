@@ -38,11 +38,11 @@ class CudnnRNN {
 
   Status Set(const cudnnHandle_t& cudnnHandle, int64_t hidden_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
-             cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType) {
+             cudnnRNNMode_t rnn_mode, cudnnDataType_t dataType, const cudaDeviceProp& prop) {
     if (!cudnn_rnn_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
 
-    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor(cudnnHandle,
+    CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v6(cudnnHandle,
                                                 cudnn_rnn_desc_,
                                                 gsl::narrow_cast<int>(hidden_size),
                                                 num_layers,
@@ -52,6 +52,10 @@ class CudnnRNN {
                                                 rnn_mode,
                                                 CUDNN_RNN_ALGO_STANDARD,  //CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
                                                 dataType));
+
+    if (prop.major >= 7 && dataType == CUDNN_DATA_HALF) {
+      cudnnSetRNNMatrixMathType(cudnn_rnn_desc_, CUDNN_TENSOR_OP_MATH);
+    }
 
     return Status::OK();
   }
@@ -91,7 +95,7 @@ class CudnnRnnBase : public CudaKernel {
     rnn_mode_ = CUDNN_LSTM;
     weight_cached_ = false;
     w_data_cache_ = nullptr;
-    
+
     size_t state_size;
     cudnn_dropout_desc_.CreateDescriptorIfNeeded();
     cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size);

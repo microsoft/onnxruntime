@@ -219,7 +219,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
             }
         }
 
-        // Handle other tensors including new weight, new gradient (update direction), 
+        // Handle other tensors including new weight, new gradient (update direction),
         // new momentums.
         for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
             const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.
@@ -1078,6 +1078,12 @@ Example 4:
              "the case during training.",
              "T1",
              OpSchema::Optional)
+      .Input(3, "training_mode",
+            "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+            "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+            "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+            "T2",
+            OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -1090,7 +1096,7 @@ Example 4:
       .TypeConstraint(
           "T2",
           {"tensor(bool)"},
-          "Constrain 'mask' types to boolean tensors.")
+          "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
@@ -1749,6 +1755,10 @@ Return true if all elements are true and false otherwise.
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
+          if (!hasShape(*typeProto)) {
+              continue;
+          }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
@@ -1798,6 +1808,10 @@ Return true if all elements are true and false otherwise.
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
+          if (!hasShape(*typeProto)) {
+              continue;
+          }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });

@@ -18,6 +18,12 @@
 #include "core/framework/utils.h"
 #endif
 
+#ifdef ENABLE_NVTX_PROFILE
+// This header is for profile using Nvidia's visual profilier.
+#include "core/profile/profile.h"
+#include "core/profile/context.h"
+#endif
+
 // #define TRACE_EXECUTION
 
 // Define this symbol to create Concurrency Visualizer markers.
@@ -55,7 +61,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   ORT_UNUSED_PARAMETER(node_name);
   for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output->IsTensor()) {
+    if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
@@ -83,7 +89,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input->IsTensor()) {
+    if (p_input != nullptr && p_input->IsTensor()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -165,6 +171,17 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   diagnostic::marker_series series(series_name);
 #endif
 
+#ifdef ENABLE_NVTX_PROFILE
+  auto& profile_context = profile::Context::GetInstance();
+  const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
+  profile::NvtxRangeCreator forward_range(
+    "forward-" + tag,
+    profile::Color::White);
+  profile::NvtxRangeCreator backward_range(
+    "backward-" + tag,
+    profile::Color::Black);
+#endif
+
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -182,6 +199,18 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+      // Start timing forward pass when encountering the first forward node.
+      forward_range.Begin();
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled()) {
+      // Start timing backward pass when encountering the first backward node.
+      // In the meanwhile, forward range ends.
+      forward_range.End();
+      backward_range.Begin();
+    }
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
@@ -241,7 +270,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
-      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph 
+      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
       return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
     }();
 
@@ -371,6 +400,23 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
+
+#ifdef ENABLE_NVTX_PROFILE
+  // Make sure forward Range object call Begin and End.
+  if (!forward_range.IsBeginCalled()) {
+    forward_range.Begin();
+  }
+  if (!forward_range.IsEndCalled()) {
+    forward_range.End();
+  }
+  // Make sure backward Range object call Begin and End.
+  if (!backward_range.IsBeginCalled()) {
+    backward_range.Begin();
+  }
+  if (!backward_range.IsEndCalled()) {
+    backward_range.End();
+  }
+#endif
 
   VLOGS(logger, 1) << "Fetching output.";
   // ExecutionFrame::Finalize will update 'fetches' with the final output

@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "transpose_matmul.h"
-
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 
