@@ -57,7 +57,7 @@ class Session:
         "Return list of registered execution providers."
         return self._providers
 
-    def set_providers(self, providers, provider_options=[]):
+    def set_providers(self, providers, provider_options=None):
         """
         Register the input list of execution providers. The underlying session is re-created.
 
@@ -162,7 +162,7 @@ class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
-    def __init__(self, path_or_bytes, sess_options=None, providers=[]):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None):
         """
         :param path_or_bytes: filename or serialized model in a byte string
         :param sess_options: session options
@@ -171,11 +171,11 @@ class InferenceSession(Session):
         """
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
-        self._load_model(providers)
+        self._load_model(providers or [])
         self._enable_fallback = True
         Session.__init__(self, self._sess)
 
-    def _load_model(self, providers=[], provider_options=[]):
+    def _load_model(self, providers, provider_options=None):
         if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
                 self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,

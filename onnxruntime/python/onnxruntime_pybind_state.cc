@@ -331,7 +331,7 @@ const std::vector<std::string>& GetAvailableProviders() {
 }
 
 #ifdef USE_CUDA
-bool is_cuda_device_id_valid(int id) {
+bool IsCudaDeviceIdValid(int id) {
     
     int num_devices = 0;
     CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
@@ -351,17 +351,68 @@ bool is_cuda_device_id_valid(int id) {
     return true;
 }
 
-void update_cuda_provider_options(onnxruntime::CudaProviderOptions& options, std::map<std::string, std::string> options_map) {
 
-    auto it = options_map.find("device_id");
+void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::map<std::string, std::string> options_map) {
+    std::map<std::string, std::string>::iterator it;
+
+    it = options_map.find("device_id");
     if (it != options_map.end()) {
-        int device_id = std::stoi(it->second);
-        if (!is_cuda_device_id_valid(device_id)) {
-            throw std::runtime_error("Please provide proper device ID.");
+        OrtDevice::DeviceId device_id;
+        try {
+          device_id = std::stoi(it->second); 
+        }
+        catch (const std::invalid_argument& ia) {
+            std::cerr << "Invalid argument: " << ia.what() << '\n';
+            throw std::runtime_error("Please provide device id with integer.");
             return;
         }
-        printf("set cuda device id: %d\n", device_id);
+
+        if (!IsCudaDeviceIdValid(device_id)) {
+            throw std::runtime_error("Please provide available device id.");
+            return;
+        }
         options.device_id = device_id; 
+        std::cout << "cuda device id is set to " << device_id << '\n';
+    }
+
+    it = options_map.find("cuda_mem_limit");
+    if (it != options_map.end()) {
+        size_t size;
+        try {
+          size = std::stoul(it->second, nullptr, 0);
+        }
+        catch (const std::invalid_argument& ia) {
+            std::cerr << "Invalid argument: " << ia.what() << '\n';
+            throw std::runtime_error("Please provide cuda memory limitation size with integer.");
+            return;
+        }
+
+        if (size > std::numeric_limits<size_t>::max()) {
+            throw std::runtime_error("Please provide cuda memory limitation size within the range.");
+            return;
+        }
+        
+        options.cuda_mem_limit = size; 
+        std::cout << "cuda memory limitation is set to " << size << '\n';
+    }
+
+    it = options_map.find("arena_extend_strategy");
+    if (it != options_map.end()) {
+        onnxruntime::ArenaExtendStrategy strategy;
+
+        if (it->second.compare("kNextPowerOfTwo") == 0) {
+            strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+        }
+        else if (it->second.compare("kSameAsRequested") == 0) {
+            strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+        } 
+        else {
+            throw std::runtime_error("Please provide proper cuda arena extend strategy.");
+            return;
+        }
+        
+        options.arena_extend_strategy = strategy; 
+        std::cout << "cuda arean extend strategy is set to " << it->second << '\n';
     }
 }
 #endif
@@ -438,7 +489,7 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        update_cuda_provider_options(cuda_provider_options, it->second); 
+        UpdateCudaProviderOptions(cuda_provider_options, it->second); 
       }
 
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
@@ -487,7 +538,7 @@ void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
                                 ProviderOptionsMap& provider_options_map)
 {
 
-  if (provider_options_vector.empty()) { 
+  if (provider_options_vector.empty() || providers.empty()) { 
     return;
   }
 
@@ -619,6 +670,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
 #ifdef USE_CUDA
+  /*
+   * The following set_* methods are deprecated.
+   * 
+   * To achieve same result, please use the following python api: 
+   * InferenceSession.set_providers(list_of_providers, list_of_provider_option_dicts)
+   *
+   */
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = static_cast<OrtDevice::DeviceId>(id); });
   m.def("set_cuda_mem_limit", [](const int64_t limit) { cuda_mem_limit = static_cast<size_t>(limit); });
   m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) { arena_extend_strategy = strategy; });
