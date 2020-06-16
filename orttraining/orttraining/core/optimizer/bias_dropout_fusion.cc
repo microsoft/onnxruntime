@@ -50,11 +50,11 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
       continue;
     }
-    
-    if (input1_shape->dim_size() == 1) {     
+
+    if (input1_shape->dim_size() == 1) {
       dropout_input.push_back(node.MutableInputDefs()[1]);  // droput input
       dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
-    } else if (input2_shape->dim_size() == 1) {  
+    } else if (input2_shape->dim_size() == 1) {
       dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
       dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
     } else {
@@ -70,12 +70,12 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Dropout", {12}, kMSDomain) ||
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Dropout", {12}, kOnnxDomain) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "TrainableDropout", {9}, kOnnxDomain)) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
-   
+
     if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
       continue;
     }
@@ -84,8 +84,8 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     nodes_to_fuse.push_back(dropout_node);
 
     dropout_output.push_back(dropout_node.MutableOutputDefs()[0]);
-    dropout_output.push_back(dropout_node.MutableOutputDefs()[1]);    
-    
+    dropout_output.push_back(dropout_node.MutableOutputDefs()[1]);
+
     bool is_onnx_dropout = dropout_node.OpType().compare("Dropout") == 0;
 
     // matching for residual Add node
@@ -95,30 +95,51 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7}) &&
           last_node.GetExecutionProviderType() == node.GetExecutionProviderType()) {
+        const TensorShapeProto* input1_shape = last_node.InputDefs()[0]->Shape();
+        const TensorShapeProto* input2_shape = last_node.InputDefs()[1]->Shape();
+
+        if (input1_shape == nullptr ||
+            input2_shape == nullptr ||
+            input1_shape->dim_size() < 1 ||
+            input2_shape->dim_size() < 1 ||
+            input1_shape->dim_size() != input2_shape->dim_size()) {
+          continue;
+        }
+
+        // Inputs of Residual Add must match in shape
+        bool match = true;
+        for (int i = 0; i < input1_shape->dim_size(); ++i) {
+          match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
+        }
+        if (!match) {
+          continue;
+        }
 
         // dropout's output is not part of of graph output
-        if (graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
-          Node& residual_add_node = const_cast<Node&>(last_node);
-          const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
-          if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
-            dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);    // residual
-          } else if (dropout_output_name == residual_add_node.InputDefs()[1]->Name()) {
-            dropout_input.push_back(residual_add_node.MutableInputDefs()[0]);    // residual
-          }
-          
-          dropout_output[0] = residual_add_node.MutableOutputDefs()[0];
-
-          nodes_to_fuse.push_back(residual_add_node);
-          has_residual_add = true;
-          break;
+        if (!graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
+          continue;
         }
+
+        Node& residual_add_node = const_cast<Node&>(last_node);
+        const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
+        if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
+          dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);  // residual
+        } else if (dropout_output_name == residual_add_node.InputDefs()[1]->Name()) {
+          dropout_input.push_back(residual_add_node.MutableInputDefs()[0]);  // residual
+        }
+
+        dropout_output[0] = residual_add_node.MutableOutputDefs()[0];
+
+        nodes_to_fuse.push_back(residual_add_node);
+        has_residual_add = true;
+        break;
       }
     }
-    
+
     if (!has_residual_add) {
       NodeArg& dummy = graph.GetOrCreateNodeArg("", nullptr);
-      dropout_input.push_back(&dummy);    // add a dummy residual
-    }    
+      dropout_input.push_back(&dummy);  // add a dummy residual
+    }
 
     if (dropout_node.InputDefs().size() > 1) {
       dropout_input.push_back(dropout_node.MutableInputDefs()[1]);  // ratio
@@ -136,7 +157,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
                                                   {},
                                                   kMSDomain);
 
-    // Get attribute "seed" from "Dropout" node if available. 
+    // Get attribute "seed" from "Dropout" node if available.
     NodeAttributes dropout_attrs = dropout_node.GetAttributes();
     NodeAttributes::const_iterator seed = dropout_attrs.find("seed");
     if (seed != dropout_attrs.end()) {
