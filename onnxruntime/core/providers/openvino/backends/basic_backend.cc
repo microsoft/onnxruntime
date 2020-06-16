@@ -34,7 +34,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
-  SetIODefs(model_proto, ie_cnn_network_);
+  if(subgraph_context_.device_id == "CPU"){
+    SetIODefs(model_proto, ie_cnn_network_);
+  }
   InferenceEngine::ExecutableNetwork exe_network;
 
   // Loading model to the plugin
@@ -77,7 +79,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
     InferenceEngine::Blob::Ptr graph_input_blob;
     try {
       graph_input_blob = infer_request->GetBlob(input_info_iter->first);
-      
+
     } catch (InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_info_iter->first + e.what());
     } catch (...) {
@@ -95,8 +97,8 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
         (precision == InferenceEngine::Precision::I32)) {
 
       const int64_t* tensor_data_64 = ort.GetTensorData<int64_t>(input_tensors[i]);
-      auto data_len = (input_data_size * 2) / sizeof(int64_t)  ;    
-     
+      auto data_len = (input_data_size * 2) / sizeof(int64_t)  ;
+
       std::copy(tensor_data_64, tensor_data_64+data_len, (uint32_t*)graph_input_buffer);
     } else {
 
@@ -144,29 +146,29 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort,
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_info_iter->first);
     }
-    
+
     auto graph_output_buffer = graph_output_blob->buffer()
                                    .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
-    
+
     size_t output_data_size = graph_output_blob->byteSize();
 
     auto tensor_shape = ort.GetTensorTypeAndShape(output_tensors[i]);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
     auto precision = output_info_iter->second->getPrecision();
-   
+
    if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
        (precision == InferenceEngine::Precision::I32)) {
 
-      int64_t* tensor_data = ort.GetTensorMutableData<int64_t>(output_tensors[i]);  
-    
-      auto data_len = output_data_size/sizeof(int32_t); 
+      int64_t* tensor_data = ort.GetTensorMutableData<int64_t>(output_tensors[i]);
+
+      auto data_len = output_data_size/sizeof(int32_t);
       std::transform((int32_t*)graph_output_buffer,((int32_t*)graph_output_buffer) + data_len, tensor_data, static_cast_int64());
 
     } else {
       char* tensor_data = ort.GetTensorMutableData<char>(output_tensors[i]);
       std::memcpy(tensor_data, graph_output_buffer, output_data_size);
 
-    }    
+    }
   }
 }
 
