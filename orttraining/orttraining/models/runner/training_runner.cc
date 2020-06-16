@@ -963,8 +963,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Throughput: " << throughput << " Examples / Second\n"
             << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n"
             << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n"
-            << "Average Step Time: " << all_steps_duration_seconds.count() * 1000 << " ms\n"
-            << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count() * 1000000) << " Examples / Second\n";
+            << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start)<< " Second\n"
+            << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
   return Status::OK();
 }
