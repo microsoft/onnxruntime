@@ -69,7 +69,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
 
       transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
 
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
+      // Turning off FastGelu Approximation
+      //transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
 
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
