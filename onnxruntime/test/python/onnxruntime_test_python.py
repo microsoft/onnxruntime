@@ -43,6 +43,20 @@ class TestInferenceSession(unittest.TestCase):
             # confirm only CPU Provider is registered now.
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
+    def testSetProvidersWithOptions(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+            # confirm that CUDA Provider is in list of registered providers.
+            self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+            option1 = {'device_id': 0}
+            sess.set_providers(['CUDAExecutionProvider'], [option1])
+            self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+            option2 = {'device_id': -1}
+            with self.assertRaises(RuntimeError):
+                sess.set_providers(['CUDAExecutionProvider'], [option2])
+            sess.set_providers(['CUDAExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+            self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
     def testInvalidSetProviders(self):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))

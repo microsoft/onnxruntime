@@ -57,11 +57,12 @@ class Session:
         "Return list of registered execution providers."
         return self._providers
 
-    def set_providers(self, providers):
+    def set_providers(self, providers, provider_options=[]):
         """
         Register the input list of execution providers. The underlying session is re-created.
 
         :param providers: list of execution providers
+        :param provider_options: list of provider options dict
 
         The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
@@ -69,23 +70,23 @@ class Session:
         if not set(providers).issubset(C.get_available_providers()):
             raise ValueError("{} does not contain a subset of available providers {}".format(
                 providers, C.get_available_providers()))
+
+        if provider_options:
+            if not isinstance(providers, list) or not isinstance(provider_options, list):
+                raise ValueError("Inputs must be two python lists.")
+
+            if len(providers) != len(provider_options):
+                raise ValueError("Two input lists must have same length.")
+
+            for option in provider_options:
+                if not isinstance(option, dict): 
+                    raise ValueError("Provider options must be list of python dict.")
+
+                for key, val in option.items():
+                    option[key] = str(val)
+
         self._reset_session()
-        self._load_model(providers)
-
-    def set_provider_options(self, provider, provider_options):
-
-        if not provider_options or not isinstance(provider_options, dict):
-            raise ValueError("Please specify provider options in python dict format")
-
-        if provider not in self._providers:
-            raise ValueError("{} does not in the list of registered providers {}".format(
-                provider, self._providers))
-
-        for key, val in provider_options.items():
-            provider_options[key] = str(val)
-
-        self._sess.set_device_options(provider, provider_options)
-        self._load_model(self._providers)
+        self._load_model(providers, provider_options)
 
     def disable_fallback(self):
         """
@@ -174,7 +175,7 @@ class InferenceSession(Session):
         self._enable_fallback = True
         Session.__init__(self, self._sess)
 
-    def _load_model(self, providers=[]):
+    def _load_model(self, providers=[], provider_options=[]):
         if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
                 self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
@@ -189,7 +190,10 @@ class InferenceSession(Session):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
 
-        self._sess.load_model(providers)
+        if provider_options:
+            self._sess.load_model(providers, provider_options)
+        else:
+            self._sess.load_model(providers)
 
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
