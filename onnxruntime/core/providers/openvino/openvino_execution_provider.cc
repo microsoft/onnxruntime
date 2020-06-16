@@ -88,100 +88,109 @@ bool IsDimensionSupported(const Node* node, std::string device) {
 }
 
 //Ops which are not supported by OpenVINO EP
-bool IsUnsupportedOp(std::string name, std::string device) {
-  std::set<std::string> unsupported_ops_cpu = {
-      "Acosh",
-      "And",
-      "Asinh",
-      "Ceil",
+bool IsOpSupported(std::string name, std::string device) {
+  std::set<std::string> common_supported_ops = {
+      "Add",
+      "ArgMax",
+      "ArgMin",
+      "AveragePool",
+      "BatchNormalization",
+      "Cast",
+      "Clip",
+      "Concat",
+      "Constant",
       "ConstantOfShape",
-      "CumSum",
-      "DequantizeLinear",
-      "Equal",
-      "Exp",
-      "Greater",
-      "Hardmax",
-      "InstanceNormalization",
-      "Less",
-      "LogSoftmax",
-      "LpNormalization",
-      "MeanVarianceNormalization",
-      "Not",
-      "Or",
-      "QLinearConv",
-      "QuantizeLinear",
-      "Reciprocal",
-      "ReduceL1",
-      "ReduceL2",
-      "ReduceLogSumExp",
-      "Resize",
-      "Round",
-      "Scatter",
-      "ScatterElements",
-      "Scan",
-      "Shrink",
-      "Softplus",
-      "Split",
-      "Sqrt",
-      "ThresholdedRelu",
-      "Upsample",
-      "Xor",
-      "RoiAlign",
-      "NonZero",
-      "Tile",
-      "GatherND",
-      "ScatterND",
+      "Conv",
+      "ConvTranspose",
+      "DepthToSpace",
+      "Div",
+      "Dropout",
+      "Elu",
+      "Flatten",
+      "Floor",
+      "Gather",
+      "Gemm",
+      "GlobalAveragePool",
+      "GlobalLpPool",
+      "Identity",
+      "LeakyRelu",
+      "Log",
+      "LRN",
+      "LSTM",
+      "MatMul",
+      "Max",
+      "MaxPool",
+      "Mean",
+      "Min",
+      "Mul",
+      "Neg",
+      "Pad",
+      "Pow",
+      "PRelu",
+      "ReduceMax",
+      "ReduceMean",
+      "ReduceMin",
+      "ReduceSum",
+      "Relu",
+      "Reshape",
+      "Sigmoid",
+      "Slice",
+      "Softmax",
+      "SpaceToDepth",
+      "Squeeze",
+      "Sub",
+      "Sum",
+      "Tanh",
+      "TopK",
+      "Transpose",
+      "Unsqueeze",
   };
 
-  std::set<std::string> unsupported_ops_gpu = {
-      "Atanh",
-      "Cos",
-      "Cosh",
-      "Mod",
-      "ReduceLogSum",
-      "ReduceProd"
-      "ReduceSumSquare",
-      "Sign",
-      "SinFloat",
-      "Sinh",
-      "Softsign",
-      "ReverseSequence",
+  std::set<std::string> supported_ops_cpu = {
+    "Abs",
+    "Acos",
+    "Acosh",
+    "Asin",
+    "Asinh",
+    "Atan",
+    "Atanh",
+    "Cos",
+    "Cosh",
+    "Erf",
+    "HardSigmoid",
+    "ReduceLogSum",
+    "ReduceProd",
+    "ReduceSumSquare",
+    "Selu",
+    "Sign",
+    "Sinh",
+    "Softsign",
+    "Tan",
   };
 
-  std::set<std::string> unsupported_ops_vpu = {
-      "Abs",
-      "Acos",
-      "Acosh",
-      "Asin",
-      "Asinh",
-      "Atan",
-      "Atanh",
-      "Cos",
-      "Cosh",
-      "HardSigmoid",
-      "Mod",
-      "Sign",
-      "Sin",
-      "Sinh",
-      "Softsign",
-      "Tan",
-  };
 
-  std::set<std::string> unsupported_ops = {};
+  std::set<std::string> supported_ops_gpu = {
+    "HardSigmoid",
+  };
+  std::set<std::string> supported_ops_vpu = {};
+
+  std::set<std::string> supported_ops = {};
 
   if (device == "CPU") {
-    unsupported_ops = unsupported_ops_cpu;
+    std::merge(common_supported_ops.begin(), common_supported_ops.end(),
+               supported_ops_cpu.begin(), supported_ops_cpu.end(),
+               std::inserter(supported_ops,supported_ops.begin()));
   } else if (device == "GPU") {
-    std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
-               unsupported_ops_gpu.begin(), unsupported_ops_gpu.end(),
-               std::inserter(unsupported_ops, unsupported_ops.begin()));
+    std::merge(common_supported_ops.begin(), common_supported_ops.end(),
+               supported_ops_gpu.begin(), supported_ops_gpu.end(),
+               std::inserter(supported_ops, supported_ops.begin()));
   } else if (device == "MYRIAD" || device == "HDDL") {
-    std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
-               unsupported_ops_vpu.begin(), unsupported_ops_vpu.end(),
-               std::inserter(unsupported_ops, unsupported_ops.begin()));
+    std::merge(common_supported_ops.begin(), common_supported_ops.end(),
+               supported_ops_vpu.begin(), supported_ops_vpu.end(),
+               std::inserter(supported_ops, supported_ops.begin()));
   }
 
-  return unsupported_ops.find(name) != unsupported_ops.end();
+  return supported_ops.find(name) != supported_ops.end();
 }
 
 // Returns true only if op is in a mode that is not currently supported
@@ -370,17 +379,17 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //start, end, axes need to be a initializer
     const auto &start_arg = node->InputDefs()[1];
     const auto &end_arg = node->InputDefs()[2];
-    
+
     bool cond_for_slice = false;
     cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
     cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
-      
+
     if (node->InputDefs().size() > 3) {
       const auto &axes_arg = node->InputDefs()[3];
       cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
     }
-     
-    return cond_for_slice; 
+
+    return cond_for_slice;
   } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in nGraph
     const auto& attributes = node->GetAttributes();
@@ -537,13 +546,12 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   */
 
   //Check 0
-  if (IsUnsupportedOp(optype, device_id)) {
+  if (!IsOpSupported(optype, device_id)) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
-      std::cout << "Node is in the unsupported list" << std::endl;
+      std::cout << "Node is not in the supported ops list" << std::endl;
     }
 #endif
-
     return false;
   }
 
@@ -866,7 +874,8 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     const auto& nodes = graph_viewer.GetNodesInTopologicalOrder();
     if (nodes.size() == 1) {
       const auto& node = graph_viewer.GetNode(nodes[0]);
-      if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout")
+      if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike"
+           || node->OpType() == "Dropout" || node->OpType() == "Shape" || node->OpType() == "ConstantOfShape")
         return result;
     }
 
@@ -910,7 +919,9 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
       //If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
       if (this_cluster.size() == 1) {
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
-        if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike" || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat" || node->OpType() == "Cast")
+        if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike"
+             || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat"
+             || node->OpType() == "Cast" || node->OpType() == "ConstantOfShape")
           continue;
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
