@@ -10,7 +10,7 @@ import argparse
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
-from BertOnnxModelTF import BertOnnxModelTF
+from onnx_model_bert_tf import BertOnnxModelTF
 logger = logging.getLogger(__name__)
 
 

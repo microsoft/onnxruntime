@@ -27,12 +27,12 @@ import numpy as np
 from typing import Dict
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, load_model
-from BertOnnxModel import BertOnnxModel, BertOptimizationOptions
-from BertOnnxModelTF import BertOnnxModelTF
-from BertOnnxModelKeras import BertOnnxModelKeras
-from Gpt2OnnxModel import Gpt2OnnxModel
+from onnx_model_bert import BertOnnxModel, BertOptimizationOptions
+from onnx_model_bert_tf import BertOnnxModelTF
+from onnx_model_bert_keras import BertOnnxModelKeras
+from onnx_model_gpt2 import Gpt2OnnxModel
 
-logger = logging.getLogger('')
+logger = logging.getLogger(__name__)
 
 # Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx) and whether OnnxRuntime has the optimization.
 MODEL_CLASSES = {
