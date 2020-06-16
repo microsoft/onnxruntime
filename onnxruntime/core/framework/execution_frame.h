@@ -129,16 +129,16 @@ class ExecutionFrame final : public IExecutionFrame {
     return planner_ != nullptr;
   }
 
-  // Return the size of physical memory allocated in runtime.
+  // Return the size of virtual memory allocated in runtime.
   // The memory is usually used for activations in forward and backward passes.
-  size_t GetDynamicMemorySize() {
-    return dynamic_activation_memory_in_bytes_;
+  const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() {
+    return dynamic_activation_memory_sizes_in_byte_;
   }
 
-  // Return the size of physical memory allocated before computation.
+  // Return the size of virtual memory allocated before computation.
   // The memory is usually used for activations in forward and backward passes.
-  size_t GetStaticMemorySize() {
-    return static_activation_memory_in_bytes_;
+  const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() {
+    return static_activation_memory_sizes_in_byte_;
   }
 
  private:
@@ -183,10 +183,10 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Size of virtual memory allocated before any kernel execution.
   // This field is not physical memory size.
-  size_t static_activation_memory_in_bytes_;
+  std::unordered_map<std::string, size_t> static_activation_memory_sizes_in_byte_;
   // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
   // we may allocate some memory for its outputs, if not planned.).
   // This field is not physical memory size.
-  size_t dynamic_activation_memory_in_bytes_;
+  std::unordered_map<std::string, size_t> dynamic_activation_memory_sizes_in_byte_;
 };
 }  // namespace onnxruntime

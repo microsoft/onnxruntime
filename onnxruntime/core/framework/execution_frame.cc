@@ -201,9 +201,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
-      planner_(nullptr),
-      static_activation_memory_in_bytes_(0),
-      dynamic_activation_memory_in_bytes_(0) {
+      planner_(nullptr) {
   Init(feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(), fetches);
 
   // map the custom allocators to ort_value_idx entries
@@ -256,9 +254,17 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
-              static_activation_memory_in_bytes_ += mem_patterns_->patterns[i].PeakSize();
-              buffer = alloc->Alloc(static_activation_memory_in_bytes_);
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes 
+              auto peak_size = mem_patterns_->patterns[i].PeakSize();
+              // Planning of one memory type should only happen once.
+              ORT_ENFORCE(
+                static_activation_memory_sizes_in_byte_.find(location.name) ==
+                static_activation_memory_sizes_in_byte_.end(),
+                "Memory type ",
+                location.name,
+                " should only appear once.");
+              static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+              buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do
@@ -378,7 +384,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     TraceAllocate(ort_value_index, size);
   }
 
-  dynamic_activation_memory_in_bytes_ += size;
+  dynamic_activation_memory_sizes_in_byte_[location.name] += size;
 
   return Status::OK();
 }
