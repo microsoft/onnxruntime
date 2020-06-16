@@ -205,6 +205,9 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ArgDef reduced_fused_gradient_argdef;
   ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
   // add weight update
+  for (auto& opt : opt_configs_) {
+    opt.update_weight = true;
+  }
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
       opt_builder_registry_, weight_argdefs, gradient_argdefs,
       &global_grad_norm_argdef,
