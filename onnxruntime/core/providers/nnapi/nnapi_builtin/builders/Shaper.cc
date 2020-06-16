@@ -71,6 +71,19 @@ void Shaper::Conv(const std::string& input_name,
 
   shape_map_[output_name] = outputDimen;
 
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, weight_name,
+         onnx_pads, onnx_strides, onnx_dilations,
+         nchw,
+         output_name](Shaper& shaper) {
+          shaper.Conv(input_name, weight_name,
+                      onnx_pads, onnx_strides, onnx_dilations,
+                      nchw,
+                      output_name);
+        });
+  }
+
   // LOGV("Conv %s nchw %d", input_name.c_str(), nchw);
   // LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
   // LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
@@ -138,6 +151,18 @@ void Shaper::DepthwiseConv(const std::string& input_name,
   }
   shape_map_[output_name] = outputDimen;
 
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, weight_name,
+         onnx_pads, onnx_strides, onnx_dilations,
+         nchw,
+         output_name](Shaper& shaper) {
+          shaper.DepthwiseConv(input_name, weight_name,
+                               onnx_pads, onnx_strides, onnx_dilations,
+                               nchw,
+                               output_name);
+        });
+  }
   // LOGV("DepthwiseConv %s nchw %d", input_name.c_str(), nchw);
   // LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
   // LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
@@ -187,6 +212,18 @@ void Shaper::Pool(const std::string& input_name,
 
   shape_map_[output_name] = outputDimen;
 
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name,
+         onnx_pads, onnx_strides, kernel_shape,
+         nchw,
+         output_name](Shaper& shaper) {
+          shaper.Pool(input_name,
+                      onnx_pads, onnx_strides, kernel_shape,
+                      nchw,
+                      output_name);
+        });
+  }
   // LOGV("Pool %s nchw %d", input_name.c_str(), nchw);
   // LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
   // LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
@@ -197,50 +234,46 @@ void Shaper::Reshape(const std::string& input_name,
                      const std::string& output_name) {
   auto input_dimen = shape_map_.at(input_name);
   int64_t input_size = Product(input_dimen);
-  std::vector<int32_t> output_dimen(shape.size());
+  std::vector<uint32_t> output_dimen(shape.size());
 
   int64_t capacity = 1;
   int unk_dim_idx = -1;
   for (size_t i = 0; i < shape.size(); i++) {
-    if (shape[i] == -1) {
+    int32_t dim_i = shape[i];
+    if (dim_i == -1) {
       if (unk_dim_idx != -1)
         throw std::invalid_argument(
             "Only one input dimension of Attr(shape) can be unknown!");
       unk_dim_idx = i;
-    } else if (shape[i] == 0) {
-      if (i >= input_dimen.size())
-        throw std::invalid_argument(
-            "The index of dimension to copy from input"
-            " shape must be less than the size of input shape!");
-    } else if (shape[i] < 0) {
+    } else if (dim_i == 0) {
       throw std::invalid_argument(
-          "Each input dimension of Attr(shape) must"
-          " not be negtive except one unknown dimension!");
+          "NNAPI does not support 0 reshape dimension");
+    } else {
+      capacity *= dim_i;
+      output_dimen[i] = static_cast<uint32_t>(dim_i);
     }
-
-    int32_t output_dim_i = shape[i] ? shape[i] : input_dimen[i];
-    output_dimen[i] = output_dim_i;
-    capacity *= output_dim_i;
   }
 
   if (unk_dim_idx != -1) {
     if (input_size == 0)
       output_dimen[unk_dim_idx] = 0;
     else
-      output_dimen[unk_dim_idx] = -input_size / capacity;
+      output_dimen[unk_dim_idx] = input_size / capacity;
 
-    if ((output_dimen[unk_dim_idx] * capacity) != (-input_size))
-      throw std::invalid_argument("Invalid shape is given!");
-  } else {
-    if (capacity != input_size)
-      throw std::invalid_argument("Invalid shape is given!");
+    capacity *= output_dimen[unk_dim_idx];
   }
 
-  Shape final_dimen(shape.size());
-  for (size_t i = 0; i < shape.size(); i++) {
-    final_dimen[i] = (uint32_t)output_dimen[i];
+  if (capacity != input_size)
+    throw std::invalid_argument("Invalid shape is given!");
+
+  shape_map_[output_name] = output_dimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, shape, output_name](Shaper& shaper) {
+          shaper.Reshape(input_name, shape, output_name);
+        });
   }
-  shape_map_[output_name] = final_dimen;
 }
 
 void Shaper::Transpose(const std::string& input_name,
@@ -255,6 +288,13 @@ void Shaper::Transpose(const std::string& input_name,
     output_Dimen[i] = input_dimen[perm.empty() ? size - i - 1 : perm[i]];
 
   shape_map_[output_name] = output_Dimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, perm, output_name](Shaper& shaper) {
+          shaper.Transpose(input_name, perm, output_name);
+        });
+  }
 }
 
 void Shaper::Eltwise(const std::string& input1_name,
@@ -275,6 +315,16 @@ void Shaper::Eltwise(const std::string& input1_name,
   }
 
   shape_map_[output_name] = max_shape;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input1_name, input2_name, output_name](Shaper& shaper) {
+          LOGV("lambda eltwise input1 %s, input2 %s, output %s",
+               input1_name.c_str(), input2_name.c_str(), output_name.c_str());
+
+          shaper.Eltwise(input1_name, input2_name, output_name);
+        });
+  }
   // LOGV("Eltwise input1 %s", input1_name.c_str());
   // LOGV("Eltwise input2 %s", input2_name.c_str());
   // LOGV("input1 %d %d %d %d", shape1[0], shape1[1], shape1[2], shape1[3]);
@@ -285,25 +335,65 @@ void Shaper::Eltwise(const std::string& input1_name,
 void Shaper::Identity(const std::string& input_name,
                       const std::string& output_name) {
   shape_map_[output_name] = shape_map_.at(input_name);
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, output_name](Shaper& shaper) {
+          shaper.Identity(input_name, output_name);
+        });
+  }
 }
 
-void Shaper::GEMM(const std::string& input_name, const std::string& weight_name,
-                  const std::string& output_name) {
+void Shaper::FC(const std::string& input1_name, const std::string& input2_name,
+                const std::string& output_name) {
   // Currently we only support A*B'+C
-  Shape weightDimen = shape_map_.at(weight_name);  // num_units, input_size
-  auto input_dimen = shape_map_.at(input_name);
-  Shape outputDimen{input_dimen[0], weightDimen[0]};
+  auto input1_dimen = shape_map_.at(input1_name);
+  Shape input2_dimen = shape_map_.at(input2_name);  // num_units, input_size
+  Shape outputDimen{input1_dimen[0], input2_dimen[0]};
   shape_map_[output_name] = outputDimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input1_name, input2_name, output_name](Shaper& shaper) {
+          shaper.FC(input1_name, input2_name, output_name);
+        });
+  }
 }
 
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
 }
 
-size_t Shaper::GetSize(const std::string& name) {
+void Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
+  if (!shaper_finalized_) {
+    throw std::invalid_argument(
+        "Cannot UpdateShape while shaper is not finalized");
+  }
+
+  const auto& old_shape = shape_map_.at(name);
+  if (old_shape != new_shape && Product(shape_map_.at(name)) != 0)
+    throw std::invalid_argument(
+        "The shape should be same size or old shape has size 0");
+
+  shape_map_[name] = new_shape;
+}
+
+void Shaper::UpdateDynamicDimensions() {
+  if (!shaper_finalized_) {
+    throw std::invalid_argument(
+        "Cannot UpdateDynamicDimensions while shaper is not finalized");
+  }
+
+  for (auto& shape_op : shape_ops_)
+    shape_op(*this);
+}
+
+size_t Shaper::GetSize(const std::string& name) const {
   return static_cast<size_t>(Product(shape_map_.at(name)));
 }
 
 void Shaper::Clear() {
+  shaper_finalized_ = false;
   shape_map_.clear();
+  shape_ops_.clear();
 }

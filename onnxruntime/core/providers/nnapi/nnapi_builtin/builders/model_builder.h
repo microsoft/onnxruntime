@@ -93,6 +93,7 @@ class ModelBuilder {
   void RegisterModelInputs();
   void AddOperations();
   void RegisterModelOutputs();
+  void RegisterModelShaper();
   void ClearData();
 
   void SetOperandValue(ModelBuilder::Index index,

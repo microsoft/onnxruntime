@@ -37,18 +37,20 @@ bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
   if (!supported_node_vec.empty()) {
     if (supported_node_vec.size() == 1) {
       const auto& node = model_proto.graph().node(supported_node_vec[0]);
+      const auto& op = node.op_type();
       // It is not worth it to perform a single Reshape/Dropout/Identity operator
       // which is only copying the data in NNAPI
       // If this is the case, let it fall back
-      if (node.op_type() == "Reshape" || node.op_type() == "Dropout" ||
-          node.op_type() == "Identity") {
+      if (op == "Reshape" ||
+          op == "Dropout" ||
+          op == "Identity") {
         return false;
       }
     }
     return true;
   }
   return false;
-}
+}  // namespace nnapi
 
 std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   std::vector<std::vector<int>> supported_node_vecs;
@@ -66,10 +68,12 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
     bool supported;
     std::string error_msg;
     std::tie(supported, error_msg) = IsNodeSupported(model_proto_.graph().node(i));
-    LOGV("Node %s, name %s, supported %d, message: %s",
-         model_proto_.graph().node(i).op_type().c_str(),
+
+    LOGV("Node: %s, index %d, name: %s, supported: %d, message: %s",
+         model_proto_.graph().node(i).op_type().c_str(), i,
          model_proto_.graph().node(i).name().c_str(),
          supported, error_msg.c_str());
+
     if (supported) {
       supported_node_vec.push_back(i);
     } else {
@@ -127,6 +131,7 @@ void ModelBuilder::Prepare() {
   RegisterModelInputs();
   AddOperations();
   RegisterModelOutputs();
+  RegisterModelShaper();
 }
 
 void ModelBuilder::ClearData() {
@@ -253,12 +258,7 @@ void ModelBuilder::RegisterModelInputs() {
     }
 
     Shaper::Shape shape;
-    for (int32_t dim_idx = 0; dim_idx < input.type().tensor_type().shape().dim_size(); dim_idx++) {
-      const auto& dim = input.type().tensor_type().shape().dim(dim_idx);
-      if (dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimParam) {
-        nnapi_model_->SetInputDimensionMap(input_idx, dim_idx, dim.dim_param());
-      }
-
+    for (const auto& dim : input.type().tensor_type().shape().dim()) {
       shape.push_back(static_cast<uint32_t>(dim.dim_value()));
     }
 
@@ -285,9 +285,9 @@ void ModelBuilder::RegisterModelInputs() {
     RegisterOperand(input_name, index, operand_type);
 
     input_index_vec_.push_back(index);
-    nnapi_model_->AddInput(input_name, shape, operand_type);
+    nnapi_model_->AddInput(input_name, operand_type);
   }
-}
+}  // namespace nnapi
 
 void ModelBuilder::RegisterModelOutputs() {
   for (int32_t output_idx = 0; output_idx < model_proto_.graph().output_size(); output_idx++) {
@@ -298,16 +298,14 @@ void ModelBuilder::RegisterModelOutputs() {
           "The output of graph is not registered" + output_name);
     }
 
-    for (int32_t dim_idx = 0; dim_idx < output.type().tensor_type().shape().dim_size(); dim_idx++) {
-      const auto& dim = output.type().tensor_type().shape().dim(dim_idx);
-      if (dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimParam) {
-        nnapi_model_->SetOutputDimensionMap(output_name, dim_idx, dim.dim_param());
-      }
-    }
-
     output_index_vec_.push_back(operand_indices_[output_name]);
-    nnapi_model_->AddOutput(output_name, shaper_[output_name], operand_types_.at(output_name));
+    nnapi_model_->AddOutput(output_name, operand_types_.at(output_name));
   }
+}
+
+void ModelBuilder::RegisterModelShaper() {
+  shaper_.Finalize();
+  nnapi_model_->SetShaper(shaper_);
 }
 
 ModelBuilder::Index ModelBuilder::AddNewOperand(const OperandType& operand_type) {

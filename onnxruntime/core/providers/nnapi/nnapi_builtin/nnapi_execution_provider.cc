@@ -318,17 +318,12 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         // LOGS_DEFAULT(VERBOSE) << "i is " << i << " input[0] is " << ((float*)inputBuffer)[0];
       }
 
-      std::unordered_map<std::string, uint32_t> input_dim_param_values = model->GetInputDimParamValues(inputs);
-
-      for (const auto& entry : input_dim_param_values)
-        LOGS_DEFAULT(VERBOSE) << "dim_param is " << entry.first << " and size " << entry.second;
-
+      model->SetInputs(inputs);
       std::vector<nnapi::Model::InputOutputInfo> outputs;
       outputs.reserve(num_outputs);
       for (size_t i = 0; i < num_outputs; i++) {
         const auto output_name = model->GetOutputs()[i];
-        const auto model_output_type =
-            model->GetOutputType(output_name, input_dim_param_values);
+        const auto model_output_type = model->GetOutputType(output_name);
         const auto output_shape = model_output_type.dimensions;
 
         std::vector<int64_t> int64_output_shape(output_shape.begin(),
@@ -339,8 +334,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
                                                           int64_output_shape.size());
 
         // remove
-        LOGS_DEFAULT(VERBOSE) << "output name is " << output_name << " and i " << i;
-        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(model_output_type.dimensions);
+        LOGS_DEFAULT(VERBOSE) << "output name is " << output_name << " and i " << i
+                              << "and dim is " << GetShape(model_output_type.dimensions);
 
         void* output_buffer = nullptr;
         switch (model_output_type.type) {
@@ -362,7 +357,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         outputs.push_back({output_buffer, std::move(model_output_type)});
       }
 
-      model->Predict(inputs, outputs);
+      model->SetOutputs(outputs);
+
+      model->Predict();
 
       return Status::OK();
     };

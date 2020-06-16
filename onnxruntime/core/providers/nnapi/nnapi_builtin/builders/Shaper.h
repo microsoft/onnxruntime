@@ -43,17 +43,25 @@ class Shaper {
                const std::string& output_name);
   void Identity(const std::string& input_name,
                 const std::string& output_name);
-  void GEMM(const std::string& input_name,
-            const std::string& weight_name,
-            const std::string& output_name);
+  void FC(const std::string& input1_name,
+          const std::string& input2_name,
+          const std::string& output_name);
+
   void AddShape(const std::string& name, const Shape& shape);
-  size_t GetSize(const std::string& name);
+  void UpdateShape(const std::string& name, const Shape& new_shape);
+  void UpdateDynamicDimensions();
+
+  size_t GetSize(const std::string& name) const;
+
+  void Finalize() { shaper_finalized_ = true; }
   void Clear();
 
-  inline const Shape& operator[](const std::string& key) {
+  inline const Shape& operator[](const std::string& key) const {
     return shape_map_.at(key);
   }
 
  private:
+  bool shaper_finalized_{false};
   std::unordered_map<std::string, Shape> shape_map_;
+  std::vector<std::function<void(Shaper&)>> shape_ops_;
 };

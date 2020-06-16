@@ -84,29 +84,36 @@ void AddPoolOperator(int32_t op_type,
 Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
                        const std::string& name) {
   Shaper::Shape emptyShape;
+  for (const auto& input : model_proto.graph().input()) {
+    if (input.name() != name)
+      continue;
+
+    Shaper::Shape shape;
+    for (const auto& dim : input.type().tensor_type().shape().dim())
+      shape.push_back(dim.dim_value());
+
+    return shape;
+  }
+
   for (const auto& value_info : model_proto.graph().value_info()) {
-    if (value_info.name() == name) {
-      if (!value_info.has_type()) {
-        return emptyShape;
-      } else if (!value_info.type().has_tensor_type()) {
-        return emptyShape;
-      } else if (!value_info.type().tensor_type().has_shape()) {
-        return emptyShape;
-      } else if (value_info.type().tensor_type().shape().dim_size() == 0) {
-        return emptyShape;
-      }
+    if (value_info.name() != name)
+      continue;
 
-      Shaper::Shape shape;
-      for (const auto& dim : value_info.type().tensor_type().shape().dim()) {
-        if (dim.has_dim_value()) {
-          shape.push_back(dim.dim_value());
-        } else {
-          return emptyShape;
-        }
-      }
-
-      return shape;
+    if (!value_info.has_type()) {
+      return emptyShape;
+    } else if (!value_info.type().has_tensor_type()) {
+      return emptyShape;
+    } else if (!value_info.type().tensor_type().has_shape()) {
+      return emptyShape;
+    } else if (value_info.type().tensor_type().shape().dim_size() == 0) {
+      return emptyShape;
     }
+
+    Shaper::Shape shape;
+    for (const auto& dim : value_info.type().tensor_type().shape().dim())
+      shape.push_back(dim.dim_value());
+
+    return shape;
   }
 
   return emptyShape;
@@ -246,7 +253,7 @@ std::pair<bool, std::string> BaseOpBuilder::IsOpSupported() {
   int32_t android_sdk_ver = model_builder_.GetAndroidSdkVer();
   int32_t required_sdk_ver = GetMinSupportedSdkVer();
   if (required_sdk_ver > android_sdk_ver) {
-    LOGI("Android API level %d is lower than %d", android_sdk_ver, required_sdk_ver);
+    LOGV("Android API level %d is lower than %d", android_sdk_ver, required_sdk_ver);
     return {false, "Operator " + node_.op_type() + " is only supported on API > " + std::to_string(required_sdk_ver)};
   }
 #endif
@@ -267,6 +274,8 @@ void BaseOpBuilder::AddOperator() {
         "Unsupported operator " + node_.op_type() + ",msg: " + error_msg);
 
   AddOperatorImpl();
+
+  LOGV("Operator %s type %s added", node_.name().c_str(), node_.op_type().c_str());
 }
 
 void BaseOpBuilder::AddOperatorImpl() {
@@ -429,8 +438,20 @@ void ReshapeOpBuilder::SkipInitializers() {
 }
 
 std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
-  if (!HAS(model_builder_.GetInitializerTensors(), node_.input(1)))
+  const auto& initializers(model_builder_.GetInitializerTensors());
+  if (!HAS(initializers, node_.input(1)))
     return {false, "New shape of reshape must be known"};
+
+  const auto& shape_tensor = initializers.at(node_.input(1));
+  const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
+  const auto size = static_cast<uint32_t>(shape_tensor.dims()[0]);
+  const auto input_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(0));
+
+  for (uint32_t i = 0; i < size; i++) {
+    // NNAPI reshape does not support 0 as dimension
+    if (rawShape[i] == 0 && i < input_shape.size() && input_shape[i] == 0)
+      return {false, "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension"};
+  }
 
   return {true, ""};
 }
@@ -636,7 +657,7 @@ std::pair<bool, std::string> PoolOpBuilder::IsOpSupportedImpl() {
       return {false, "Argmax in maxpooling is not supported"};
     }
   } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
-    const auto& input_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(0));
+    const auto input_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(0));
     if (input_shape.size() != 4) {
       return {false,
               "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in " + op};
@@ -1064,7 +1085,7 @@ void GemmOpBuilder::AddOperatorImpl() {
   int32_t fuse_code = model_builder_.FindActivation(output);
   input_indices.push_back(model_builder_.AddOperandFromScalar(fuse_code));
 
-  shaper.GEMM(input1, input2, output);
+  shaper.FC(input1, input2, output);
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
   model_builder_.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED,
                               input_indices, {output}, {output_operand_type});

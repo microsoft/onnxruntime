@@ -22,18 +22,14 @@ Model::~Model() {
   nnapi_->ANeuralNetworksModel_free(model_);
 }
 
-void Model::AddInput(const std::string& name, const Shaper::Shape& shape,
-                     const android::nn::wrapper::OperandType& operand_type) {
+void Model::AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type) {
   input_names_.push_back(name);
   operand_types_.insert({name, operand_type});
-  shaper_.AddShape(name, shape);
 }
 
-void Model::AddOutput(const std::string& name, const Shaper::Shape& shape,
-                      const android::nn::wrapper::OperandType& operand_type) {
+void Model::AddOutput(const std::string& name, const android::nn::wrapper::OperandType& operand_type) {
   output_names_.push_back(name);
   operand_types_.insert({name, operand_type});
-  shaper_.AddShape(name, shape);
 }
 
 const std::vector<std::string>& Model::GetInputs() const {
@@ -48,29 +44,12 @@ const android::nn::wrapper::OperandType& Model::GetInputType(const std::string& 
   return operand_types_.at(name);
 }
 
-const android::nn::wrapper::OperandType Model::GetOutputType(
-    const std::string& name, std::unordered_map<std::string, uint32_t> input_dim_param_values) const {
+const android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name) const {
   const auto& output_type = operand_types_.at(name);
-  if (HAS(output_dimension_map_, name)) {
-    auto dimensions = output_type.dimensions;
-    for (const auto& dim_map_entry : output_dimension_map_.at(name)) {
-      const auto& dim_param = dim_map_entry.second;
-      const auto dim_idx = dim_map_entry.first;
+  android::nn::wrapper::OperandType type(
+      output_type.type, shaper_for_exeuction_[name], output_type.operandType.scale, output_type.operandType.zeroPoint);
 
-      if (dimensions.size() <= static_cast<size_t>(dim_idx))
-        throw std::invalid_argument(
-            "Invalid dim_idx " + std::to_string(dim_idx));
-      if (HAS(input_dim_param_values, dim_param))
-        dimensions[dim_idx] = input_dim_param_values[dim_param];
-    }
-
-    android::nn::wrapper::OperandType type(
-        output_type.type, dimensions, output_type.operandType.scale, output_type.operandType.zeroPoint);
-
-    return type;
-  }
-
-  return output_type;
+  return type;
 }
 
 void Model::SetInputMap(std::unordered_map<std::string, size_t>&& input_map) {
@@ -79,14 +58,6 @@ void Model::SetInputMap(std::unordered_map<std::string, size_t>&& input_map) {
 
 void Model::SetOutputMap(std::unordered_map<std::string, size_t>&& output_map) {
   output_map_ = std::move(output_map);
-}
-
-void Model::SetInputDimensionMap(int32_t input_idx, int32_t dim_idx, const std::string& dim_param) {
-  input_dimension_map_[dim_param] = std::make_pair(input_idx, dim_idx);
-}
-
-void Model::SetOutputDimensionMap(const std::string& output_name, int32_t dim_idx, const std::string& dim_param) {
-  output_dimension_map_[output_name][dim_idx] = dim_param;
 }
 
 size_t Model::GetMappedInputIdx(const std::string& name) const {
@@ -114,6 +85,9 @@ void Model::PrepareForExecution() {
     throw std::invalid_argument(
         "Error in PrepareForExecution, compilation_ == nullptr");
   }
+
+  shaper_for_exeuction_ = shaper_;
+
   THROW_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &execution_));
   prepared_for_exe_ = true;
@@ -122,39 +96,12 @@ void Model::PrepareForExecution() {
 void Model::ResetExecution() {
   nnapi_->ANeuralNetworksExecution_free(execution_);
   execution_ = nullptr;
+  shaper_for_exeuction_.Clear();
   prepared_for_exe_ = false;
 }
 
-std::unordered_map<std::string, uint32_t>
-Model::GetInputDimParamValues(const std::vector<InputOutputInfo>& inputs) {
-  std::unordered_map<std::string, uint32_t> input_dim_param_values;
-  for (const auto& entry : input_dimension_map_) {
-    const auto& dim_param = entry.first;
-    size_t input_idx;
-    size_t dim_idx;
-    std::tie(input_idx, dim_idx) = entry.second;
-
-    if (inputs.size() <= input_idx)
-      throw std::invalid_argument(
-          "Invalid input_idx " + std::to_string(input_idx));
-
-    const auto& input_info(inputs[input_idx]);
-    if (input_info.type.dimensions.size() <= dim_idx)
-      throw std::invalid_argument(
-          "Invalid dim_idx " + std::to_string(dim_idx));
-
-    input_dim_param_values[dim_param] = input_info.type.dimensions[dim_idx];
-  }
-
-  return input_dim_param_values;
-}
-
-void Model::Predict(const std::vector<InputOutputInfo>& inputs,
-                    const std::vector<InputOutputInfo>& outputs) {
+void Model::Predict() {
   if (!prepared_for_exe_) PrepareForExecution();
-
-  SetInputs(inputs);
-  SetOutputs(outputs);
 
   ANeuralNetworksEvent* event = nullptr;
 
@@ -169,12 +116,21 @@ void Model::Predict(const std::vector<InputOutputInfo>& inputs,
 }
 
 void Model::SetInputs(const std::vector<InputOutputInfo>& inputs) {
+  if (!prepared_for_exe_) PrepareForExecution();
   for (size_t i = 0; i < inputs.size(); i++) {
     SetInputBuffer(i, inputs[i]);
+    shaper_for_exeuction_.UpdateShape(input_names_[i], inputs[i].type.dimensions);
   }
+
+  LOGV("Finished set all inputs");
+
+  shaper_for_exeuction_.UpdateDynamicDimensions();
+
+  LOGV("Finished UpdateDynamicDimensions");
 }
 
 void Model::SetOutputs(const std::vector<InputOutputInfo>& outputs) {
+  if (!prepared_for_exe_) PrepareForExecution();
   for (size_t i = 0; i < outputs.size(); i++) {
     SetOutputBuffer(i, outputs[i]);
   }
