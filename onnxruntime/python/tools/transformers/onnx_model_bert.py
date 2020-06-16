@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from onnx import TensorProto, helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
@@ -15,6 +15,7 @@ from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
 from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_utils import FusionUtils
 
 logger = getLogger(__name__)
 
@@ -126,9 +127,10 @@ class BertOnnxModel(OnnxModel):
         new_graph_inputs = []
 
         bert_inputs = self.get_bert_inputs()
+        utils = FusionUtils(self)
         for input in graph.input:
             if input.name in bert_inputs:
-                self.remove_cast_int32(input.name)
+                utils.remove_cast_int32(input.name)
                 input_shape = [
                     batch_size if isinstance(batch_size, int) else 1,
                     sequence_length if isinstance(sequence_length, int) else 128
