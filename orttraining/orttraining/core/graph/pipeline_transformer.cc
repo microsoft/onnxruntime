@@ -189,7 +189,7 @@ Node* AddBackwardRecord(Graph& graph,
   // TODO: use full list instead of the first element after changining
   // topological sort to depth-first from inputs.
   std::vector<NodeArg*> sub_backward_leaf_node_args{backward_leaf_node_args[0]};
-  ConvertTensorToBoolSignal(graph, backward_leaf_node_args, input_args);
+  ConvertTensorToBoolSignal(graph, sub_backward_leaf_node_args, input_args);
 
   // Optimizer will be added after applying pipeline transformer. To support partial graph evaluation,
   // the added Record backward op will have its first passthrough input as output.
