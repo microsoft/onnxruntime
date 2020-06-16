@@ -817,6 +817,25 @@ struct OrtApi {
   ORT_API2_STATUS(AddFreeDimensionOverrideByName,
                   _Inout_ OrtSessionOptions* options, _In_ const char* dim_name,
                   _In_ int64_t dim_value);
+
+  /**
+   * \param out_ptr will hold a pointer to the array of char *
+   * representing available providers.
+   * \param provider_length is a pointer to an int variable where
+   * the number of available providers will be added.
+   * The caller is responsible for freeing each char * and the pointer
+   * array by calling ReleaseGetAvailableProviders().
+   */
+  ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char ***out_ptr,
+                  _In_ int *provider_length);
+
+  /**
+   * \param ptr is the pointer to an array of available providers you
+   * get after calling GetAvailableProviders().
+   * \param providers_length is the number of available providers.
+   */
+  ORT_API2_STATUS(ReleaseGetAvailableProviders, _In_ char **ptr,
+                  _In_ int providers_length);
 };
 
 /*

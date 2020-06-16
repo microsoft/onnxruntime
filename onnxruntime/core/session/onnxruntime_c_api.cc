@@ -1375,6 +1375,105 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
+                    _In_ int *providers_length) {
+  API_IMPL_BEGIN
+  const int MAX_NUM_PROVIDERS = 14, MAX_LEN = 30;
+  char all_providers[MAX_NUM_PROVIDERS][MAX_LEN] = {
+    "CPUExecutionProvider",
+    "CUDAExecutionProvider",
+    "DnnlExecutionProvider",
+    "NGRAPHExecutionProvider",
+    "OpenVINOExecutionProvider",
+    "NupharExecutionProvider",
+    "VitisAIExecutionProvider",
+    "TensorrtExecutionProvider",
+    "NnapiExecutionProvider",
+    "RknpuExecutionProvider",
+    "DmlExecutionProvider",
+    "MIGraphXExecutionProvider",
+    "ACLExecutionProvider",
+    "ArmNNExecutionProvider",
+  };
+  enum providers {cpu, cuda, dnnl, ngraph, openvino, nuphar, vitisai, tensorrt,
+                  nnapi, rknpu, dml, migraph, acl, armnn};
+  int available_count = 1;
+  enum providers available_providers[MAX_NUM_PROVIDERS];
+  available_providers[available_count-1] = cpu;
+#ifdef USE_CUDA
+  available_count++;
+  available_providers[available_count-1] = cuda;
+#endif
+#ifdef USE_DNNL
+  available_count++;
+  available_providers[available_count-1] = dnnl;
+#endif
+#ifdef USE_NGRAPH
+  available_count++;
+  available_providers[available_count-1] = ngraph;
+#endif
+#ifdef USE_OPENVINO
+  available_count++;
+  available_providers[available_count-1] = openvino;
+#endif
+#ifdef USE_NUPHAR
+  available_count++;
+  available_providers[available_count-1] = nuphar;
+#endif
+#ifdef USE_VITISAI
+  available_count++;
+  available_providers[available_count-1] = vitisai;
+#endif
+#ifdef USE_TENSORRT
+  available_count++;
+  available_providers[available_count-1] = tensorrt;
+#endif
+#ifdef USE_NNAPI
+  available_count++;
+  available_providers[available_count-1] = nnapi;
+#endif
+#ifdef USE_RKNPU
+  available_count++;
+  available_providers[available_count-1] = rknpu;
+#endif
+#ifdef USE_DML
+  available_count++;
+  available_providers[available_count-1] = dml;
+#endif
+#ifdef USE_MIGRAPHX
+  available_count++;
+  available_providers[available_count-1] = migraph;
+#endif
+#ifdef USE_ACL
+  available_count++;
+  available_providers[available_count-1] = acl;
+#endif
+#ifdef USE_ARMNN
+  available_count++;
+  available_providers[available_count-1] = armnn;
+#endif
+  char **out = (char **)malloc(available_count * sizeof(char *));
+  for(int i = 0; i < available_count; i++) {
+      out[i] = (char *)malloc(strnlen(
+        all_providers[available_providers[i]], MAX_LEN) * sizeof(char));
+      strncpy(out[i], all_providers[available_providers[i]], MAX_LEN);
+  }
+  *providers_length = available_count;
+  *out_ptr = out;
+  API_IMPL_END
+  return NULL;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReleaseGetAvailableProviders, _In_ char **ptr,
+                    _In_ int providers_length) {
+  API_IMPL_BEGIN
+    for(int i = 0; i < providers_length; i++)
+        free(ptr[i]);
+    free(ptr);
+  API_IMPL_END
+  return NULL;
+}
+
 // End support for non-tensor types
 
 static constexpr OrtApiBase ort_api_base = {
@@ -1566,7 +1665,10 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::CreateThreadingOptions,
     &OrtApis::ReleaseThreadingOptions,
     &OrtApis::ModelMetadataGetCustomMetadataMapKeys,
-    &OrtApis::AddFreeDimensionOverrideByName};
+    &OrtApis::AddFreeDimensionOverrideByName,
+    &OrtApis::GetAvailableProviders,
+    &OrtApis::ReleaseGetAvailableProviders,
+};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
