@@ -68,6 +68,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       aclStrides[1] = strides[0];
 
       std::vector<int64_t> aclPads(4);
+    // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
       if (pads.size() == 2) {
         if (strides.size() == 1) {
           aclPads[0] = 0;
@@ -82,8 +83,8 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
         }
       } else {
         aclPads[0] = pads[1];
-        aclPads[1] = pads[0];
-        aclPads[2] = pads[3];
+        aclPads[1] = pads[3];
+        aclPads[2] = pads[0];
         aclPads[3] = pads[2];
       }
 
@@ -96,7 +97,9 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
 
       arm_compute::Size2D aclSize(aclKernelShape[0], aclKernelShape[1]);
 
-      arm_compute::PoolingLayerInfo pool_info(pool_type, aclSize, aclPadStride);
+      bool excludePadding = (pool_type == arm_compute::PoolingType::AVG && pool_attrs.count_include_pad) ? false : true;
+
+      arm_compute::PoolingLayerInfo pool_info(pool_type, aclSize, aclPadStride, excludePadding);
       layer->configure(tpool.in.get(), tpool.out.get(), pool_info);
     }
 

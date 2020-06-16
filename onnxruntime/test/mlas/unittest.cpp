@@ -47,7 +47,7 @@ Abstract:
 
 MLAS_THREADPOOL* threadpool = nullptr;
 
-template <typename T>
+template<typename T>
 class MatrixGuardBuffer
 {
 public:
@@ -202,7 +202,7 @@ public:
     }
 };
 
-template <typename T>
+template<typename T>
 class MlasFgemmTest : public MlasTestBase
 {
 private:
@@ -254,6 +254,7 @@ private:
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
                 printf("mismatch TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
+                break;
             }
         }
     }
@@ -467,8 +468,11 @@ public:
 
 #ifdef MLAS_HAS_QGEMM_U8X8
 
-template <typename xint8_t>
-class MlasQgemmU8X8Test : public MlasTestBase
+template<typename xint8_t, typename OutputType>
+class MlasQgemmU8X8Test;
+
+template<typename xint8_t>
+class MlasQgemmU8X8Test<xint8_t, int32_t> : public MlasTestBase
 {
 private:
     void
@@ -641,6 +645,124 @@ public:
             }
             printf("M %zd\n", M);
         }
+    }
+};
+
+template<typename xint8_t>
+class MlasQgemmU8X8Test<xint8_t, float> : public MlasTestBase
+{
+private:
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        uint8_t offa,
+        uint8_t offb
+        )
+    {
+        const uint8_t* A = BufferA.GetBuffer(K * M);
+        const xint8_t* B = BufferB.GetBuffer(N * K);
+        float* C = BufferC.GetBuffer(N * M);
+        float* CReference = BufferCReference.GetBuffer(N * M);
+        const float* Bias = BufferBias.GetBuffer(N);
+
+        const float AScale = 0.5f;
+        float* AFloat = BufferAFloat.GetBuffer(K * M);
+        DequantizeLinear(A, AFloat, K * M, AScale, offa);
+
+        const float BScale = 0.25f;
+        float* BFloat = BufferBFloat.GetBuffer(N * K);
+        DequantizeLinear(B, BFloat, N * K, BScale, xint8_t(offb));
+
+        const float CScale = AScale * BScale;
+
+        Test(M, N, K, A, AFloat, K, offa, B, BFloat, N, xint8_t(offb), C, CReference, N, CScale, nullptr);
+        Test(M, N, K, A, AFloat, K, offa, B, BFloat, N, xint8_t(offb), C, CReference, N, CScale, Bias);
+    }
+
+    void
+    Test(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        const float* AFloat,
+        size_t lda,
+        uint8_t offa,
+        const xint8_t* B,
+        const float* BFloat,
+        size_t ldb,
+        xint8_t offb,
+        float* C,
+        float* CReference,
+        size_t ldc,
+        float CScale,
+        const float* Bias
+        )
+    {
+        MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.0f, AFloat, lda, BFloat, ldb, 0.0f, CReference, ldc, threadpool);
+
+        if (Bias != nullptr) {
+            for (size_t m = 0; m < M; m++) {
+                for (size_t n = 0; n < N; n++) {
+                    CReference[m * ldc + n] += Bias[n];
+                }
+            }
+        }
+
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, &CScale, Bias, threadpool);
+
+        for (size_t f = 0; f < M * N; f++) {
+            // Sensitive to comparing positive/negative zero.
+            if (C[f] != CReference[f]) {
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, (int)offa, (int)offb, C[f], CReference[f]);
+            }
+        }
+    }
+
+    template<typename qint8_t>
+    void
+    DequantizeLinear(
+        const qint8_t* Input,
+        float* Output,
+        size_t N,
+        float scale,
+        qint8_t offset
+        )
+    {
+        for (size_t n = 0; n < N; n++) {
+            Output[n] = float((int32_t(Input[n]) - offset)) * scale;
+        }
+    }
+
+    MatrixGuardBuffer<uint8_t> BufferA;
+    MatrixGuardBuffer<xint8_t> BufferB;
+    MatrixGuardBuffer<float> BufferAFloat;
+    MatrixGuardBuffer<float> BufferBFloat;
+    MatrixGuardBuffer<float> BufferC;
+    MatrixGuardBuffer<float> BufferCReference;
+    MatrixGuardBuffer<float> BufferBias;
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t b = 1; b < 16; b++) {
+            Test(b, b, b, 34, 46);
+        }
+        for (size_t b = 16; b <= 256; b <<= 1) {
+            Test(b, b, b, 15, 191);
+        }
+        for (size_t b = 256; b < 320; b += 32) {
+            Test(b, b, b, 223, 73);
+        }
+        for (size_t b = 1; b < 96; b++) {
+            Test(1, b, 32, 0, 0);
+        }
+        Test(1024, 1024, 256, 13, 15);
     }
 };
 
@@ -2254,9 +2376,14 @@ RunThreadedTests(
 #endif
 
 #ifdef MLAS_HAS_QGEMM_U8X8
-    printf("QGEMM tests.\n");
-    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t>>()->ExecuteShort();
-    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t>>()->ExecuteShort();
+    printf("QGEMM U8S8=int32_t tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t>>()->ExecuteShort();
+    printf("QGEMM U8U8=int32_t tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t>>()->ExecuteShort();
+    printf("QGEMM U8S8=float tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, float>>()->ExecuteShort();
+    printf("QGEMM U8U8=float tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float>>()->ExecuteShort();
 #endif
 
     printf("Conv2D tests.\n");
