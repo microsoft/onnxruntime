@@ -31,16 +31,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
         {
-            if (value is Tensor<string>)
-            {
-                throw new ArgumentException("Only numeric tensors can be used to create FixedBufferOnnxValue.", nameof(value));
-            }
-
             NativeOnnxValueHelper.CreateNativeOnnxValue(value, out IntPtr onnxValue, out MemoryHandle pinnedMemoryHandle, out OnnxValueType onnxValueType, out TensorElementType elementType);
 
-            Debug.Assert(
-                onnxValueType == OnnxValueType.ONNX_TYPE_TENSOR && elementType != TensorElementType.String,
-                "the value should always be a numeric tensor");
+            Debug.Assert(onnxValueType == OnnxValueType.ONNX_TYPE_TENSOR, "the value should always be a tensor");
 
             return new FixedBufferOnnxValue(pinnedMemoryHandle, onnxValue, onnxValueType, elementType);
         }
