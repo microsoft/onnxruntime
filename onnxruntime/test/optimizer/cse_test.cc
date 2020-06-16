@@ -70,13 +70,11 @@ TEST(CseTests, SimpleTest) {
 
   Graph& graph = model->MainGraph();
 
-  const auto& graph_inputs = graph.GetInputs();
-  ASSERT_EQ(graph_inputs.size(), 1);
-  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+  const auto& graph_inputs = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(graph_inputs, (std::vector<std::string>{"x"}));
 
-  const auto& graph_outputs = graph.GetOutputs();
-  ASSERT_EQ(graph_outputs.size(), 1);
-  ASSERT_EQ(graph_outputs[0]->Name(), "Result");
+  const auto& graph_outputs = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(graph_outputs, (std::vector<std::string>{"Result"}));
 
   auto op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count.at("MatMul"), 1);
@@ -94,14 +92,11 @@ TEST(CseTests, GraphOutput) {
 
   Graph& graph = model->MainGraph();
 
-  const auto& graph_inputs = graph.GetInputs();
-  ASSERT_EQ(graph_inputs.size(), 1);
-  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+  const auto& input_names = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(input_names, (std::vector<std::string>{"x"}));
 
-  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
-  ASSERT_EQ(output_names.size(), 2);
-  ASSERT_EQ(output_names[0], "res1");
-  ASSERT_EQ(output_names[1], "res2");
+  const auto& output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names, (std::vector<std::string>{"res1", "res2"}));
 
   auto op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count.at("Add"), 2);
@@ -119,13 +114,11 @@ TEST(CseTests, OptionalArgs) {
 
   ApplyCse(*model);
 
-  const auto& graph_inputs = graph.GetInputs();
-  ASSERT_EQ(graph_inputs.size(), 1);
-  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+  const auto& input_names = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(input_names, (std::vector<std::string>{"x"}));
 
-  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
-  ASSERT_EQ(output_names.size(), 1);
-  ASSERT_EQ(output_names[0], "Result");
+  const auto& output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names, (std::vector<std::string>{"Result"}));
 
   op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count.at("Clip"), 3);
@@ -146,13 +139,11 @@ TEST(CseTests, Random) {
 
   ApplyCse(*model);
 
-  const auto& graph_inputs = graph.GetInputs();
-  ASSERT_EQ(graph_inputs.size(), 1);
-  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+  const auto& input_names = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(input_names, (std::vector<std::string>{"x"}));
 
-  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
-  ASSERT_EQ(output_names.size(), 1);
-  ASSERT_EQ(output_names[0], "Result");
+  const auto& output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names, (std::vector<std::string>{"Result"}));
 
   op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count["RandomUniform"], 4);
@@ -177,16 +168,11 @@ TEST(CseTests, Subgraph) {
 
   ApplyCse(*model);
 
-  auto input_names = GetSortedNames(graph.GetInputs());
-  ASSERT_EQ(input_names.size(), 2);
-  ASSERT_EQ(input_names[0], "b");
-  ASSERT_EQ(input_names[1], "x");
+  const auto& input_names = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(input_names, (std::vector<std::string>{"b", "x"}));
 
-  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
-  ASSERT_EQ(output_names.size(), 3);
-  ASSERT_EQ(output_names[0], "Result1");
-  ASSERT_EQ(output_names[1], "Result2");
-  ASSERT_EQ(output_names[2], "Result3");
+  auto output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
   const Graph* if_true_graph = nullptr;
   const Graph* if_false_graph = nullptr;
@@ -199,20 +185,14 @@ TEST(CseTests, Subgraph) {
   }
 
   output_names = GetSortedNames(if_true_graph->GetOutputs());
-  ASSERT_EQ(output_names.size(), 3);
-  ASSERT_EQ(output_names[0], "Result1");
-  ASSERT_EQ(output_names[1], "Result2");
-  ASSERT_EQ(output_names[2], "Result3");
+  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
   auto op_count = CountOpsInGraph(*if_true_graph);
   ASSERT_EQ(op_count["Mul"], 1);
   ASSERT_EQ(op_count["Sum"], 3);
 
   output_names = GetSortedNames(if_false_graph->GetOutputs());
-  ASSERT_EQ(output_names.size(), 3);
-  ASSERT_EQ(output_names[0], "Result1");
-  ASSERT_EQ(output_names[1], "Result2");
-  ASSERT_EQ(output_names[2], "Result3");
+  ASSERT_EQ(output_names, (std::vector<std::string>{"Result1", "Result2", "Result3"}));
 
   op_count = CountOpsInGraph(*if_false_graph);
   ASSERT_EQ(op_count["Mul"], 3);
@@ -228,15 +208,11 @@ TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {
   Graph& graph = model->MainGraph();
   ApplyCse(*model);
 
-  const auto& graph_inputs = graph.GetInputs();
-  ASSERT_EQ(graph_inputs.size(), 1);
-  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+  const auto& input_names = GetSortedNames(graph.GetInputs());
+  ASSERT_EQ(input_names, (std::vector<std::string>{"x"}));
 
-  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
-  ASSERT_EQ(output_names.size(), 3);
-  ASSERT_EQ(output_names[0], "Add");
-  ASSERT_EQ(output_names[1], "Split1Output2");
-  ASSERT_EQ(output_names[2], "Split2Output2");
+  const auto& output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names, (std::vector<std::string>{"Add", "Split1Output2", "Split2Output2"}));
 
   auto op_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_count["ReduceSum"], 1);
@@ -262,9 +238,9 @@ TEST(CseTests, MergeConstants) {
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1);
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
   auto op_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_count.size(), 1);
+  ASSERT_EQ(op_count.size(), 1U);
   ASSERT_EQ(op_count["Add"], 2);
 }
 

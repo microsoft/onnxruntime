@@ -87,7 +87,6 @@ const NodeArg* Normalize(const NodeArg* node_arg) {
 class EquivalenceClass {
  public:
   bool operator==(const EquivalenceClass& other) const;
-  bool operator!=(const EquivalenceClass& other) const;
 
   friend struct ::std::hash<EquivalenceClass>;
   friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node& node, const std::vector<const EquivalenceClass*>& inputs);
@@ -266,10 +265,6 @@ bool EquivalenceClass::operator==(const EquivalenceClass& other) const {
          op_type_ == other.op_type_ && domain_ == other.domain_ &&
          inputs_ == other.inputs_ &&
          SameAttributes(attributes_, other.attributes_);
-}
-
-bool EquivalenceClass::operator!=(const EquivalenceClass& other) const {
-  return !operator==(other);
 }
 
 std::size_t EquivalenceClass::CalculateHash() const {
