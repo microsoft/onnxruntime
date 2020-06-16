@@ -74,13 +74,13 @@ TrainingConfigurationResult ConfigureSessionForTraining(
               << data_group_size << std::endl;
     parameters.data_parallel_size = data_group_size;
   }
-#ifdef USE_HOROVOD
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
   // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
   // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
   bool use_nccl = parameters.allreduce_post_accumulation;
   if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = training::setup_horovod();
+    auto mpi_context = training::setup_mpi();
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
@@ -203,8 +203,8 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
-#ifdef USE_HOROVOD
-        training::shutdown_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+        training::shutdown_mpi();
 #endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {

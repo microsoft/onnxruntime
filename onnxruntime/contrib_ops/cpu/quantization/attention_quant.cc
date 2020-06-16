@@ -86,14 +86,13 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
     weight_zero_point = *w_zp_tensor->template Data<QWeight>();
   }
 
-  const auto dims = input->Shape().GetDims();
-  const int batch_size = static_cast<int>(dims[0]);
-  const int sequence_length = static_cast<int>(dims[1]);
-  const int hidden_size = static_cast<int>(dims[2]);
+  const auto& shape = input->Shape();
+  const int batch_size = static_cast<int>(shape[0]);
+  const int sequence_length = static_cast<int>(shape[1]);
+  const int hidden_size = static_cast<int>(shape[2]);
   const int head_size = hidden_size / num_heads_;
 
-  TensorShape output_shape(dims);
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* output = context->Output(0, shape);
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
