@@ -1091,7 +1091,6 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
 }
 
 Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loader) {
-  return Status::OK();
   if (params_.skip_evaluation) {
     printf("Skipping evaluation...\n");
     return Status::OK();

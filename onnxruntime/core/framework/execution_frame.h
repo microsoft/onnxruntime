@@ -181,10 +181,12 @@ class ExecutionFrame final : public IExecutionFrame {
   // Big chunks on different locations that will be used by mem_pattern.
   std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
 
-  // Record planned (static) and dynamic memory allocations happen through
-  // ExecutionFrame.
-
+  // Size of virtual memory allocated before any kernel execution.
+  // This field is not physical memory size.
   size_t static_activation_memory_in_bytes_;
+  // Size of virtual memory allocated during kernel execution (i.e., inside a kernel,
+  // we may allocate some memory for its outputs, if not planned.).
+  // This field is not physical memory size.
   size_t dynamic_activation_memory_in_bytes_;
 };
 }  // namespace onnxruntime

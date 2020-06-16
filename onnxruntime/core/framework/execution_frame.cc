@@ -256,7 +256,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              static_activation_memory_in_bytes_ = mem_patterns_->patterns[i].PeakSize();
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
+              static_activation_memory_in_bytes_ += mem_patterns_->patterns[i].PeakSize();
               buffer = alloc->Alloc(static_activation_memory_in_bytes_);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {

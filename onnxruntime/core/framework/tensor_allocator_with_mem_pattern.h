@@ -21,7 +21,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   bool is_sealed_ = false;
   const ExecutionPlanBase& seq_plan_;
 
-  common::Status AllocatePlannedBuffers(size_t& planned_memory_size_in_byte) {
+  common::Status AllocatePlannedBuffersAndReportTotalSize(size_t& planned_memory_size_in_byte) {
     planned_memory_size_in_byte = 0;
     const size_t location_len = mem_patterns_.locations.size();
     for (size_t i = 0; i < location_len; ++i) {
@@ -69,7 +69,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
 
   common::Status FinalizePlan(size_t& planned_memory_size_in_byte) override {
     ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(&mem_patterns_));
-    ORT_RETURN_IF_ERROR(AllocatePlannedBuffers(planned_memory_size_in_byte));
+    ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize(planned_memory_size_in_byte));
     is_sealed_ = true;
     return Status::OK();
   }
