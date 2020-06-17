@@ -133,6 +133,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "ReduceSum",
       "Relu",
       "Reshape",
+      "Shape",
       "Sigmoid",
       "Slice",
       "Softmax",
@@ -199,16 +200,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
-  if (optype == "Reshape") {
-    //nGraph Reshape op currently requires shape info available in advance.
-    const auto& shape_arg = node->InputDefs()[1];
-    //Empty Initializer check
-    if (shape_arg->Shape() == nullptr)
-      return false;
-    if (shape_arg->Shape()->dim_size() == 1 && shape_arg->Shape()->dim(0).dim_value() == 0)
-      return true;
-    return initializers.find(shape_arg->Name()) == initializers.end();
-  } else if (optype == "MaxPool") {
+  if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
     if (node->OutputDefs().size() > 1) {
       return true;
@@ -349,27 +341,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       if (input->Type()->find("float") == std::string::npos)
         return true;
     }
-  } else if (optype == "Cast") {
-    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-    const auto supportedCasts = std::set<std::pair<onnx_dtype, onnx_dtype>>{
-        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
-        {onnx_dtype::TensorProto_DataType_INT16, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT16},
-        {onnx_dtype::TensorProto_DataType_UINT16, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT16},
-        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_FLOAT},
-        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT32},
-        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}};
-    auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-
-    const auto typePair = std::make_pair(static_cast<onnx_dtype>(input_data_type), static_cast<onnx_dtype>(output_data_type));
-    const auto match = supportedCasts.find(typePair);
-    if (match == supportedCasts.end()) {
-      return true;
-    } else
-      return false;
   } else if (optype == "Squeeze") {
     //Shape can't have empty axes attribute
     const auto& attributes = node->GetAttributes();
@@ -875,8 +846,14 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     if (nodes.size() == 1) {
       const auto& node = graph_viewer.GetNode(nodes[0]);
       if (node->OpType() == "TopK" || node->OpType() == "Identity" || node->OpType() == "EyeLike"
-           || node->OpType() == "Dropout" || node->OpType() == "Shape" || node->OpType() == "ConstantOfShape")
+          || node->OpType() == "Dropout" || node->OpType() == "Shape" || node->OpType() == "ConstantOfShape"
+          || node->OpType() == "Cast")
         return result;
+      if(node->OpType() == "Reshape"){
+        const auto& shape_arg = node->InputDefs()[1];
+        if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
+        return result;
+      }
     }
 
     //Initializers need to be part of meta_def->inputs
@@ -923,6 +900,11 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
              || node->OpType() == "Dropout" || node->OpType() == "ReduceMin" || node->OpType() == "Concat"
              || node->OpType() == "Cast" || node->OpType() == "ConstantOfShape")
           continue;
+        if(node->OpType() == "Reshape"){
+          const auto& shape_arg = node->InputDefs()[1];
+          if(ng_required_initializers.find(shape_arg->Name()) == ng_required_initializers.end())
+            continue;
+        }
       }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, const_inputs, cluster_outputs);
 

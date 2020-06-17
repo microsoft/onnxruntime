@@ -120,28 +120,6 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
     // Get the onnx index for the corresponding input (ignoring initializers)
     auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type());
     iter->second->setPrecision(precision);
-
-    // Choose the appropriate OpenVINO layout for input tensor
-    // based on dims size
-    switch (iter->second->getTensorDesc().getDims().size()) {
-      case 1:
-        iter->second->setLayout(InferenceEngine::Layout::C);
-        break;
-      case 2:
-        iter->second->setLayout(InferenceEngine::Layout::NC);
-        break;
-      case 3:
-        iter->second->setLayout(InferenceEngine::Layout::CHW);
-        break;
-      case 4:
-        iter->second->setLayout(InferenceEngine::Layout::NCHW);
-        break;
-      case 5:
-        iter->second->setLayout(InferenceEngine::Layout::NCDHW);
-        break;
-      default:
-        ORT_THROW(log_tag + "Invalid Dims type for input data map for: " + iter->first);
-    };
   }
 
   // Prepare output blobs
@@ -150,28 +128,6 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
     auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_idx).type());
     iter->second->setPrecision(precision);
-
-    // Choose the appropriate OpenVINO layout for output tensor
-    // based on dims size
-    switch (iter->second->getTensorDesc().getDims().size()) {
-      case 1:
-        iter->second->setLayout(InferenceEngine::Layout::C);
-        break;
-      case 2:
-        iter->second->setLayout(InferenceEngine::Layout::NC);
-        break;
-      case 3:
-        iter->second->setLayout(InferenceEngine::Layout::CHW);
-        break;
-      case 4:
-        iter->second->setLayout(InferenceEngine::Layout::NCHW);
-        break;
-      case 5:
-        iter->second->setLayout(InferenceEngine::Layout::NCDHW);
-        break;
-      default:
-        ORT_THROW(log_tag + "Invalid Dims type for output data map for: " + iter->first);
-    };
   }
 }
 
