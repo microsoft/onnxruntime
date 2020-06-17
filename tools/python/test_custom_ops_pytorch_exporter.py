@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 import io
 import copy
-from register_custom_ops import register_custom_op
+from register_custom_ops_pytorch_exporter import register_custom_op
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):
