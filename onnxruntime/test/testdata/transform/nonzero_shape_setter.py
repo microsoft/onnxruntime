@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 import onnx
 from onnx import helper
 from onnx import TensorProto, GraphProto, OperatorSetIdProto
@@ -23,7 +26,7 @@ graph_def = helper.make_graph(
 opsets = []
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 12
-onnxdomain.domain = "" # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
+onnxdomain.domain = "" # Empty string implies the operator set that is defined as part of the ONNX specification.
 opsets.append(onnxdomain)
 
 msdomain = OperatorSetIdProto()

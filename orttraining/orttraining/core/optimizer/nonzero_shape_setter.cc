@@ -8,7 +8,10 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 
-Status NonZeroShapeSetter::Apply(Graph& /*graph*/, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
+Status NonZeroShapeSetter::Apply(Graph& /*graph*/,
+                                 Node& node,
+                                 RewriteRuleEffect& rule_effect,
+                                 const logging::Logger& /*logger*/) const {
   // The output shape of the NonZero is [num_of_input_dims, dynamic_nonzero_element_counts].
   ONNX_NAMESPACE::TensorShapeProto result_shape;
   result_shape.add_dim()->set_dim_value(node.InputDefs()[0]->Shape()->dim_size());
@@ -18,8 +21,12 @@ Status NonZeroShapeSetter::Apply(Graph& /*graph*/, Node& node, RewriteRuleEffect
   return Status::OK();
 }
 
-bool NonZeroShapeSetter::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
-  return node.InputDefs()[0]->Shape() != nullptr && node.InputDefs()[0]->Shape()->dim_size() > 0 && node.OutputDefs()[0]->Shape() == nullptr;
+bool NonZeroShapeSetter::SatisfyCondition(const Graph& /*graph*/,
+                                          const Node& node,
+                                          const logging::Logger& /*logger*/) const {
+  return node.InputDefs()[0]->Shape() != nullptr
+         && node.InputDefs()[0]->Shape()->dim_size() > 0
+         && node.OutputDefs()[0]->Shape() == nullptr;
 }
 
 }  // namespace onnxruntime
