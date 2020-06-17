@@ -1,0 +1,22 @@
+# sets the TelemetryOption variable and optionally generates TraceLoggingConfigPrivate.h based on the TELEMETRYGUID
+# variable
+
+steps:
+  - ${{ if ne(variables.TELEMETRYGUID, "") }}:
+    - script: |
+        echo ##vso[task.setvariable variable=TelemetryOption]--use_telemetry
+      displayName: 'Set TelemetryOption variable [telemetry enabled]'
+
+    - powershell: |
+        $length = $env:TELEMETRYGUID.length
+        $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
+          TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+        New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+      displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+      env:
+        TELEMETRYGUID: $(TELEMETRYGUID)
+
+  - ${{ if eq(variables.TELEMETRYGUID, "") }}:
+    - script: |
+        echo ##vso[task.setvariable variable=TelemetryOption]
+      displayName: 'Set TelemetryOption variable [telemetry disabled]'

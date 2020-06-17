@@ -222,7 +222,8 @@ stages:
       - checkout: self
         clean: true
         submodules: recursive
-      - template: enable-telemetry.yml
+
+      - template: telemetry-steps.yml
 
       - task: UsePythonVersion@0
         inputs:
@@ -268,7 +269,7 @@ stages:
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
-            --use_telemetry
+            $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
       # Esrp signing
@@ -327,7 +328,7 @@ stages:
           clean: true
           submodules: recursive
 
-        - template: enable-telemetry.yml
+        - template: telemetry-steps.yml
 
         - task: UsePythonVersion@0
           inputs:
@@ -374,7 +375,7 @@ stages:
               --use_cuda --cuda_version=$(CUDA_VERSION)
               --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
               --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
-              --use_telemetry
+              $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
         # Esrp signing
