@@ -642,60 +642,51 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     // Its resource cannot be overrided when it's still working.
     pipeline_worker_pool_.Join(worker_id);
 
-    // Copy thread-used variable to thread-specific buffer to maintain their life.
-    pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
-    pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
-    pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
-
-    Status status = Status::OK();
-    pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-        const size_t worker_id, const size_t step) {
+    // Async launch of a session.
+    // TODO: Reuse thread intead of creating new one.
+    pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t step) {
 #ifdef ENABLE_NVTX_PROFILE
       // Store the tag for the thread which runs session_.Run(...).
       // It will be used to name range in Nvidia's visual profiler.
       auto& profile_context = profile::Context::GetInstance();
       profile_context.SetThreadTag(
-        std::this_thread::get_id(), std::to_string(step));
+          std::this_thread::get_id(), std::to_string(step));
 #else
       ORT_UNUSED_PARAMETER(step);
 #endif
-      status = session_.Run(
-        RunOptions(),
-        pipeline_worker_pool_.worker_states[worker_id].feed_names,
-        pipeline_worker_pool_.worker_states[worker_id].feeds,
-        pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-        &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-    }, worker_id, step_);
+      auto status = session_.Run(
+          RunOptions(),
+          feed_names,
+          feeds,
+          fetch_names,
+          &fetches);
+      // If the updating thread fails, we fail with its error status.
+      ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    },
+                                                           step_);
 
     // Wait all workers to finish this round of pipeline parallelism.
     // The last batch in a pipeline collects gradient and update the model.
     // We must join here because main thread needs to access thread-produced
     // fetches and those fetches must be ready.
     pipeline_worker_pool_.JoinAll();
-
-    // If the updating thread fails, we fail with its error status.
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-
-    // Copy back from thread-specific buffer to main thread's memory.
-    fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
   } else {
-    // Pipeline is not enabled, so we run session using the main thread.
+// Pipeline is not enabled, so we run session using the main thread.
 
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
     auto& profile_context = profile::Context::GetInstance();
     profile_context.SetThreadTag(
-      std::this_thread::get_id(), std::to_string(step_));
+        std::this_thread::get_id(), std::to_string(step_));
 #endif
 
     auto status = session_.Run(
-      RunOptions(),
-      feed_names,
-      feeds,
-      fetch_names,
-      &fetches);
+        RunOptions(),
+        feed_names,
+        feeds,
+        fetch_names,
+        &fetches);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 
@@ -747,55 +738,49 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     // Its resource cannot be overrided when it's still working.
     pipeline_worker_pool_.Join(worker_id);
 
-    // Prepare async launch of session.
-    // All used variables have to be copied to a buffer object to maintain their lifetime.
-    pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
-    pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
-    pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
-
     // Async launch of a session.
-    pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-        const size_t worker_id, const size_t step) {
+    // TODO: Reuse thread intead of creating new one.
+    pipeline_worker_pool_.workers[worker_id] = std::thread([&, feeds, feed_names, fetch_names](const size_t step) {
 #ifdef ENABLE_NVTX_PROFILE
       // Store the tag for the thread which runs session_.Run(...).
       // It will be used to name range in Nvidia's visual profiler.
       auto& profile_context = profile::Context::GetInstance();
       profile_context.SetThreadTag(
-        std::this_thread::get_id(), std::to_string(step));
+          std::this_thread::get_id(), std::to_string(step));
 #else
       ORT_UNUSED_PARAMETER(step);
 #endif
       RunOptions run_options;
       run_options.only_execute_path_to_fetches = true;
+      std::vector<MLValue> fetches;
       auto status = session_.Run(
-        run_options,
-        pipeline_worker_pool_.worker_states[worker_id].feed_names,
-        pipeline_worker_pool_.worker_states[worker_id].feeds,
-        pipeline_worker_pool_.worker_states[worker_id].fetch_names,
-        &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+          run_options,
+          feed_names,
+          feeds,
+          fetch_names,
+          &fetches);
       ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    }, worker_id, step_);
+    }, step_);
   } else {
-    // Pipeline is not enabled, so we run session using the main thread.
+// Pipeline is not enabled, so we run session using the main thread.
 
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
     auto& profile_context = profile::Context::GetInstance();
     profile_context.SetThreadTag(
-      std::this_thread::get_id(), std::to_string(step_));
+        std::this_thread::get_id(), std::to_string(step_));
 #endif
 
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
     std::vector<MLValue> fetches;
     auto status = session_.Run(
-      run_options,
-      feed_names,
-      feeds,
-      fetch_names,
-      &fetches);
+        run_options,
+        feed_names,
+        feeds,
+        fetch_names,
+        &fetches);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 
@@ -876,31 +861,31 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
         if (is_weight_update_step) {
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(ModelUpdateStep,
-                                  training_data_loader,
-                                  *training_data,
-                                  lr_scheduler.get(),
-                                  batch,
-                                  feed_names,
-                                  feeds));
+                                                       training_data_loader,
+                                                       *training_data,
+                                                       lr_scheduler.get(),
+                                                       batch,
+                                                       feed_names,
+                                                       feeds));
           ORT_RETURN_IF_ERROR(
-            PrepareFetchNamesAndFetches(ModelUpdateStep,
-                                        fetch_names,
-                                        fetches));
+              PrepareFetchNamesAndFetches(ModelUpdateStep,
+                                          fetch_names,
+                                          fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
           ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
-                                  training_data_loader,
-                                  *training_data,
-                                  lr_scheduler.get(),
-                                  batch,
-                                  feed_names,
-                                  feeds));
+                                                       training_data_loader,
+                                                       *training_data,
+                                                       lr_scheduler.get(),
+                                                       batch,
+                                                       feed_names,
+                                                       feeds));
           ORT_RETURN_IF_ERROR(
-            PrepareFetchNamesAndFetches(GradientAccumulateStep,
-                                        fetch_names,
-                                        fetches));
+              PrepareFetchNamesAndFetches(GradientAccumulateStep,
+                                          fetch_names,
+                                          fetches));
           RunWithoutUpdate(feed_names, fetch_names, feeds,
-                            gradient_accumulation_step_count);
+                           gradient_accumulation_step_count);
         }
 
         // at this point, step_ already be increased by 1.
@@ -1006,7 +991,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Throughput: " << throughput << " Examples / Second\n"
             << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n"
             << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n"
-            << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start)<< " Second\n"
+            << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start) << " Second\n"
             << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
   return Status::OK();
@@ -1198,11 +1183,11 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
         RunOptions run_options;
         run_options.only_execute_path_to_fetches = true;
         status = session.Run(
-          run_options,
-          feed_names,
-          feeds,
-          fetch_names,
-          &fetches);
+            run_options,
+            feed_names,
+            feeds,
+            fetch_names,
+            &fetches);
       });
       // Wait Run(...) to finish.
       pipeline_worker_pool_.Join(worker_id);
@@ -1212,10 +1197,10 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
       // Pipeline cannot reuse training threads to do evaluation.
       // Otherwise, deadlock may happens.
       ORT_RETURN_IF_ERROR(session.Run(run_options,
-        feed_names,
-        feeds,
-        fetch_names,
-        &fetches));
+                                      feed_names,
+                                      feeds,
+                                      fetch_names,
+                                      &fetches));
     }
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage.

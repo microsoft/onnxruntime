@@ -91,21 +91,13 @@ class PipelineSchedule {
   int num_batches_;
 };
 
-struct PipelineWorkerState {
-  std::vector<std::string> feed_names;
-  std::vector<MLValue> feeds;
-  std::vector<std::string> fetch_names;
-  std::vector<MLValue> fetches;
-};
-
 struct PipelineWorkerPool {
   PipelineWorkerPool() = default;
-  PipelineWorkerPool(size_t num_workers) : workers(num_workers), worker_states(num_workers){};
+  PipelineWorkerPool(size_t num_workers) : workers(num_workers){};
   void Join(size_t worker_id);
   void JoinAll();
 
   std::vector<std::thread> workers;
-  std::vector<PipelineWorkerState> worker_states;
 };
 
 struct PipelineContext {
