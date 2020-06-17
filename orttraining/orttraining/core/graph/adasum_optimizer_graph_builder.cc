@@ -37,6 +37,7 @@ Status AdasumOptimizerGraphBuilder::AddWeightUpdateNodes(const NodeArgNameGenera
                                                           adasum_gradient_finite_argdef,
                                                           graph_defs));
   }
+  weight_argdefs = std::move(output_weight_argdefs);
   return Status::OK();
 }
 
