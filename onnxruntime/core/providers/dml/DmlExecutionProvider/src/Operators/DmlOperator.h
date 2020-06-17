@@ -77,6 +77,9 @@ namespace Dml
 
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
 
+        void Remap64bitDmlDataTypesTo32bit();
+        void Remap64bitDmlDataTypesTo32bitIfNeeded();
+
         TensorDesc CreateTensorDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,

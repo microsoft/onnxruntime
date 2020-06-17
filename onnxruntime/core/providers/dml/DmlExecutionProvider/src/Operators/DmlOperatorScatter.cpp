@@ -31,6 +31,7 @@ public:
         {
             std::vector<std::optional<uint32_t>> kernelInputIndices(1, 0);
             DmlOperator::Initialize(kernelCreationContext, kernelInputIndices);
+            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
             std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
             std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -49,13 +50,12 @@ public:
         else
         {
             DmlOperator::Initialize(kernelCreationContext);
+            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
             std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
             std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
             assert(inputDescs.size() == 3);
             assert(outputDescs.size() == 1);
-
-            m_inputTensorDescs[1].ForceUnsignedDataType();
 
             // Read the axis.
             int onnxAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 0);
@@ -95,13 +95,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(outputDimensions.size() <= OperatorHelper::NchwDimensionCount);
 
         DmlOperator::Initialize(kernelCreationContext);
+        DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         assert(inputDescs.size() == 3);
         assert(outputDescs.size() == 1);
-
-        m_inputTensorDescs[1].ForceUnsignedDataType();
 
         DML_SCATTER_ND_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = &inputDescs[0];

@@ -14,9 +14,11 @@ namespace Dml
 
     DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tensorDataType);
     DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataType tensorDataType) noexcept;
+    DML_TENSOR_DATA_TYPE Remap64bitDmlDataTypeTo32bit(DML_TENSOR_DATA_TYPE dmlElementType) noexcept;
     MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tensorDataType);
     size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType);
     size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor);
+    uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice);
 
     bool IsSigned(DML_TENSOR_DATA_TYPE dataType);
 
@@ -40,6 +42,12 @@ namespace Dml
         UINT elementSizeInBytes = 0;
         switch (dataType)
         {
+        case DML_TENSOR_DATA_TYPE_FLOAT64:
+        case DML_TENSOR_DATA_TYPE_UINT64:
+        case DML_TENSOR_DATA_TYPE_INT64:
+            elementSizeInBytes = 8;
+            break;
+
         case DML_TENSOR_DATA_TYPE_FLOAT32:
         case DML_TENSOR_DATA_TYPE_UINT32:
         case DML_TENSOR_DATA_TYPE_INT32:
