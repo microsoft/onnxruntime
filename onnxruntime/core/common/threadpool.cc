@@ -122,7 +122,7 @@ private:
   const uint64_t _block_size;
 };
 
-#ifndef __GNUC__
+#ifdef _MSC_VER
 #pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
 #endif
 
