@@ -19,13 +19,12 @@ class EinsumTypedComputeProcessor {
   explicit EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
                                        concurrency::ThreadPool* tp,
                                        EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                       void* cublas_handle, void* cuda_ep)
+                                       void* einsum_cuda_assets)
       : context_(context),
         allocator_(allocator),
         tp_(tp),
         einsum_compute_preprocessor_(einsum_compute_preprocessor),
-        cublas_handle_(cublas_handle),
-        cuda_ep_(cuda_ep) {}
+        einsum_cuda_assets_(einsum_cuda_assets) {}
 
   // Pass-in device specific functions
   // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
@@ -66,11 +65,8 @@ class EinsumTypedComputeProcessor {
   EinsumOp::DeviceHelpers::ReduceSum<T> device_reduce_sum_func_;
   EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
 
-  // CuBLAS handle to be used in case the processing is done on the CUDA EP
-  void* cublas_handle_;
-
-  // CUDA EP - required by ReduceSum CUDA kernel
-  void* cuda_ep_;
+  // Holds CUDA assets required for CUDA ops that need to be executed
+  void* einsum_cuda_assets_;
 };
 
 }  // namespace onnxruntime

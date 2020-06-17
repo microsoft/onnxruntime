@@ -89,7 +89,7 @@ class EinsumComputePreprocessor final {
   explicit EinsumComputePreprocessor(EinsumEquationPreprocessor& equation_preprocessor,
                                      const std::vector<const Tensor*>& inputs,
                                      AllocatorPtr allocator,
-                                     void* cublas_handle);
+                                     void* einsum_cuda_assets);
 
   // The main method that does all the pre-processing - must be invoked before other methods are called
   // to get relevant metadata
@@ -201,8 +201,8 @@ class EinsumComputePreprocessor final {
   // Device specific transpose function
   EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
 
-  // CuBLAS handle to be used in case the processing is done on the CUDA EP
-  void* cublas_handle_;
+  // Holds CUDA assets required for CUDA ops that need to be executed
+  void* einsum_cuda_assets_;
 };
 
 }  // namespace onnxruntime

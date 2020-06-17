@@ -8,8 +8,11 @@ namespace onnxruntime {
 EinsumComputePreprocessor::EinsumComputePreprocessor(EinsumEquationPreprocessor& einsum_equation_preprocessor,
                                                      const std::vector<const Tensor*>& inputs,
                                                      AllocatorPtr allocator,
-                                                     void* cublas_handle)
-    : einsum_equation_preprocessor_(einsum_equation_preprocessor), inputs_(inputs), allocator_(allocator), cublas_handle_(cublas_handle) {
+                                                     void* einsum_cuda_assets)
+    : einsum_equation_preprocessor_(einsum_equation_preprocessor),
+      inputs_(inputs),
+      allocator_(allocator),
+      einsum_cuda_assets_(einsum_cuda_assets) {
   letter_to_index_.fill(-1);
 
   letter_to_count_.fill(0);
@@ -453,7 +456,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
                                       permutation)) {
       preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[input_iter],
                                          preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims(),
-                                         permutation, allocator_, cublas_handle_, device_transpose_func_);
+                                         permutation, allocator_, einsum_cuda_assets_, device_transpose_func_);
     }
 
     // pre-processed may be null if the input didn't have need diagonals parsed and didn't need transposing

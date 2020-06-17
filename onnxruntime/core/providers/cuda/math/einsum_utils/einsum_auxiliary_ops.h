@@ -18,13 +18,25 @@ namespace onnxruntime {
 
 namespace EinsumOp {
 
+// Holds CUDA assets required for CUDA ops that need to be executed as part of the Einsum flow
+struct EinsumCudaAssets {
+  explicit EinsumCudaAssets(cublasHandle_t cublas_handle,
+                            CUDAExecutionProvider* cuda_ep) {
+    cublas_handle_ = cublas_handle;
+    cuda_ep_ = cuda_ep;
+  }
+
+  cublasHandle_t cublas_handle_;
+  CUDAExecutionProvider* cuda_ep_;
+};
+
 namespace DeviceHelpers {
 
 // These are CUDA EP specific device helper implementations
 namespace CudaDeviceHelpers {
 
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
-                 Tensor& output, const TensorShape* input_shape_override, void* cublas_handle);
+                 Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
 Status DataCopy(const Tensor& input, Tensor& output);
 
@@ -32,13 +44,13 @@ template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-              void* cublas_handle);
+              void* einsum_cuda_assets);
 
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                  bool keep_dims, AllocatorPtr allocator,
                  const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* /*tp*/, void* cuda_ep);
+                 concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets);
 
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
 

@@ -27,21 +27,22 @@ using DataCopy = std::function<Status(const Tensor& input, Tensor& output)>;
 
 // Transpose op - Transposes given input based on data in `permutation`
 using Transpose = std::function<Status(const std::vector<size_t>& permutation, const Tensor& input,
-                                       Tensor& output, const TensorShape* input_shape_override, void* cublas_handle)>;
+                                       Tensor& output, const TensorShape* input_shape_override,
+                                       void* einsum_cuda_assets)>;
 
 // MatMul op - Multiplies two inputs of shapes [num_batches, M, K] and [num_batches, K, N]
 template <typename T>
 using MatMul = std::function<Status(const T* input_1_data, const T* input_2_data, T* output_data,
                                     size_t left_stride, size_t right_stride, size_t output_stride,
                                     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-                                    void* cublas_handle)>;
+                                    void* einsum_cuda_assets)>;
 
 // ReduceSum op - Reduces along `reduce_axes`
 template <typename T>
 using ReduceSum = std::function<Tensor(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                                        bool keep_dims, AllocatorPtr allocator,
                                        const TensorShape* input_shape_override,
-                                       concurrency::ThreadPool* tp, void* cuda_ep)>;
+                                       concurrency::ThreadPool* tp, void* einsum_cuda_assets)>;
 
 // Diagonal op
 // Diagonal - A specialized implementation somewhat similar to Torch's Diagonal op
@@ -61,19 +62,19 @@ namespace CpuDeviceHelpers {
 Status DataCopy(const Tensor& input, Tensor& output);
 
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
-                 Tensor& output, const TensorShape* input_shape_override, void* cublas_handle);
+                 Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-              void* cublas_handle);
+              void* einsum_cuda_assets);
 
 template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                  bool keep_dims, AllocatorPtr allocator,
                  const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* tp, void* cuda_ep);
+                 concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim_2, AllocatorPtr allocator);
 
@@ -86,7 +87,7 @@ bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutati
 
 // Thin wrapper over the Transpose op to be called from Einsum that does some checks and invokes the device specific helper
 std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t>& input_shape_override,
-                                  const std::vector<size_t>& permutation, AllocatorPtr allocator, void* cublas_handle,
+                                  const std::vector<size_t>& permutation, AllocatorPtr allocator, void* einsum_cuda_assets,
                                   const DeviceHelpers::Transpose& device_transpose_func);
 
 // Thin wrapper over the MatMul op to be called from Einsum that does some checks and invokes the device specific helper
@@ -95,7 +96,7 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const std::vector<int64_t
 template <typename T>
 std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_1_shape_override,
                                const Tensor& input_2, const std::vector<int64_t>& input_2_shape_override,
-                               AllocatorPtr allocator, concurrency::ThreadPool* tp, void* cublas_handle,
+                               AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
                                const DeviceHelpers::MatMul<T>& device_matmul_func);
 
 // Thin wrapper over the ReduceSum op

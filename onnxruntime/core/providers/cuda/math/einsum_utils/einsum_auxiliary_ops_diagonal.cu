@@ -29,6 +29,10 @@ __global__ void _DiagonalKernel(
     output_strides[i].divmod(remain, dim, remain);
     if (i == dim_1) {
       // Process dim_2 as dim_2 needs to have the same dim value as dim_1
+      // For example: given a tensor of shape [2, 3, 3] and parsing the diagonal along axes `1` and `2`
+      // we need to parse elements in input[j, i, i] (j -> 0 to 1; and i -> 0 to 2) 
+      // and place them in output[j, i] and by definition of diagonal parsing dim_1 has to be equal to 
+      // dim_2
       input_idx += input_strides[dim_2] * dim;
     }
     input_idx += input_strides[current_input_axis] * dim;

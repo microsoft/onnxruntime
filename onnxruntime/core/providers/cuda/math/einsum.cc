@@ -26,9 +26,12 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
                              AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
   cublasHandle_t cublas_handle = cuda_ep_->PerThreadCublasHandle();
 
+  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_);
+
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor(*einsum_equation_preprocessor_, inputs, allocator,
-                                                               cublas_handle);
+                                                               &einsum_cuda_assets);
+
   // Set device specific methods (CPU methods) to be used during pre-processing
   einsum_compute_preprocessor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Diagonal,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose);
@@ -39,9 +42,8 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   if (inputs[0]->IsDataType<float>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<float>(context, allocator, tp,
                                                                        einsum_compute_preprocessor,
-                                                                       cublas_handle, cuda_ep_);
+                                                                       &einsum_cuda_assets);
 
-    // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
@@ -50,7 +52,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   } else if (inputs[0]->IsDataType<double>()) {
     auto einsum_compute_processor = EinsumTypedComputeProcessor<double>(context, allocator, tp,
                                                                         einsum_compute_preprocessor,
-                                                                        cublas_handle, cuda_ep_);
+                                                                        &einsum_cuda_assets);
 
     // Set device specific methods (CPU methods) to be used during processing
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,

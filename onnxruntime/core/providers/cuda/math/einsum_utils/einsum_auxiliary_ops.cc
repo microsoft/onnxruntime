@@ -26,9 +26,9 @@ Status DataCopy(const Tensor& input, Tensor& output) {
 
 // CUDA EP specific Transpose helper
 Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
-                 Tensor& output, const TensorShape* input_shape_override, void* cublas_handle) {
-  return cuda::Transpose::DoTranspose(reinterpret_cast<cublasHandle_t>(cublas_handle), permutation,
-                                      input, output, input_shape_override);
+                 Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
+  return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
+                                      permutation, input, output, input_shape_override);
 }
 
 // CUDA EP specific MatMul helper
@@ -36,13 +36,13 @@ template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
               size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/,
-              void* cublas_handle) {
+              void* einsum_cuda_assets) {
   typedef typename cuda::ToCudaType<T>::MappedType CudaT;
 
   CudaT one = cuda::ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = cuda::ToCudaType<T>::FromFloat(0.0f);
 
-  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(reinterpret_cast<cublasHandle_t>(cublas_handle),
+  CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                                         CUBLAS_OP_N,
                                                         CUBLAS_OP_N,
                                                         static_cast<int>(N),
@@ -69,8 +69,8 @@ template <typename T>
 Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                  bool keep_dims, AllocatorPtr allocator,
                  const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* /*tp*/, void* cuda_ep) {
-  return cuda::ReductionOps::ReduceCompute<T>(*reinterpret_cast<CUDAExecutionProvider*>(cuda_ep), CUDNN_REDUCE_TENSOR_ADD,
+                 concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
+  return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
                                               true, input_shape_override);
@@ -139,26 +139,26 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
     const float* input_1_data, const float* input_2_data, float* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* cublas_handle);
+    void* einsum_cuda_assets);
 
 template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* cuda_ep);
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 // double
 template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     const double* input_1_data, const double* input_2_data, double* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* cublas_handle);
+    void* einsum_cuda_assets);
 
 template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
-    concurrency::ThreadPool* tp, void* cuda_ep);
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 }  // namespace EinsumOp
 
