@@ -45,9 +45,15 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
   elseif(onnxruntime_target_platform STREQUAL "x64")
+    set(mlas_platform_srcs_avx2
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd_avx2.cpp
+    )
+    set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+
     enable_language(ASM_MASM)
 
     set(mlas_platform_srcs
+      ${mlas_platform_srcs_avx2}
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemvU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx512Core.asm
@@ -81,7 +87,6 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx/min_max_elements.cpp
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd_avx2.cpp
     )
   else()
     enable_language(ASM_MASM)
