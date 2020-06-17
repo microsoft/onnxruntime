@@ -550,11 +550,13 @@ class InferenceSession {
 
 struct SessionIOBinding {
  public:
-  SessionIOBinding(InferenceSession* session);
+  SessionIOBinding(std::shared_ptr<InferenceSession> session);
 
   IOBinding* Get();
+  InferenceSession* GetInferenceSession();
 
  private:
+  std::shared_ptr<InferenceSession> sess_;
   std::unique_ptr<IOBinding> binding_;
 };
 

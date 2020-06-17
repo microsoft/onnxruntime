@@ -20,7 +20,7 @@ class AtomicModel(nn.Module):
 
 class TestIOBinding(unittest.TestCase):
 
-    def test_bind_input_only(self):
+    def create_model_and_input(self):
         kernel_size = 5
         channels = 16
         device = torch.device('cuda')
@@ -32,20 +32,36 @@ class TestIOBinding(unittest.TestCase):
         model.to(device)
         
         # Run Pytorch
-        x = torch.randn(batch_size, channels, sample_dim, sample_dim).to(device)
+        touch_input = torch.randn(batch_size, channels, sample_dim, sample_dim).to(device)
         torch_output = model(x).cpu().detach().numpy()
         
         # Run ORT
         input_names = [ "input" ]
         output_names = [ "output" ]
-        torch.onnx.export(model, x, "model.onnx", 
+        torch.onnx.export(model, touch_input, "model.onnx", 
                           input_names=input_names, output_names=output_names,
                           dynamic_axes={"input":{0:"batch_size"}, "output":{0:"batch_size"}})
         
-        session = onnxruntime.InferenceSession('model.onnx')
+        return touch_input, torch_output
 
+    def test_bind_input_only(self):
+        x, torch_output = create_model_and_input()
+
+        session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
         io_binding.bind_input('input', x.device.type, 0, np.float32, list(x.size()), x.data_ptr())
+        io_binding.bind_output('output')
+        session.run_with_iobinding(io_binding)
+        ort_output = io_binding.get_outputs()[0]
+    
+        self.assertTrue(np.array_equal(torch_output, ort_output))
+
+    def test_bind_input_to_cpu_arr(self):
+        torch_input, torch_output = create_model_and_input()
+
+        session = onnxruntime.InferenceSession('model.onnx')
+        io_binding = session.io_binding()
+        io_binding.bind_input('input', torch_input.cpu().detach().numpy())
         io_binding.bind_output('output')
         session.run_with_iobinding(io_binding)
         ort_output = io_binding.get_outputs()[0]
