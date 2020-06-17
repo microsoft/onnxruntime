@@ -45,7 +45,7 @@ Status NonZero<T>::Compute(OpKernelContext* context) const {
   const auto X = context->Input<Tensor>(0);
   ORT_ENFORCE(X, "X input is required!");
 
-  const auto X_shape = X->Shape();
+  const auto& X_shape = X->Shape();
   assert(X_shape.Size() >= 0);
 
   const Eigen::Index coordinate_size = X_shape.IsScalar() ? 1 : X_shape.NumDimensions();

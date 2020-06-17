@@ -61,7 +61,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   ORT_UNUSED_PARAMETER(node_name);
   for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output->IsTensor()) {
+    if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
@@ -88,7 +88,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input->IsTensor()) {
+    if (p_input != nullptr && p_input->IsTensor()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -443,6 +443,16 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
   if (is_profiler_enabled) {
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
+  }
+
+  for (auto i: frame.GetStaticMemorySizeInfo()) {
+    LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
+                       << i.second << " bytes for " << i.first << std::endl;
+  }
+
+  for (auto i: frame.GetDynamicMemorySizeInfo()) {
+    LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
+                       << i.second << " bytes for " << i.first << std::endl;
   }
 
   return Status::OK();

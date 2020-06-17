@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from onnx import ModelProto, TensorProto, numpy_helper
 import onnxruntime
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,6 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
     This optimizer will replace Shape output or the shape input of Reshape node by initializer. Currently, it requires
     model inputs to have static shape.
     """
-
     def __init__(self, onnx_model):
         super().__init__(onnx_model.model)
 

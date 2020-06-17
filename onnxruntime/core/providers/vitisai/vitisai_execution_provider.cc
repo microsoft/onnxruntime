@@ -47,31 +47,50 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(const VitisAIExecutionProvide
   InsertAllocator(CreateAllocator(default_memory_info));
 }
 
-
-static std::vector<NodeIndex>
-GetUnsupportedNodeIndices(const XGraphHolder &xg, const std::string &backend_type, 
-                          const GraphViewer& graph_viewer,
+/**
+ * Returns a vector of clusters (or node_idx) that are supported by the given
+ * backend type
+ */
+static std::vector<std::vector<NodeIndex>>
+GetSupportedNodeClusters(const XGraphHolder &xg, const std::string &backend_type, 
+                         const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& required_initializers) {
 
-  // Retrieve 
-  std::set<std::string> supported_tensors;
+  std::vector<std::vector<NodeIndex>> clusters;
+
+  // Retrieve supported tensor names and corresponding subgraphs they belong to
+  int cur_idx = 0;
+  std::unordered_map<std::string, std::string> supported_tensors;
+  std::unordered_map<std::string, int> cluster_idx;
   for (auto &xl_name : xg->get_layer_names()) {
     XLayerHolder xl = xg->get(xl_name);
-    if (xl->target == backend_type)
-      supported_tensors.insert(xl->get_attr("onnx_id").get_string());
+    if (xl->target == backend_type) {
+      supported_tensors[xl->get_attr("onnx_id").get_string()] = xl->subgraph;
+      if (cluster_idx.find(xl->subgraph) == cluster_idx.end()) {
+        cluster_idx[xl->subgraph] = cur_idx;
+        std::vector<NodeIndex> new_cluster;
+        clusters.push_back(new_cluster);
+      }
+    }
   }
-
-  std::vector<NodeIndex> unsupported_nodes_idx;
 
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     ConstPointerContainer<std::vector<NodeArg*>> node_args
       = graph_viewer.GetNode(node_idx)->OutputDefs();
     
+    int cluster_id = -1;
     bool is_node_supported = false;
     for (ConstPointerContainer<std::vector<NodeArg*>>::ConstIterator it = 
          node_args.begin(); it != node_args.end(); ++it) {
       if (supported_tensors.find((*it)->Name()) != supported_tensors.end()) {
         is_node_supported = true;
+        int found_cluster_id = cluster_idx[supported_tensors[(*it)->Name()]];
+        if (cluster_id != -1 && found_cluster_id != cluster_id) {
+          //Output tensors belong to different clusters
+          LOGS_DEFAULT(FATAL) << "VITIS-AI EP: Found node which belongs to "
+            << "multiple clusters. This is an invalid case";
+        }
+        cluster_id = found_cluster_id;
       } else if (is_node_supported) {
         // Some output tensors are supported but not others,
         //  should not happen
@@ -87,39 +106,8 @@ GetUnsupportedNodeIndices(const XGraphHolder &xg, const std::string &backend_typ
         if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
           required_initializers.insert(node_arg.Name());
         } }, true);
-    } else {
-      unsupported_nodes_idx.push_back(node_idx);
+      clusters[cluster_id].push_back(node_idx);
     }
-  }
-
-  return unsupported_nodes_idx;
-}
-
-/**
- * Returns a vector clusters(or node_idx). For each unsupported node, the graph is split into 3 parts.
- * supported_cluster + (UNsupported_node + rest_of_the_graph). This functions returns vector of all supported_clusters by DPU
- */
-static std::vector<std::vector<NodeIndex>>
-GetPartitionedClusters(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
-  std::vector<std::vector<NodeIndex>> clusters;
-
-  auto prev = topological_order.begin();
-
-  for (const auto& unsup_node : unsupported_nodes) {
-    auto it = std::find(prev, topological_order.end(), unsup_node);
-    // Create a cluster vector[supported_node_idx, unsupported_node_idx) and append it to return list.
-    std::vector<NodeIndex> this_cluster{prev, it};
-    if (!this_cluster.empty()) {
-      clusters.push_back(std::move(this_cluster));
-    }
-    // Point prev to node idx past this unsuported node.
-    prev = ++it;
-  }
-
-  //Tail
-  std::vector<NodeIndex> this_cluster{prev, topological_order.end()};
-  if (!this_cluster.empty()) {
-    clusters.push_back(std::move(this_cluster));
   }
 
   return clusters;
@@ -279,10 +267,8 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   std::unordered_set<std::string> required_initializers;
-  const auto unsupported_nodes = GetUnsupportedNodeIndices(xg, backend_type_, graph, required_initializers);
-
-  const auto clusters = GetPartitionedClusters(graph.GetNodesInTopologicalOrder(), unsupported_nodes);
-
+  const auto clusters = GetSupportedNodeClusters(xg, backend_type_, graph, required_initializers);
+  
   for (const auto& this_cluster : clusters) {
     std::vector<std::string> cluster_inputs, cluster_outputs;
     GetInputsOutputsOfCluster(graph, this_cluster, required_initializers, cluster_inputs, cluster_outputs);

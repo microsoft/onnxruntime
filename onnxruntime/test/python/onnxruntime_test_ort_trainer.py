@@ -727,7 +727,7 @@ class TestOrtTrainer(unittest.TestCase):
         model_desc = ModelDescription([input_desc, label_desc], [loss_desc, output_desc])
         def loss_fn(x, label):
             return F.nll_loss(F.log_softmax(x, dim=1), label)
-        
+
         def get_lr_this_step(global_step):
             learningRate = 0.02
             return torch.tensor([learningRate])

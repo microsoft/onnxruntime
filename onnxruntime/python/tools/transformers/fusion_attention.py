@@ -5,7 +5,7 @@
 import numpy as np
 from logging import getLogger
 from onnx import helper, numpy_helper, TensorProto
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
 
@@ -188,10 +188,8 @@ class FusionAttention(Fusion):
 
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         _, mask_nodes, _ = self.model.match_parent_paths(
-            add_qk,
-            [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0]),
-             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0])],
-            output_name_to_node)
+            add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0]),
+                     (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0])], output_name_to_node)
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
@@ -215,4 +213,3 @@ class FusionAttention(Fusion):
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             #self.nodes_to_remove.extend(mask_nodes)
             self.prune_graph = True
-            

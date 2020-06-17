@@ -219,7 +219,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
             }
         }
 
-        // Handle other tensors including new weight, new gradient (update direction), 
+        // Handle other tensors including new weight, new gradient (update direction),
         // new momentums.
         for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
             const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.

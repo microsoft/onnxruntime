@@ -18,28 +18,6 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-static void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tensor, double rtol, double atol) {
-  ORT_ENFORCE(expected_tensor.Shape() == output_tensor.Shape(),
-              "Expected output shape [" + expected_tensor.Shape().ToString() +
-                  "] did not match run output shape [" +
-                  output_tensor.Shape().ToString() + "]");
-
-  ASSERT_TRUE(expected_tensor.DataType() == DataTypeImpl::GetType<float>()) << "Compare with non float number is not supported yet. ";
-  auto expected = expected_tensor.Data<float>();
-  auto output = output_tensor.Data<float>();
-  for (auto i = 0; i < expected_tensor.Shape().Size(); ++i) {
-    const auto expected_value = expected[i], actual_value = output[i];
-    if (std::isnan(expected_value)) {
-      ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i << "; expected is NaN, actual is not NaN";
-    } else if (std::isinf(expected_value)) {
-      ASSERT_EQ(expected_value, actual_value) << "value mismatch at index " << i;
-    } else {
-      double diff = fabs(expected_value - actual_value);
-      ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: " << expected_value << ", actual: " << actual_value;
-    }
-  }
-}
-
 class LayerNormOpTester : public OpTester {
  public:
   LayerNormOpTester(const char* op,

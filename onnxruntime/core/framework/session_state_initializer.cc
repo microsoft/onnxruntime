@@ -32,7 +32,7 @@ template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                              const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                             ITensorAllocator* planner, const T& save_tensor_func,
+                                             ITensorAllocator& planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
                                              const DataTransferManager& data_transfer_mgr);
 
@@ -87,7 +87,7 @@ Status FinalizeSessionState(SessionState& session_state,
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
       env, graph_location, graph_viewer,
       session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo(),
-      ort_value_name_idx_map, tensor_allocator_.get(),
+      ort_value_name_idx_map, *tensor_allocator_,
       [&session_state](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
         return session_state.AddInitializedTensor(idx, value, &d, constant);
       },
@@ -167,7 +167,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 template <typename T>
 common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                       const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
+                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
                                       const T& save_tensor_func, const logging::Logger& logger,
                                       const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
@@ -183,11 +183,21 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   }
 
   for (const auto& entry : id_to_initialized_tensor) {
-    ORT_RETURN_IF_ERROR(planner->Trace(entry.first, entry.second));
+    ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 
   //2. allocate weight buffer on different locations
-  ORT_RETURN_IF_ERROR(planner->FinalizePlan());
+  // planned_initializers_memory_size_in_byte is not actual physical size.
+  // It's the virtual size computed by planner.
+  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  ORT_RETURN_IF_ERROR(
+      planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
+
+  for (auto i : planned_initializers_memory_sizes_in_byte) {
+    LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
+                       << i.second << " bytes for " << i.first << std::endl;
+  }
+
   OrtCallback deleter;
 
   //3. create weight tensors based on weights buffer
@@ -198,7 +208,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
     std::unique_ptr<MemBuffer> m;
     // TODO: if the tensor need be copied, does it have enough room?
-    ORT_RETURN_IF_ERROR(planner->GetPreallocatedBuffer(ort_value_index, name, m));
+    ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m));
 #ifndef NDEBUG
     ORT_ENFORCE(m != nullptr);
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
