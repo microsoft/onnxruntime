@@ -73,25 +73,25 @@ static Status BuildBackPropGraph(
 /**
  * Run a training session for this model for 1 epoch, using batch size of 1 and synthetic input data.
  * @param so - SessionOptions for this run.
- * @param backprop_model_file - Mocel file to be run. This should already contain loss function and backward prop nodes.
+ * @param backprop_model_file - Model file to be run. This should already contain loss function and backward prop nodes.
  * @return TrainingSession for this run.
  */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
     const SessionOptions& so, const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
 
-  EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
+  ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
   std::pair<common::Status, const ModelMetadata*> res = training_session->GetModelMetadata();
-  EXPECT_TRUE(res.first.IsOK());
-  EXPECT_TRUE(res.second != nullptr);
+  ORT_THROW_IF_ERROR(res.first);
+  ORT_ENFORCE(res.second != nullptr);
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
-  EXPECT_TRUE(training_session->Initialize().IsOK());
+  ORT_THROW_IF_ERROR(training_session->Initialize());
 
   std::vector<MLValue> gradient_fetches;
   RunOptions run_options;
@@ -116,7 +116,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  EXPECT_TRUE(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches).IsOK());
+  ORT_THROW_IF_ERROR(training_session->Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches));
 
   auto end_time = std::chrono::high_resolution_clock::now();
   auto elapsed = TimeDiffMicroSeconds(start_time, end_time);
@@ -297,14 +297,14 @@ static void RunBertTrainingWithChecks(
     const SessionOptions& so,
     const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
-  EXPECT_TRUE(Environment::Create(nullptr, env).IsOK());
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
 
-  EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
+  ASSERT_STATUS_OK(training_session->Load(backprop_model_file));
 
   std::pair<common::Status, const ModelMetadata*> res = training_session->GetModelMetadata();
-  EXPECT_TRUE(res.first.IsOK());
+  ASSERT_STATUS_OK(res.first);
   ASSERT_TRUE(res.second != nullptr);
   auto model_metadata = res.second;
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
@@ -425,7 +425,7 @@ static void RunBertTrainingWithChecks(
 
   std::vector<OrtValue> fetches;
 
-  EXPECT_TRUE(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches).IsOK());
+  ASSERT_STATUS_OK(training_session->Run(run_options, feed_names, feeds, fetch_names, &fetches));
 
   for (size_t i = 0; i < fetch_names.size(); ++i) {
     if (!fetches[i].IsAllocated() || !!fetches[i].IsTensor())
@@ -1127,31 +1127,52 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
   pipe.cut_list.emplace_back(cut0);
   pipe.cut_list.emplace_back(cut1);
 
-  for (int i = 0; i < 3; ++i) {
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_fp16_initializers = true;
+
+  // 2 test variations - full precision and mixed precision
+  const std::vector<bool> test_with_fp32{true, false};
+  for(auto is_fp32 : test_with_fp32) {
+    // graph is partitioned into 3 parts.
+    for (int i = 0; i < 3; ++i) {
 #ifdef _WIN32
-    auto surfix = std::to_wstring(i);
+      auto surfix = std::to_wstring(i);
 #else
-    auto surfix = std::to_string(i);
+      auto surfix = std::to_string(i);
 #endif
-    PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+      PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
 
-    auto config = MakeBasicTrainingConfig();
-    config.pipeline_config = pipe;
-    config.distributed_config.world_rank = i;
-    config.distributed_config.world_size = 3;
-    config.distributed_config.local_rank = i;
-    config.distributed_config.local_size = 3;
-    config.distributed_config.data_parallel_size = 1;
-    config.distributed_config.horizontal_parallel_size = 1;
-    config.distributed_config.pipeline_parallel_size = 3;
-    config.model_with_training_graph_path = output_file;
+      auto config = MakeBasicTrainingConfig();
+      config.pipeline_config = pipe;
+      config.distributed_config.world_rank = i;
+      config.distributed_config.world_size = 3;
+      config.distributed_config.local_rank = i;
+      config.distributed_config.local_size = 3;
+      config.distributed_config.data_parallel_size = 1;
+      config.distributed_config.horizontal_parallel_size = 1;
+      config.distributed_config.pipeline_parallel_size = 3;
+      config.model_with_training_graph_path = output_file;
 
-    PathString backprop_model_file;
-    ASSERT_STATUS_OK(BuildBackPropGraph(model_uri, config, backprop_model_file));
+      if (!is_fp32) {
+        config.mixed_precision_config = mixed_precision_config;
+      }
 
-    std::shared_ptr<Model> model;
-    // Ensure the partitioned model load.
-    ASSERT_STATUS_OK(Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+      PathString backprop_model_file;
+      Status status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+      ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+      // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
+      // which takes a const tensor input. Const cast for input in function body won't be saved in the output
+      // model so reload will run into error.
+      // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
+      // partition logic and validate the graph.
+      if (is_fp32) {
+        std::shared_ptr<Model> model;
+        // Ensure the partitioned model load.
+        status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
+        ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+      }
+    }
   }
 }
 

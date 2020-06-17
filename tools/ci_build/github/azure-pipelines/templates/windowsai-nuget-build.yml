@@ -135,8 +135,12 @@ steps:
         arguments: 'x64'
       modifyEnvironment: true
 
+  - script: msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform="Any CPU" /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -restore
+    workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
+    displayName: 'Build Microsoft.AI.MachineLearning.Interop.dll'
+
   # Esrp signing
-  - template: esrp_dll.yml
+  - template: win-esrp-dll.yml
     parameters:
       FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
       DisplayName: 'ESRP - Sign Native dlls'

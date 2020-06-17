@@ -105,6 +105,10 @@ def parse_arguments():
         help="Enable the pytorch frontend training tests.")
     parser.add_argument(
         "--use_horovod", action='store_true', help="Enable Horovod.")
+    parser.add_argument(
+        "--mpi_home", help="Path to MPI installation dir")
+    parser.add_argument(
+        "--nccl_home", help="Path to NCCL installation dir")
 
     # enable ONNX tests
     parser.add_argument(
@@ -295,6 +299,9 @@ def parse_arguments():
     parser.add_argument(
         "--skip_winml_tests", action='store_true',
         help="Explicitly disable all WinML related tests")
+    parser.add_argument(
+        "--skip_nodejs_tests", action='store_true',
+        help="Explicitly disable all Node.js binding tests")
     parser.add_argument(
         "--enable_msvc_static_runtime", action='store_true',
         help="Enable static linking of MSVC runtimes.")
@@ -513,9 +520,9 @@ def setup_test_data(build_dir, configs):
                                 src_model_dir], shell=True)
 
 
-def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
-                        cudnn_home, tensorrt_home, migraphx_home, path_to_protoc_exe, configs,
-                        cmake_extra_defines, args, cmake_extra_args):
+def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
+                        mpi_home, nccl_home, tensorrt_home, migraphx_home,
+                        path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     # TODO: fix jemalloc build so it does not conflict with onnxruntime
@@ -628,8 +635,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF"),
+            "ON" if args.use_horovod else "OFF")
     ]
+
+    if mpi_home and os.path.exists(mpi_home):
+        cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+
+    if nccl_home and os.path.exists(nccl_home):
+        cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE="
@@ -638,10 +651,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
     # temp turn on only for linux gpu build
     if not is_windows():
         if args.use_cuda:
-            if "-Donnxruntime_USE_HOROVOD=OFF" in cmake_args:
-                cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
             cmake_args += [
-                "-Donnxruntime_USE_HOROVOD=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     # nGraph, TensorRT and OpenVINO providers currently only supports
@@ -816,7 +826,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home,
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER="
                 + ("ON" if config.lower() == 'debug' and not args.use_tvm
-                   and not args.use_ngraph and
+                   and not args.use_ngraph and not args.use_openvino and
                    not args.enable_msvc_static_runtime
                    else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
             cwd=config_build_dir)
@@ -1233,7 +1243,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
             cmd += ["-j", str(num_parallel_models)]
         if enable_multi_device_test:
             cmd += ['-d', '1']
-        if config != 'Debug' and os.path.exists(model_dir):
+        # Even in release mode nuphar needs 40 minutes to run all the models tests
+        if config != 'Debug' and os.path.exists(model_dir) and provider != 'nuphar':
             cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
             cmd.append(onnx_test_data_dir)
@@ -1400,13 +1411,20 @@ def nuphar_run_python_tests(build_dir, configs):
             cwd=cwd, dll_path=dll_path)
 
 
+def run_nodejs_tests(nodejs_binding_dir):
+    args = ['npm', 'test', '--', '--timeout=2000']
+    if is_windows():
+        args = ['cmd', '/c'] + args
+    run_subprocess(args, cwd=nodejs_binding_dir)
+
+
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
-        use_acl, nightly_build=False, featurizers_build=False):
+        use_acl, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
+        if is_windows() and not use_ninja:
             cwd = os.path.join(cwd, config)
 
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
@@ -1602,6 +1620,9 @@ def main():
     # if using cuda, setup cuda paths and env vars
     cuda_home, cudnn_home = setup_cuda_vars(args)
 
+    mpi_home = args.mpi_home
+    nccl_home = args.nccl_home
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -1691,7 +1712,7 @@ def main():
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
         generate_build_tree(
-            cmake_path, source_dir, build_dir, cuda_home, cudnn_home,
+            cmake_path, source_dir, build_dir, cuda_home, cudnn_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, path_to_protoc_exe, configs, cmake_extra_defines,
             args, cmake_extra_args)
 
@@ -1778,6 +1799,11 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
+        # run node.js binding tests
+        if args.build_nodejs and not args.skip_nodejs_tests:
+            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            run_nodejs_tests(nodejs_binding_dir)
+
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
@@ -1796,6 +1822,7 @@ def main():
                 args.use_acl,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
+                use_ninja=(args.cmake_generator == 'Ninja')
             )
 
     if args.gen_doc and (args.build or args.test):

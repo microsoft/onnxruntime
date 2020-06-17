@@ -451,7 +451,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)
     //out of memory
-    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19")};
+    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
@@ -491,7 +491,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
@@ -553,6 +552,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_openvino) {
@@ -588,6 +588,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
     broken_tests.insert({"maxpool_2d_uint8", "Does not work on DNNL, NNAPI"});
   }
 
@@ -602,6 +603,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
     broken_tests.insert({"maxpool_2d_uint8", "result mismatch"});
     broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NC_expanded", "shape mismatch"});
     broken_tests.insert({"negative_log_likelihood_loss_input_shape_is_NCd1d2_expanded", "shape mismatch"});
@@ -725,6 +727,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
     broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_cuda) {
@@ -735,6 +738,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
+    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_dml) {
