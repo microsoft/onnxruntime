@@ -1497,8 +1497,13 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   return Status::OK();
 }
 
-SessionIOBinding::SessionIOBinding(InferenceSession* session) {
+SessionIOBinding::SessionIOBinding(std::shared_ptr<InferenceSession> session) {
   ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
+  sess_ = session;
+}
+
+InferenceSession* SessionIOBinding::GetInferenceSession() {
+  return sess_.get();
 }
 
 IOBinding* SessionIOBinding::Get() {

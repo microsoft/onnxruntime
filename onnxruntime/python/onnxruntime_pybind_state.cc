@@ -7,6 +7,7 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
+#include <numpy/arrayobject.h>
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
@@ -165,7 +166,7 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 template <typename T>
-void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
@@ -222,7 +223,7 @@ static const char* GetDeviceName(const OrtDevice& device) {
 }
 
 template <>
-void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
@@ -233,7 +234,7 @@ void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py_list);
 }
 
-void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
@@ -270,7 +271,7 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
   GetPyObjFromTensor(rtensor, obj);
@@ -619,10 +620,19 @@ void addObjectMethods(py::module& m, Environment& env) {
 
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
-      .def(py::init<InferenceSession*>())
-      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object numpy_arr_on_cpu) -> void {
+      .def(py::init<std::shared_ptr<InferenceSession>>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
         OrtValue mlvalue;
-        CreateTensorMLValue(GetAllocator(), name, reinterpret_cast<PyArrayObject*>(numpy_arr_on_cpu.ptr()), &mlvalue);
+
+        InferenceSession* sess = io_binding->GetInferenceSession();
+        auto px = sess->GetModelInputs();
+        if (!px.first.IsOK() || !px.second) {
+          throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+        }
+        if (PyDict_Check(arr_on_cpu.ptr())) {
+          throw std::runtime_error("Cannot bind to dictionary type of values");
+        }
+        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &mlvalue);
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -680,7 +690,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
-        for (auto _ : outputs) {
+        for (const auto& _ : outputs) {
           if (_.IsTensor()) {
             AddTensorAsPyObj(_, rfetch);
           } else {
