@@ -72,6 +72,56 @@ bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, cons
 
   return false;
 }
+
+/**
+ * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze -> Div -> Unsqueeze
+ */
+bool ReshapeFusion::Fuse_Subgraph3(Graph& graph, const NodeArg& root_input, const Node& concat,
+                                   int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+  std::vector<graph_utils::EdgeEndToMatch> parent_path{
+      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Div", {7}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Slice", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
+    const Node& unsqueeze = edges[0]->GetNode();
+    const Node& div_node = edges[1]->GetNode();
+    const Node& slice = edges[3]->GetNode();
+    const Node& shape = edges[4]->GetNode();
+
+    std::cout << "subgraph 3 found. " << std::endl;
+    const NodeArg& shape_input = *(shape.InputDefs()[0]);
+    if (shape_input.Name() != root_input.Name()) {
+      return false;
+    }
+
+    std::vector<int64_t> axes;
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+      return false;
+    }
+
+    Initializer slice_start_init{
+        *(graph_utils::GetConstantInitializer(graph, slice.InputDefs()[1]->Name())), graph.ModelPath()};
+    Initializer slice_end_init{
+        *(graph_utils::GetConstantInitializer(graph, slice.InputDefs()[2]->Name())), graph.ModelPath()};
+    const int64_t slice_start = slice_start_init.data<int64_t>()[0];
+    const int64_t slice_end = slice_end_init.data<int64_t>()[0];
+    if (!(slice_end == INT64_MAX && slice_start == -1) && abs(slice_end - slice_start) != 1) {
+        std::cout << "slice not 1. slice_start =  " << slice_start << " slice_end = " << slice_end << std::endl;
+        return false;
+      }
+
+    if (div_node.GetInputEdgesCount() > 1) {
+      std::cout << "div node has more than 1 input edge" << std::endl;
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
 /**
 Apply Reshape Fusion. The following are subgraphs before and after fusion:
 (a[] and b[] are int64[] constant initializers; Concat may have any number of arguments,
@@ -136,6 +186,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       shape_value.push_back(0);
       // We have matched the pattern for this input into Concat
       // Proceed to the next input
+      continue;
+    }
+
+    matched = ReshapeFusion::Fuse_Subgraph3(graph, root_input, concat, i, shape_value, logger);
+    if (matched) {
+      shape_value.push_back(-1);
       continue;
     }
 
