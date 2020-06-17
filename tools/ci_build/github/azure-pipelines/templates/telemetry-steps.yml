@@ -3,9 +3,12 @@
 
 steps:
   - ${{ if ne(variables.TELEMETRYGUID, '') }}:
-    - script: |
-        echo ##vso[task.setvariable variable=TelemetryOption]--use_telemetry
+    - task: PythonScript@0
       displayName: 'Set TelemetryOption variable [telemetry enabled]'
+      inputs:
+        scriptSource: inline
+        script: |
+          print("##vso[task.setvariable variable=TelemetryOption]--use_telemetry")
 
     - powershell: |
         $length = $env:TELEMETRYGUID.length
@@ -17,6 +20,9 @@ steps:
         TELEMETRYGUID: $(TELEMETRYGUID)
 
   - ${{ if eq(variables.TELEMETRYGUID, '') }}:
-    - script: |
-        echo ##vso[task.setvariable variable=TelemetryOption]
+    - task: PythonScript@0
       displayName: 'Set TelemetryOption variable [telemetry disabled]'
+      inputs:
+        scriptSource: inline
+        script: |
+          print("##vso[task.setvariable variable=TelemetryOption]")
