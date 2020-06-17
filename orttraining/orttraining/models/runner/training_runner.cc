@@ -651,15 +651,15 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     Status status = Status::OK();
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](
         const size_t worker_id, const size_t step) {
-  #ifdef ENABLE_NVTX_PROFILE
+#ifdef ENABLE_NVTX_PROFILE
       // Store the tag for the thread which runs session_.Run(...).
       // It will be used to name range in Nvidia's visual profiler.
       auto& profile_context = profile::Context::GetInstance();
       profile_context.SetThreadTag(
         std::this_thread::get_id(), std::to_string(step));
-  #else
+#else
       ORT_UNUSED_PARAMETER(step);
-  #endif
+#endif
       status = session_.Run(
         RunOptions(),
         pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -682,13 +682,13 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   } else {
     // Pipeline is not enabled, so we run session using the main thread.
 
-  #ifdef ENABLE_NVTX_PROFILE
+#ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
     auto& profile_context = profile::Context::GetInstance();
     profile_context.SetThreadTag(
       std::this_thread::get_id(), std::to_string(step_));
-  #endif
+#endif
 
     auto status = session_.Run(
       RunOptions(),
