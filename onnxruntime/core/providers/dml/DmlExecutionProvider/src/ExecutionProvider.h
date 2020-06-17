@@ -87,7 +87,7 @@ namespace Dml
             const std::vector<const onnxruntime::KernelRegistry*>& registries
             ) const;
 
-        uint32_t GetSuppportedDeviceDataTypeMask() const;
+        uint32_t GetSupportedDeviceDataTypeMask() const;
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const;
         onnxruntime::common::Status CopyTensors(const std::vector<onnxruntime::IDataTransfer::SrcDstPair>& src_dst_pairs) const;

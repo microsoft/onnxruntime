@@ -47,6 +47,9 @@ public:
                 0
             );
 
+        DmlOperator::Remap64bitDmlDataTypesTo32bit();
+        m_inputTensorDescs[1].ForceUnsignedDataType(); // DML operator accepts uint32_t.
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 

@@ -17,13 +17,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Gather expects 1 output.");
 
         DmlOperator::Initialize(kernelCreationContext);
+        DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         assert(inputDescs.size() == 2);
         assert(outputDescs.size() == 1);
-
-        m_inputTensorDescs[1].ForceUnsignedDataType();
 
         auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
@@ -53,13 +52,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "GatherElements expects 1 output.");
 
         DmlOperator::Initialize(kernelCreationContext);
+        DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         assert(inputDescs.size() == 2);
         assert(outputDescs.size() == 1);
-
-        m_inputTensorDescs[1].ForceUnsignedDataType();
 
         int32_t signedOnnxAxis = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 0);
         auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
@@ -90,13 +88,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "GatherND expects 1 output.");
 
         DmlOperator::Initialize(kernelCreationContext);
+        DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         assert(inputDescs.size() == 2);
         assert(outputDescs.size() == 1);
-
-        m_inputTensorDescs[1].ForceUnsignedDataType();
 
         auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);

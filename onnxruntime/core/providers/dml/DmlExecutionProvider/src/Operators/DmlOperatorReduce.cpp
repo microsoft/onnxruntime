@@ -22,12 +22,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
         DmlOperator::Initialize(kernelInfo);
 
-        // Zero the output tensor's memory for ArgMin & ArgMax, which produce INT64 output.
-        if ((function == DML_REDUCE_FUNCTION_ARGMAX) || (function == DML_REDUCE_FUNCTION_ARGMIN))
-        {
-            m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
-        }
-
         std::vector<uint32_t> dmlAxes;
         std::vector<DimensionType> reducedDims = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
         int dimOffset = gsl::narrow_cast<int>(OperatorHelper::NchwDimensionCount - reducedDims.size());
@@ -57,6 +51,18 @@ public:
                 TensorAxis::W, 
                 TensorAxis::RightAligned,
                 reducedDims);
+        }
+
+        // Zero the output tensor's memory for ArgMin & ArgMax, which produce INT64 output.
+        if ((function == DML_REDUCE_FUNCTION_ARGMAX) || (function == DML_REDUCE_FUNCTION_ARGMIN))
+        {
+            // If the 64-bit tensors were remapped to 32-bit, then we need to clear the upper 32-bits
+            // of each element. If the device directly supports 64-bit elements, then no need.
+            DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
+            if (m_outputTensorDescs[0].WasRemapped64bitTo32bit())
+            {
+                m_zeroOperator = InitializeZeroInt64Tensor(m_outputTensorDescs[0].GetBufferSizeInBytes());
+            }
         }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
