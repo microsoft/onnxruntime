@@ -348,13 +348,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
   } else if (optype == "Slice") {
     //start, end, axes need to be a initializer
+    bool cond_for_slice = false;
+    if(node->InputDefs().size() > 1){
     const auto &start_arg = node->InputDefs()[1];
     const auto &end_arg = node->InputDefs()[2];
-
-    bool cond_for_slice = false;
     cond_for_slice |= initializers.find(start_arg->Name()) == initializers.end();
     cond_for_slice |= initializers.find(end_arg->Name()) == initializers.end();
-
+    }
     if (node->InputDefs().size() > 3) {
       const auto &axes_arg = node->InputDefs()[3];
       cond_for_slice |= initializers.find(axes_arg->Name()) == initializers.end();
