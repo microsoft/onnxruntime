@@ -25,9 +25,10 @@ if len(sys.argv) < 2:
 
 input_model_name = sys.argv[1]
 output_model_name = input_model_name[:-5] + '_opset12.onnx'
-
 model = onnx.load(input_model_name)
 
+# for a given node input, look thru the graph nodes and find the node
+# whose output is matching the input 
 def find_input_node(model, arg):
     result = []
     for node in model.graph.node:
@@ -36,27 +37,11 @@ def find_input_node(model, arg):
                 result.append(node)
     return result[0] if len(result)== 1 else None
 
-def find_output_node(model, arg):
-    result = []
-    for node in model.graph.node:
-        for input in node.input:
-            if input == arg:
-                result.append(node)
-    return result[0] if len(result) == 1 else None
-
-def find_input(model, arg):
-    for initializer in model.graph.initializer:
-        if initializer.name == arg:
-            return initializer
-    return None
-
 def get_node_index(model, node):
-    i = 0
-    while i < len(model.graph.node):
-        if model.graph.node[i] == node:
-            break;
-        i += 1
-    return i if i < len(model.graph.node) else None;
+    for i, graph_node in enumerate(model.graph.node):
+        if graph_node == node:
+            return i
+    return None
 
 def add_const(model, name, output, t_value = None, f_value = None):
     const_node = model.graph.node.add()
