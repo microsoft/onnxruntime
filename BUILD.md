@@ -293,7 +293,7 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
    ```
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
-   * After setting the environemnt using setupvars.sh script, follow these steps to change the default scheduler of VAD-M to Bypass:
+   * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:
       * Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field "bypass_device_number" to 8.
       * Restart the hddl daemon for the changes to take effect.
       * Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
