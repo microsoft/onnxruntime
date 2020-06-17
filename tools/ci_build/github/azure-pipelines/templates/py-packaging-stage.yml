@@ -326,8 +326,6 @@ stages:
           clean: true
           submodules: recursive
 
-        - script: set # TODO REMOVE
-
         - template: enable-telemetry.yml
 
         - task: UsePythonVersion@0
