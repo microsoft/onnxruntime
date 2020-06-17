@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2>
+template <typename T>
 class DropoutGrad final : public CudaKernel {
  public:
   DropoutGrad(const OpKernelInfo& info) : CudaKernel(info) {

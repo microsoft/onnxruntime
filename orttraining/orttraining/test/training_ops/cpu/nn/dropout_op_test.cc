@@ -229,7 +229,7 @@ TEST(TrainableDropoutTest, RatioLimit) {
 }
 
 TEST(TrainableDropoutTest, EmptyRatio) {
-  RunDropoutTest("TrainableDropout", true, {1000}, -1.0f);
+  RunDropoutTest("TrainableDropout", true, {1000});
 }
 
 TEST(BiasDropoutTest, Basic) {

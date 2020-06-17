@@ -12,7 +12,15 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, bool trainable_dropout>
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+template <typename T, bool trainable_dropout>
 class Dropout final : public CudaKernel {
  public:
   Dropout(const OpKernelInfo& info) : CudaKernel(info) {
@@ -29,45 +37,39 @@ class Dropout final : public CudaKernel {
   static constexpr float default_ratio_ = 0.5f;
 };
 
-template <typename T1, typename T2, bool trainable_dropout>
-Status Dropout<T1, T2, trainable_dropout>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T1>::MappedType CudaT;
+template <typename T, bool trainable_dropout>
+Status Dropout<T, trainable_dropout>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
 
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
   const TensorShape& shape = X->Shape();
-  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T1>());
+  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   const int64_t N = shape.Size();
 
   //Get Y_data
   auto Y = context->Output(0, shape);
-  auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T1>());
+  auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   //Get mask_data
   auto mask = context->Output(1, shape);
   ORT_ENFORCE(!mask || mask->Shape().Size() == N);
 
   //Get the ratio_data
-  float ratio_data;
+  float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(1);
-
-  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
-                "T2 must be float16 or float or double");
-
   if (ratio) {
-    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
-  } else {
-    ratio_data = default_ratio_;
+    utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
+    t_disp.Invoke(ratio, ratio_data);
   }
-  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
 
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
   if ((0 == ratio_data /*Backward compat with TrainableDropout*/) ||
       (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false))) {
     if (Y_data != X_data) {
-      CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T1), cudaMemcpyDeviceToDevice));
+      CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T), cudaMemcpyDeviceToDevice));
     }
 
     // If mask is requested, return all 1s.
