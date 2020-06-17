@@ -6,7 +6,7 @@
 from typing import Dict
 from logging import getLogger
 from onnx import helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
 
@@ -36,11 +36,8 @@ class FusionEmbedLayerNoMask(Fusion):
                                   v            v
                               SkipLayerNormalization
     """
-    def __init__(self,
-                 model: OnnxModel,
-                 name: str = "EmbedLayerNormalization(no mask)",
-                 search_op_types="SkipLayerNormalization"):
-        super().__init__(model, name, search_op_types)
+    def __init__(self, model: OnnxModel, description='no mask'):
+        super().__init__(model, "EmbedLayerNormalization", "SkipLayerNormalization", description)
         self.utils = FusionUtils(model)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
@@ -141,10 +138,9 @@ class FusionEmbedLayerNoMask(Fusion):
 
             # Cast might be removed by OnnxRuntime.
             _, segment_id_path, _ = self.model.match_parent_paths(
-                segment_ids_cast_node, 
+                segment_ids_cast_node,
                 [(['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape', 'Cast'], [0, 0, 1, 0, 0, 0]),
-                 (['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [0, 0, 1, 0, 0])],
-                output_name_to_node)
+                 (['ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [0, 0, 1, 0, 0])], output_name_to_node)
 
             if segment_id_path and input_ids_cast_node and input_ids_cast_node.input[0] == segment_id_path[-1].input[0]:
                 logger.debug("Simplify semgent id path...")
@@ -187,7 +183,7 @@ class FusionEmbedLayerNoMask(Fusion):
 
 class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
     def __init__(self, model: OnnxModel, mask_indice: Dict, mask_casted: Dict):
-        super().__init__(model, "EmbedLayerNormalization(with mask)", "SkipLayerNormalization")
+        super().__init__(model, "with mask")
         self.mask_indice: Dict = mask_indice
         self.mask_casted: Dict = mask_casted
         self.mask_input_name = None

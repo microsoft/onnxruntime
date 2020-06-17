@@ -142,8 +142,15 @@ Status TrainingSession::ConfigureForTraining(
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
+  // Enable loss scale if mixed precision is enabled AND at pipeline last stage if pipeline is used.
+  // We are currently making the assumption that no data parallelism is used together with model parallelism.
+  // So we can check the last stage by checking the world_rank and world_size. Once DP and MP combination is
+  // enabled, we need to devise another way to check MP stages.
+  bool enable_loss_scale = is_mixed_precision_enabled_ &&
+                           (!config.pipeline_config.has_value() ||
+                            (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
   optional<std::string> loss_scale_input_name =
-        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
+        enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
@@ -164,7 +171,7 @@ Status TrainingSession::ConfigureForTraining(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
       "loss_scale_input_name should not be set to an empty string.");
 
-  if (is_mixed_precision_enabled_) {
+  if (enable_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
     mp_result.loss_scale_input_name = loss_scale_input_name.value();
     config_result.mixed_precision_config_result = mp_result;
@@ -225,7 +232,8 @@ Status TrainingSession::ConfigureForTraining(
 
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
-    ORT_RETURN_IF_ERROR(InsertPipelineOps(pipeline_result.forward_waited_event_name,
+    ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
+                                          pipeline_result.forward_waited_event_name,
                                           pipeline_result.forward_recorded_event_name,
                                           pipeline_result.backward_waited_event_name,
                                           pipeline_result.backward_recorded_event_name,
@@ -259,7 +267,8 @@ Status TrainingSession::ConfigureForTraining(
   for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
       const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
       ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
-      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+          node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         it = weights_to_train_.erase(it);
       }
       else{
@@ -549,6 +558,7 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 }
 
 Status TrainingSession::InsertPipelineOps(
+  const std::unordered_set<std::string>& initializer_names_to_preserve,
   std::string& forward_waited_event_name,
   std::string& forward_recorded_event_name,
   std::string& backward_waited_event_name,
@@ -563,6 +573,7 @@ Status TrainingSession::InsertPipelineOps(
   std::string& backward_recorded_event_before_send_name) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
     model_->MainGraph(),
+    initializer_names_to_preserve,
     forward_waited_event_name,
     forward_recorded_event_name,
     backward_waited_event_name,

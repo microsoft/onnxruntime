@@ -1,5 +1,6 @@
 parameters:
   is_featurizers_build: false
+  is_nightly_build: 0
 
 steps:
 - task: PythonScript@0
@@ -13,5 +14,9 @@ steps:
         flags = "--use_featurizers --wheel_name_suffix=featurizer"
       else:
         flags = ""
-
       print("##vso[task.setvariable variable=FeaturizerBuildFlag]%s" % flags)
+      
+      if "${{ parameters.is_nightly_build }}" == "1":
+        flags = flags + " --nightly_build"
+
+      print("##vso[task.setvariable variable=WheelBuildFlag]%s" % flags)
