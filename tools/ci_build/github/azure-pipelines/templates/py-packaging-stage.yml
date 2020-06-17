@@ -1,6 +1,6 @@
 parameters:
 - name: build_py_parameters
-  displayName: 'Extra parameters to pass to build.py.'
+  displayName: 'Extra parameters to pass to build.py. Don't put newlines in here.'
   type: string
   default: ''
 

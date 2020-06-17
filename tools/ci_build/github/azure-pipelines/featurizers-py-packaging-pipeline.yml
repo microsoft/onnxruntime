@@ -3,7 +3,5 @@ trigger: none
 stages:
 - template: templates/py-packaging-stage.yml
   parameters:
-    build_py_parameters: >
-      --use_featurizers
-      --wheel_name_suffix featurizer
+    build_py_parameters: --use_featurizers --wheel_name_suffix featurizer
     enable_linux_arm: false
