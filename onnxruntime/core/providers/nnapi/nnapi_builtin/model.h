@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "builders/Shaper.h"
+#include "builders/shaper.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
 
 struct ANeuralNetworksModel;

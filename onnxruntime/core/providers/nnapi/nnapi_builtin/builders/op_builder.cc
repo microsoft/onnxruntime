@@ -3,10 +3,11 @@
 
 #include <onnx/onnx_pb.h>
 
+#include "core/common/safeint.h"
 #include "helper.h"
 #include "model_builder.h"
-#include "NodeAttrHelper.h"
-#include "OpBuilder.h"
+#include "node_attr_helper.h"
+#include "op_builder.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -83,7 +84,7 @@ void AddPoolOperator(int32_t op_type,
 
 Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
                        const std::string& name) {
-  Shaper::Shape emptyShape;
+  Shaper::Shape empty_shape;
   for (const auto& input : model_proto.graph().input()) {
     if (input.name() != name)
       continue;
@@ -100,13 +101,13 @@ Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
       continue;
 
     if (!value_info.has_type()) {
-      return emptyShape;
+      return empty_shape;
     } else if (!value_info.type().has_tensor_type()) {
-      return emptyShape;
+      return empty_shape;
     } else if (!value_info.type().tensor_type().has_shape()) {
-      return emptyShape;
+      return empty_shape;
     } else if (value_info.type().tensor_type().shape().dim_size() == 0) {
-      return emptyShape;
+      return empty_shape;
     }
 
     Shaper::Shape shape;
@@ -116,7 +117,7 @@ Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
     return shape;
   }
 
-  return emptyShape;
+  return empty_shape;
 }
 
 enum DataLayout {
@@ -130,7 +131,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   ModelBuilder::Shape shape;
   for (auto dim : tensor.dims())
-    shape.push_back(static_cast<uint32_t>(dim));
+    shape.push_back(SafeInt<uint32_t>(dim));
 
   if (shape.size() != 4)
     throw std::invalid_argument(
@@ -192,7 +193,7 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   ModelBuilder::Shape shape;
   for (auto dim : tensor.dims())
-    shape.push_back(static_cast<uint32_t>(dim));
+    shape.push_back(SafeInt<uint32_t>(dim));
 
   if (shape.size() != 2)
     throw std::invalid_argument(
@@ -235,7 +236,7 @@ class BaseOpBuilder : public IOpBuilder {
         node_(node) {}
 
   virtual ~BaseOpBuilder() = default;
-  virtual void SkipInitializers() override {}
+  virtual void AddInitializersToSkip() override {}
   std::pair<bool, std::string> IsOpSupported() override final;
   void AddOperator() override final;
 
@@ -365,7 +366,7 @@ void ReluOpBuilder::AddOperatorImpl() {
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   // skip this relu if it is some op's fuse output
-  if (HAS(model_builder_.GetFusedActivations(), node_.name())) {
+  if (Contains(model_builder_.GetFusedActivations(), node_.name())) {
     model_builder_.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     ModelBuilder::IndexSeq input_indices;
@@ -415,7 +416,7 @@ void TransposeOpBuilder::AddOperatorImpl() {
       perm.push_back(i);
   }
 
-  ModelBuilder::Shape perm_dimen = {static_cast<uint32_t>(input_dims)};
+  ModelBuilder::Shape perm_dimen = {SafeInt<uint32_t>(input_dims)};
   std::string perm_name = node_.name() + input + "perm";
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
   uint32_t perm_idx = model_builder_.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
@@ -435,20 +436,20 @@ class ReshapeOpBuilder : public BaseOpBuilder {
  public:
   ReshapeOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
       : BaseOpBuilder(model_builder, node) {}
-  void SkipInitializers() override;
+  void AddInitializersToSkip() override;
 
  private:
   std::pair<bool, std::string> IsOpSupportedImpl() override;
   void AddOperatorImpl() override;
 };
 
-void ReshapeOpBuilder::SkipInitializers() {
+void ReshapeOpBuilder::AddInitializersToSkip() {
   model_builder_.AddSkippedInitializer(node_.input(1));
 }
 
 std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
   const auto& initializers(model_builder_.GetInitializerTensors());
-  if (!HAS(initializers, node_.input(1)))
+  if (!Contains(initializers, node_.input(1)))
     return {false, "New shape of reshape must be known"};
 
   const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
@@ -458,7 +459,7 @@ std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
 
   const auto& shape_tensor = initializers.at(node_.input(1));
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
-  const auto size = static_cast<uint32_t>(shape_tensor.dims()[0]);
+  const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
   const auto input_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(0));
 
   for (uint32_t i = 0; i < size; i++) {
@@ -483,12 +484,12 @@ void ReshapeOpBuilder::AddOperatorImpl() {
 
   const auto& shape_tensor = initializers.at(node_.input(1));
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
-  const auto size = static_cast<uint32_t>(shape_tensor.dims()[0]);
+  const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
   ModelBuilder::Shape input_shape = shaper[input];
   std::vector<int32_t> shape(size);
   for (uint32_t i = 0; i < size; i++) {
-    int32_t dim = static_cast<int32_t>(rawShape[i]);
+    int32_t dim = SafeInt<int32_t>(rawShape[i]);
     // NNAPI reshape does not support 0 as dimension
     shape[i] = dim == 0 ? input_shape[i] : dim;
   }
@@ -512,14 +513,14 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
  public:
   BatchNormalizationOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
       : BaseOpBuilder(model_builder, node) {}
-  void SkipInitializers() override;
+  void AddInitializersToSkip() override;
 
  private:
   std::pair<bool, std::string> IsOpSupportedImpl() override;
   void AddOperatorImpl() override;
 };
 
-void BatchNormalizationOpBuilder::SkipInitializers() {
+void BatchNormalizationOpBuilder::AddInitializersToSkip() {
   // skip everything except input0 for BatchNormalization
   model_builder_.AddSkippedInitializer(node_.input(1));  // scale
   model_builder_.AddSkippedInitializer(node_.input(2));  // B
@@ -539,16 +540,16 @@ std::pair<bool, std::string> BatchNormalizationOpBuilder::IsOpSupportedImpl() {
   const auto& b_name = node_.input(2);
   const auto& mean_name = node_.input(3);
   const auto& var_name = node_.input(4);
-  if (!HAS(initializers, scale_name)) {
+  if (!Contains(initializers, scale_name)) {
     return {false, "Scale of BN must be known"};
   }
-  if (!HAS(initializers, b_name)) {
+  if (!Contains(initializers, b_name)) {
     return {false, "B of BN must be known"};
   }
-  if (!HAS(initializers, mean_name)) {
+  if (!Contains(initializers, mean_name)) {
     return {false, "Mean of BN must be known"};
   }
-  if (!HAS(initializers, var_name)) {
+  if (!Contains(initializers, var_name)) {
     return {false, "Var of BN must be known"};
   }
 
@@ -572,7 +573,7 @@ void BatchNormalizationOpBuilder::AddOperatorImpl() {
   const auto& var_tensor = initializers.at(node_.input(4));
   const auto eps = helper.get("epsilon", 1e-5f);
 
-  const auto size = static_cast<uint32_t>(scale_tensor.dims()[0]);
+  const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
   vector<float> a, b;
   a.reserve(size);
   b.reserve(size);
@@ -728,14 +729,14 @@ class ConvOpBuilder : public BaseOpBuilder {
  public:
   ConvOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
       : BaseOpBuilder(model_builder, node) {}
-  void SkipInitializers() override;
+  void AddInitializersToSkip() override;
 
  private:
   std::pair<bool, std::string> IsOpSupportedImpl() override;
   void AddOperatorImpl() override;
 };
 
-void ConvOpBuilder::SkipInitializers() {
+void ConvOpBuilder::AddInitializersToSkip() {
   // skip the weight for conv as we need to transpose
   model_builder_.AddSkippedInitializer(node_.input(1));
 }
@@ -747,7 +748,7 @@ std::pair<bool, std::string> ConvOpBuilder::IsOpSupportedImpl() {
 
   const auto group = helper.get("group", 1);
   const auto weight_name = node_.input(1);
-  if (HAS(model_builder_.GetInitializerTensors(), weight_name)) {
+  if (Contains(model_builder_.GetInitializerTensors(), weight_name)) {
     const auto& tensor = model_builder_.GetInitializerTensors().at(weight_name);
     if (tensor.dims().size() != 4) {
       return {false, "Only conv 2d is supported."};
@@ -1008,7 +1009,7 @@ class GemmOpBuilder : public BaseOpBuilder {
  public:
   GemmOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
       : BaseOpBuilder(model_builder, node) {}
-  void SkipInitializers() override;
+  void AddInitializersToSkip() override;
 
  private:
   std::pair<bool, std::string> IsOpSupportedImpl() override;
@@ -1020,7 +1021,7 @@ std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
   const auto& initializers(model_builder_.GetInitializerTensors());
 
   if (op == "MatMul") {  // Only support A*B B is an initializer
-    if (!HAS(initializers, node_.input(1)))
+    if (!Contains(initializers, node_.input(1)))
       return {false, "B of MatMul must be known"};
   } else if (op == "Gemm") {
     // Only support
@@ -1038,7 +1039,7 @@ std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
               "1.0 is supported."};
     }
 
-    if (transB == 0 && !HAS(initializers, node_.input(1))) {
+    if (transB == 0 && !Contains(initializers, node_.input(1))) {
       return {false, "B of MatMul must be known if transB != 1"};
     }
 
@@ -1053,7 +1054,7 @@ std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void GemmOpBuilder::SkipInitializers() {
+void GemmOpBuilder::AddInitializersToSkip() {
   const auto& op = node_.op_type();
   if (op == "MatMul") {
     model_builder_.AddSkippedInitializer(node_.input(1));

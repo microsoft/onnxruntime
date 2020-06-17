@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
 #include "model_builder.h"
-#include "NodeAttrHelper.h"
-#include "OpBuilder.h"
+#include "node_attr_helper.h"
+#include "op_builder.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -143,7 +144,7 @@ void ModelBuilder::GetAllInitializers() {
 void ModelBuilder::PreprocessIntializers() {
   for (const auto& node : model_proto_.graph().node()) {
     auto addOpBuilder = CreateOpBuilder(*this, node);
-    addOpBuilder->SkipInitializers();
+    addOpBuilder->AddInitializersToSkip();
   }
 }
 
@@ -156,12 +157,12 @@ void ModelBuilder::RegisterInitializers() {
   for (int i = 0; i < initializer_size; ++i) {
     const auto& tensor = model_proto_.graph().initializer(i);
     const auto& name = tensor.name();
-    if (HAS(skipped_initializers_, name))
+    if (Contains(skipped_initializers_, name))
       continue;
 
     Shape shape;
     for (auto dim : tensor.dims()) {
-      shape.push_back(static_cast<uint32_t>(dim));
+      shape.push_back(SafeInt<uint32_t>(dim));
     }
 
     shaper_.AddShape(name, shape);
@@ -194,7 +195,7 @@ void ModelBuilder::RegisterInitializers() {
   size_t offset = 0;
   for (int i = 0; i < initializer_size; ++i) {
     const auto& tensor = model_proto_.graph().initializer(i);
-    if (HAS(skipped_initializers_, tensor.name()))
+    if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
     Index index;
@@ -223,16 +224,16 @@ void ModelBuilder::RegisterModelInputs() {
     std::string input_name = input.name();
 
     {  // input should not be an initializer
-      if (HAS(operands_, input_name))
+      if (Contains(operands_, input_name))
         continue;
 
-      if (HAS(initializers_, input_name))
+      if (Contains(initializers_, input_name))
         continue;
     }
 
     Shaper::Shape shape;
     for (const auto& dim : input.type().tensor_type().shape().dim()) {
-      shape.push_back(static_cast<uint32_t>(dim.dim_value()));
+      shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
     shaper_.AddShape(input_name, shape);
@@ -265,7 +266,7 @@ void ModelBuilder::RegisterModelOutputs() {
   for (int32_t output_idx = 0; output_idx < model_proto_.graph().output_size(); output_idx++) {
     const auto& output(model_proto_.graph().output(output_idx));
     const std::string& output_name(output.name());
-    if (!HAS(operands_, output_name)) {
+    if (!Contains(operands_, output_name)) {
       throw std::invalid_argument(
           "The output of graph is not registered" + output_name);
     }
@@ -423,16 +424,21 @@ int32_t ModelBuilder::FindActivation(const std::string& output) {
 
       // if there is any other node using the output
       // will add relu separately
-      for (int i = 0; i < _node.input_size(); i++) {
-        if (output == _node.input(i))
+      for (const auto& node_input : _node.input()) {
+        if (output == node_input)
           return ANEURALNETWORKS_FUSED_NONE;
       }
     }
 
+    // if output is a graph output
+    // will add relu separately
+    for (const auto& model_output : model_proto_.graph().output()) {
+      if (model_output.name() == output)
+        return ANEURALNETWORKS_FUSED_NONE;
+    }
+
     fused_activations_.insert(activationNode->name());
   }
-
-  // check if this is a graph output
 
   return fuse_code;
 }

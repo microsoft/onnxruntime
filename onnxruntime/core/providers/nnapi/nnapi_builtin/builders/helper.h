@@ -3,9 +3,10 @@
 //
 #pragma once
 
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+
 #include <android/log.h>
 #include <string>
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include <vector>
 
 #define LOG_TAG "ORT NNAPI"
@@ -39,8 +40,10 @@
     }                                                                   \
   }
 
-#define HAS(map, key) \
-  (map.find(key) != map.end())
+template <class Map, class Key>
+inline bool Contains(Map map, Key key) {
+  return map.find(key) != map.end();
+}
 
 inline std::string GetErrorCause(int errorCode) {
   switch (errorCode) {

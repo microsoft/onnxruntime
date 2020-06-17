@@ -7,7 +7,7 @@
 
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
-#include "Shaper.h"
+#include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {

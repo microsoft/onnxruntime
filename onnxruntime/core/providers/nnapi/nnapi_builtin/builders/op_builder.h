@@ -10,9 +10,12 @@ class IOpBuilder {
  public:
   virtual ~IOpBuilder() = default;
   virtual std::pair<bool, std::string> IsOpSupported() = 0;
-  virtual void SkipInitializers() = 0;
+  virtual void AddInitializersToSkip() = 0;
   virtual void AddOperator() = 0;
 };
+
+std::unordered_map<std::string, std::unique_ptr<IOpBuilder>>
+CreateOpBuilders();
 
 std::unique_ptr<IOpBuilder> CreateOpBuilder(
     ModelBuilder& model_builder,

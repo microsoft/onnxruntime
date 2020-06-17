@@ -2,21 +2,14 @@
 // Created by daquexian on 8/3/18.
 //
 
-#include "NodeAttrHelper.h"
-
+#include "core/common/safeint.h"
+#include "node_attr_helper.h"
 #include <iostream>
 #include <string>
 #include <vector>
 
 using std::string;
 using std::vector;
-
-void CheckValidIntCast(int64_t val) {
-  if (val < std::numeric_limits<int32_t>::min() ||
-      val > std::numeric_limits<int32_t>::max())
-    throw std::invalid_argument(
-        "The int64_t cannot be casted to int32_t " + std::to_string(val));
-}
 
 NodeAttrHelper::NodeAttrHelper(const ONNX_NAMESPACE::NodeProto& proto) : node_(proto) {
 }
@@ -37,8 +30,7 @@ int32_t NodeAttrHelper::get(const std::string& key, int32_t def_val) {
     const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
     if (attr.name() == key) {
       int64_t val = attr.i();
-      CheckValidIntCast(val);
-      return static_cast<int>(val);
+      return SafeInt<int32_t>(val);
     }
   }
 
@@ -68,8 +60,7 @@ vector<int32_t> NodeAttrHelper::get(const std::string& key, vector<int32_t> def_
       v.reserve(static_cast<size_t>(attr.ints_size()));
       for (int j = 0; j < attr.ints_size(); j++) {
         int64_t val = attr.ints(j);
-        CheckValidIntCast(val);
-        v.push_back(static_cast<int>(val));
+        v.push_back(SafeInt<int32_t>(val));
       }
       return v;
     }
