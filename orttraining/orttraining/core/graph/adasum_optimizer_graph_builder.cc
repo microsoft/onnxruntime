@@ -40,30 +40,30 @@ Status AdasumOptimizerGraphBuilder::AddWeightUpdateNodes(const NodeArgNameGenera
   return Status::OK();
 }
 
-static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
-                                             std::vector<ArgDef>& gradient_argdefs,
-                                             GraphAugmenter::GraphDefs& graph_defs,
-                                             const float scale) {
-  TypeProto* scale_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  ArgDef gradient_scale_argdef("adasum_gradient_scaling_divisor", scale_type_proto);
-  graph_defs.AddInitializers({CreateTensorProto<float>(gradient_scale_argdef.name, scale, {})});
+// static Status AddReducedGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
+//                                              std::vector<ArgDef>& gradient_argdefs,
+//                                              GraphAugmenter::GraphDefs& graph_defs,
+//                                              const float scale) {
+//   TypeProto* scale_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+//   ArgDef gradient_scale_argdef("adasum_gradient_scaling_divisor", scale_type_proto);
+//   graph_defs.AddInitializers({CreateTensorProto<float>(gradient_scale_argdef.name, scale, {})});
 
-  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    ArgDef& gradient_argdef = gradient_argdefs[i];
-    TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
-    ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_reduced_scaled"),
-                                           scaled_gradient_type_proto);
-    auto target_type = scaled_gradient_type_proto->mutable_tensor_type()->elem_type();
-    graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
-                                    {gradient_scale_argdef, gradient_argdef},
-                                    {scaled_gradient_argdef},
-                                    {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
-                                    scaled_gradient_argdef.name)});
+//   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+//     ArgDef& gradient_argdef = gradient_argdefs[i];
+//     TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+//     ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_reduced_scaled"),
+//                                            scaled_gradient_type_proto);
+//     auto target_type = scaled_gradient_type_proto->mutable_tensor_type()->elem_type();
+//     graph_defs.AddNodeDefs({NodeDef(OpDef{"MixedPrecisionScale", kMSDomain, 1},
+//                                     {gradient_scale_argdef, gradient_argdef},
+//                                     {scaled_gradient_argdef},
+//                                     {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
+//                                     scaled_gradient_argdef.name)});
 
-    gradient_argdef = scaled_gradient_argdef;
-  }
-  return Status::OK();
-}
+//     gradient_argdef = scaled_gradient_argdef;
+//   }
+//   return Status::OK();
+// }
 
 AdasumOptimizerGraphBuilder::AdasumOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
@@ -98,55 +98,6 @@ Status AdasumOptimizerGraphBuilder::BuildOptimizerNode(
 
   return Status::OK();
 }
-
-//bugbug
-static Status AddNcclAllReduceForGradients(
-    std::vector<ArgDef>& gradient_argdefs,
-    ArgDef& fused_gradient_argdef,
-    GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& fused_allreduce_output) {
-  fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
-
-  // Add NCCL Allreduce node.
-  graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
-                                  {fused_gradient_argdef},
-                                  {fused_allreduce_output},
-                                  NodeAttributes(),
-                                  "NcclAllReduce")});
-
-  std::vector<ArgDef> view_inputs(gradient_argdefs.size() + 1);
-  view_inputs[0] = fused_allreduce_output;
-
-  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
-    ArgDef& gradient_shape = view_inputs[i + 1];
-    gradient_shape = ArgDef(gradient_argdefs[i].name + "_Shape");
-
-    graph_defs.AddNodeDefs({NodeDef("Shape",
-                                    {gradient_argdefs[i]},
-                                    {gradient_shape},
-                                    NodeAttributes(),
-                                    gradient_shape.name)});
-  }
-
-  std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
-  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
-    TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
-    allreduced_gradient_type_proto->mutable_tensor_type()->set_elem_type(
-        fused_gradient_argdef.type_proto->tensor_type().elem_type());
-
-    allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
-  }
-
-  graph_defs.AddNodeDefs({NodeDef(OpDef{"View", kMSDomain, 1},
-                                  view_inputs,
-                                  allreduce_outputs,
-                                  NodeAttributes(),
-                                  "AllReduceOutputView")});
-
-  gradient_argdefs = allreduce_outputs;
-  return Status::OK();
-}
-
 
 Status AdasumOptimizerGraphBuilder::BuildInternal(
     Graph& graph,
@@ -197,13 +148,12 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
 
   // bugbug
   // If Adasum GPU hierarchical reduce is used, then divide gradients by local size.
-  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
-    const float adasum_scale = 1.0f / opt_graph_config_.local_size;
-    ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
-  }
+  // if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
+  //   const float adasum_scale = 1.0f / opt_graph_config_.local_size;
+  //   ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
+  // }
   //bugbug
-  ArgDef reduced_fused_gradient_argdef;
-  ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs,(int64_t) 1));
   // add weight update
   for (auto& opt : opt_configs_) {
     opt.update_weight = true;
@@ -227,7 +177,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
   // //Add weight update.
-  // std::vector<ArgDef> output_weight_args;
+  //std::vector<ArgDef> output_weight_args;
   // ORT_RETURN_IF_ERROR(AddWeightUpdateNodes(nodearg_name_generator,
   //                                          gradient_argdefs,
   //                                          weight_argdefs,
