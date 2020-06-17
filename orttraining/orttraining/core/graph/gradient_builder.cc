@@ -967,13 +967,12 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
     bool use_approximation,
     const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
     const ArgDef& dX, const ArgDef& dB) {                // outputs
-  ORT_ENFORCE(GetShape(B).size() == 1, "B must have exactly one dimension.");
+  const auto B_shape = GetShape(B);
+  ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
 
-  // reduce all but last dimension of dX
-  const std::vector<int64_t> dX_reduction_axes = [&dX]() {
-    const auto dX_num_dims = GetShape(dX).size();
-    std::vector<int64_t> result(dX_num_dims - 1);
-    std::iota(result.begin(), result.end(), int64_t{0});
+  const std::vector<int64_t> B_axes = [&B_shape, &X]() {
+    std::vector<int64_t> result{};
+    ComputeBroadcastBackwardAxes(B_shape, GetShape(X), &result, nullptr);
     return result;
   }();
 
@@ -985,7 +984,7 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
               {dX},
               {dB},
               {{"keepdims", MakeAttribute("keepdims", int64_t{0})},
-               {"axes", MakeAttribute("axes", dX_reduction_axes)}})};
+               {"axes", MakeAttribute("axes", B_axes)}})};
 }
 }  // namespace
 
