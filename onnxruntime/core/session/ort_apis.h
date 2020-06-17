@@ -200,6 +200,6 @@ ORT_API_STATUS_IMPL(AddFreeDimensionOverrideByName, _Inout_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length);
-ORT_API_STATUS_IMPL(ReleaseGetAvailableProviders, _In_ char **ptr,
+ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,
                     _In_ int providers_length);
 }  // namespace OrtApis

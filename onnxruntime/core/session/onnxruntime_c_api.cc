@@ -1456,7 +1456,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseGetAvailableProviders, _In_ char **ptr,
+ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char **ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
     for(int i = 0; i < providers_length; i++)
@@ -1661,7 +1661,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
 
     // Version 4 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,
-    &OrtApis::ReleaseGetAvailableProviders,
+    &OrtApis::ReleaseAvailableProviders,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

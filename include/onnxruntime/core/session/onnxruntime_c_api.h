@@ -834,7 +834,7 @@ struct OrtApi {
    * get after calling GetAvailableProviders().
    * \param providers_length is the number of available providers.
    */
-  ORT_API2_STATUS(ReleaseGetAvailableProviders, _In_ char **ptr,
+  ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
                   _In_ int providers_length);
 };
 
