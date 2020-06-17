@@ -34,34 +34,39 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  // This method is based on that of TRT EP
-  // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                           graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-  onnxruntime::Graph& graph_build = model.MainGraph();
-  std::set<NodeArg*> all_node_inputs;
-  for (const auto& node : graph.Nodes()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
-    for (auto input : node.InputDefs()) {
-      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
-      all_node_inputs.insert(&n_input);
-    }
-    for (auto output : node.OutputDefs()) {
-      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  }
-  const auto graph_outputs = graph.GetOutputs();
-  //Add initializer to graph
-  const auto& init_tensors = graph.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    graph_build.AddInitializedTensor(*(tensor.second));
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  // Handle If and Loop operators
+  if (graph.IsSubgraph()) {
+    return result;
   }
 
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
+  // Need access to model_path_
+  for (const auto& tensor : graph.GetAllInitializedTensors()) {
+    if (tensor.second->has_data_location() &&
+        tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      LOGS_DEFAULT(WARNING) << "NNAPI: Initializers with external data"
+                               " location are not currently supported";
+      return result;
+    }
+  }
+
+  // This method is based on that of TRT EP
+  // Construct modelproto from graph
+  onnxruntime::Model model(graph.Name(), true, ModelMetaData(),
+                           PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           graph.DomainToVersionMap(),
+                           std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                           *GetLogger());
+  std::unordered_set<std::string> all_node_inputs;
+  for (const auto& node : graph.Nodes()) {
+    for (auto input : node.InputDefs()) {
+      all_node_inputs.insert(input->Name());
+    }
+  }
+
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  *(model_proto.mutable_graph()) = graph.GetGraph().ToGraphProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   nnapi::ModelBuilder builder(model_proto);
@@ -71,13 +76,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (const auto& group : supported_nodes_vector)
     LOGS_DEFAULT(VERBOSE) << "Support vector size is " << group.size();
 
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-
-  if (0)
-    return result;
-
   // Find inputs, initializers and outputs for each supported subgraph
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  const auto graph_outputs = graph.GetOutputs();
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
@@ -157,12 +158,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
 
     for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-      for (const auto& x : all_node_inputs) {
-        if (x->Name() == it->first->Name()) {
-          outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-          break;
-        }
+      if (all_node_inputs.find(it->first->Name()) != all_node_inputs.end()) {
+        outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }
+
       if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }

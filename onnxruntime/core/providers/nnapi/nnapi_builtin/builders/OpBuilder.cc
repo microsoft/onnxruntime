@@ -365,7 +365,7 @@ void ReluOpBuilder::AddOperatorImpl() {
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   // skip this relu if it is some op's fuse output
-  if (HAS(model_builder_.GetSkippedActivations(), node_.name())) {
+  if (HAS(model_builder_.GetFusedActivations(), node_.name())) {
     model_builder_.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     ModelBuilder::IndexSeq input_indices;
@@ -390,6 +390,11 @@ class TransposeOpBuilder : public BaseOpBuilder {
 };
 
 std::pair<bool, std::string> TransposeOpBuilder::IsOpSupportedImpl() {
+  const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
+  if (input_size > 4)
+    return {false, "Transpose only supports up to 4d shape, input is " +
+                       std::to_string(input_size) + "d shape"};
+
   return {true, ""};
 }
 
@@ -404,13 +409,17 @@ void TransposeOpBuilder::AddOperatorImpl() {
   input_indices.push_back(operand_indices.at(input));  // input
 
   vector<int32_t> perm = helper.get("perm", vector<int32_t>());
-  if (!perm.empty()) {
-    ModelBuilder::Shape perm_dimen = {static_cast<uint32_t>(shaper[input].size())};
-    std::string perm_name = input + "perm";
-    OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-    uint32_t perm_idx = model_builder_.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
-    input_indices.push_back(perm_idx);
+  auto input_dims = shaper[input].size();
+  if (perm.empty()) {
+    for (int32_t i = input_dims - 1; i >= 0; i--)
+      perm.push_back(i);
   }
+
+  ModelBuilder::Shape perm_dimen = {static_cast<uint32_t>(input_dims)};
+  std::string perm_name = node_.name() + input + "perm";
+  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
+  uint32_t perm_idx = model_builder_.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
+  input_indices.push_back(perm_idx);
 
   const auto& output = node_.output(0);
   shaper.Transpose(input, perm, output);
@@ -441,6 +450,11 @@ std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
   const auto& initializers(model_builder_.GetInitializerTensors());
   if (!HAS(initializers, node_.input(1)))
     return {false, "New shape of reshape must be known"};
+
+  const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
+  if (input_size > 4)
+    return {false, "Reshape only supports up to 4d shape, input is " +
+                       std::to_string(input_size) + "d shape"};
 
   const auto& shape_tensor = initializers.at(node_.input(1));
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
@@ -923,6 +937,11 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
 };
 
 std::pair<bool, std::string> SoftMaxOpBuilder::IsOpSupportedImpl() {
+  const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
+  if (input_size != 2 || input_size != 4)
+    return {false, "SoftMax only support 2d/4d shape, input is " +
+                       std::to_string(input_size) + "d shape"};
+
   return {true, ""};
 }
 
@@ -1021,6 +1040,13 @@ std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
 
     if (transB == 0 && !HAS(initializers, node_.input(1))) {
       return {false, "B of MatMul must be known if transB != 1"};
+    }
+
+    if (node_.input_size() == 3) {
+      const auto b_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(1));
+      const auto c_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(2));
+      if (c_shape.size() != 1 || c_shape[0] != b_shape[0])
+        return {false, "C of MatMul must be a vector of b_shape[0]"};
     }
   }
 

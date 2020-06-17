@@ -20,7 +20,9 @@ const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
 }
 
 ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
-    : nnapi_(NnApiImplementation()), model_proto_(model_proto) {}
+    : nnapi_(NnApiImplementation()), model_proto_(model_proto) {
+  GetAllInitializers();
+}
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
@@ -62,7 +64,6 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   }
 #endif
 
-  GetAllIntializers();
   std::vector<int> supported_node_vec;
   for (int i = 0; i < model_proto_.graph().node_size(); i++) {
     bool supported;
@@ -90,10 +91,11 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   return supported_node_vecs;
 }
 
+// Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                  \
   ModelBuilder::Index ModelBuilder::AddOperandFromScalar(scalar_type value) { \
     OperandType operandType(Type::op_type);                                   \
-    auto index = AddNewOperand(operandType);                                  \
+    auto index = AddNewNNAPIOperand(operandType);                             \
     THROW_ON_ERROR_WITH_NOTE(                                                 \
         nnapi_->ANeuralNetworksModel_setOperandValue(                         \
             nnapi_model_->model_, index, &value, sizeof(value)),              \
@@ -111,21 +113,9 @@ void ModelBuilder::AddSkippedInitializer(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
 }
 
-// Scalar operand is copied into the model, no need to persist
-ModelBuilder::Index ModelBuilder::SetOperandFromScalar(Type type, const void* value, size_t size) {
-  OperandType operandType(type);
-  auto index = AddNewOperand(operandType);
-  THROW_ON_ERROR(
-      nnapi_->ANeuralNetworksModel_setOperandValue(
-          nnapi_model_->model_, index, value, size));
-  return index;
-}
-
 void ModelBuilder::Prepare() {
-  ClearData();
   nnapi_model_ = std::unique_ptr<Model>(new Model());
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
-  GetAllIntializers();
   PreprocessIntializers();
   RegisterInitializers();
   RegisterModelInputs();
@@ -134,33 +124,17 @@ void ModelBuilder::Prepare() {
   RegisterModelShaper();
 }
 
-void ModelBuilder::ClearData() {
-  shaper_.Clear();
-
-  initializers_.clear();
-  skipped_initializers_.clear();
-
-  operand_indices_.clear();
-  operand_types_.clear();
-
-  operands_.clear();
-  skipped_activations_.clear();
-
-  input_index_vec_.clear();
-  output_index_vec_.clear();
-
-  next_index_ = 0;
-}
-
 constexpr size_t kDefaultByteAlignmentForNNAPI = 16;
-static size_t getPaddedByteSize(size_t size) {
-  if (size_t r = size % kDefaultByteAlignmentForNNAPI)
-    return size + kDefaultByteAlignmentForNNAPI - r;
-  else
-    return size;
+static size_t GetPaddedByteSize(size_t size) {
+  // if (size_t r = size % kDefaultByteAlignmentForNNAPI)
+  //   return size + kDefaultByteAlignmentForNNAPI - r;
+  // else
+  //   return size;
+  // This does exactly the same as the logic above
+  return (size + kDefaultByteAlignmentForNNAPI - 1) & ~(kDefaultByteAlignmentForNNAPI - 1);
 }
 
-void ModelBuilder::GetAllIntializers() {
+void ModelBuilder::GetAllInitializers() {
   for (const auto& tensor : model_proto_.graph().initializer()) {
     initializers_.insert({tensor.name(), tensor});
   }
@@ -175,11 +149,11 @@ void ModelBuilder::PreprocessIntializers() {
 
 void ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
-  std::vector<std::tuple<uint32_t, size_t, size_t>> initializers;
-  initializers.reserve(model_proto_.graph().initializer_size());
+  auto initializer_size = model_proto_.graph().initializer_size();
+  std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
   size_t sizeAll = 0;
 
-  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
+  for (int i = 0; i < initializer_size; ++i) {
     const auto& tensor = model_proto_.graph().initializer(i);
     const auto& name = tensor.name();
     if (HAS(skipped_initializers_, name))
@@ -205,10 +179,9 @@ void ModelBuilder::RegisterInitializers() {
     }
 
     OperandType operand_type(type, shape);
-    auto index = AddNewOperand(operand_type);
-    RegisterOperand(name, index, operand_type);
+    auto index = AddNewOperand(name, operand_type);
     const size_t size = operand_type.GetOperandBlobByteSize();
-    const size_t paddedSize = getPaddedByteSize(size);
+    const size_t paddedSize = GetPaddedByteSize(size);
     sizeAll += paddedSize;
     initializers[i] = std::make_tuple(index, size, paddedSize);
   }
@@ -219,7 +192,7 @@ void ModelBuilder::RegisterInitializers() {
 
   // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
-  for (int i = 0; i < model_proto_.graph().initializer_size(); ++i) {
+  for (int i = 0; i < initializer_size; ++i) {
     const auto& tensor = model_proto_.graph().initializer(i);
     if (HAS(skipped_initializers_, tensor.name()))
       continue;
@@ -281,8 +254,7 @@ void ModelBuilder::RegisterModelInputs() {
     }
 
     OperandType operand_type(type, shape);
-    auto index = AddNewOperand(operand_type);
-    RegisterOperand(input_name, index, operand_type);
+    auto index = AddNewOperand(input_name, operand_type);
 
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
@@ -308,7 +280,16 @@ void ModelBuilder::RegisterModelShaper() {
   nnapi_model_->SetShaper(shaper_);
 }
 
-ModelBuilder::Index ModelBuilder::AddNewOperand(const OperandType& operand_type) {
+ModelBuilder::Index ModelBuilder::AddNewOperand(const std::string& name,
+                                                const android::nn::wrapper::OperandType& operand_type) {
+  THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
+      nnapi_model_->model_, &operand_type.operandType));
+  auto idx = next_index_++;
+  RegisterOperand(name, idx, operand_type);
+  return idx;
+}
+
+ModelBuilder::Index ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type) {
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
       nnapi_model_->model_, &operand_type.operandType));
   return next_index_++;
@@ -344,8 +325,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
-  auto index = AddNewOperand(operand_type);
-  RegisterOperand(name, index, operand_type);
+  auto index = AddNewOperand(name, operand_type);
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -356,7 +336,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
             nnapi_model_->model_, index,
             buffer, size));
   } else {
-    const size_t paddedSize = getPaddedByteSize(size);
+    const size_t paddedSize = GetPaddedByteSize(size);
     auto persist_buffer = std::make_unique<Model::NNMemory>(nnapi_, name.c_str(), paddedSize);
     uint8_t* dest = persist_buffer->get_data_ptr();
     memcpy(dest, buffer, size);
@@ -378,9 +358,8 @@ void ModelBuilder::AddOperation(int op, IndexSeq input_indices,
                                 std::vector<std::string> output_names,
                                 std::vector<android::nn::wrapper::OperandType> types) {
   IndexSeq output_indices;
-  for (const auto& type : types) {
-    auto index = AddNewOperand(type);
-    output_indices.push_back(index);
+  for (size_t i = 0; i < types.size(); i++) {
+    output_indices.push_back(AddNewOperand(output_names[i], types[i]));
   }
 
   THROW_ON_ERROR_WITH_NOTE(
@@ -388,9 +367,6 @@ void ModelBuilder::AddOperation(int op, IndexSeq input_indices,
           nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
           output_indices.size(), &output_indices[0]),
       "op = " + std::to_string(op));
-
-  for (size_t i = 0; i < types.size(); i++)
-    RegisterOperand(output_names[i], output_indices[i], types[i]);
 }
 
 std::unique_ptr<Model> ModelBuilder::Compile() {
@@ -426,7 +402,6 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
       nnapi_->ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),
       "on compilation finish");
 
-  ClearData();
   return std::move(nnapi_model_);
 }
 
@@ -454,8 +429,10 @@ int32_t ModelBuilder::FindActivation(const std::string& output) {
       }
     }
 
-    skipped_activations_.insert(activationNode->name());
+    fused_activations_.insert(activationNode->name());
   }
+
+  // check if this is a graph output
 
   return fuse_code;
 }

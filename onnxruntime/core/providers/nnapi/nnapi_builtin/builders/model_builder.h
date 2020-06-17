@@ -50,7 +50,7 @@ class ModelBuilder {
   GetOperandTypes() const { return operand_types_; }
 
   const std::unordered_set<std::string>&
-  GetSkippedActivations() const { return skipped_activations_; }
+  GetFusedActivations() const { return fused_activations_; }
 
   const std::unordered_map<std::string,
                            const ONNX_NAMESPACE::TensorProto&>&
@@ -72,7 +72,7 @@ class ModelBuilder {
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
 
   std::unordered_set<std::string> operands_;
-  std::unordered_set<std::string> skipped_activations_;
+  std::unordered_set<std::string> fused_activations_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
@@ -87,21 +87,21 @@ class ModelBuilder {
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();
 
-  void GetAllIntializers();
+  void GetAllInitializers();
   void PreprocessIntializers();
   void RegisterInitializers();
   void RegisterModelInputs();
   void AddOperations();
   void RegisterModelOutputs();
   void RegisterModelShaper();
-  void ClearData();
 
   void SetOperandValue(ModelBuilder::Index index,
                        Model::NNMemory* memory,
                        size_t size, size_t offset);
 
-  uint32_t SetOperandFromScalar(android::nn::wrapper::Type type, const void* value, size_t size);
-  uint32_t AddNewOperand(const android::nn::wrapper::OperandType& type);
+  ModelBuilder::Index AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
+  ModelBuilder::Index AddNewOperand(const std::string& name,
+                                    const android::nn::wrapper::OperandType& operand_type);
 };
 
 }  // namespace nnapi

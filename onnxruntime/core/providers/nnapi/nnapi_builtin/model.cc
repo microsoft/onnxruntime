@@ -122,11 +122,7 @@ void Model::SetInputs(const std::vector<InputOutputInfo>& inputs) {
     shaper_for_exeuction_.UpdateShape(input_names_[i], inputs[i].type.dimensions);
   }
 
-  LOGV("Finished set all inputs");
-
   shaper_for_exeuction_.UpdateDynamicDimensions();
-
-  LOGV("Finished UpdateDynamicDimensions");
 }
 
 void Model::SetOutputs(const std::vector<InputOutputInfo>& outputs) {

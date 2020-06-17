@@ -280,12 +280,13 @@ void Shaper::Transpose(const std::string& input_name,
                        const std::vector<int32_t>& perm,
                        const std::string& output_name) {
   auto input_dimen = shape_map_.at(input_name);
-  if (!perm.empty() && perm.size() != input_dimen.size())
+  if (perm.size() != input_dimen.size())
     throw std::invalid_argument("Invalid perm is given!");
+
   size_t size = input_dimen.size();
   Shape output_Dimen(size);
   for (size_t i = 0; i < size; i++)
-    output_Dimen[i] = input_dimen[perm.empty() ? size - i - 1 : perm[i]];
+    output_Dimen[i] = input_dimen[perm[i]];
 
   shape_map_[output_name] = output_Dimen;
 
