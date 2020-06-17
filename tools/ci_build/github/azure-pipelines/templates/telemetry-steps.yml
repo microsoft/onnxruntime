@@ -2,7 +2,7 @@
 # variable
 
 steps:
-  - ${{ if ne(variables.TELEMETRYGUID, "") }}:
+  - ${{ if ne(variables.TELEMETRYGUID, '') }}:
     - script: |
         echo ##vso[task.setvariable variable=TelemetryOption]--use_telemetry
       displayName: 'Set TelemetryOption variable [telemetry enabled]'
@@ -16,7 +16,7 @@ steps:
       env:
         TELEMETRYGUID: $(TELEMETRYGUID)
 
-  - ${{ if eq(variables.TELEMETRYGUID, "") }}:
+  - ${{ if eq(variables.TELEMETRYGUID, '') }}:
     - script: |
         echo ##vso[task.setvariable variable=TelemetryOption]
       displayName: 'Set TelemetryOption variable [telemetry disabled]'
