@@ -9,6 +9,16 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    if (ratio) {
+      ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    }
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
 #define REGISTER_TRAINABLE_KERNEL_TYPED(T1, T2)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
       TrainableDropout,                                            \
@@ -84,18 +94,25 @@ Status DropoutGrad<T1, T2>::ComputeInternal(OpKernelContext* context) const {
 
   auto dX = context->Output(0, shape);
   auto dX_data = reinterpret_cast<CudaT1*>(dX->template MutableData<T1>());
-  float ratio_data;
+  
+  // float ratio_data;
+  // auto ratio = context->Input<Tensor>(2);
+
+  // static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
+  //               "T2 must be float16 or float or double");
+
+  // if (ratio) {
+  //   ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
+  // } else {
+  //   ratio_data = default_ratio_;
+  // }
+  // ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
+
+  //Get the ratio_data
+  float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(2);
-
-  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
-                "T2 must be float16 or float or double");
-
-  if (ratio) {
-    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
-  } else {
-    ratio_data = default_ratio_;
-  }
-  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
+  utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
+  t_disp.Invoke(ratio, ratio_data);
 
   const bool* mask_data = mask->template Data<bool>();
   DropoutGradientKernelImpl(N, dY_data, mask_data, ratio_data, dX_data);
@@ -103,30 +120,28 @@ Status DropoutGrad<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_BIAS_DROPOUT_KERNEL_TYPED(T1, T2)                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
-      BiasDropout,                                                   \
-      kMSDomain,                                                     \
-      1,                                                             \
-      T1##_##T2,                                                     \
-      kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())    \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                    \
-          .InputMemoryType<OrtMemTypeCPUInput>(4),                   \
-      BiasDropout<T1, T2>);
+#define REGISTER_BIAS_DROPOUT_KERNEL_TYPED(T)                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      BiasDropout,                                                       \
+      kMSDomain,                                                         \
+      1,                                                                 \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())     \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                        \
+          .InputMemoryType<OrtMemTypeCPUInput>(4),                       \
+      BiasDropout<T>);
 
-REGISTER_BIAS_DROPOUT_KERNEL_TYPED(MLFloat16, MLFloat16)
-REGISTER_BIAS_DROPOUT_KERNEL_TYPED(MLFloat16, float)
-REGISTER_BIAS_DROPOUT_KERNEL_TYPED(float, MLFloat16)
-REGISTER_BIAS_DROPOUT_KERNEL_TYPED(float, float)
+REGISTER_BIAS_DROPOUT_KERNEL_TYPED(MLFloat16)
+REGISTER_BIAS_DROPOUT_KERNEL_TYPED(float)
 
-template <typename T1, typename T2>
-Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+template <typename T1>
+Status BiasDropout<T1>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T1>::MappedType CudaT1;
- 
+
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF_NOT(X, "X Input is not available.");
@@ -135,7 +150,7 @@ Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   auto X_data = reinterpret_cast<const CudaT1*>(X->template Data<T1>());
   const int64_t N = x_shape.Size();
 
- //Get bias_data
+  //Get bias_data
   const Tensor* bias = context->Input<Tensor>(1);
   if (bias == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Bias input of BiasDropout is not available.");
   const TensorShape& bias_shape = bias->Shape();
@@ -143,7 +158,7 @@ Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL, "Bias input is not a 1D tensor.");
   }
   const int64_t dim = bias_shape[0];
-  if (dim != x_shape.GetDims().back()){
+  if (dim != x_shape.GetDims().back()) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
   }
   auto bias_data = reinterpret_cast<const CudaT1*>(bias->template Data<T1>());
@@ -167,18 +182,10 @@ Status BiasDropout<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   auto mask = context->Output(1, x_shape);
 
   //Get the ratio_data
-  float ratio_data;
+  float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(3);
-
-  static_assert(std::is_same<T2, MLFloat16>::value || std::is_same<T2, float>::value || std::is_same<T2, double>::value,
-                "T2 must be float16 or float or double");
-
-  if (ratio) {
-    ratio_data = static_cast<float>(*(ratio->template Data<T2>()));
-  } else {
-    ratio_data = default_ratio_;
-  }
-  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f);
+  utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
+  t_disp.Invoke(ratio, ratio_data);
 
   IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
   bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {

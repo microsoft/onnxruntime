@@ -14,6 +14,7 @@
 
 #include "gtest/gtest.h"
 
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -33,7 +34,7 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
   return ort_value.Get<Tensor>();
 }
 
-void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
+void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = 0.5f,
                     bool training_mode = true, bool use_float16_ratio = false) {
   OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
@@ -45,11 +46,8 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
 
   t.AddAttribute("seed", seed);
   t.AddInput("data", input_shape, input);
-  if (ratio == -1) {
-    ratio = 0.5;  // default.
-    t.AddInput("ratio", {}, {ratio});
-  } else if (use_float16_ratio) {
-    t.AddInput("ratio", {}, {MLFloat16(0)});
+  if (use_float16_ratio) {
+    t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
   } else {
     t.AddInput("ratio", {}, {ratio});
   }
@@ -110,7 +108,7 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
 
-void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1,
+void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = 0.5f,
                         bool training_mode = true, bool use_float16_ratio = false, bool has_residual = true) {
   OpTester t{"BiasDropout", 1, kMSDomain};
   const int64_t seed = 42;
@@ -118,32 +116,26 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
   const auto input_size = std::accumulate(
       input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
-  std::vector<float> input(input_size);
-  std::iota(input.begin(), input.end(), 1.0f);
+  const std::vector<float> input = ValueRange(input_size, 1.0f, 1.0f);
   t.AddInput("data", input_shape, input);
 
   std::vector<int64_t> bias_shape{input_shape.back()};
   const auto bias_size = input_shape.back();
-  std::vector<float> bias(bias_size);
-  std::iota(bias.begin(), bias.end(), 2.0f);
+  const std::vector<float> bias = ValueRange(bias_size, 2.0f, 1.0f);
   t.AddInput("bias", bias_shape, bias);
 
-  float residual_value = 0.0f;
-  const auto residual_size = input_size;
-  std::vector<float> residual(residual_size);
+  float residual_value = 0.0f; 
   if (has_residual) {
     residual_value = 1.0f;
-    std::fill(residual.begin(), residual.end(), residual_value);
+    const auto residual_size = input_size;
+    const std::vector<float> residual(residual_size, residual_value);
     t.AddInput("residual", input_shape, residual);
   } else {
     t.AddMissingOptionalInput<float>(); 
   }
 
-  if (ratio == -1) {
-    ratio = 0.5;  // default.
-    t.AddInput("ratio", {}, {ratio});
-  } else if (use_float16_ratio) {
-    t.AddInput("ratio", {}, {MLFloat16(0)});
+  if (use_float16_ratio) {
+    t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
   } else {
     t.AddInput("ratio", {}, {ratio});
   }

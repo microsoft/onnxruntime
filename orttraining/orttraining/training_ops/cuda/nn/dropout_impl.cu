@@ -36,7 +36,6 @@ __global__ void DropoutGradientKernel(
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       dX_data[id] = dY_data[id] * T(mask_data[id]) * scale;
-
       id += NumThreadsPerBlock;
     }
   }

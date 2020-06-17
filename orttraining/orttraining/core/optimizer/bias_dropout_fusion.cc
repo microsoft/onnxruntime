@@ -80,7 +80,8 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    Node& dropout_node = const_cast<Node&>(next_node);
+    Node& dropout_node = *graph.GetNode(next_node.Index());
+    //  const_cast<Node&>(next_node);
     nodes_to_fuse.push_back(dropout_node);
 
     dropout_output.push_back(dropout_node.MutableOutputDefs()[0]);
@@ -120,7 +121,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
           continue;
         }
 
-        Node& residual_add_node = const_cast<Node&>(last_node);
+        Node& residual_add_node = *graph.GetNode(last_node.Index());
         const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
         if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
           dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);  // residual
