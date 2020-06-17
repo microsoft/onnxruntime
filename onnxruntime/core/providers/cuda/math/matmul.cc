@@ -92,12 +92,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
-  //ORT_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
-  if (strcmp(Y->Location().name, CUDA) != 0) {
-    LOGS_DEFAULT(ERROR) << "Output should be allocated on CUDA. Expected:" << CUDA << ". Got:" << Y->Location().name;
-  }
-
-
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
