@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 3
+#define ORT_API_VERSION 4
 
 #ifdef __cplusplus
 extern "C" {
@@ -824,7 +824,7 @@ struct OrtApi {
    * \param provider_length is a pointer to an int variable where
    * the number of available providers will be added.
    * The caller is responsible for freeing each char * and the pointer
-   * array by calling ReleaseGetAvailableProviders().
+   * array by calling ReleaseAvailableProviders().
    */
   ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char ***out_ptr,
                   _In_ int *provider_length);
