@@ -981,7 +981,7 @@ ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_value, int 
   return t_disp.template InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
 }
 
-#ifdef _MSVC_VER
+#ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
@@ -1397,66 +1397,58 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
   };
   enum providers {cpu, cuda, dnnl, ngraph, openvino, nuphar, vitisai, tensorrt,
                   nnapi, rknpu, dml, migraph, acl, armnn};
-  int available_count = 1;
+  int available_count = 0;
   enum providers available_providers[MAX_NUM_PROVIDERS];
-  available_providers[available_count-1] = cpu;
+  available_providers[available_count++] = cpu;
 #ifdef USE_CUDA
-  available_count++;
-  available_providers[available_count-1] = cuda;
+  available_providers[available_count++] = cuda;
 #endif
 #ifdef USE_DNNL
-  available_count++;
-  available_providers[available_count-1] = dnnl;
+  available_providers[available_count++] = dnnl;
 #endif
 #ifdef USE_NGRAPH
-  available_count++;
-  available_providers[available_count-1] = ngraph;
+  available_providers[available_count++] = ngraph;
 #endif
 #ifdef USE_OPENVINO
-  available_count++;
-  available_providers[available_count-1] = openvino;
+  available_providers[available_count++] = openvino;
 #endif
 #ifdef USE_NUPHAR
-  available_count++;
-  available_providers[available_count-1] = nuphar;
+  available_providers[available_count++] = nuphar;
 #endif
 #ifdef USE_VITISAI
-  available_count++;
-  available_providers[available_count-1] = vitisai;
+  available_providers[available_count++] = vitisai;
 #endif
 #ifdef USE_TENSORRT
-  available_count++;
-  available_providers[available_count-1] = tensorrt;
+  available_providers[available_count++] = tensorrt;
 #endif
 #ifdef USE_NNAPI
-  available_count++;
-  available_providers[available_count-1] = nnapi;
+  available_providers[available_count++] = nnapi;
 #endif
 #ifdef USE_RKNPU
-  available_count++;
-  available_providers[available_count-1] = rknpu;
+  available_providers[available_count++] = rknpu;
 #endif
 #ifdef USE_DML
-  available_count++;
-  available_providers[available_count-1] = dml;
+  available_providers[available_count++] = dml;
 #endif
 #ifdef USE_MIGRAPHX
-  available_count++;
-  available_providers[available_count-1] = migraph;
+  available_providers[available_count++] = migraph;
 #endif
 #ifdef USE_ACL
-  available_count++;
-  available_providers[available_count-1] = acl;
+  available_providers[available_count++] = acl;
 #endif
 #ifdef USE_ARMNN
-  available_count++;
-  available_providers[available_count-1] = armnn;
+  available_providers[available_count++] = armnn;
 #endif
   char **out = (char **)malloc(available_count * sizeof(char *));
   for(int i = 0; i < available_count; i++) {
       out[i] = (char *)malloc(strnlen(
         all_providers[available_providers[i]], MAX_LEN) * sizeof(char));
+#ifdef _MSC_VER
+      strncpy_s(out[i], MAX_LEN, all_providers[available_providers[i]],
+                MAX_LEN);
+#else
       strncpy(out[i], all_providers[available_providers[i]], MAX_LEN);
+#endif
   }
   *providers_length = available_count;
   *out_ptr = out;
@@ -1520,7 +1512,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_3 = {
+static constexpr OrtApi ort_api_1_to_4 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -1659,13 +1651,15 @@ static constexpr OrtApi ort_api_1_to_3 = {
     &OrtApis::ReleaseModelMetadata,
     // End of Version 2 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 3 - In development, feel free to add/remove/rearrange here
     &OrtApis::CreateEnvWithGlobalThreadPools,
     &OrtApis::DisablePerSessionThreads,
     &OrtApis::CreateThreadingOptions,
     &OrtApis::ReleaseThreadingOptions,
     &OrtApis::ModelMetadataGetCustomMetadataMapKeys,
     &OrtApis::AddFreeDimensionOverrideByName,
+    // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 4 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,
     &OrtApis::ReleaseGetAvailableProviders,
 };
@@ -1675,8 +1669,8 @@ static constexpr OrtApi ort_api_1_to_3 = {
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version >= 1 && version <= 3)
-    return &ort_api_1_to_3;
+  if (version >= 1 && version <= 4)
+    return &ort_api_1_to_4;
 
   return nullptr;  // Unsupported version
 }
