@@ -156,9 +156,6 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   //bugbug
   ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs,(int64_t) 1));
   // add weight update
-  for (auto& opt : opt_configs_) {
-    opt.update_weight = true;
-  }
   ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
       opt_builder_registry_, weight_argdefs, gradient_argdefs,
       &global_grad_norm_argdef,
@@ -178,13 +175,13 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
   // //Add weight update.
-  //std::vector<ArgDef> output_weight_args;
-  // ORT_RETURN_IF_ERROR(AddWeightUpdateNodes(nodearg_name_generator,
-  //                                          gradient_argdefs,
-  //                                          weight_argdefs,
-  //                                          adasum_global_grad_finite_argdef,
-  //                                          graph_defs,
-  //                                          output_weight_args));
+  std::vector<ArgDef> output_weight_args;
+  ORT_RETURN_IF_ERROR(AddWeightUpdateNodes(nodearg_name_generator,
+                                           gradient_argdefs,
+                                           weight_argdefs,
+                                           adasum_global_grad_finite_argdef,
+                                           graph_defs,
+                                           output_weight_args));
 
   return Status::OK();
 }
