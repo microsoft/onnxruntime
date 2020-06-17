@@ -45,17 +45,62 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSetProvidersWithOptions(self):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
-            # confirm that CUDA Provider is in list of registered providers.
-            self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
-            option1 = {'device_id': 0}
-            sess.set_providers(['CUDAExecutionProvider'], [option1])
-            self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
-            option2 = {'device_id': -1}
-            with self.assertRaises(RuntimeError):
-                sess.set_providers(['CUDAExecutionProvider'], [option2])
-            sess.set_providers(['CUDAExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
-            self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+            import sys
+            import ctypes
+            CUDA_SUCCESS = 0
+
+            def runBaseTest():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                # confirm that CUDA Provider is in list of registered providers.
+                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+                option1 = {'device_id': 0}
+                sess.set_providers(['CUDAExecutionProvider'], [option1])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'device_id': -1}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option2])
+                sess.set_providers(['CUDAExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def runAdvancedTest():
+                num_device = ctypes.c_int()
+                device = ctypes.c_int()
+                result = ctypes.c_int()
+
+                result = cuda.cuDeviceGetCount(ctypes.byref(num_device))
+                if result != CUDA_SUCCESS:
+                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                    print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+                    return
+
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                for i in range(num_device.value):
+                    option = {'device_id': i}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+                    result = cuda.cuCtxGetDevice(ctypes.byref(device))
+                    if result != CUDA_SUCCESS:
+                        cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                        print("cuCtxGetDevice failed with error code %d: %s" % (result, error_str.value.decode()))
+                        return
+                    self.assertEqual(i, device.value)
+
+            libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
+            for libname in libnames:
+                try:
+                    cuda = ctypes.CDLL(libname)
+                    runBaseTest()
+                    runAdvancedTest()
+                except OSError:
+                    continue
+                else:
+                    break
+            else:
+                runBaseTest()
+                # raise OSError("could not load any of: " + ' '.join(libnames))
+
+            
 
     def testInvalidSetProviders(self):
         with self.assertRaises(ValueError) as context:
