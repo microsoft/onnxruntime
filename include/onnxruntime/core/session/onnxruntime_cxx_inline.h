@@ -345,6 +345,14 @@ inline std::vector<std::string> ExperimentalSession::GetOutputNames() const {
   return out;
 }
 
+inline std::vector<std::string> ExperimentalSession::GetOverridableInitializerNames() const {
+  Ort::AllocatorWithDefaultOptions allocator;
+  size_t init_count = GetOverridableInitializerCount();
+  std::vector<std::string> out(init_count);
+  for (size_t i=0; i<init_count; i++) out[i] = GetOverridableInitializerName(i, allocator);
+  return out;
+}
+
 inline std::vector< std::vector<int64_t> > ExperimentalSession::GetInputShapes() const {
   size_t node_count = GetInputCount();
   std::vector<std::vector<int64_t>> out(node_count);
@@ -356,6 +364,14 @@ inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOutputShapes(
   size_t node_count = GetOutputCount();
   std::vector<std::vector<int64_t>> out(node_count);
   for (size_t i=0; i<node_count; i++) out[i] = GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+  return out;
+}
+
+inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOverridableInitializerShapes() const {
+  Ort::AllocatorWithDefaultOptions allocator;
+  size_t init_count = GetOverridableInitializerCount();
+  std::vector< std::vector<int64_t> > out(init_count);
+  for (size_t i=0; i<init_count; i++) out[i] = GetOverridableInitializerTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
   return out;
 }
 

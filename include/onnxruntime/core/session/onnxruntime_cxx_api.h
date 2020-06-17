@@ -257,8 +257,10 @@ struct ExperimentalSession : Session {
   // convenience methods that simplify common lower-level API calls
   std::vector<std::string> GetInputNames() const;
   std::vector<std::string> GetOutputNames() const;
+  std::vector<std::string> GetOverridableInitializerNames() const;
   std::vector< std::vector<int64_t> > GetInputShapes() const;
   std::vector< std::vector<int64_t> > GetOutputShapes() const;
+  std::vector< std::vector<int64_t> > GetOverridableInitializerShapes() const;
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
