@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+// This file is for comparing Threadpool::ParallelFor's performance across different thread pool implementations
 #include <benchmark/benchmark.h>
 #include <core/platform/threadpool.h>
 #include <core/util/thread_utils.h>
@@ -9,6 +12,7 @@
 #endif
 using namespace onnxruntime;
 using namespace onnxruntime::concurrency;
+
 
 static void BM_CreateThreadPool(benchmark::State& state) {
   for (auto _ : state) {

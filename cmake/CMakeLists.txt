@@ -301,6 +301,7 @@ endif()
 
 #Dependencies
 if (onnxruntime_BUILD_UNIT_TESTS)
+  add_subdirectory(external/loadgen)
   if(onnxruntime_PREFER_SYSTEM_LIB)
     find_package(GTest CONFIG)
   endif()

@@ -91,12 +91,15 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME
   underlying_threadpool_ = eigen_threadpool_.get();
 }
 
-ThreadPool::ThreadPool(Eigen::ThreadPoolInterface* user_threadpool)
-    : thread_options_(ThreadOptions()) {
+ThreadPool::ThreadPool(ThreadPoolInterface* user_threadpool,bool transfer_ownership)
+    : thread_options_(ThreadOptions()), owns_underlying_threadpool_(transfer_ownership) {
   underlying_threadpool_ = user_threadpool;
 }
 
-ThreadPool::~ThreadPool() = default;
+ThreadPool::~ThreadPool() {
+  if(owns_underlying_threadpool_)
+     delete underlying_threadpool_;
+}
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
   if (total <= 0)
@@ -300,11 +303,9 @@ int ThreadPool::NumThreads() const {
   return underlying_threadpool_->NumThreads();
 }
 
-int ThreadPool::CurrentThreadId() const {
-  return underlying_threadpool_->CurrentThreadId();
-}
 
-Eigen::ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
+
+ThreadPoolInterface* ThreadPool::AsEigenThreadPool() const {
   ORT_ENFORCE(underlying_threadpool_ != nullptr);
   return underlying_threadpool_;
 }

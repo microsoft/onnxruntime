@@ -23,16 +23,12 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/platform/env.h"
 #include "core/common/optional.h"
-
+#include "core/platform/thread_pool_interface.h"
 #include <functional>
 #include <memory>
 
 // This file use PIMPL to avoid having eigen headers here
 
-namespace Eigen {
-class Allocator;
-class ThreadPoolInterface;
-}  // namespace Eigen
 
 namespace onnxruntime {
 
@@ -129,7 +125,7 @@ class ThreadPool {
   // instance provided by the caller. Caller retains ownership of
   // `user_threadpool` and must ensure its lifetime is longer than the
   // ThreadPool instance.
-  ThreadPool(Eigen::ThreadPoolInterface* user_threadpool);
+  ThreadPool(ThreadPoolInterface* user_threadpool, bool transfer_ownership);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -220,14 +216,11 @@ class ThreadPool {
   // Returns the number of threads in the pool. Preferably use the static version of this API instead.
   int NumThreads() const;
 
-  // Returns current thread id between 0 and NumThreads() - 1, if called from a
-  // thread in the pool. Returns -1 otherwise.
-  int CurrentThreadId() const;
 
-  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
+  // If ThreadPool implementation is compatible with ThreadPoolInterface,
   // returns a non-null pointer. The caller does not own the object the returned
   // pointer points to, and should not attempt to delete.
-  Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
+  ThreadPoolInterface* AsEigenThreadPool() const;
 
   // Directly schedule the 'total' tasks to the underlying threadpool, without
   // cutting them by halves
@@ -347,10 +340,11 @@ class ThreadPool {
   ThreadOptions thread_options_;
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.
-  Eigen::ThreadPoolInterface* underlying_threadpool_;
+  ThreadPoolInterface* underlying_threadpool_;
   // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
   std::unique_ptr<ThreadPoolTempl<Env> > eigen_threadpool_;
+  bool owns_underlying_threadpool_ = false;
 };
 
 }  // namespace concurrency

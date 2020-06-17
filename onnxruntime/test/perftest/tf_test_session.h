@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <core/session/onnxruntime_cxx_api.h>
+#include <core/session/onnxruntime_c_api.h>
 #include <core/platform/env.h>
 #include "test_configuration.h"
 #include "tensorflow/c/c_api.h"
@@ -118,21 +118,21 @@ class TensorflowTestSession : public TestSession {
 
     TF_Status* s = TF_NewStatus();
     void* input_buffer = nullptr;
-    Ort::ThrowOnError(g_ort->GetTensorMutableData(value, &input_buffer));
+    ThrowOnError(g_ort->GetTensorMutableData(value, &input_buffer));
     assert(input_buffer != nullptr);
     OrtTensorTypeAndShapeInfo* shape = nullptr;
-    Ort::ThrowOnError(g_ort->GetTensorTypeAndShape(value, &shape));
+    ThrowOnError(g_ort->GetTensorTypeAndShape(value, &shape));
     size_t buffer_length = 0;
     std::vector<int64_t> dims;
     size_t dim_count;
-    Ort::ThrowOnError(g_ort->GetDimensionsCount(shape, &dim_count));
+    ThrowOnError(g_ort->GetDimensionsCount(shape, &dim_count));
     dims.resize(dim_count);
-    Ort::ThrowOnError(g_ort->GetDimensions(shape, dims.data(), dim_count));
+    ThrowOnError(g_ort->GetDimensions(shape, dims.data(), dim_count));
     size_t ele_count;
-    Ort::ThrowOnError(g_ort->GetTensorShapeElementCount(shape, &ele_count));
+    ThrowOnError(g_ort->GetTensorShapeElementCount(shape, &ele_count));
     TF_DataType tf_datatype;
     ONNXTensorElementDataType element_type;
-    Ort::ThrowOnError(g_ort->GetTensorElementType(shape, &element_type));
+    ThrowOnError(g_ort->GetTensorElementType(shape, &element_type));
     switch (element_type) {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:  // maps to c type float
         buffer_length = ele_count * sizeof(float);

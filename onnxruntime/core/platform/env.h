@@ -33,10 +33,8 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 #endif
-namespace Eigen {
-class ThreadPoolInterface;
-}
 namespace onnxruntime {
+class ThreadPoolInterface;
 
 #ifdef _WIN32
 using PIDType = unsigned long;
@@ -94,8 +92,8 @@ class Env {
    */
   // clang-format on
   virtual EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
-                                  _In_ unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                                  Eigen::ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
+                                  _In_ unsigned (*start_address)(int id, ThreadPoolInterface* param),
+                                  ThreadPoolInterface* threadpool, const ThreadOptions& thread_options) = 0;
   virtual Task CreateTask(std::function<void()> f) = 0;
   /**
    * Execute the task 't' in current thread

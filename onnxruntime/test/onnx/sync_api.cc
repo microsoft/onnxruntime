@@ -23,8 +23,8 @@
 
 using onnxruntime::common::Status;
 
-//this can be passed to one of the following functions:
-//OnnxRuntimeSetEventWhenCallbackReturns
+// this can be passed to one of the following functions:
+// OnnxRuntimeSetEventWhenCallbackReturns
 class OnnxRuntimeCallbackInstance {
  private:
   std::vector<ORT_EVENT> events_to_signal_;
@@ -64,14 +64,16 @@ Status CreateAndSubmitThreadpoolWork(ORT_CALLBACK_FUNCTION callback, void* data,
   return Status::OK();
 }
 
-using DefaultThreadPoolType = Eigen::ThreadPool;
+using DefaultThreadPoolType = onnxruntime::ThreadPoolTempl<onnxruntime::Env>;
 static std::unique_ptr<DefaultThreadPoolType> default_pool;
 static std::once_flag default_pool_init;
+static onnxruntime::ThreadOptions to;
 
 PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool = onnxruntime::make_unique<DefaultThreadPoolType>(core_num);
+    default_pool = onnxruntime::make_unique<DefaultThreadPoolType>(ORT_TSTR("test_runner"), core_num, false,
+                                                                   onnxruntime::Env::Default(), to);
   });
   return default_pool.get();
 }

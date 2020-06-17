@@ -23,6 +23,7 @@
 #include "core/framework/session_options.h"
 
 using namespace onnxruntime;
+const OrtApi* c_api;
 
 namespace {
 void usage() {
@@ -863,6 +864,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  c_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   Ort::Env env{nullptr};
   int retval = -1;
   try {

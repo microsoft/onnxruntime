@@ -32,6 +32,7 @@
 #endif
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
+#include "core/platform/thread_pool_interface.h"
 
 namespace onnxruntime {
 
@@ -439,9 +440,9 @@ class RunQueue {
 };
 
 template <typename Environment>
-class ThreadPoolTempl : public Eigen::ThreadPoolInterface {
+class ThreadPoolTempl : public ThreadPoolInterface {
  private:
-  static unsigned WorkerLoop(int id, Eigen::ThreadPoolInterface* param) {
+  static unsigned WorkerLoop(int id, ThreadPoolInterface* param) {
     // unsafe downcast
     ThreadPoolTempl* this_ptr = (ThreadPoolTempl*)param;
     this_ptr->WorkerLoop(id);
@@ -529,7 +530,7 @@ class ThreadPoolTempl : public Eigen::ThreadPoolInterface {
     ScheduleWithHint(std::move(fn), 0, num_threads_);
   }
 
-  void ScheduleWithHint(std::function<void()> fn, int start, int limit) override {
+  void ScheduleWithHint(std::function<void()> fn, int start, int limit)  {
     Task t = env_.CreateTask(std::move(fn));
     PerThread* pt = GetPerThread();
     if (pt->pool == this) {
@@ -582,7 +583,7 @@ class ThreadPoolTempl : public Eigen::ThreadPoolInterface {
     return num_threads_;
   }
 
-  int CurrentThreadId() const EIGEN_FINAL {
+  int CurrentThreadId() const  {
     const PerThread* pt = const_cast<ThreadPoolTempl*>(this)->GetPerThread();
     if (pt->pool == this) {
       return pt->thread_id;

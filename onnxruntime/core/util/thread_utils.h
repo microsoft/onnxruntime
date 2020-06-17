@@ -7,24 +7,27 @@
 #include <memory>
 #include <string>
 
+enum OrtThreadPoolImplType { ORT_THREAD_POOL_TYPE_DEFAULT, ORT_THREAD_POOL_TYPE_WIN32 };
+
 struct OrtThreadPoolParams {
-  //0: Use default setting. (All the physical cores or half of the logical cores)
-  //1: Don't create thread pool
-  //n: Create a thread pool with n threads.
+  // 0: Use default setting. (All the physical cores or half of the logical cores)
+  // 1: Don't create thread pool
+  // n: Create a thread pool with n threads.
   int thread_pool_size = 0;
-  //If it is true and thread_pool_size = 0, populate the thread affinity information in ThreadOptions.
-  //Otherwise if the thread_options has affinity information, we'll use it and set it.
-  //In the other case, don't set affinity
+  // If it is true and thread_pool_size = 0, populate the thread affinity information in ThreadOptions.
+  // Otherwise if the thread_options has affinity information, we'll use it and set it.
+  // In the other case, don't set affinity
   bool auto_set_affinity = false;
-  //If it is true, the thread pool will spin a while after the queue became empty.
+  // If it is true, the thread pool will spin a while after the queue became empty.
   bool allow_spinning = true;
 
   unsigned int stack_size = 0;
-  //Index is thread id, value is processor ID
-  //If the vector is empty, no explict affinity binding
+  // Index is thread id, value is processor ID
+  // If the vector is empty, no explict affinity binding
   size_t* affinity_vec = nullptr;
   size_t affinity_vec_len = 0;
   const ORTCHAR_T* name = nullptr;
+  OrtThreadPoolImplType impl_type = ORT_THREAD_POOL_TYPE_DEFAULT;
 };
 
 struct OrtThreadingOptions {
@@ -38,11 +41,7 @@ struct OrtThreadingOptions {
 namespace onnxruntime {
 
 namespace concurrency {
-enum class ThreadPoolType : uint8_t {
-  INTRA_OP,
-  INTER_OP
-};
-std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
-                                             ThreadPoolType tpool_type);
+enum class ThreadPoolType : uint8_t { INTRA_OP, INTER_OP };
+std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type);
 }  // namespace concurrency
 }  // namespace onnxruntime

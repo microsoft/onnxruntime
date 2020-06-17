@@ -25,6 +25,7 @@ OrtEnv* env = nullptr;
 
 using namespace onnxruntime;
 
+
 static void BM_CPUAllocator(benchmark::State& state) {
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   const size_t len = state.range(0);

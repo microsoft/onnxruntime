@@ -8,7 +8,6 @@
 
 using namespace onnxruntime;
 
-using namespace onnxruntime;
 
 template <typename T>
 void SetRandom(Tensor& input) {

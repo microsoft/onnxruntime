@@ -29,6 +29,7 @@ limitations under the License.
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
+#include "core/platform/thread_pool_interface.h"
 #include "core/platform/windows/telemetry.h"
 #include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
 #include <wil/Resource.h>
@@ -45,14 +46,14 @@ class WindowsThread : public EnvThread {
   struct Param {
     const ORTCHAR_T* name_prefix;
     int index;
-    unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
-    Eigen::ThreadPoolInterface* param;
+    unsigned (*start_address)(int id, ThreadPoolInterface* param);
+    ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
-                unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
+                unsigned (*start_address)(int id, ThreadPoolInterface* param), ThreadPoolInterface* param,
                 const ThreadOptions& thread_options)
       : hThread((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
                                        new Param{name_prefix, index, start_address, param, thread_options}, 0,
@@ -105,8 +106,8 @@ class WindowsThread : public EnvThread {
 class WindowsEnv : public Env {
  public:
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
-                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
+                          unsigned (*start_address)(int id, ThreadPoolInterface* param),
+                          ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
   Task CreateTask(std::function<void()> f) {

@@ -1590,8 +1590,10 @@ const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
 ORT_API(void, OrtApis::ReleaseEnv, OrtEnv* value) {
   OrtEnv::Release(value);
 }
-
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
+void OrtApis::ReleaseValue(OrtValue *value) noexcept {
+  delete reinterpret_cast<OrtValue *>(value);
+}
+//DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)

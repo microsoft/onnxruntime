@@ -110,14 +110,14 @@ class PosixThread : public EnvThread {
   struct Param {
     const ORTCHAR_T* name_prefix;
     int index;
-    unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
-    Eigen::ThreadPoolInterface* param;
+    unsigned (*start_address)(int id, ThreadPoolInterface* param);
+    ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
   };
 
  public:
   PosixThread(const ORTCHAR_T* name_prefix, int index,
-              unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
+              unsigned (*start_address)(int id, ThreadPoolInterface* param), ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
     pthread_attr_t attr;
     int s = pthread_attr_init(&attr);
@@ -181,8 +181,8 @@ class PosixEnv : public Env {
   }
 
   EnvThread* CreateThread(const ORTCHAR_T* name_prefix, int index,
-                          unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
+                          unsigned (*start_address)(int id, ThreadPoolInterface* param),
+                          ThreadPoolInterface* param, const ThreadOptions& thread_options) override {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
   Task CreateTask(std::function<void()> f) override {

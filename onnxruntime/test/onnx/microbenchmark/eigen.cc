@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #if __GNUC__ >= 6

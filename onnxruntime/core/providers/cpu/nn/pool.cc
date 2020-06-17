@@ -123,13 +123,13 @@ template <>
 Status Pool<float, MaxPool<1 /*VERSION*/>>::Compute(OpKernelContext* context) const {
   return PoolBase::Compute(context, MlasMaximumPooling);
 }
-
+#if 0
 template <>
 Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
   return PoolBase::Compute(context,
                            pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
 }
-
+#endif
 
 Status MaxPoolV8::Compute(OpKernelContext* context) const {
   utils::MLTypeCallDispatcherRet<Status, ComputeHelper, float, double, int8_t, uint8_t>
@@ -147,14 +147,14 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
   for (auto n : pool_attrs_.dilations) {
     need_dilation |= n > 1;
   }
-
+#if 0
   // MLAS implementation currently supports only floats
   if (std::is_same<T, float>::value) {
     if (OpKernel::Node().OutputDefs().size() == 1 && pool_attrs_.storage_order == 0 && !need_dilation) {
       return PoolBase::Compute(context, MlasMaximumPooling);
     }
   }
-
+#endif
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
