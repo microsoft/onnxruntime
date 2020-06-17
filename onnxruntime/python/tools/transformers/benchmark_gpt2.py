@@ -18,10 +18,10 @@ from transformers import GPT2Model, GPT2LMHeadModel, GPT2Tokenizer, AutoConfig
 
 logger = logging.getLogger('')
 
-# Map alias to a tuple of Model Class and pretrained model name
+# Map alias to a tuple of Model Class, Tokenizer, pretrained model name, use LMHead or not, use attention mask or not
 MODEL_CLASSES = {
-    "gpt2": (GPT2Model, GPT2Tokenizer, "gpt2"),
-    "distilgpt2": (GPT2LMHeadModel, GPT2Tokenizer, "distilgpt2"),
+    "gpt2": (GPT2Model, GPT2Tokenizer, "gpt2", False, False),
+    "distilgpt2": (GPT2LMHeadModel, GPT2Tokenizer, "distilgpt2", True, True),
 }
 
 
@@ -44,12 +44,12 @@ def setup_environment():
     dump_environment()
 
 
-def pytorch_inference(model, input_ids, past=None, total_runs=100):
+def pytorch_inference(model, input_ids, past=None, attention_mask=None, total_runs=100):
     latency = []
     with torch.no_grad():
         for _ in range(total_runs):
             start = time.time()
-            outputs = model(input_ids=input_ids, past=past)
+            outputs = model(input_ids=input_ids, past=past, attention_mask=attention_mask)
             latency.append(time.time() - start)
 
     average_latency = sum(latency) * 1000 / len(latency)
@@ -57,10 +57,12 @@ def pytorch_inference(model, input_ids, past=None, total_runs=100):
     return outputs, average_latency
 
 
-def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100):
+def onnxruntime_inference(ort_session, input_ids, past=None, attention_mask=None, total_runs=100):
     ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
 
-    # TODO: pass input tensor stored in GPU
+    if attention_mask is not None:
+        ort_inputs['attention_mask'] = numpy.ascontiguousarray(attention_mask.cpu().numpy())
+
     if past is not None:
         for i, past_i in enumerate(past):
             ort_inputs[f'past_{i}'] = numpy.ascontiguousarray(past[i].cpu().numpy())
@@ -77,24 +79,119 @@ def onnxruntime_inference(ort_session, input_ids, past=None, total_runs=100):
     return ort_outputs, average_latency
 
 
-def inference(model, ort_session, input_ids, past=None, total_runs=100, verify_outputs=True):
-    outputs, torch_latency = pytorch_inference(model, input_ids, past, total_runs)
-    ort_outputs, ort_latency = onnxruntime_inference(ort_session, input_ids, past, total_runs)
+def onnxruntime_inference_with_binded_io(ort_session,
+                                         input_ids,
+                                         output_buffers,
+                                         max_last_state_size,
+                                         last_state_shape,
+                                         past=None,
+                                         attention_mask=None,
+                                         max_present_size=None,
+                                         present_shape=None,
+                                         total_runs=100):
+    # Bind inputs and outputs to onnxruntime session
+    io_binding = ort_session.io_binding()
+    # Bind inputs
+    io_binding.bind_input('input_ids', input_ids.device.type, 0, numpy.longlong, list(input_ids.size()),
+                          input_ids.data_ptr())
+    if attention_mask is not None:
+        io_binding.bind_input('attention_mask', attention_mask.device.type, 0, numpy.float32,
+                              list(attention_mask.size()), attention_mask.data_ptr())
+    n_layer = None
+    if past is not None:
+        n_layer = len(past)
+        for i, past_i in enumerate(past):
+            io_binding.bind_input(f'past_{i}', past[i].device.type, 0, numpy.float32, list(past[i].size()),
+                                  past[i].data_ptr())
+
+    # Bind outputs
+    if output_buffers["last_state"] is None or output_buffers["present"] is None:
+        # Allocate output buffers with the largest size need by current model
+        allocateOutputBuffers(output_buffers, max_last_state_size, max_present_size, n_layer, input_ids.device)
+
+    last_state_buffer = output_buffers["last_state"]
+    present_buffers = output_buffers["present"]
+    io_binding.bind_output(ort_session.get_outputs()[0].name, last_state_buffer.device.type, 0, numpy.float32,
+                           last_state_shape, last_state_buffer.data_ptr())
+    if present_buffers is not None:
+        for i, present_i in enumerate(present_buffers):
+            io_binding.bind_output(f'present_{i}', present_buffers[i].device.type, 0, numpy.float32, present_shape,
+                                   present_buffers[i].data_ptr())
+
+    latency = []
+    for _ in range(total_runs):
+        start = time.time()
+        # Run onnxruntime with io binding
+        ort_session.run_with_iobinding(io_binding)
+        latency.append(time.time() - start)
+
+    average_latency = sum(latency) * 1000 / len(latency)
+    logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, '.2f')))
+
+    # Copy results to cpu
+    ort_outputs = [last_state_buffer[0:numpy.prod(last_state_shape)].reshape(last_state_shape).cpu()]
+    if present_buffers is not None:
+        for i, present_i in enumerate(present_buffers):
+            ort_outputs.append(present_buffers[i][0:numpy.prod(present_shape)].reshape(present_shape).cpu())
+    return ort_outputs, average_latency
+
+
+def inference(model,
+              ort_session,
+              input_ids,
+              past=None,
+              attention_mask=None,
+              output_buffers=None,
+              max_last_state_size=None,
+              last_state_shape=None,
+              max_present_size=None,
+              present_shape=None,
+              total_runs=100,
+              verify_outputs=True,
+              disable_ort_io_binding=False):
+    outputs, torch_latency = pytorch_inference(model, input_ids, past, attention_mask, total_runs)
+    ort_outputs, ort_latency = onnxruntime_inference(ort_session, input_ids, past, attention_mask, total_runs)
+    latencies = [torch_latency, ort_latency]
+    if not disable_ort_io_binding:
+        ort_io_outputs, ort_io_latency = onnxruntime_inference_with_binded_io(ort_session, input_ids, output_buffers,
+                                                                              max_last_state_size, last_state_shape,
+                                                                              past, attention_mask, max_present_size,
+                                                                              present_shape, total_runs)
+        latencies.append(ort_io_latency)
     if verify_outputs:
+        logger.debug('Verifying Pytorch and ONNX Runtime outputs.')
+        verify_ort_outputs(model, outputs, ort_outputs)
+        if not disable_ort_io_binding:
+            logger.debug('Verifying Pytorch and ONNX Runtime with io binding outputs.')
+            verify_ort_outputs(model, outputs, ort_io_outputs)
 
-        is_close = numpy.allclose(ort_outputs[0], outputs[0].cpu(), rtol=1e-05, atol=1e-04)
-        logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
+    return latencies
 
-        is_all_close = is_close
-        for layer in range(model.config.n_layer):
-            is_close = numpy.allclose(ort_outputs[1 + layer], outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04)
-            logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
-            is_all_close = is_all_close and is_close
 
-        if not is_all_close:
-            logger.warning(f'PyTorch and OnnxRuntime results are not all close.')
+def verify_ort_outputs(model, torch_outputs, ort_outputs):
+    is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu(), rtol=1e-05, atol=1e-04)
+    logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
 
-    return torch_latency, ort_latency
+    is_all_close = is_close
+    for layer in range(model.config.n_layer):
+        is_close = numpy.allclose(ort_outputs[1 + layer], torch_outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04)
+        logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
+        is_all_close = is_all_close and is_close
+
+    if not is_all_close:
+        logger.warning(f'PyTorch and OnnxRuntime results are not all close.')
+
+
+def allocateOutputBuffers(output_buffers, max_last_state_size, max_present_size, n_layer, device):
+    # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
+    # for each test run.
+    # dummy last state
+    if output_buffers["last_state"] is None:
+        output_buffers["last_state"] = torch.empty(max_last_state_size, dtype=torch.float32, device=device)
+    # create dummy present
+    if n_layer is not None and output_buffers["present"] is None:
+        present_buffers = [torch.empty(max_present_size, dtype=torch.float32, device=device) for _ in range(n_layer)]
+        output_buffers["present"] = present_buffers
 
 
 def parse_arguments():
@@ -136,6 +233,12 @@ def parse_arguments():
                         help='Use optimizer.py to optimize onnx model')
     parser.set_defaults(optimize_onnx=False)
 
+    parser.add_argument('--disable_ort_io_binding',
+                        required=False,
+                        action='store_true',
+                        help='Disable running ONNX Runtime with binded inputs and outputs. ')
+    parser.set_defaults(disable_ort_io_binding=False)
+
     parser.add_argument('--use_gpu', required=False, action='store_true')
     parser.set_defaults(use_gpu=False)
 
@@ -170,7 +273,9 @@ def setup_logger(verbose=True):
     logger.setLevel(logging_level)
 
 
-def export_onnx(model, config, tokenizer, device, output_dir):
+def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead=False, use_attention_mask=False):
+    """ Export GPT-2 model with past state to ONNX model
+    """
     model.to(device)
 
     inputs = tokenizer.encode_plus("Here is an example input for GPT2 model",
@@ -178,56 +283,60 @@ def export_onnx(model, config, tokenizer, device, output_dir):
                                    return_tensors='pt')
     input_ids = inputs['input_ids'].to(device)
     logger.debug(f"input_ids={input_ids}")
+
+    # Use example input to generate an example of past state.
     outputs = model(input_ids=input_ids, past=None)
     assert len(outputs) == 2
     logger.debug(f"output 0 shape={outputs[0].shape}")
     logger.debug(f"outputs[1][0] shape={outputs[1][0].shape}")
 
     num_layer = model.config.n_layer
-    present_names = [f'present_{i}' for i in range(num_layer)]
-    output_names = ["last_state"] + present_names
-
-    input_names = ['input_ids']
-
-    # input_ids has only one word for model with past state.
-    # Shape of input tensors:
-    #    input_ids: (batch_size, 1)
-    #    past_{i}:  (2, batch_size, num_heads, seq_len, hidden_size/num_heads)
-    # Shape of output tensors:
-    #    last_state: (batch_size, seq_len + 1, hidden_size)
-    #    present_{i}:  (2, batch_size, num_heads, seq_len + 1, hidden_size/num_heads)
-    dynamic_axes = {'input_ids': {0: 'batch_size'}, 'last_state': {0: 'batch_size', 1: 'seq_len_plus_1'}}
-
-    for name in present_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len_plus_1'}
-
     past_names = [f'past_{i}' for i in range(num_layer)]
-    input_names = ['input_ids'] + past_names
-    dummy_past = [torch.zeros(list(outputs[1][0].shape), dtype=torch.float32, device=device) for _ in range(num_layer)]
+    present_names = [f'present_{i}' for i in range(num_layer)]
+
+    # GPT2Model  output last_state has shape (batch_size, all_seq_len, hidden_size)
+    # GPT2LMHeadModel output prediction_scores has shape (batch_size, all_seq_len, vocab_size)
+    # where all_seq_len = past_seq_len + seq_len
+    output_names = ["prediction_scores" if use_LMHead else "last_state"] + present_names
+
+    # Shape of input tensors:
+    #    input_ids: (batch_size, seq_len)
+    #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
+    #    attention_mask: (batch_size, seq_len)
+    # Shape of output tensors:
+    #    last_state: (batch_size, all_seq_len, hidden_size)
+    #    present_{i}:  (2, batch_size, num_heads, all_seq_len, hidden_size/num_heads)
+    dynamic_axes = {'input_ids': {0: 'batch_size', 1: 'seq_len'}, output_names[0]: {0: 'batch_size', 1: 'all_seq_len'}}
     for name in past_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'seq_len'}
-    logger.debug(f"vocab_size:{model.config.vocab_size}")
+        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len'}
+    for name in present_names:
+        dynamic_axes[name] = {1: 'batch_size', 3: 'all_seq_len'}
+
+    if use_attention_mask:
+        dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'seq_len'}
 
     dummy_input_ids = torch.randint(low=0,
                                     high=model.config.vocab_size - 1,
                                     size=(1, 1),
                                     dtype=torch.int64,
                                     device=device)
-    logger.debug(f"dummy_input_ids={dummy_input_ids}")
-    export_inputs = (dummy_input_ids, tuple(dummy_past))
+    # Use the example past state to create dummy past state inputs.
+    dummy_past = [torch.zeros(list(outputs[1][0].shape), dtype=torch.float32, device=device) for _ in range(num_layer)]
 
-    export_model_path = os.path.join(output_dir, 'gpt2_past.onnx')
+    dummy_mask = torch.ones([1, 1], dtype=torch.float32, device=device) if use_attention_mask else None
 
-    # Let's run performance test on PyTorch before updating environment variable.
+    model_name = "gpt2{}_past{}.onnx".format("_lm" if use_LMHead else "", "_mask" if use_attention_mask else "")
+    export_model_path = os.path.join(output_dir, model_name)
+
     with torch.no_grad():
-        outputs = model(input_ids=dummy_input_ids, past=dummy_past)
-
+        outputs = model(input_ids=dummy_input_ids, past=dummy_past, attention_mask=dummy_mask)
     logger.debug(f"present_0 shape={outputs[1][0].shape}")
 
     torch.onnx.export(model,
-                      args=export_inputs,
+                      args=(dummy_input_ids, tuple(dummy_past), dummy_mask) if use_attention_mask else
+                      (dummy_input_ids, tuple(dummy_past)),
                       f=export_model_path,
-                      input_names=input_names,
+                      input_names=['input_ids'] + past_names + (['attention_mask'] if use_attention_mask else []),
                       output_names=output_names,
                       example_outputs=outputs,
                       dynamic_axes=dynamic_axes,
@@ -251,7 +360,7 @@ def main():
         os.makedirs(output_dir)
 
     use_torchscript = False
-    (model_class, tokenizer_class, model_name) = MODEL_CLASSES[args.model_type]
+    (model_class, tokenizer_class, model_name, use_LMHead, use_attention_mask) = MODEL_CLASSES[args.model_type]
     config = AutoConfig.from_pretrained(model_name, torchscript=use_torchscript, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = tokenizer_class.from_pretrained(model_name, cache_dir=cache_dir)
@@ -259,7 +368,7 @@ def main():
     #    model = torch.jit.trace(model, (input_ids, past))
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
-    export_model_path = export_onnx(model, config, tokenizer, device, output_dir)
+    export_model_path = export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_attention_mask)
 
     # setup environment variables before importing onnxruntime.
     setup_environment()
@@ -289,6 +398,21 @@ def main():
     logger.info(f"Start inferencing onnx model: {onnx_model_path}")
     session = onnxruntime.InferenceSession(onnx_model_path, sess_options)
 
+    # Calculate the largest size needed for each output
+    max_batch_size = max(args.batch_sizes)
+    max_seq_len = max(args.sequence_lengths)
+    max_present_size = numpy.prod([
+        2, max_batch_size, config.num_attention_heads, max_seq_len + 1,
+        int(config.hidden_size / config.num_attention_heads)
+    ])
+
+    # dummy last state
+    if use_LMHead:
+        max_last_state_size = numpy.prod([max_batch_size, 1, config.vocab_size])
+    else:
+        max_last_state_size = numpy.prod([max_batch_size, 1, config.hidden_size])
+
+    output_buffers = {"last_state": None, "present": None}
     for batch_size in args.batch_sizes:
         for sequence_length in args.sequence_lengths:
             past_shape = [
@@ -301,14 +425,31 @@ def main():
                                             size=(batch_size, 1),
                                             dtype=torch.int64,
                                             device=device)
-            torch_latency, ort_latency = inference(model,
-                                                   session,
-                                                   dummy_input_ids,
-                                                   dummy_past,
-                                                   args.test_times,
-                                                   verify_outputs=args.validate_onnx)
+            dummy_mask = torch.ones([batch_size, 1], dtype=torch.float32, device=device) if use_attention_mask else None
+
+            # Calculate the expected output shapes
+            last_state_shape = [batch_size, 1, config.vocab_size] if use_LMHead else [batch_size, 1, config.hidden_size]
+            present_shape = [
+                2, batch_size, config.num_attention_heads, sequence_length + 1,
+                int(config.hidden_size / config.num_attention_heads)
+            ]
+
+            latencies = inference(model,
+                                  session,
+                                  dummy_input_ids,
+                                  dummy_past,
+                                  dummy_mask,
+                                  output_buffers,
+                                  max_last_state_size,
+                                  last_state_shape,
+                                  max_present_size,
+                                  present_shape,
+                                  args.test_times,
+                                  verify_outputs=args.validate_onnx,
+                                  disable_ort_io_binding=args.disable_ort_io_binding)
+            ort_io_latency_info = f", ort_io_latency={latencies[2]}" if not args.disable_ort_io_binding else ""
             logger.info(
-                f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={torch_latency}, ort_latency={ort_latency}"
+                f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={latencies[0]}, ort_latency={latencies[1]}{ort_io_latency_info}"
             )
 
 

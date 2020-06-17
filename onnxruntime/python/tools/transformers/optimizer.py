@@ -6,21 +6,16 @@
 # Convert Bert ONNX model converted from TensorFlow or exported from PyTorch to use Attention, Gelu,
 # SkipLayerNormalization and EmbedLayerNormalization ops to optimize
 # performance on NVidia GPU and CPU.
-
+#
 # For Bert model exported from PyTorch, OnnxRuntime has bert model optimization support internally.
-# You can use the option --use_onnxruntime to use model optimization from OnnxRuntime package.
+# You can use the option --use_onnxruntime to check optimizations from OnnxRuntime.
 # For Bert model file like name.onnx, optimized model for GPU or CPU from OnnxRuntime will output as
 # name_ort_gpu.onnx or name_ort_cpu.onnx in the same directory.
+#
 # This script is retained for experiment purpose. Useful senarios like the following:
-#  (1) Change model from fp32 to fp16.
+#  (1) Change model from fp32 to fp16 for mixed precision inference in GPU with Tensor Core.
 #  (2) Change input data type from int64 to int32.
 #  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
-
-# This script has been tested using the following models:
-#  (1) BertForSequenceClassification as in https://github.com/huggingface/transformers/blob/master/examples/run_glue.py
-#      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
-#  (2) BertForQuestionAnswering as in https://github.com/huggingface/transformers/blob/master/examples/run_squad.py
-#      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
 
 import logging
 import coloredlogs
@@ -29,14 +24,15 @@ import os
 import sys
 import argparse
 import numpy as np
+from typing import Dict
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper, load_model
-from BertOnnxModel import BertOnnxModel, BertOptimizationOptions
-from BertOnnxModelTF import BertOnnxModelTF
-from BertOnnxModelKeras import BertOnnxModelKeras
-from Gpt2OnnxModel import Gpt2OnnxModel
+from onnx_model_bert import BertOnnxModel, BertOptimizationOptions
+from onnx_model_bert_tf import BertOnnxModelTF
+from onnx_model_bert_keras import BertOnnxModelKeras
+from onnx_model_gpt2 import Gpt2OnnxModel
 
-logger = logging.getLogger('')
+logger = logging.getLogger(__name__)
 
 # Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx) and whether OnnxRuntime has the optimization.
 MODEL_CLASSES = {
@@ -47,17 +43,21 @@ MODEL_CLASSES = {
 }
 
 
-def optimize_by_onnxruntime(onnx_model_path, use_gpu=False, optimized_model_path=None, opt_level=99):
+def optimize_by_onnxruntime(onnx_model_path: str,
+                            use_gpu: bool = False,
+                            optimized_model_path: str = None,
+                            opt_level: int = 99) -> str:
     """
-    Use onnxruntime package to optimize model. It could support models exported by PyTorch.
+    Use onnxruntime to optimize model.
 
     Args:
-        onnx_model_path (str): th path of input onnx model.
+        onnx_model_path (str): the path of input onnx model.
         use_gpu (bool): whether the optimized model is targeted to run in GPU.
         optimized_model_path (str or None): the path of optimized model.
+        opt_level (int): graph optimization level.
 
     Returns:
-        optimized_model_path: the path of optimized model
+        optimized_model_path (str): the path of optimized model
     """
     import onnxruntime
 
@@ -91,7 +91,22 @@ def optimize_by_onnxruntime(onnx_model_path, use_gpu=False, optimized_model_path
     return optimized_model_path
 
 
-def parse_arguments():
+def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
+    """
+    Get counter of fused operators in optimized model.
+
+    Args:
+        optimized_model_path (str): the path of onnx model.
+
+    Returns:
+        A dictionary with operator type as key, and count as value
+    """
+    model = load_model(optimized_model_path, format=None, load_external_data=True)
+    optimizer = BertOnnxModel(model, num_heads=12, hidden_size=768)
+    return optimizer.get_fused_operator_statistics()
+
+
+def _parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', required=True, type=str, help="input onnx model path")
 
@@ -192,7 +207,7 @@ def parse_arguments():
     return args
 
 
-def get_optimization_options(args):
+def _get_optimization_options(args):
     optimization_options = BertOptimizationOptions(args.model_type)
     if args.disable_gelu:
         optimization_options.enable_gelu = False
@@ -214,18 +229,38 @@ def get_optimization_options(args):
 
 
 def optimize_model(input,
-                   model_type,
-                   num_heads,
-                   hidden_size,
-                   opt_level=0,
+                   model_type='bert',
+                   num_heads=12,
+                   hidden_size=768,
                    optimization_options=None,
+                   opt_level=0,
                    use_gpu=False,
                    only_onnxruntime=False):
+    """ Optimize Model by OnnxRuntime and/or offline fusion logic.
+
+    The following optimizes model by OnnxRuntime only, and no offline fusion logic:
+        optimize_model(input, opt_level=1, use_gpu=False, only_onnxruntime=True)
+    If you want to optimize model by offline fusion logic.
+        optimize_model(input, model_type, num_heads=12, hidden_size=768, optimization_options=your_options)
+
+    Args:
+        input (str): input model path.
+        model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
+        num_heads (int): number of attention heads.
+        hidden_size (int): hidden size.
+        optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
+        opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
+        use_gpu (bool): use gpu or not for onnxruntime.
+        only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
+
+     Returns:
+        object of an optimizer class.
+    """
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     input_model_path = input
 
-    if opt_level > 1: # Optimization specified for an execution provider.
+    if opt_level > 1:  # Optimization specified for an execution provider.
         input_model_path = optimize_by_onnxruntime(input_model_path, use_gpu=use_gpu, opt_level=opt_level)
     elif run_onnxruntime:
         # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
@@ -242,15 +277,15 @@ def optimize_model(input,
     if optimization_options is None:
         optimization_options = BertOptimizationOptions(model_type)
 
-    bert_model = optimizer_class(model, num_heads, hidden_size)
+    optimizer = optimizer_class(model, num_heads, hidden_size)
 
     if not only_onnxruntime:
-        bert_model.optimize(optimization_options)
+        optimizer.optimize(optimization_options)
 
-    return bert_model
+    return optimizer
 
 
-def setup_logger(verbose):
+def _setup_logger(verbose):
     if verbose:
         coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
     else:
@@ -258,33 +293,33 @@ def setup_logger(verbose):
 
 
 def main():
-    args = parse_arguments()
+    args = _parse_arguments()
 
-    setup_logger(args.verbose)
+    _setup_logger(args.verbose)
 
-    optimization_options = get_optimization_options(args)
+    optimization_options = _get_optimization_options(args)
 
-    bert_model = optimize_model(args.input,
-                                args.model_type,
-                                args.num_heads,
-                                args.hidden_size,
-                                opt_level=args.opt_level,
-                                optimization_options=optimization_options,
-                                use_gpu=args.use_gpu,
-                                only_onnxruntime=args.only_onnxruntime)
+    optimizer = optimize_model(args.input,
+                               args.model_type,
+                               args.num_heads,
+                               args.hidden_size,
+                               opt_level=args.opt_level,
+                               optimization_options=optimization_options,
+                               use_gpu=args.use_gpu,
+                               only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
-        bert_model.convert_model_float32_to_float16()
+        optimizer.convert_model_float32_to_float16()
 
     if args.input_int32:
-        bert_model.change_input_to_int32()
+        optimizer.change_input_to_int32()
 
-    bert_model.save_model_to_file(args.output)
+    optimizer.save_model_to_file(args.output)
 
-    if bert_model.is_fully_optimized():
-        logger.info("The output model is fully optimized.")
+    if optimizer.is_fully_optimized():
+        logger.info("The model has been fully optimized.")
     else:
-        logger.warning("The output model is not fully optimized. It might not be usable.")
+        logger.info("The model has been optimized.")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ import re
 import subprocess
 import json
 
+
 def augment_graph(model, quantization_candidates=['Conv', 'MatMul'], black_nodes=[], white_nodes=[]):
     '''
     Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
@@ -37,7 +38,8 @@ def augment_graph(model, quantization_candidates=['Conv', 'MatMul'], black_nodes
     added_nodes = []
     added_outputs = []
     for node in model.graph.node:
-        should_be_calibrate = ((node.op_type in quantization_candidates) and (node.name not in black_nodes)) or (node.name in white_nodes)
+        should_be_calibrate = ((node.op_type in quantization_candidates) and
+                               (node.name not in black_nodes)) or (node.name in white_nodes)
         if should_be_calibrate:
             input_name = node.output[0]
             # Adding ReduceMin nodes
@@ -52,7 +54,7 @@ def augment_graph(model, quantization_candidates=['Conv', 'MatMul'], black_nodes
 
             # Adding ReduceMax nodes
             reduce_max_name = ''
-            if node.name!='':
+            if node.name != '':
                 reduce_max_name = node.name + '_ReduceMax'
             reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name], [input_name + '_ReduceMax'],
                                                     reduce_max_name,
@@ -96,8 +98,8 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
         for k, v in d.items():
             merged_dict.setdefault(k, []).append(v)
     added_node_output_names = node_output_names[num_model_outputs:]
-    node_names = [added_node_output_names[i].rpartition('_')[0] for i in range(0, len(added_node_output_names), 2)
-                 ]  # output names
+    node_names = [added_node_output_names[i].rpartition('_')[0]
+                  for i in range(0, len(added_node_output_names), 2)]  # output names
 
     # Characterizing distribution of a node's values across test data sets
     clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
@@ -221,13 +223,21 @@ def main():
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--dataset_path', required=True)
     parser.add_argument('--force_fusions', default=False, action='store_true')
-    parser.add_argument('--op_types', type=str, default='Conv,MatMul',
+    parser.add_argument('--op_types',
+                        type=str,
+                        default='Conv,MatMul',
                         help='comma delimited operator types to be calibrated and quantized')
-    parser.add_argument('--black_nodes', type=str, default='',
+    parser.add_argument('--black_nodes',
+                        type=str,
+                        default='',
                         help='comma delimited operator names that should not be quantized')
-    parser.add_argument('--white_nodes', type=str, default='',
+    parser.add_argument('--white_nodes',
+                        type=str,
+                        default='',
                         help='comma delimited operator names force to be quantized')
-    parser.add_argument('--augmented_model_path', type=str, default = 'augmented_model.onnx',
+    parser.add_argument('--augmented_model_path',
+                        type=str,
+                        default='augmented_model.onnx',
                         help='save augmented model to this file for verification purpose')
     parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
     parser.add_argument('--dataset_size',
