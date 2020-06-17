@@ -64,7 +64,6 @@ class ONNXExporterTest(unittest.TestCase):
 
             # export the model to ONNX
             f = io.BytesIO()
-            input_copy = copy.deepcopy(input)
             torch.onnx._export(model, input_copy, f,
                                opset_version=self.opset_version,
                                example_outputs=output,
