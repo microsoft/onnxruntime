@@ -18,7 +18,7 @@ from onnx.helper import make_node, make_tensor_value_info
 import numpy as np
 from onnx import numpy_helper
 from optimizer import optimize_model, optimize_by_onnxruntime
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 
 BERT_TEST_MODELS = {
     "bert_pytorch_0": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_0.onnx'),
