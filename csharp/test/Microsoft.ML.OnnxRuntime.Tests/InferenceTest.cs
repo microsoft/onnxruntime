@@ -1056,12 +1056,41 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestCreateFixedBufferOnnxValueFromStringTensor()
         {
             var tensor = new DenseTensor<string>(new string[] { "a", "b" }, new int[] { 1, 2 });
+            using (var value = FixedBufferOnnxValue.CreateFromTensor(tensor)) { }
+        }
 
-            Assert.Throws<ArgumentException>("value", () =>
+        [Fact]
+        public void TestReusingStringFixedBufferOnnxValue()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
             {
-                // cannot create from string tensor
-                FixedBufferOnnxValue.CreateFromTensor(tensor);
-            });
+                var tensorA = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
+                var tensorB = new DenseTensor<string>(new string[] { "v", "w", "x", "y", "z" }, new int[] { 1, 5 });
+                var tensorC = new DenseTensor<string>(new string[] { "i", "j", "k", "l", "m" }, new int[] { 1, 5 });
+                var tensorD = new DenseTensor<string>(new string[] { "i", "j", "k", "l", "m" }, new int[] { 1, 5 });
+                using (FixedBufferOnnxValue a = FixedBufferOnnxValue.CreateFromTensor(tensorA),
+                                            b = FixedBufferOnnxValue.CreateFromTensor(tensorB),
+                                            c = FixedBufferOnnxValue.CreateFromTensor(tensorC),
+                                            d = FixedBufferOnnxValue.CreateFromTensor(tensorD))
+                {
+                    // OK to use string type FixedBufferOnnxValue only in input
+                    session.Run(new[] { "input" }, new[] { a });
+
+                    // Cannot use string type FixedBufferOnnxValue in output
+                    Assert.Throws<NotSupportedException>(() =>
+                    {
+                        // NamedOnnxValue inputs
+                        session.Run(new[] { NamedOnnxValue.CreateFromTensor("input", tensorB) }, new[] { "output" }, new[] { b });
+                    });
+                    Assert.Throws<NotSupportedException>(() =>
+                    {
+                        // both FixedBufferOnnxValue for inputs and outputs
+                        session.Run(new[] { "input" }, new[] { c }, new[] { "output" }, new[] { d });
+                    });
+                }
+
+            }
         }
 
         [Fact]

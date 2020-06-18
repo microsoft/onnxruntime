@@ -214,7 +214,7 @@ target_link_libraries(${SERVER_APP_NAME} PRIVATE
   ${Boost_LIBRARIES}
   onnxruntime_server_http_core_lib
   ${grpc_static_libs}  protobuf::libprotobuf
-  spdlog::spdlog
+  spdlog
   onnxruntime gtest re2  ${CMAKE_DL_LIBS} Threads::Threads
 )
 
@@ -248,7 +248,7 @@ file(GLOB onnxruntime_test_server_src
   ${Boost_LIBRARIES}
   onnxruntime_server_http_core_lib
   ${grpc_static_libs} protobuf::libprotobuf
-  spdlog::spdlog
+  spdlog
   onnxruntime gtest re2 gtest ${CMAKE_DL_LIBS} Threads::Threads)
   target_include_directories(onnxruntime_server_tests PRIVATE ${ONNXRUNTIME_SERVER_ROOT}/external/spdlog/include
   ${ONNXRUNTIME_SERVER_ROOT}/http/core

@@ -35,7 +35,7 @@ def main():
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name", os.path.join(
                 args.model_root,
-                "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
+                "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
             "--train_batch_size", str(config.max_batch_size),
             "--mode", "perf",
             "--max_seq_length", str(config.sequence_length),
@@ -57,7 +57,7 @@ def main():
         if config.enable_mixed_precision:
             cmds.append("--use_mixed_precision"),
 
-        subprocess.run(cmds, timeout=60).check_returncode()
+        subprocess.run(cmds, timeout=120).check_returncode()
 
     return 0
 

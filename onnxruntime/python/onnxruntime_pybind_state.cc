@@ -100,7 +100,19 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX
+#if USE_ACL
+#define BACKEND_ACL "-ACL"
+#else
+#define BACKEND_ACL ""
+#endif
+
+#if USE_ARMNN
+#define BACKEND_ARMNN "-ARMNN"
+#else
+#define BACKEND_ARMNN ""
+#endif
+
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -132,6 +144,12 @@ std::string nuphar_settings;
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
+#ifdef USE_ACL
+#include "core/providers/acl/acl_provider_factory.h"
+#endif
+#ifdef USE_ARMNN
+#include "core/providers/armnn/armnn_provider_factory.h"
+#endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
@@ -145,7 +163,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
-
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -287,7 +306,8 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider};
+                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider,
+                                                   kAclExecutionProvider, kArmNNExecutionProvider};
   return all_providers;
 }
 
@@ -317,6 +337,12 @@ const std::vector<std::string>& GetAvailableProviders() {
 #endif
 #ifdef USE_VITISAI
     available_providers.push_back(kVitisAIExecutionProvider);
+#endif
+#ifdef USE_ACL
+    available_providers.push_back(kAclExecutionProvider);
+#endif
+#ifdef USE_ARMNN
+    available_providers.push_back(kArmNNExecutionProvider);
 #endif
     return available_providers;
   };
@@ -361,6 +387,14 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
+#endif
+    } else if (type == kAclExecutionProvider) {
+#ifdef USE_ACL
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
+    } else if (type == kArmNNExecutionProvider) {
+#ifdef USE_ARMNN
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else {
       // unknown provider
@@ -455,6 +489,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 #ifdef USE_VITISAI
             onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+#endif
+#ifdef USE_ACL
+            onnxruntime::CreateExecutionProviderFactory_ACL(0)
+#endif
+#ifdef USE_ARMNN
+            onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
 #endif
         };
 
