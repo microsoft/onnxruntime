@@ -197,9 +197,9 @@ class IOBinding:
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
-    def bind_input(self, name, arr_on_cpu):
+    def bind_cpu_input(self, name, arr_on_cpu):
         '''
-        bind an input to CPU
+        bind an input to array on CPU
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
         '''

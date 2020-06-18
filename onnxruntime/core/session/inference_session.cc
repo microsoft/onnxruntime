@@ -1502,8 +1502,8 @@ SessionIOBinding::SessionIOBinding(std::shared_ptr<InferenceSession> session) {
   sess_ = session;
 }
 
-InferenceSession* SessionIOBinding::GetInferenceSession() {
-  return sess_.get();
+std::shared_ptr<InferenceSession> SessionIOBinding::GetInferenceSession() {
+  return sess_;
 }
 
 IOBinding* SessionIOBinding::Get() {
