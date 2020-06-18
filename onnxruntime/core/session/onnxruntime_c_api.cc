@@ -14,6 +14,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
@@ -1379,22 +1380,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length) {
   API_IMPL_BEGIN
   const int MAX_NUM_PROVIDERS = 14, MAX_LEN = 30;
-  char all_providers[MAX_NUM_PROVIDERS][MAX_LEN] = {
-    "CPUExecutionProvider",
-    "CUDAExecutionProvider",
-    "DnnlExecutionProvider",
-    "NGRAPHExecutionProvider",
-    "OpenVINOExecutionProvider",
-    "NupharExecutionProvider",
-    "VitisAIExecutionProvider",
-    "TensorrtExecutionProvider",
-    "NnapiExecutionProvider",
-    "RknpuExecutionProvider",
-    "DmlExecutionProvider",
-    "MIGraphXExecutionProvider",
-    "ACLExecutionProvider",
-    "ArmNNExecutionProvider",
-  };
+  /* Ordering of providers in the following enum should be same as
+   * all_providers array defined in "constants.h".
+   */
   enum providers {cpu, cuda, dnnl, ngraph, openvino, nuphar, vitisai, tensorrt,
                   nnapi, rknpu, dml, migraph, acl, armnn};
   int available_count = 0;

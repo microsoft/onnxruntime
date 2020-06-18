@@ -38,4 +38,20 @@ constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
+constexpr const char *all_providers[] = {
+  kCpuExecutionProvider,
+  kCudaExecutionProvider,
+  kDnnlExecutionProvider,
+  kNGraphExecutionProvider,
+  kOpenVINOExecutionProvider,
+  kNupharExecutionProvider,
+  kVitisAIExecutionProvider,
+  kTensorrtExecutionProvider,
+  kNnapiExecutionProvider,
+  kRknpuExecutionProvider,
+  kDmlExecutionProvider,
+  kMIGraphXExecutionProvider,
+  kAclExecutionProvider,
+  kArmNNExecutionProvider,
+};
 }  // namespace onnxruntime
