@@ -101,7 +101,7 @@ bool ReshapeFusion::Fuse_Subgraph3(Graph& graph, const NodeArg& root_input, cons
     // Unsqueeze_path is found, check for shape -> slice -> squeeze -> unsqueeze to make sure
     // the path produces one element output
     if (edges.size() == 1) {
-      if (ReshapeFusion::Match_One_Element_Output_Subgraph(graph, root_input, unsqueeze, 0, shape_value, logger)) {
+      if (ReshapeFusion::Match_One_Element_Output_Subgraph(graph, root_input, unsqueeze, 0, logger)) {
         return true;
       }
       return false;
@@ -132,7 +132,7 @@ bool ReshapeFusion::Fuse_Subgraph3(Graph& graph, const NodeArg& root_input, cons
         continue;
       }
       // If it's node input, look for shape -> slice -> squeeze path for a potential match.
-      if (!ReshapeFusion::Match_One_Element_Output_Subgraph(graph, root_input, binary_node, i, shape_value, logger)) {
+      if (!ReshapeFusion::Match_One_Element_Output_Subgraph(graph, root_input, binary_node, i, logger)) {
         return false;
       }
     }
@@ -146,7 +146,7 @@ bool ReshapeFusion::Fuse_Subgraph3(Graph& graph, const NodeArg& root_input, cons
  * to make sure the graph produces output with exactly one element.
  */
 bool ReshapeFusion::Match_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& cur_node,
-                                                      int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+                                                      int index, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, index, "Squeeze", {1, 11}, kOnnxDomain},
       {0, 0, "Slice", {1, 11}, kOnnxDomain},
