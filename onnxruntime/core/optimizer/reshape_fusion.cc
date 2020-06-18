@@ -74,54 +74,109 @@ bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, cons
 }
 
 /**
- * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze -> Div -> Unsqueeze
+ * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze -> (Div/Mul) -> Unsqueeze
  */
 bool ReshapeFusion::Fuse_Subgraph3(Graph& graph, const NodeArg& root_input, const Node& concat,
                                    int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
-  std::vector<graph_utils::EdgeEndToMatch> parent_path{
+  std::vector<graph_utils::EdgeEndToMatch> div_path{
       {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Div", {7}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Div", {7}, kOnnxDomain}};
+
+  std::vector<graph_utils::EdgeEndToMatch> mul_path{
+      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Mul", {7}, kOnnxDomain}};
+
+  std::vector<graph_utils::EdgeEndToMatch> unsqueeze_path{
+      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain}};
+
+  std::vector<const Node::EdgeEnd*> edges;
+  if (graph_utils::FindPath(concat, true, div_path, edges, logger) ||
+      graph_utils::FindPath(concat, true, mul_path, edges, logger) ||
+      graph_utils::FindPath(concat, true, unsqueeze_path, edges, logger)) {
+    const Node& unsqueeze = edges[0]->GetNode();
+    std::vector<int64_t> axes;
+    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+      return false;
+    }
+    // Unsqueeze_path is found, check for shape -> slice -> squeeze -> unsqueeze to make sure
+    // the path produces one element output
+    if (edges.size() == 1) {
+      if (ReshapeFusion::Match_One_Element_Output_Subgraph(graph, root_input, unsqueeze, 0, shape_value, logger)) {
+        return true;
+      }
+      return false;
+    }
+    const Node& binary_node = edges[1]->GetNode();
+
+    // Check if each of two inputs of the binary node has exactly one element.
+    auto input_count = binary_node.InputArgCount().front();
+
+    for (int i = 0; i < input_count; ++i) {
+      // Check if the i-th argument is a constant initializer. If it is, check for its shape
+      // to make sure it contains exactly one element.
+      if (optimizer_utils::AppendTensorFromInitializer(graph, *(binary_node.InputDefs()[i]), shape_value, true)) {
+        const NodeArg* binary_node_arg = binary_node.InputDefs()[i];
+        const auto* input_shape = binary_node_arg->Shape();
+        if (!input_shape) {
+          // We need shape to be able to be certain of number of elements
+          // Can't proceed with fusion
+          return false;
+        }
+
+        // Check if number of elements in this input to perform binary operation is 1
+        if (utils::GetTensorShapeFromTensorShapeProto(*binary_node_arg->Shape()).Size() != 1) {
+          // Some dim values may be > 1 or some dim values may be missing
+          // Can't proceed with fusion
+          return false;
+        }
+        continue;
+      }
+      // If it's node input, look for shape -> slice -> squeeze path for a potential match.
+      if (!ReshapeFusion::Match_One_Element_Output_Subgraph(graph, root_input, binary_node, i, shape_value, logger)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Find the subgraph that matches [root] -> Shape -> Slice -> Squeeze. Check the inputs of slice 
+ * to make sure the graph produces output with exactly one element.
+ */
+bool ReshapeFusion::Match_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& cur_node,
+                                                      int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+  std::vector<graph_utils::EdgeEndToMatch> parent_path{
+      {0, index, "Squeeze", {1, 11}, kOnnxDomain},
       {0, 0, "Slice", {1, 11}, kOnnxDomain},
       {0, 0, "Shape", {1}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
-  if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
-    const Node& unsqueeze = edges[0]->GetNode();
-    const Node& div_node = edges[1]->GetNode();
-    const Node& slice = edges[3]->GetNode();
-    const Node& shape = edges[4]->GetNode();
+  if (graph_utils::FindPath(cur_node, true, parent_path, edges, logger)) {
+    const Node& slice = edges[1]->GetNode();
+    const Node& shape = edges[2]->GetNode();
 
-    std::cout << "subgraph 3 found. " << std::endl;
     const NodeArg& shape_input = *(shape.InputDefs()[0]);
     if (shape_input.Name() != root_input.Name()) {
       return false;
     }
 
-    std::vector<int64_t> axes;
-    if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
-      return false;
-    }
-
-    Initializer slice_start_init{
-        *(graph_utils::GetConstantInitializer(graph, slice.InputDefs()[1]->Name())), graph.ModelPath()};
-    Initializer slice_end_init{
-        *(graph_utils::GetConstantInitializer(graph, slice.InputDefs()[2]->Name())), graph.ModelPath()};
-    const int64_t slice_start = slice_start_init.data<int64_t>()[0];
-    const int64_t slice_end = slice_end_init.data<int64_t>()[0];
-    if (!(slice_end == INT64_MAX && slice_start == -1) && abs(slice_end - slice_start) != 1) {
-        std::cout << "slice not 1. slice_start =  " << slice_start << " slice_end = " << slice_end << std::endl;
+    // Check if Slice op slices 1d array (result of shape) to one element.
+    std::vector<int64_t> slice_inputs;
+    if (optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[1]), slice_inputs, true) &&
+        optimizer_utils::AppendTensorFromInitializer(graph, *(slice.InputDefs()[2]), slice_inputs, true)) {
+      const int64_t slice_start = slice_inputs[0];
+      const int64_t slice_end = slice_inputs[1];
+      if (!(slice_end == INT64_MAX && slice_start == -1) && abs(slice_end - slice_start) != 1) {
         return false;
       }
-
-    if (div_node.GetInputEdgesCount() > 1) {
-      std::cout << "div node has more than 1 input edge" << std::endl;
-      return false;
+      return true;
     }
-    return true;
   }
 
   return false;
 }
+
 /**
 Apply Reshape Fusion. The following are subgraphs before and after fusion:
 (a[] and b[] are int64[] constant initializers; Concat may have any number of arguments,
@@ -189,16 +244,19 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
       continue;
     }
 
+    // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern
+    // fusion. For this input to be a candidate, the number of elements in the input tensor to Concat
+    // has to be 1.
+    // Try to find path [Root] --> Shape --> Slice(one element slice) --> (Mul/Div) --> Squeeze
+    // --> Unsqueeze (axes=0) --> Concat
     matched = ReshapeFusion::Fuse_Subgraph3(graph, root_input, concat, i, shape_value, logger);
     if (matched) {
       shape_value.push_back(-1);
       continue;
     }
 
-    // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern fusion
-
-    // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
-    // We use shape info (if made available via shape inference) for this.
+    // If no known path that produces one element output can be matched, we use shape info 
+    // (if made available via shape inference) for this.
     const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
 
     const auto* input_shape = concat_input_node_arg->Shape();
