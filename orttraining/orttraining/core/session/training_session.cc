@@ -167,11 +167,6 @@ Status TrainingSession::ConfigureForTraining(
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
   }
 
-  if (config.optimize_gathernd) {
-    LOGS(*session_logger_, INFO) << "ReduceComputation Transformer is enabled.\n";
-    ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
-  }
-
   ORT_ENFORCE(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
       "loss_scale_input_name should not be set to an empty string.");

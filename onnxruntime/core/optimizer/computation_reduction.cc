@@ -240,23 +240,23 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     while (!stop) {
       Node* input_node = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
       if (graph.GetConsumerNodes(input_node->MutableOutputDefs()[0]->Name()).size() > 1) {
-        LOGS_DEFAULT(INFO) << "node " << node.Name() << " stopped at node "
-                           << input_node->Name();
+        LOGS_DEFAULT(WARNING) << "node " << node.Name() << " stopped at node "
+                              << input_node->Name();
         break;
       }
 
       auto ret = Delegate(input_node->OpType(), graph, node, *input_node);
       if (ret.IsOK()) {
-        LOGS_DEFAULT(INFO) << "node " << node.Name() << " up across node "
-                           << input_node->Name() << std::endl;
+        LOGS_DEFAULT(WARNING) << "node " << node.Name() << " up across node "
+                              << input_node->Name() << std::endl;
         modified = true;
       } else if (ret.Code() == common::NOT_IMPLEMENTED) {
-        LOGS_DEFAULT(INFO) << "node " << node.Name() << " stopped at node "
-                           << input_node->Name();
+        LOGS_DEFAULT(WARNING) << "node " << node.Name() << " stopped at node "
+                              << input_node->Name();
         break;
       } else {
-        LOGS_DEFAULT(INFO) << " terminate due to unexpected error, node names:" << node.Name()
-                           << ", " << input_node->Name() << ", error " << ret.ErrorMessage() << std::endl;
+        LOGS_DEFAULT(WARNING) << " terminate due to unexpected error, node names:" << node.Name()
+                              << ", " << input_node->Name() << ", error " << ret.ErrorMessage() << std::endl;
         stop = true;
       }
     }

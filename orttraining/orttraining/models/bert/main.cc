@@ -328,6 +328,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.partition_optimizer = flags["partition_optimizer"].as<bool>();
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     params.optimize_gathernd = flags["optimize_gathernd"].as<bool>();
+    if (params.optimize_gathernd) {
+      printf("ReduceComputation Transformer is enabled.\n");
+    }
+
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -499,8 +503,8 @@ float GetLossValue(const Tensor& loss_tensor) {
 // batch is not part of the initial tensor shape vector till later
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
-  {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
+    {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+    {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
 };
 
 // generic properties for storing perf metrics
