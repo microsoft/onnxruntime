@@ -61,12 +61,10 @@ Status ComputePadAndOutputShape(
 // A helper struct holding attributes for Conv-family ops
 struct ConvAttributes {
   explicit ConvAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info) {
-    bool has_auto_pad_attr = false;
     std::string auto_pad_str;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
     if (status.IsOK()) {
       auto_pad = StringToAutoPadType(auto_pad_str);
-      has_auto_pad_attr = true;
     }
 
     kernel_shape_specified = info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK();
@@ -82,9 +80,8 @@ struct ConvAttributes {
       // so that we can compute and fill in pad values downstream
       pads.resize(kernel_shape_.size() * 2, 0);
     } else {
-      // Pads are explicitly provided, make sure that auto_pad isn't provided or if auto_pad is provided
-      // make sure it is NOTSET thus indicating the usage of explicit pads
-      ORT_ENFORCE(!has_auto_pad_attr || auto_pad == AutoPadType::NOTSET,
+      // Pads are explicitly provided, make sure that auto_pad is NOTSET
+      ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
                   "A Conv/ConvTranspose node has both 'auto_pad' and 'pads' attributes");
     }
 
