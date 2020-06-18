@@ -10,6 +10,8 @@ import os
 import sys
 import numpy
 import time
+import csv
+from datetime import datetime
 import psutil
 import argparse
 import logging
@@ -114,21 +116,21 @@ def onnxruntime_inference(ort_session, inputs, total_runs=100):
     return ort_outputs, average_latency
 
 
-def get_dummy_inputs(batch_size, sequence_length, num_attention_heads, hidden_size, num_layer, vocab_size, device,
+def get_dummy_inputs(batch_size, past_sequence_length, num_attention_heads, hidden_size, num_layer, vocab_size, device,
                      use_attention_mask, float16):
     float_type = torch.float16 if float16 else torch.float32
-    past_shape = [2, batch_size, num_attention_heads, sequence_length, int(hidden_size / num_attention_heads)]
+    past_shape = [2, batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
     dummy_past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
     dummy_input_ids = torch.randint(low=0, high=vocab_size - 1, size=(batch_size, 1), dtype=torch.int64, device=device)
     if use_attention_mask:
         dummy_attention_mask = torch.ones([batch_size, 1], dtype=float_type, device=device)
-        dummy_position_ids = torch.ones([batch_size, 1], dtype=torch.int64, device=device) * sequence_length
+        dummy_position_ids = torch.ones([batch_size, 1], dtype=torch.int64, device=device) * past_sequence_length
         return dummy_input_ids, dummy_past, dummy_attention_mask, dummy_position_ids
 
     return dummy_input_ids, dummy_past, None, None
 
 
-def get_output_shapes(batch_size, sequence_length, config, use_LMHead):
+def get_output_shapes(batch_size, past_sequence_length, config, use_LMHead):
     num_attention_heads = config.num_attention_heads
     hidden_size = config.hidden_size
     num_layer = config.n_layer
@@ -136,7 +138,7 @@ def get_output_shapes(batch_size, sequence_length, config, use_LMHead):
 
     last_state_shape = [batch_size, 1, vocab_size] if use_LMHead else [batch_size, 1, hidden_size]
     present_state_shape = [
-        2, batch_size, num_attention_heads, sequence_length + 1,
+        2, batch_size, num_attention_heads, past_sequence_length + 1,
         int(hidden_size / num_attention_heads)
     ]
 
@@ -154,7 +156,7 @@ def get_output_buffers(output_shapes, device, is_float16):
 
     output_buffers = {}
     for name, shape in output_shapes.items():
-        output_buffers[name] = torch.empty(shape, dtype=data_type, device=device)
+        output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
     return output_buffers
 
 
@@ -312,15 +314,22 @@ def parse_arguments():
                         help='Enable attention_mask and position_ids. ')
     parser.set_defaults(use_attention_mask=False)
 
-    parser.add_argument('--use_gpu', required=False, action='store_true')
+    parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('--float16', required=False, action='store_true')
+    parser.add_argument('--float16', required=False, action='store_true', help="convert model from float32 to float16")
     parser.set_defaults(float16=False)
 
-    parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1])
+    parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
-    parser.add_argument('-s', '--sequence_lengths', nargs='+', type=int, default=[8, 16, 32, 64, 128, 256])
+    parser.add_argument('-s',
+                        '--sequence_lengths',
+                        nargs='+',
+                        type=int,
+                        default=[8, 16, 32, 64, 128, 256],
+                        help="past sequence lengths")
+
+    parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -378,7 +387,7 @@ def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_at
         dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
 
     dummy_inputs = get_dummy_inputs(batch_size=1,
-                                    sequence_length=1,
+                                    past_sequence_length=1,
                                     num_attention_heads=config.num_attention_heads,
                                     hidden_size=config.hidden_size,
                                     num_layer=num_layer,
@@ -442,7 +451,7 @@ def main():
     args = parse_arguments()
     setup_logger(args.verbose)
 
-    logger.info("Arguments:{args}")
+    logger.info(f"Arguments:{args}")
     dump_environment()
 
     cache_dir = args.cache_dir
@@ -509,29 +518,55 @@ def main():
         max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.sequence_lengths), config, use_LMHead)
         output_buffers = get_output_buffers(max_output_shapes, device, args.float16)
 
-    for batch_size in args.batch_sizes:
-        for sequence_length in args.sequence_lengths:
-            logger.info(f"Running test for batch_size={batch_size} sequence_length={sequence_length}...")
-            dummy_inputs = get_dummy_inputs(batch_size, sequence_length, config.num_attention_heads, config.hidden_size,
-                                            config.n_layer, config.vocab_size, device, args.use_attention_mask,
-                                            args.float16)
-            output_shapes = get_output_shapes(batch_size, sequence_length, config, use_LMHead)
+    csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = [
+            "model_name", "model_class", "gpu", "fp16", "use_attention_mask", "optimizer", "io_binding", "batch_size",
+            "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
+        ]
+        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+        csv_writer.writeheader()
 
-            try:
-                latencies = inference(model,
-                                      session,
-                                      dummy_inputs,
-                                      output_buffers,
-                                      output_shapes,
-                                      args.test_times,
-                                      verify_outputs=args.validate_onnx,
-                                      disable_ort_io_binding=args.disable_ort_io_binding)
-                ort_io_latency_info = f", ort_io_latency={latencies[2]}" if not args.disable_ort_io_binding else ""
-                logger.info(
-                    f"batch_size={batch_size}, sequence_length={sequence_length}, torch_latency={latencies[0]}, ort_latency={latencies[1]}{ort_io_latency_info}"
-                )
-            except:
-                logger.error(f"Exception", exc_info=True)
+        for batch_size in args.batch_sizes:
+            for past_sequence_length in args.sequence_lengths:
+                logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
+                dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, config.num_attention_heads,
+                                                config.hidden_size, config.n_layer, config.vocab_size, device,
+                                                args.use_attention_mask, args.float16)
+                output_shapes = get_output_shapes(batch_size, past_sequence_length, config, use_LMHead)
+
+                try:
+                    latencies = inference(model,
+                                          session,
+                                          dummy_inputs,
+                                          output_buffers,
+                                          output_shapes,
+                                          args.test_times,
+                                          verify_outputs=args.validate_onnx,
+                                          disable_ort_io_binding=args.disable_ort_io_binding)
+                    ort_io_latency_info = f", ort_io_latency={latencies[2]:.2f}" if not args.disable_ort_io_binding else ""
+                    logger.info(
+                        f"batch_size={batch_size}, past_sequence_length={past_sequence_length}, torch_latency={latencies[0]:.2f}, ort_latency={latencies[1]:.2f}{ort_io_latency_info}"
+                    )
+
+                    row = {
+                        "model_name": args.model_name,
+                        "model_class": args.model_class,
+                        "gpu": args.use_gpu,
+                        "fp16": args.float16,
+                        "use_attention_mask": args.use_attention_mask,
+                        "optimizer": args.optimize_onnx,
+                        "io_binding": not args.disable_ort_io_binding,
+                        "batch_size": batch_size,
+                        "past_sequence_length": past_sequence_length,
+                        "torch_latency": f"{latencies[0]:.2f}",
+                        "ort_latency": f"{latencies[1]:.2f}",
+                        "ort_io_latency": f"{latencies[2]:.2f}" if not args.disable_ort_io_binding else ""
+                    }
+                    csv_writer.writerow(row)
+                except:
+                    logger.error(f"Exception", exc_info=True)
+    logger.info(f"Results are saved to file {csv_filename}")
 
 
 if __name__ == '__main__':
