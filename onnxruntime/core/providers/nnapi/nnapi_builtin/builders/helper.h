@@ -3,11 +3,12 @@
 //
 #pragma once
 
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
-
 #include <android/log.h>
+#include <core/common/common.h>
 #include <string>
 #include <vector>
+
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
 #define LOG_TAG "ORT NNAPI"
 
@@ -17,27 +18,25 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
 
-#define THROW_ON_ERROR(val)                                             \
-  {                                                                     \
-    const auto ret = (val);                                             \
-    if (ret != ANEURALNETWORKS_NO_ERROR) {                              \
-      throw std::invalid_argument(                                      \
-          std::string("Error in ") + __FILE__ + std::string(":") +      \
-          std::to_string(__LINE__) + std::string(", function name: ") + \
-          std::string(__func__) + "error, ret: " + GetErrorCause(ret)); \
-    }                                                                   \
+#define THROW_ON_ERROR(val)                                               \
+  {                                                                       \
+    const auto ret = (val);                                               \
+    ORT_ENFORCE(                                                          \
+        ret == ANEURALNETWORKS_NO_ERROR,                                  \
+        std::string("Error in ") + __FILE__ + std::string(":") +          \
+            std::to_string(__LINE__) + std::string(", function name: ") + \
+            std::string(__func__) + "error, ret: " + GetErrorCause(ret)); \
   }
 
-#define THROW_ON_ERROR_WITH_NOTE(val, note)                             \
-  {                                                                     \
-    const auto ret = (val);                                             \
-    if (ret != ANEURALNETWORKS_NO_ERROR) {                              \
-      throw std::invalid_argument(                                      \
-          std::string("Error in ") + __FILE__ + std::string(":") +      \
-          std::to_string(__LINE__) + std::string(", function name: ") + \
-          std::string(__func__) + "error, ret: " + GetErrorCause(ret) + \
-          std::string(", ") + (note));                                  \
-    }                                                                   \
+#define THROW_ON_ERROR_WITH_NOTE(val, note)                               \
+  {                                                                       \
+    const auto ret = (val);                                               \
+    ORT_ENFORCE(                                                          \
+        ret == ANEURALNETWORKS_NO_ERROR,                                  \
+        std::string("Error in ") + __FILE__ + std::string(":") +          \
+            std::to_string(__LINE__) + std::string(", function name: ") + \
+            std::string(__func__) + "error, ret: " + GetErrorCause(ret) + \
+            std::string(", ") + (note));                                  \
   }
 
 template <class Map, class Key>

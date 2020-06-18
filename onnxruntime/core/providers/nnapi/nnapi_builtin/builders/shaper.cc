@@ -1,6 +1,8 @@
+#include <core/common/common.h>
+
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "helper.h"
 #include "shaper.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
 using std::string;
 using std::vector;
@@ -240,14 +242,10 @@ void Shaper::Reshape(const std::string& input_name,
   int unk_dim_idx = -1;
   for (size_t i = 0; i < shape.size(); i++) {
     int32_t dim_i = shape[i];
+    ORT_ENFORCE(dim_i != 0, "NNAPI does not support 0 reshape dimension");
     if (dim_i == -1) {
-      if (unk_dim_idx != -1)
-        throw std::invalid_argument(
-            "Only one input dimension of Attr(shape) can be unknown!");
+      ORT_ENFORCE(unk_dim_idx == -1, "Only one input dimension of Attr(shape) can be unknown!");
       unk_dim_idx = i;
-    } else if (dim_i == 0) {
-      throw std::invalid_argument(
-          "NNAPI does not support 0 reshape dimension");
     } else {
       capacity *= dim_i;
       output_dimen[i] = static_cast<uint32_t>(dim_i);
@@ -263,8 +261,7 @@ void Shaper::Reshape(const std::string& input_name,
     capacity *= output_dimen[unk_dim_idx];
   }
 
-  if (capacity != input_size)
-    throw std::invalid_argument("Invalid shape is given!");
+  ORT_ENFORCE(capacity == input_size, "Invalid shape is given!");
 
   shape_map_[output_name] = output_dimen;
 
@@ -280,8 +277,8 @@ void Shaper::Transpose(const std::string& input_name,
                        const std::vector<int32_t>& perm,
                        const std::string& output_name) {
   auto input_dimen = shape_map_.at(input_name);
-  if (perm.size() != input_dimen.size())
-    throw std::invalid_argument("Invalid perm is given!");
+
+  ORT_ENFORCE(perm.size() == input_dimen.size(), "Invalid perm is given!");
 
   size_t size = input_dimen.size();
   Shape output_Dimen(size);
@@ -366,24 +363,19 @@ void Shaper::AddShape(const std::string& name, const Shape& shape) {
 }
 
 void Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
-  if (!shaper_finalized_) {
-    throw std::invalid_argument(
-        "Cannot UpdateShape while shaper is not finalized");
-  }
+  ORT_ENFORCE(shaper_finalized_,
+              "Cannot UpdateShape while shaper is not finalized");
 
   const auto& old_shape = shape_map_.at(name);
   if (old_shape != new_shape && Product(shape_map_.at(name)) != 0)
-    throw std::invalid_argument(
-        "The shape should be same size or old shape has size 0");
+    ORT_THROW("The shape should be same size or old shape has size 0");
 
   shape_map_[name] = new_shape;
 }
 
 void Shaper::UpdateDynamicDimensions() {
-  if (!shaper_finalized_) {
-    throw std::invalid_argument(
-        "Cannot UpdateDynamicDimensions while shaper is not finalized");
-  }
+  ORT_ENFORCE(shaper_finalized_,
+              "Cannot UpdateDynamicDimensions while shaper is not finalized");
 
   for (auto& shape_op : shape_ops_)
     shape_op(*this);

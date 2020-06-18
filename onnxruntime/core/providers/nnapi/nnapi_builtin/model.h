@@ -2,14 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "builders/shaper.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
-
-struct ANeuralNetworksModel;
-struct ANeuralNetworksCompilation;
-struct ANeuralNetworksExecution;
-struct ANeuralNetworksMemory;
-struct NnApi;
 
 namespace onnxruntime {
 namespace nnapi {

@@ -66,7 +66,7 @@ enum class Result {
   UNAVAILABLE_DEVICE = ANEURALNETWORKS_UNAVAILABLE_DEVICE,
 };
 
-inline std::string typeToStr(const Type& type) {
+inline std::string TypeToStr(const Type& type) {
   if (type == Type::FLOAT32) {
     return "FLOAT32";
   } else if (type == Type::INT32) {

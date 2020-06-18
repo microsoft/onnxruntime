@@ -176,8 +176,8 @@ void ModelBuilder::RegisterInitializers() {
         break;
       default:
         // TODO: support other type
-        throw std::invalid_argument(
-            "The initializer of graph doesn't have valid type: " + name);
+        ORT_THROW("The initializer of graph doesn't have valid type, name: " +
+                  name + " type: " + std::to_string(tensor.data_type()));
         break;
     }
 
@@ -211,8 +211,8 @@ void ModelBuilder::RegisterInitializers() {
                 ? tensor.raw_data().data()
                 : reinterpret_cast<const char*>(tensor.float_data().data());
     } else {
-      throw std::invalid_argument(
-          "The initializer of graph doesn't have valid type: " + tensor.name());
+      ORT_THROW("The initializer of graph doesn't have valid type, name: " +
+                tensor.name() + " type: " + std::to_string(tensor.data_type()));
     }
 
     uint8_t* dest = nnapi_model_->mem_initializers_->get_data_ptr() + offset;
@@ -248,12 +248,13 @@ void ModelBuilder::RegisterModelInputs() {
           break;
         default:
           // TODO: support other type
-          throw std::invalid_argument(
-              "The input of graph doesn't have valid type: " + input_name);
+          ORT_THROW("The input of graph doesn't have valid type, name: " +
+                    input_name + " type: " +
+                    std::to_string(input.type().tensor_type().elem_type()));
       }
     } else {
-      throw std::invalid_argument(
-          "The input of graph doesn't have elem_type: " + input_name);
+      ORT_THROW("The input of graph doesn't have elem_type: " +
+                input_name);
     }
 
     OperandType operand_type(type, shape);
@@ -271,8 +272,7 @@ void ModelBuilder::RegisterModelOutputs() {
     const auto& output(model_proto_.graph().output(output_idx));
     const std::string& output_name(output.name());
     if (!Contains(operands_, output_name)) {
-      throw std::invalid_argument(
-          "The output of graph is not registered" + output_name);
+      ORT_THROW("The output of graph is not registered" + output_name);
     }
 
     output_index_vec_.push_back(operand_indices_[output_name]);

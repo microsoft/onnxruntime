@@ -151,6 +151,7 @@ enum DataLayout {
   L_1230 = 1,
 };
 
+// TODO, replace this with more efficient code in optimizers
 uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
                                    const std::string& name,
                                    DataLayout new_layout) {
@@ -159,18 +160,16 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
   for (auto dim : tensor.dims())
     shape.push_back(SafeInt<uint32_t>(dim));
 
-  if (shape.size() != 4)
-    throw std::invalid_argument(
-        "The initializer is not 4D: " + name +
-        " actual dim " + std::to_string(shape.size()));
+  ORT_ENFORCE(shape.size() == 4, "The initializer is not 4D: " +
+                                     name + " actual dim " +
+                                     std::to_string(shape.size()));
 
   // TODO support other data types
   Type type;
   if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     type = Type::TENSOR_FLOAT32;
   } else {
-    throw std::invalid_argument(
-        "The initializer of graph doesn't have valid type: " + name);
+    ORT_THROW("The initializer of graph doesn't have valid type: " + name);
   }
 
   auto out_t = shape[0], in_t = shape[1],
@@ -214,6 +213,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
   return operand_idx;
 }
 
+// TODO, replace this with more efficient code in optimizers
 uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
                                   const std::string& name) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
@@ -221,18 +221,16 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
   for (auto dim : tensor.dims())
     shape.push_back(SafeInt<uint32_t>(dim));
 
-  if (shape.size() != 2)
-    throw std::invalid_argument(
-        "The initializer is not 2D: " + name +
-        " actual dim " + std::to_string(shape.size()));
+  ORT_ENFORCE(shape.size() == 2, "The initializer is not 2D: " +
+                                     name + " actual dim " +
+                                     std::to_string(shape.size()));
 
   // TODO support other data types
   Type type;
   if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     type = Type::TENSOR_FLOAT32;
   } else {
-    throw std::invalid_argument(
-        "The initializer of graph doesn't have valid type: " + name);
+    ORT_THROW("The initializer of graph doesn't have valid type: " + name);
   }
 
   auto x_t = shape[0], y_t = shape[1];
@@ -327,9 +325,8 @@ void BaseOpBuilder::AddOperator(ModelBuilder& model_builder,
   bool supported;
   std::string error_msg;
   std::tie(supported, error_msg) = IsOpSupported(model_builder, node);
-  if (!supported)
-    throw std::invalid_argument(
-        "Unsupported operator " + node.op_type() + ",msg: " + error_msg);
+  ORT_ENFORCE(supported, "Unsupported operator " +
+                             node.op_type() + ",msg: " + error_msg);
 
   AddOperatorImpl(model_builder, node);
 
@@ -338,8 +335,7 @@ void BaseOpBuilder::AddOperator(ModelBuilder& model_builder,
 
 void BaseOpBuilder::AddOperatorImpl(ModelBuilder& /* model_builder */,
                                     const ONNX_NAMESPACE::NodeProto& node) {
-  throw std::logic_error(
-      "Unsupported operator " + node.op_type());
+  ORT_NOT_IMPLEMENTED("Unsupported operator " + node.op_type());
 }
 
 #pragma endregion op_base
@@ -379,8 +375,7 @@ void BinaryOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
   else if (op == "Div")
     op_code = ANEURALNETWORKS_DIV;
   else {
-    throw std::invalid_argument(
-        "UnaryOpBuilder, unknown op: " + op);
+    ORT_THROW("UnaryOpBuilder, unknown op: " + op);
   }
   const auto& input1 = node.input(0);
   const auto& input2 = node.input(1);
@@ -903,7 +898,7 @@ void ConvOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
       bias_idx_val = model_builder.AddOperandFromPersistMemoryBuffer(
           bias, &buffer[0], operandType);
     } else {
-      throw std::invalid_argument("Unknown weight type " + typeToStr(weight_type));
+      ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
   }
 
@@ -994,8 +989,8 @@ void CastOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
       type = Type::TENSOR_INT32;
       break;
     default:
-      throw std::invalid_argument(
-          "Invalid cast to type: " + std::to_string(to));
+      ORT_THROW("Invalid cast to type: " +
+                std::to_string(to));
   }
 
   ModelBuilder::IndexSeq input_indices;
@@ -1189,7 +1184,7 @@ void GemmOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
       bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
           bias, &buffer[0], operandType);
     } else {
-      throw std::invalid_argument("Unknown weight type " + typeToStr(B_type));
+      ORT_THROW("Unknown weight type " + TypeToStr(B_type));
     }
   } else {
     bias_idx = operand_indices.at(node.input(2));
@@ -1269,8 +1264,7 @@ void UnaryOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
   else if (op == "Tanh")
     op_code = ANEURALNETWORKS_TANH;
   else {
-    throw std::invalid_argument(
-        "UnaryOpBuilder, unknown op: " + op);
+    ORT_THROW("UnaryOpBuilder, unknown op: " + op);
   }
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input));

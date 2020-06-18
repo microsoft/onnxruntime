@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include "model.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
-// Android only?
+#ifdef USENNAPISHAREDMEM
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 
 namespace onnxruntime {
 namespace nnapi {
@@ -81,10 +82,8 @@ void Model::SetOutputBuffer(const int32_t index, const InputOutputInfo& output) 
 }
 
 void Model::PrepareForExecution() {
-  if (compilation_ == nullptr) {
-    throw std::invalid_argument(
-        "Error in PrepareForExecution, compilation_ == nullptr");
-  }
+  ORT_ENFORCE(nullptr != compilation_,
+              "Error in PrepareForExecution, compilation_ is null");
 
   shaper_for_exeuction_ = shaper_;
 

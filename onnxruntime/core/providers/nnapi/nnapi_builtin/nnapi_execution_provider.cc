@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include "nnapi_execution_provider.h"
+
+#include "builders/model_builder.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
-#include "core/graph/model.h"
-#include "builders/model_builder.h"
 
 namespace onnxruntime {
 
@@ -15,11 +16,13 @@ constexpr const char* NNAPI = "Nnapi";
 
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
-  DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return onnxruntime::make_unique<CPUAllocator>(
-                                                            onnxruntime::make_unique<OrtMemoryInfo>(NNAPI,
-                                                                                                    OrtAllocatorType::OrtDeviceAllocator)); },
-                                              std::numeric_limits<size_t>::max()};
+  DeviceAllocatorRegistrationInfo device_info{
+      OrtMemTypeDefault,
+      [](int) { return onnxruntime::make_unique<CPUAllocator>(
+                    onnxruntime::make_unique<OrtMemoryInfo>(
+                        NNAPI, OrtAllocatorType::OrtDeviceAllocator)); },
+      std::numeric_limits<size_t>::max()};
+
   InsertAllocator(CreateAllocator(device_info));
 
   DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
@@ -371,7 +374,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
             output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
             break;
           default:
-            ORT_THROW("Unsupported output type: " + typeToStr(model_output_type.type));
+            ORT_THROW("Unsupported output type: " + TypeToStr(model_output_type.type));
             break;
         }
 

@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <core/common/common.h>
+
 #include "NeuralNetworksWrapper.h"
 
 namespace android {
@@ -109,8 +111,7 @@ size_t OperandType::GetElementByteSize() const {
       element_size = 2;
       break;
     default:
-      throw std::invalid_argument("Wrong type: " +
-                                  typeToStr(type));
+      ORT_THROW("Wrong type: " + TypeToStr(type));
   }
 
   return element_size;
