@@ -35,7 +35,7 @@ class _OptimizerConfig(object):
             "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
         assert isinstance(hyper_parameters, dict), "'hyper_parameters' must be a dict"
         assert 'lr' in hyper_parameters, "'hyper_parameters' must contain a {'lr' : positive number} entry"
-        assert hyper_parameters['lr'] >= 0, "lr must be a positive number"
+        assert isinstance(hyper_parameters['lr'], float) and hyper_parameters['lr'] >= 0, "lr must be a positive number"
         assert isinstance(param_groups, list), "'param_groups' must be a list"
         for group in param_groups:
             assert isinstance(group, dict) and len(group) > 1 and 'params' in group, \
@@ -108,6 +108,12 @@ class Adam(_OptimizerConfig):
                             'do_bias_correction' : do_bias_correction,
                             'weight_decay_mode' : weight_decay_mode}
         super().__init__(name='AdamOptimizer', hyper_parameters=hyper_parameters, param_groups=param_groups)
+        self.alpha = alpha
+        self.beta = beta
+        self.lambda_coef = lambda_coef
+        self.epsilon = epsilon
+        self.do_bias_correction = do_bias_correction
+        self.weight_decay_mode = weight_decay_mode
 
 
 class Lamb(_OptimizerConfig):
@@ -148,3 +154,10 @@ class Lamb(_OptimizerConfig):
                             'epsilon' : epsilon,
                             'do_bias_correction' : do_bias_correction}
         super().__init__(name='LambOptimizer', hyper_parameters=hyper_parameters, param_groups=param_groups)
+        self.alpha = alpha
+        self.beta = beta
+        self.lambda_coef = lambda_coef
+        self.ratio_min = ratio_min
+        self.ratio_max = ratio_max
+        self.epsilon = epsilon
+        self.do_bias_correction = do_bias_correction
