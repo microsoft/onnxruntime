@@ -302,9 +302,11 @@ inline void ExperimentalSession::Run(const Value& input_values, Value& output_va
   size_t input_node_count = input_names.size();
   size_t output_node_count = output_names.size();
   std::vector<const char*> input_names_(input_node_count, nullptr);
-  for (size_t i=0; i<input_node_count; i++) input_names_[i] = input_names[i].c_str();
+  size_t i = 0;
+  for (auto it=input_names.begin(); it != input_names.end(); it++) input_names_[i++] = (*it).c_str();
   std::vector<const char*> output_names_(output_node_count, nullptr);
-  for (size_t i=0; i<output_node_count; i++) output_names_[i] = output_names[i].c_str();
+  i = 0;
+  for (auto it=output_names.begin(); it != output_names.end(); it++) output_names_[i++] = (*it).c_str();
   Session::Run(run_options, input_names_.data(), &input_values, input_node_count, output_names_.data(), &output_values, output_node_count);
 }
 
@@ -323,9 +325,11 @@ void ExperimentalSession::Run(const Value& input_values, Value& output_values, c
   size_t input_node_count = input_names.size();
   size_t output_node_count = output_names.size();
   std::vector<const char*> input_names_(input_node_count, nullptr);
-  for (size_t i=0; i<input_node_count; i++) input_names_[i] = input_names[i].c_str();
+  size_t i = 0;
+  for (auto it=input_names.begin(); it != input_names.end(); it++) input_names_[i++] = (*it).c_str();
   std::vector<const char*> output_names_(output_node_count, nullptr);
-  for (size_t i=0; i<output_node_count; i++) output_names_[i] = output_names[i].c_str();
+  i = 0;
+  for (auto it=output_names.begin(); it != output_names.end(); it++) output_names_[i++] = (*it).c_str();
   Session::Run(run_options, input_names_.data(), &input_values, input_node_count, output_names_.data(), &output_values, output_node_count);
 }
 
