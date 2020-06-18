@@ -7,6 +7,7 @@
 
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+#include "op_builder.h"
 #include "shaper.h"
 
 namespace onnxruntime {
@@ -77,6 +78,8 @@ class ModelBuilder {
   std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
+  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
+
   IndexSeq input_index_vec_;
   IndexSeq output_index_vec_;
 
@@ -102,6 +105,8 @@ class ModelBuilder {
   ModelBuilder::Index AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
   ModelBuilder::Index AddNewOperand(const std::string& name,
                                     const android::nn::wrapper::OperandType& operand_type);
+
+  IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
 };
 
 }  // namespace nnapi

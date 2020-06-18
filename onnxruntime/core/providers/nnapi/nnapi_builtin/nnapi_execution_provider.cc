@@ -50,6 +50,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
+  // TODO, switch to use graph instead of model
   // This method is based on that of TRT EP
   // Construct modelproto from graph
   onnxruntime::Model model(graph.Name(), true, ModelMetaData(),
@@ -59,14 +60,39 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                            std::vector<ONNX_NAMESPACE::FunctionProto>(),
                            *GetLogger());
   std::unordered_set<std::string> all_node_inputs;
+
+  // for (const auto& node : graph.Nodes()) {
+  //   for (auto input : node.InputDefs()) {
+  //     all_node_inputs.insert(input->Name());
+  //   }
+  // }
+
+  // ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  // *(model_proto.mutable_graph()) = graph.GetGraph().ToGraphProto();
+  // model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph.Nodes()) {
+    std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
+      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+      inputs.push_back(&n_input);
       all_node_inputs.insert(input->Name());
     }
+    for (auto output : node.OutputDefs()) {
+      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+      outputs.push_back(&n_output);
+    }
+    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
+  }
+  //Add initializer to graph
+  const auto& init_tensors = graph.GetAllInitializedTensors();
+  for (const auto& tensor : init_tensors) {
+    graph_build.AddInitializedTensor(*(tensor.second));
   }
 
+  ORT_ENFORCE(graph_build.Resolve().IsOK());
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  *(model_proto.mutable_graph()) = graph.GetGraph().ToGraphProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   nnapi::ModelBuilder builder(model_proto);
@@ -194,7 +220,7 @@ std::string GetShape(const std::vector<uint32_t>& dimensions) {
   std::string ret = "";
   for (auto dim : dimensions)
     ret += std::to_string(dim) + " ";
-  return ret;
+  return "[" + ret + "]";
 }
 
 common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
@@ -292,21 +318,21 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         for (const auto& dim : tensor_shape)
           dimensions.push_back(static_cast<uint32_t>(dim));
 
-        // remove
-        LOGS_DEFAULT(VERBOSE) << "input name is " << input_name << " and i " << i;
-        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(dimensions);
-        LOGS_DEFAULT(VERBOSE) << "model dim is " << GetShape(model_input_type.dimensions);
-
-        ORT_ENFORCE(dimensions == model_input_type.dimensions ||
-                        model_input_type.GetOperandBlobByteSize() == 0,
-                    "dimanesions should match or model input dimension has 0");
-
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
         // of the actual input
         OperandType type(model_input_type.type, dimensions,
                          model_input_type.operandType.scale,
                          model_input_type.operandType.zeroPoint);
+
+        // remove
+        LOGS_DEFAULT(VERBOSE) << "input name is " << input_name << " and i " << i;
+        LOGS_DEFAULT(VERBOSE) << "dim is " << GetShape(dimensions);
+        LOGS_DEFAULT(VERBOSE) << "model dim is " << GetShape(model_input_type.dimensions);
+
+        ORT_ENFORCE(type.dimensions == model_input_type.dimensions ||
+                        model_input_type.GetOperandBlobByteSize() == 0,
+                    "dimanesions should match or model input dimension has 0");
 
         void* inputBuffer = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
         inputs.push_back({inputBuffer, std::move(type)});

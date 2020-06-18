@@ -6,20 +6,29 @@
 namespace onnxruntime {
 namespace nnapi {
 
+class ModelBuilder;
+
 class IOpBuilder {
  public:
   virtual ~IOpBuilder() = default;
-  virtual std::pair<bool, std::string> IsOpSupported() = 0;
-  virtual void AddInitializersToSkip() = 0;
-  virtual void AddOperator() = 0;
+
+  // Check if an operator is supported
+  virtual std::pair<bool, std::string> IsOpSupported(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) = 0;
+
+  // Check if the initializers of this operator need preprocess
+  // which will not be copied
+  virtual void AddInitializersToSkip(ModelBuilder& model_builder,
+                                     const ONNX_NAMESPACE::NodeProto& node) = 0;
+
+  // Add the operator to NNAPI model
+  virtual void AddOperator(ModelBuilder& model_builder,
+                           const ONNX_NAMESPACE::NodeProto& node) = 0;
 };
 
-std::unordered_map<std::string, std::unique_ptr<IOpBuilder>>
+std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
 CreateOpBuilders();
-
-std::unique_ptr<IOpBuilder> CreateOpBuilder(
-    ModelBuilder& model_builder,
-    const ONNX_NAMESPACE::NodeProto& node);
 
 }  // namespace nnapi
 }  // namespace onnxruntime

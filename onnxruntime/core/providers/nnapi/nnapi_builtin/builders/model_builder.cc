@@ -6,7 +6,6 @@
 #include "helper.h"
 #include "model_builder.h"
 #include "node_attr_helper.h"
-#include "op_builder.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -23,6 +22,7 @@ const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
 ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
     : nnapi_(NnApiImplementation()), model_proto_(model_proto) {
   GetAllInitializers();
+  op_builders_ = CreateOpBuilders();
 }
 
 int32_t ModelBuilder::GetAndroidSdkVer() const {
@@ -31,8 +31,11 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
 
 std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
     const ONNX_NAMESPACE::NodeProto& node) {
-  auto opBuilder = CreateOpBuilder(*this, node);
-  return opBuilder->IsOpSupported();
+  if (auto* opBuilder = GetOpBuilder(node)) {
+    return opBuilder->IsOpSupported(*this, node);
+  } else {
+    return {false, ""};
+  }
 }
 
 bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
@@ -143,8 +146,9 @@ void ModelBuilder::GetAllInitializers() {
 
 void ModelBuilder::PreprocessIntializers() {
   for (const auto& node : model_proto_.graph().node()) {
-    auto addOpBuilder = CreateOpBuilder(*this, node);
-    addOpBuilder->AddInitializersToSkip();
+    if (auto* opBuilder = GetOpBuilder(node)) {
+      opBuilder->AddInitializersToSkip(*this, node);
+    }
   }
 }
 
@@ -165,8 +169,6 @@ void ModelBuilder::RegisterInitializers() {
       shape.push_back(SafeInt<uint32_t>(dim));
     }
 
-    shaper_.AddShape(name, shape);
-
     Type type = Type::TENSOR_FLOAT32;
     switch (tensor.data_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -180,6 +182,8 @@ void ModelBuilder::RegisterInitializers() {
     }
 
     OperandType operand_type(type, shape);
+    shaper_.AddShape(name, operand_type.dimensions);
+
     auto index = AddNewOperand(name, operand_type);
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t paddedSize = GetPaddedByteSize(size);
@@ -236,8 +240,6 @@ void ModelBuilder::RegisterModelInputs() {
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
-    shaper_.AddShape(input_name, shape);
-
     Type type = Type::TENSOR_FLOAT32;
     if (input.type().tensor_type().has_elem_type()) {
       switch (input.type().tensor_type().elem_type()) {
@@ -255,6 +257,8 @@ void ModelBuilder::RegisterModelInputs() {
     }
 
     OperandType operand_type(type, shape);
+    shaper_.AddShape(input_name, operand_type.dimensions);
+
     auto index = AddNewOperand(input_name, operand_type);
 
     input_index_vec_.push_back(index);
@@ -350,8 +354,12 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
 void ModelBuilder::AddOperations() {
   for (const auto& node : model_proto_.graph().node()) {
-    auto addOpBuilder = CreateOpBuilder(*this, node);
-    addOpBuilder->AddOperator();
+    if (auto* opBuilder = GetOpBuilder(node)) {
+      opBuilder->AddOperator(*this, node);
+    } else {
+      throw std::invalid_argument(
+          "Node not supported" + node.name());
+    }
   }
 }
 
@@ -442,5 +450,13 @@ int32_t ModelBuilder::FindActivation(const std::string& output) {
 
   return fuse_code;
 }
+
+IOpBuilder* ModelBuilder::GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node) {
+  if (!Contains(op_builders_, node.op_type()))
+    return nullptr;
+
+  return op_builders_[node.op_type()].get();
+}
+
 }  // namespace nnapi
 }  // namespace onnxruntime

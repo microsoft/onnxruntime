@@ -82,6 +82,32 @@ void AddPoolOperator(int32_t op_type,
   model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type});
 }
 
+int GetType(const ONNX_NAMESPACE::ModelProto& model_proto,
+            const std::string& name) {
+  int invalid_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  for (const auto& input : model_proto.graph().input()) {
+    if (input.name() != name)
+      continue;
+
+    return input.type().tensor_type().elem_type();
+  }
+
+  for (const auto& value_info : model_proto.graph().value_info()) {
+    if (value_info.name() != name)
+      continue;
+
+    if (!value_info.has_type()) {
+      return invalid_type;
+    } else if (!value_info.type().has_tensor_type()) {
+      return invalid_type;
+    }
+
+    return value_info.type().tensor_type().elem_type();
+  }
+
+  return invalid_type;
+}
+
 Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
                        const std::string& name) {
   Shaper::Shape empty_shape;
@@ -231,147 +257,167 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
 
 class BaseOpBuilder : public IOpBuilder {
  public:
-  BaseOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : model_builder_(model_builder),
-        node_(node) {}
-
   virtual ~BaseOpBuilder() = default;
-  virtual void AddInitializersToSkip() override {}
-  std::pair<bool, std::string> IsOpSupported() override final;
-  void AddOperator() override final;
+  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */,
+                                     const ONNX_NAMESPACE::NodeProto& /* node */) override {}
+
+  std::pair<bool, std::string> IsOpSupported(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override final;
+  void AddOperator(ModelBuilder& model_builder,
+                   const ONNX_NAMESPACE::NodeProto& node) override final;
 
  protected:
-  ModelBuilder& model_builder_;
-  const ONNX_NAMESPACE::NodeProto& node_;
+  virtual std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node);
 
-  virtual std::pair<bool, std::string> IsOpSupportedImpl();
-  virtual int32_t GetMinSupportedSdkVer() const { return 27; }
-  virtual void AddOperatorImpl();
+  virtual int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                        const ONNX_NAMESPACE::NodeProto& /* node */) const {
+    return 27;
+  }
+
+  virtual bool HasSupportedInputs(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node);
+
+  virtual void AddOperatorImpl(ModelBuilder& model_builder,
+                               const ONNX_NAMESPACE::NodeProto& node);
 };
 
-std::pair<bool, std::string> BaseOpBuilder::IsOpSupported() {
+std::pair<bool, std::string> BaseOpBuilder::IsOpSupported(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
 #ifdef __ANDROID__
-  int32_t android_sdk_ver = model_builder_.GetAndroidSdkVer();
-  int32_t required_sdk_ver = GetMinSupportedSdkVer();
+  int32_t android_sdk_ver = model_builder.GetAndroidSdkVer();
+  int32_t required_sdk_ver = GetMinSupportedSdkVer(model_builder, node);
   if (required_sdk_ver > android_sdk_ver) {
     LOGV("Android API level %d is lower than %d", android_sdk_ver, required_sdk_ver);
-    return {false, "Operator " + node_.op_type() + " is only supported on API > " + std::to_string(required_sdk_ver)};
+    return {false, "Operator " + node.op_type() + " is only supported on API > " + std::to_string(required_sdk_ver)};
   }
 #endif
 
-  return IsOpSupportedImpl();
+  if (!HasSupportedInputs(model_builder, node))
+    return {false, "input is not supported"};
+
+  return IsOpSupportedImpl(model_builder, node);
 }  // namespace nnapi
 
-std::pair<bool, std::string> BaseOpBuilder::IsOpSupportedImpl() {
-  return {false, "Unsupported operator " + node_.op_type()};
+bool BaseOpBuilder::HasSupportedInputs(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  // We only check the type of input 0 by default
+  // specific op builder can override this
+  auto input_type = GetType(model_builder.GetOnnxModel(), node.input(0));
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    LOGV("input type: %d is not supporte for now", input_type);
+    return false;
+  }
+
+  return true;
 }
 
-void BaseOpBuilder::AddOperator() {
+std::pair<bool, std::string> BaseOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& /* model_builder */,
+    const ONNX_NAMESPACE::NodeProto& /* node */) {
+  return {true, ""};
+}
+
+void BaseOpBuilder::AddOperator(ModelBuilder& model_builder,
+                                const ONNX_NAMESPACE::NodeProto& node) {
   bool supported;
   std::string error_msg;
-  std::tie(supported, error_msg) = IsOpSupported();
+  std::tie(supported, error_msg) = IsOpSupported(model_builder, node);
   if (!supported)
     throw std::invalid_argument(
-        "Unsupported operator " + node_.op_type() + ",msg: " + error_msg);
+        "Unsupported operator " + node.op_type() + ",msg: " + error_msg);
 
-  AddOperatorImpl();
+  AddOperatorImpl(model_builder, node);
 
-  LOGV("Operator %s type %s added", node_.name().c_str(), node_.op_type().c_str());
+  LOGV("Operator %s type %s added", node.name().c_str(), node.op_type().c_str());
 }
 
-void BaseOpBuilder::AddOperatorImpl() {
+void BaseOpBuilder::AddOperatorImpl(ModelBuilder& /* model_builder */,
+                                    const ONNX_NAMESPACE::NodeProto& node) {
   throw std::logic_error(
-      "Unsupported operator " + node_.op_type());
+      "Unsupported operator " + node.op_type());
 }
 
 #pragma endregion op_base
 
 #pragma region op_add
 
-class AddOpBuilder : public BaseOpBuilder {
- public:
-  AddOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
+class BinaryOpBuilder : public BaseOpBuilder {
+ private:
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder,
+                                const ONNX_NAMESPACE::NodeProto& node) const override;
 
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> AddOpBuilder::IsOpSupportedImpl() {
-  return {true, ""};
+int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                               const ONNX_NAMESPACE::NodeProto& node) const {
+  const auto& op(node.op_type());
+  if (op == "Sub" || op == "Div") {
+    return 28;
+  }
+
+  return 27;
 }
 
-void AddOpBuilder::AddOperatorImpl() {
-  const auto& input1 = node_.input(0);
-  const auto& input2 = node_.input(1);
-  const auto& output = node_.output(0);
-  int32_t fuse_code = model_builder_.FindActivation(output);
-  AddBinaryOperator(ANEURALNETWORKS_ADD, model_builder_,
+void BinaryOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                      const ONNX_NAMESPACE::NodeProto& node) {
+  const auto& op(node.op_type());
+  int32_t op_code;
+  if (op == "Add")
+    op_code = ANEURALNETWORKS_ADD;
+  else if (op == "Sub")
+    op_code = ANEURALNETWORKS_SUB;
+  else if (op == "Mul")
+    op_code = ANEURALNETWORKS_MUL;
+  else if (op == "Div")
+    op_code = ANEURALNETWORKS_DIV;
+  else {
+    throw std::invalid_argument(
+        "UnaryOpBuilder, unknown op: " + op);
+  }
+  const auto& input1 = node.input(0);
+  const auto& input2 = node.input(1);
+  const auto& output = node.output(0);
+  int32_t fuse_code = model_builder.FindActivation(output);
+  AddBinaryOperator(op_code, model_builder,
                     input1, input2, fuse_code, output);
 }
 
-#pragma endregion op_add
-
-#pragma region op_mul
-
-class MulOpBuilder : public BaseOpBuilder {
- public:
-  MulOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
- private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
-};
-
-std::pair<bool, std::string> MulOpBuilder::IsOpSupportedImpl() {
-  return {true, ""};
-}
-void MulOpBuilder::AddOperatorImpl() {
-  const auto& input1 = node_.input(0);
-  const auto& input2 = node_.input(1);
-  const auto& output = node_.output(0);
-  int32_t fuse_code = model_builder_.FindActivation(output);
-  AddBinaryOperator(ANEURALNETWORKS_MUL, model_builder_,
-                    input1, input2, fuse_code, output);
-}
-
-#pragma endregion op_mul
+#pragma endregion
 
 #pragma region op_relu
 
 class ReluOpBuilder : public BaseOpBuilder {
- public:
-  ReluOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> ReluOpBuilder::IsOpSupportedImpl() {
-  return {true, ""};
-}
+void ReluOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                    const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
 
-void ReluOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   // skip this relu if it is some op's fuse output
-  if (Contains(model_builder_.GetFusedActivations(), node_.name())) {
-    model_builder_.RegisterOperand(output, operand_indices.at(input), output_operand_type);
+  if (Contains(model_builder.GetFusedActivations(), node.name())) {
+    model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     ModelBuilder::IndexSeq input_indices;
     input_indices.push_back(operand_indices.at(input));
-    model_builder_.AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
+    model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
   }
 }
 
@@ -380,18 +426,24 @@ void ReluOpBuilder::AddOperatorImpl() {
 #pragma region op_transpose
 
 class TransposeOpBuilder : public BaseOpBuilder {
- public:
-  TransposeOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  int32_t GetMinSupportedSdkVer() const override { return 28; }
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                const ONNX_NAMESPACE::NodeProto& /* node */) const override {
+    return 28;
+  }
+
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> TransposeOpBuilder::IsOpSupportedImpl() {
-  const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
+std::pair<bool, std::string> TransposeOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  const auto input_size = GetShape(model_builder.GetOnnxModel(), node.input(0)).size();
   if (input_size > 4)
     return {false, "Transpose only supports up to 4d shape, input is " +
                        std::to_string(input_size) + "d shape"};
@@ -399,13 +451,14 @@ std::pair<bool, std::string> TransposeOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void TransposeOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  NodeAttrHelper helper(node_);
+void TransposeOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                         const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  NodeAttrHelper helper(node);
 
-  const auto& input = node_.input(0);
+  const auto& input = node.input(0);
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
@@ -417,15 +470,15 @@ void TransposeOpBuilder::AddOperatorImpl() {
   }
 
   ModelBuilder::Shape perm_dimen = {SafeInt<uint32_t>(input_dims)};
-  std::string perm_name = node_.name() + input + "perm";
+  std::string perm_name = node.name() + input + "perm";
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  uint32_t perm_idx = model_builder_.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
+  uint32_t perm_idx = model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
   input_indices.push_back(perm_idx);
 
-  const auto& output = node_.output(0);
+  const auto& output = node.output(0);
   shaper.Transpose(input, perm, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder_.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion op_transpose
@@ -434,33 +487,38 @@ void TransposeOpBuilder::AddOperatorImpl() {
 
 class ReshapeOpBuilder : public BaseOpBuilder {
  public:
-  ReshapeOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-  void AddInitializersToSkip() override;
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const ONNX_NAMESPACE::NodeProto& node) override;
 
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-void ReshapeOpBuilder::AddInitializersToSkip() {
-  model_builder_.AddSkippedInitializer(node_.input(1));
+void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                             const ONNX_NAMESPACE::NodeProto& node) {
+  model_builder.AddSkippedInitializer(node.input(1));
 }
 
-std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
-  const auto& initializers(model_builder_.GetInitializerTensors());
-  if (!Contains(initializers, node_.input(1)))
+std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  const auto& initializers(model_builder.GetInitializerTensors());
+  if (!Contains(initializers, node.input(1)))
     return {false, "New shape of reshape must be known"};
 
-  const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
+  const auto input_size = GetShape(model_builder.GetOnnxModel(), node.input(0)).size();
   if (input_size > 4)
     return {false, "Reshape only supports up to 4d shape, input is " +
                        std::to_string(input_size) + "d shape"};
 
-  const auto& shape_tensor = initializers.at(node_.input(1));
+  const auto& shape_tensor = initializers.at(node.input(1));
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
-  const auto input_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(0));
+  const auto input_shape = GetShape(model_builder.GetOnnxModel(), node.input(0));
 
   for (uint32_t i = 0; i < size; i++) {
     // NNAPI reshape does not support 0 as dimension
@@ -471,18 +529,19 @@ std::pair<bool, std::string> ReshapeOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void ReshapeOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  const auto& initializers(model_builder_.GetInitializerTensors());
+void ReshapeOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                       const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& initializers(model_builder.GetInitializerTensors());
 
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
-  const auto& shape_tensor = initializers.at(node_.input(1));
+  const auto& shape_tensor = initializers.at(node.input(1));
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
@@ -495,14 +554,14 @@ void ReshapeOpBuilder::AddOperatorImpl() {
   }
 
   ModelBuilder::Shape shape_dimen = {size};
-  std::string shape_name = node_.name() + input + "newshape";
+  std::string shape_name = node.name() + input + "newshape";
   OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-  uint32_t shape_idx = model_builder_.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type);
+  uint32_t shape_idx = model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type);
   input_indices.push_back(shape_idx);
 
   shaper.Reshape(input, shape, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder_.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion op_reshape
@@ -511,35 +570,39 @@ void ReshapeOpBuilder::AddOperatorImpl() {
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
  public:
-  BatchNormalizationOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-  void AddInitializersToSkip() override;
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const ONNX_NAMESPACE::NodeProto& node) override;
 
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(ModelBuilder& model_builder,
+                                                 const ONNX_NAMESPACE::NodeProto& node) override;
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-void BatchNormalizationOpBuilder::AddInitializersToSkip() {
+void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                                        const ONNX_NAMESPACE::NodeProto& node) {
   // skip everything except input0 for BatchNormalization
-  model_builder_.AddSkippedInitializer(node_.input(1));  // scale
-  model_builder_.AddSkippedInitializer(node_.input(2));  // B
-  model_builder_.AddSkippedInitializer(node_.input(3));  // mean
-  model_builder_.AddSkippedInitializer(node_.input(4));  //var
+  model_builder.AddSkippedInitializer(node.input(1));  // scale
+  model_builder.AddSkippedInitializer(node.input(2));  // B
+  model_builder.AddSkippedInitializer(node.input(3));  // mean
+  model_builder.AddSkippedInitializer(node.input(4));  //var
 }
 
-std::pair<bool, std::string> BatchNormalizationOpBuilder::IsOpSupportedImpl() {
-  if (node_.output_size() != 1) {
+std::pair<bool, std::string> BatchNormalizationOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  if (node.output_size() != 1) {
     return {false,
             "Your onnx model may be in training mode, please export "
             "it in test mode."};
   }
 
-  const auto& initializers(model_builder_.GetInitializerTensors());
-  const auto& scale_name = node_.input(1);
-  const auto& b_name = node_.input(2);
-  const auto& mean_name = node_.input(3);
-  const auto& var_name = node_.input(4);
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& scale_name = node.input(1);
+  const auto& b_name = node.input(2);
+  const auto& mean_name = node.input(3);
+  const auto& var_name = node.input(4);
   if (!Contains(initializers, scale_name)) {
     return {false, "Scale of BN must be known"};
   }
@@ -556,21 +619,22 @@ std::pair<bool, std::string> BatchNormalizationOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void BatchNormalizationOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  const auto& initializers(model_builder_.GetInitializerTensors());
-  NodeAttrHelper helper(node_);
+void BatchNormalizationOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                                  const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& initializers(model_builder.GetInitializerTensors());
+  NodeAttrHelper helper(node);
 
   // For reshape we are not really doing anything but
   // register a new operand with new shape
-  const auto input = node_.input(0);
-  const auto output = node_.output(0);
+  const auto input = node.input(0);
+  const auto output = node.output(0);
 
-  const auto& scale_tensor = initializers.at(node_.input(1));
-  const auto& bias_tensor = initializers.at(node_.input(2));
-  const auto& mean_tensor = initializers.at(node_.input(3));
-  const auto& var_tensor = initializers.at(node_.input(4));
+  const auto& scale_tensor = initializers.at(node.input(1));
+  const auto& bias_tensor = initializers.at(node.input(2));
+  const auto& mean_tensor = initializers.at(node.input(3));
+  const auto& var_tensor = initializers.at(node.input(4));
   const auto eps = helper.get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
@@ -593,7 +657,7 @@ void BatchNormalizationOpBuilder::AddOperatorImpl() {
   const auto tensor_b_name = input + "_imm_b";
   const auto tensor_imm_product_name = input + "_imm_mul";
   ModelBuilder::Shape tensor_a_dimen;
-  if (model_builder_.UseNCHW())
+  if (model_builder.UseNCHW())
     tensor_a_dimen = {size, 1, 1};  // {C, H, W}
   else
     tensor_a_dimen = {size};
@@ -601,21 +665,21 @@ void BatchNormalizationOpBuilder::AddOperatorImpl() {
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
   const OperandType operandType_a(operand_types.at(input).type, tensor_a_dimen);
-  model_builder_.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), operandType_a);
+  model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), operandType_a);
   const OperandType operandType_b(operand_types.at(input).type, tensor_a_dimen);
-  model_builder_.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), operandType_b);
+  model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), operandType_b);
 
   // Mul
   AddBinaryOperator(ANEURALNETWORKS_MUL,
-                    model_builder_,
+                    model_builder,
                     input, tensor_a_name,
                     ANEURALNETWORKS_FUSED_NONE,
                     tensor_imm_product_name);
 
   // Add
-  int32_t fuse_code = model_builder_.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(output);
   AddBinaryOperator(ANEURALNETWORKS_ADD,
-                    model_builder_,
+                    model_builder,
                     tensor_imm_product_name, tensor_b_name,
                     fuse_code,
                     output);
@@ -626,20 +690,25 @@ void BatchNormalizationOpBuilder::AddOperatorImpl() {
 #pragma region op_pool
 
 class PoolOpBuilder : public BaseOpBuilder {
- public:
-  PoolOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  int32_t GetMinSupportedSdkVer() const override { return 29; }
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                const ONNX_NAMESPACE::NodeProto& /* node */) const override {
+    return 29;
+  }
+
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> PoolOpBuilder::IsOpSupportedImpl() {
-  const auto& op = node_.op_type();
+std::pair<bool, std::string> PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                                              const ONNX_NAMESPACE::NodeProto& node) {
+  const auto& op = node.op_type();
   if (op == "AveragePool" || op == "MaxPool") {
-    NodeAttrHelper helper(node_);
+    NodeAttrHelper helper(node);
 
     const auto count_include_pad = helper.get("count_include_pad", 0);
     if (count_include_pad == 1) {
@@ -668,27 +737,29 @@ std::pair<bool, std::string> PoolOpBuilder::IsOpSupportedImpl() {
       return {false, "Dilations of pooling is not supported"};
     }
 
-    if (node_.output_size() != 1) {
+    if (node.output_size() != 1) {
       return {false, "Argmax in maxpooling is not supported"};
     }
   } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
-    const auto input_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(0));
-    if (input_shape.size() != 4) {
+    const auto input_shape = GetShape(model_builder.GetOnnxModel(), node.input(0));
+    if (input_shape.size() > 4) {
       return {false,
-              "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in " + op};
+              "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in " +
+                  node.input(0) + ", actual dim count " + std::to_string(input_shape.size())};
     }
   }
 
   return {true, ""};
 }
 
-void PoolOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  NodeAttrHelper helper(node_);
+void PoolOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                    const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  NodeAttrHelper helper(node);
 
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
-  const auto& op = node_.op_type();
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
+  const auto& op = node.op_type();
 
   int32_t operationType;
   if (op == "AveragePool" || op == "GlobalAveragePool")
@@ -704,7 +775,7 @@ void PoolOpBuilder::AddOperatorImpl() {
   } else {  // (op == "GlobalAveragePool" || op == "GlobalMaxPool")
     onnx_strides = vector<int32_t>{1, 1};
     onnx_pads = vector<int32_t>{0, 0, 0, 0};
-    if (model_builder_.UseNCHW())
+    if (model_builder.UseNCHW())
       kernel_shape = vector<int32_t>{static_cast<int32_t>(shaper[input][2]),
                                      static_cast<int32_t>(shaper[input][3])};
     else
@@ -712,9 +783,9 @@ void PoolOpBuilder::AddOperatorImpl() {
                                      static_cast<int32_t>(shaper[input][2])};
   }
 
-  int32_t fuse_code = model_builder_.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(output);
   AddPoolOperator(operationType,
-                  model_builder_,
+                  model_builder,
                   input,
                   onnx_pads, onnx_strides, kernel_shape,
                   fuse_code,
@@ -727,29 +798,33 @@ void PoolOpBuilder::AddOperatorImpl() {
 
 class ConvOpBuilder : public BaseOpBuilder {
  public:
-  ConvOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-  void AddInitializersToSkip() override;
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const ONNX_NAMESPACE::NodeProto& node) override;
 
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(ModelBuilder& model_builder,
+                                                 const ONNX_NAMESPACE::NodeProto& node) override;
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-void ConvOpBuilder::AddInitializersToSkip() {
+void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                          const ONNX_NAMESPACE::NodeProto& node) {
   // skip the weight for conv as we need to transpose
-  model_builder_.AddSkippedInitializer(node_.input(1));
+  model_builder.AddSkippedInitializer(node.input(1));
 }
 
-std::pair<bool, std::string> ConvOpBuilder::IsOpSupportedImpl() {
-  NodeAttrHelper helper(node_);
+std::pair<bool, std::string> ConvOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  NodeAttrHelper helper(node);
   if (helper.get("auto_pad", "NOTSET") != "NOTSET")
     return {false, "SAME_LOWER auto_pad is not supported"};
 
   const auto group = helper.get("group", 1);
-  const auto weight_name = node_.input(1);
-  if (Contains(model_builder_.GetInitializerTensors(), weight_name)) {
-    const auto& tensor = model_builder_.GetInitializerTensors().at(weight_name);
+  const auto weight_name = node.input(1);
+  if (Contains(model_builder.GetInitializerTensors(), weight_name)) {
+    const auto& tensor = model_builder.GetInitializerTensors().at(weight_name);
     if (tensor.dims().size() != 4) {
       return {false, "Only conv 2d is supported."};
     }
@@ -763,13 +838,14 @@ std::pair<bool, std::string> ConvOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void ConvOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  const auto& initializers(model_builder_.GetInitializerTensors());
-  NodeAttrHelper helper(node_);
-  bool use_nchw = model_builder_.UseNCHW();
+void ConvOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                    const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& initializers(model_builder.GetInitializerTensors());
+  NodeAttrHelper helper(node);
+  bool use_nchw = model_builder.UseNCHW();
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -784,9 +860,9 @@ void ConvOpBuilder::AddOperatorImpl() {
   const auto onnx_dilations = helper.get("dilations", vector<int>{1, 1});
   const auto group = helper.get("group", 1);
 
-  const auto& input = node_.input(0);
-  const auto& weight = node_.input(1);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& weight = node.input(1);
+  const auto& output = node.output(0);
 
   bool conv2d = (group == 1);
   const auto& weight_tensor = initializers.at(weight);
@@ -797,14 +873,14 @@ void ConvOpBuilder::AddOperatorImpl() {
 
   if (conv2d) {
     input_indices.push_back(AddInitializerInNewLayout(
-        model_builder_, weight, L_NCHW));
+        model_builder, weight, L_NCHW));
   } else {  // depthwiseConv2D
     input_indices.push_back(AddInitializerInNewLayout(
-        model_builder_, weight, L_1230));
+        model_builder, weight, L_1230));
   }
 
-  bool hasBias = (node_.input_size() >= 3);
-  std::string bias = hasBias ? node_.input(2) : weight + "_bias";
+  bool hasBias = (node.input_size() >= 3);
+  std::string bias = hasBias ? node.input(2) : weight + "_bias";
 
   uint32_t bias_idx_val;
   if (hasBias) {
@@ -824,7 +900,7 @@ void ConvOpBuilder::AddOperatorImpl() {
         buffer[i] = 0.f;
       }
       OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
-      bias_idx_val = model_builder_.AddOperandFromPersistMemoryBuffer(
+      bias_idx_val = model_builder.AddOperandFromPersistMemoryBuffer(
           bias, &buffer[0], operandType);
     } else {
       throw std::invalid_argument("Unknown weight type " + typeToStr(weight_type));
@@ -832,22 +908,22 @@ void ConvOpBuilder::AddOperatorImpl() {
   }
 
   input_indices.push_back(bias_idx_val);
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_pads[1]));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_pads[3]));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_pads[0]));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_pads[2]));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_strides[1]));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_strides[0]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
   if (!conv2d && depthwiseConv2D) {
     int32_t depthwiseMultiplier = shaper[weight][3] / group;
-    input_indices.push_back(model_builder_.AddOperandFromScalar(depthwiseMultiplier));
+    input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
   }
-  int32_t fuse_code = model_builder_.FindActivation(output);
-  input_indices.push_back(model_builder_.AddOperandFromScalar(fuse_code));
+  int32_t fuse_code = model_builder.FindActivation(output);
+  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
   // TODO support API 27
-  input_indices.push_back(model_builder_.AddOperandFromScalar(use_nchw));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_dilations[1]));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(onnx_dilations[0]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
 
   int32_t operationCode;
   if (conv2d) {
@@ -865,7 +941,7 @@ void ConvOpBuilder::AddOperatorImpl() {
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder_.AddOperation(operationCode, input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(operationCode, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion op_conv
@@ -873,18 +949,24 @@ void ConvOpBuilder::AddOperatorImpl() {
 #pragma region op_cast
 
 class CastOpBuilder : public BaseOpBuilder {
- public:
-  CastOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  int32_t GetMinSupportedSdkVer() const override { return 29; }
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                const ONNX_NAMESPACE::NodeProto& /* node */) const override {
+    return 29;
+  }
+
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> CastOpBuilder::IsOpSupportedImpl() {
-  NodeAttrHelper helper(node_);
+std::pair<bool, std::string> CastOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& /* model_builder */,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  NodeAttrHelper helper(node);
   auto to = helper.get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
       to != ONNX_NAMESPACE::TensorProto::INT32) {
@@ -894,13 +976,14 @@ std::pair<bool, std::string> CastOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void CastOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  NodeAttrHelper helper(node_);
+void CastOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                    const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  NodeAttrHelper helper(node);
 
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
   auto to = helper.get("to", 0);
   Type type;
   switch (to) {
@@ -919,7 +1002,7 @@ void CastOpBuilder::AddOperatorImpl() {
   input_indices.push_back(operand_indices.at(input));
   shaper.Identity(input, output);
   const OperandType output_operand_type(type, shaper[output]);
-  model_builder_.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion
@@ -927,18 +1010,24 @@ void CastOpBuilder::AddOperatorImpl() {
 #pragma region op_softmax
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
- public:
-  SoftMaxOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  int32_t GetMinSupportedSdkVer() const override { return 29; }
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                const ONNX_NAMESPACE::NodeProto& /* node */) const override {
+    return 29;
+  }
+
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> SoftMaxOpBuilder::IsOpSupportedImpl() {
-  const auto input_size = GetShape(model_builder_.GetOnnxModel(), node_.input(0)).size();
+std::pair<bool, std::string> SoftMaxOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  const auto input_size = GetShape(model_builder.GetOnnxModel(), node.input(0)).size();
   if (input_size != 2 || input_size != 4)
     return {false, "SoftMax only support 2d/4d shape, input is " +
                        std::to_string(input_size) + "d shape"};
@@ -946,24 +1035,25 @@ std::pair<bool, std::string> SoftMaxOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void SoftMaxOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  NodeAttrHelper helper(node_);
+void SoftMaxOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                       const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  NodeAttrHelper helper(node);
 
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
   float beta = 1.f;
   int32_t axis = helper.get("axis", 1);
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(beta));
-  input_indices.push_back(model_builder_.AddOperandFromScalar(axis));
+  input_indices.push_back(model_builder.AddOperandFromScalar(beta));
+  input_indices.push_back(model_builder.AddOperandFromScalar(axis));
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder_.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion
@@ -971,34 +1061,27 @@ void SoftMaxOpBuilder::AddOperatorImpl() {
 #pragma region op_identity
 
 class IdentityOpBuilder : public BaseOpBuilder {
- public:
-  IdentityOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> IdentityOpBuilder::IsOpSupportedImpl() {
-  return {true, ""};
-}
-
-void IdentityOpBuilder::AddOperatorImpl() {
+void IdentityOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                        const ONNX_NAMESPACE::NodeProto& node) {
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
 
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder_.RegisterOperand(output, operand_indices.at(input), output_operand_type);
+  model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
 }
 
 #pragma endregion
@@ -1007,27 +1090,32 @@ void IdentityOpBuilder::AddOperatorImpl() {
 
 class GemmOpBuilder : public BaseOpBuilder {
  public:
-  GemmOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-  void AddInitializersToSkip() override;
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const ONNX_NAMESPACE::NodeProto& node) override;
 
  private:
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  std::pair<bool, std::string> IsOpSupportedImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
+
+  void AddOperatorImpl(ModelBuilder& model_builder,
+                       const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
-  const auto& op = node_.op_type();
-  const auto& initializers(model_builder_.GetInitializerTensors());
+std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl(
+    ModelBuilder& model_builder,
+    const ONNX_NAMESPACE::NodeProto& node) {
+  const auto& op = node.op_type();
+  const auto& initializers(model_builder.GetInitializerTensors());
 
   if (op == "MatMul") {  // Only support A*B B is an initializer
-    if (!Contains(initializers, node_.input(1)))
+    if (!Contains(initializers, node.input(1)))
       return {false, "B of MatMul must be known"};
   } else if (op == "Gemm") {
     // Only support
     // 1. A*B'+C
     // 2. A*B+C and B is an initializer
-    NodeAttrHelper helper(node_);
+    NodeAttrHelper helper(node);
     const auto transA = helper.get("transA", 0);
     const auto transB = helper.get("transB", 0);
     const auto alpha = helper.get("alpha", 1.0f);
@@ -1039,13 +1127,13 @@ std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
               "1.0 is supported."};
     }
 
-    if (transB == 0 && !Contains(initializers, node_.input(1))) {
+    if (transB == 0 && !Contains(initializers, node.input(1))) {
       return {false, "B of MatMul must be known if transB != 1"};
     }
 
-    if (node_.input_size() == 3) {
-      const auto b_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(1));
-      const auto c_shape = GetShape(model_builder_.GetOnnxModel(), node_.input(2));
+    if (node.input_size() == 3) {
+      const auto b_shape = GetShape(model_builder.GetOnnxModel(), node.input(1));
+      const auto c_shape = GetShape(model_builder.GetOnnxModel(), node.input(2));
       if (c_shape.size() != 1 || c_shape[0] != b_shape[0])
         return {false, "C of MatMul must be a vector of b_shape[0]"};
     }
@@ -1054,40 +1142,42 @@ std::pair<bool, std::string> GemmOpBuilder::IsOpSupportedImpl() {
   return {true, ""};
 }
 
-void GemmOpBuilder::AddInitializersToSkip() {
-  const auto& op = node_.op_type();
+void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                          const ONNX_NAMESPACE::NodeProto& node) {
+  const auto& op = node.op_type();
   if (op == "MatMul") {
-    model_builder_.AddSkippedInitializer(node_.input(1));
+    model_builder.AddSkippedInitializer(node.input(1));
   } else if (op == "Gemm") {
-    NodeAttrHelper helper(node_);
+    NodeAttrHelper helper(node);
     const auto transB = helper.get("transB", 0);
     if (transB == 0)
-      model_builder_.AddSkippedInitializer(node_.input(1));
+      model_builder.AddSkippedInitializer(node.input(1));
   }
 }
 
-void GemmOpBuilder::AddOperatorImpl() {
-  const auto& op = node_.op_type();
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  NodeAttrHelper helper(node_);
+void GemmOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                    const ONNX_NAMESPACE::NodeProto& node) {
+  const auto& op = node.op_type();
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  NodeAttrHelper helper(node);
 
-  const auto& input1 = node_.input(0);
-  const auto& input2 = node_.input(1);
-  const auto& output = node_.output(0);
+  const auto& input1 = node.input(0);
+  const auto& input2 = node.input(1);
+  const auto& output = node.output(0);
   const auto transB = helper.get("transB", 0);
 
   uint32_t input_2_idx;
   if (transB == 0) {
-    input_2_idx = AddInitializerTransposed(model_builder_, input2);
+    input_2_idx = AddInitializerTransposed(model_builder, input2);
   } else {
     input_2_idx = operand_indices.at(input2);
   }
 
   uint32_t bias_idx;
-  if (node_.input_size() == 2) {
-    std::string bias = node_.name() + op + "_bias";
+  if (node.input_size() == 2) {
+    std::string bias = node.name() + op + "_bias";
     const auto& B_type = operand_types.at(input2).type;
     ModelBuilder::Shape bias_dimen = {shaper[input2][0]};
     if (B_type == Type::TENSOR_FLOAT32) {
@@ -1096,26 +1186,26 @@ void GemmOpBuilder::AddOperatorImpl() {
         buffer[i] = 0.f;
       }
       OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
-      bias_idx = model_builder_.AddOperandFromPersistMemoryBuffer(
+      bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
           bias, &buffer[0], operandType);
     } else {
       throw std::invalid_argument("Unknown weight type " + typeToStr(B_type));
     }
   } else {
-    bias_idx = operand_indices.at(node_.input(2));
+    bias_idx = operand_indices.at(node.input(2));
   }
 
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
-  int32_t fuse_code = model_builder_.FindActivation(output);
-  input_indices.push_back(model_builder_.AddOperandFromScalar(fuse_code));
+  int32_t fuse_code = model_builder.FindActivation(output);
+  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
 
   shaper.FC(input1, input2, output);
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
-  model_builder_.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED,
-                              input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED,
+                             input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion
@@ -1123,18 +1213,18 @@ void GemmOpBuilder::AddOperatorImpl() {
 #pragma region op_unary
 
 class UnaryOpBuilder : public BaseOpBuilder {
- public:
-  UnaryOpBuilder(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node)
-      : BaseOpBuilder(model_builder, node) {}
-
  private:
-  int32_t GetMinSupportedSdkVer() const override;
-  std::pair<bool, std::string> IsOpSupportedImpl() override;
-  void AddOperatorImpl() override;
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder,
+                                const ONNX_NAMESPACE::NodeProto& node) const override;
+
+  void AddOperatorImpl(
+      ModelBuilder& model_builder,
+      const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-int32_t UnaryOpBuilder::GetMinSupportedSdkVer() const {
-  const auto& op(node_.op_type());
+int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                              const ONNX_NAMESPACE::NodeProto& node) const {
+  const auto& op(node.op_type());
   if (op == "Abs" ||
       op == "Exp" ||
       op == "Neg" ||
@@ -1147,18 +1237,15 @@ int32_t UnaryOpBuilder::GetMinSupportedSdkVer() const {
   return 27;
 }
 
-std::pair<bool, std::string> UnaryOpBuilder::IsOpSupportedImpl() {
-  return {true, ""};
-}
+void UnaryOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
+                                     const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& op(node.op_type());
 
-void UnaryOpBuilder::AddOperatorImpl() {
-  auto& shaper(model_builder_.GetShaper());
-  const auto& operand_indices(model_builder_.GetOperandIndices());
-  const auto& operand_types(model_builder_.GetOperandTypes());
-  const auto& op(node_.op_type());
-
-  const auto& input = node_.input(0);
-  const auto& output = node_.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
@@ -1187,60 +1274,66 @@ void UnaryOpBuilder::AddOperatorImpl() {
   }
   ModelBuilder::IndexSeq input_indices;
   input_indices.push_back(operand_indices.at(input));
-  model_builder_.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+  model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
 }
 
 #pragma endregion
 
-#pragma region CreateOpBuilder
+#pragma region CreateOpBuilders
 
-std::unique_ptr<IOpBuilder> CreateOpBuilder(ModelBuilder& model_builder,
-                                            const ONNX_NAMESPACE::NodeProto& node) {
-  const auto& op = node.op_type();
-  if (op == "Add") {
-    return std::make_unique<AddOpBuilder>(model_builder, node);
-  } else if (op == "Mul") {
-    return std::make_unique<MulOpBuilder>(model_builder, node);
-  } else if (op == "Relu") {
-    return std::make_unique<ReluOpBuilder>(model_builder, node);
-  } else if (op == "Transpose") {
-    return std::make_unique<TransposeOpBuilder>(model_builder, node);
-  } else if (op == "Reshape") {
-    return std::make_unique<ReshapeOpBuilder>(model_builder, node);
-  } else if (op == "BatchNormalization") {
-    return std::make_unique<BatchNormalizationOpBuilder>(model_builder, node);
-  } else if (op == "GlobalAveragePool" ||
-             op == "GlobalMaxPool" ||
-             op == "AveragePool" ||
-             op == "MaxPool") {
-    return std::make_unique<PoolOpBuilder>(model_builder, node);
-  } else if (op == "Conv") {
-    return std::make_unique<ConvOpBuilder>(model_builder, node);
-  } else if (op == "Cast") {
-    return std::make_unique<CastOpBuilder>(model_builder, node);
-  } else if (op == "Softmax") {
-    return std::make_unique<SoftMaxOpBuilder>(model_builder, node);
-  } else if (op == "Identity") {
-    return std::make_unique<IdentityOpBuilder>(model_builder, node);
-  } else if (op == "Gemm" ||
-             op == "MatMul") {
-    return std::make_unique<GemmOpBuilder>(model_builder, node);
-  } else if (op == "Abs" ||
-             op == "Exp" ||
-             op == "Floor" ||
-             op == "Log" ||
-             op == "Sigmoid" ||
-             op == "Neg" ||
-             op == "Sin" ||
-             op == "Sqrt" ||
-             op == "Tanh") {
-    return std::make_unique<UnaryOpBuilder>(model_builder, node);
+std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
+CreateOpBuilders() {
+  std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_map;
+
+  {
+    auto binary_op_builder = std::make_shared<BinaryOpBuilder>();
+    op_map.emplace("Add", binary_op_builder);
+    op_map.emplace("Sub", binary_op_builder);
+    op_map.emplace("Mul", binary_op_builder);
+    op_map.emplace("Div", binary_op_builder);
   }
 
-  return std::make_unique<BaseOpBuilder>(model_builder, node);
+  op_map.emplace("Relu", std::make_shared<ReluOpBuilder>());
+  op_map.emplace("Transpose", std::make_shared<TransposeOpBuilder>());
+  op_map.emplace("Reshape", std::make_shared<ReshapeOpBuilder>());
+  op_map.emplace("BatchNormalization", std::make_shared<BatchNormalizationOpBuilder>());
+
+  {
+    auto pool_op_builder = std::make_shared<PoolOpBuilder>();
+    op_map.emplace("GlobalAveragePool", pool_op_builder);
+    op_map.emplace("GlobalMaxPool", pool_op_builder);
+    op_map.emplace("AveragePool", pool_op_builder);
+    op_map.emplace("MaxPool", pool_op_builder);
+  }
+
+  op_map.emplace("Conv", std::make_shared<ConvOpBuilder>());
+  op_map.emplace("Cast", std::make_shared<CastOpBuilder>());
+  op_map.emplace("Softmax", std::make_shared<SoftMaxOpBuilder>());
+  op_map.emplace("Identity", std::make_shared<IdentityOpBuilder>());
+
+  {
+    auto gemm_op_builder = std::make_shared<GemmOpBuilder>();
+    op_map.emplace("Gemm", gemm_op_builder);
+    op_map.emplace("MatMul", gemm_op_builder);
+  }
+
+  {
+    auto unary_op_builder = std::make_shared<UnaryOpBuilder>();
+    op_map.emplace("Abs", unary_op_builder);
+    op_map.emplace("Exp", unary_op_builder);
+    op_map.emplace("Floor", unary_op_builder);
+    op_map.emplace("Log", unary_op_builder);
+    op_map.emplace("Sigmoid", unary_op_builder);
+    op_map.emplace("Neg", unary_op_builder);
+    op_map.emplace("Sin", unary_op_builder);
+    op_map.emplace("Sqrt", unary_op_builder);
+    op_map.emplace("Tanh", unary_op_builder);
+  }
+
+  return op_map;
 }
 
-#pragma endregion CreateOpBuilder
+#pragma endregion
 
 }  // namespace nnapi
 }  // namespace onnxruntime
