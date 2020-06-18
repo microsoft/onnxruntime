@@ -5,35 +5,23 @@
 package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
 /**
  * The host object for the onnx-runtime system. Can create {@link OrtSession}s which encapsulate
  * specific models.
  */
-public class OrtEnvironment implements AutoCloseable {
+public class OrtEnvironment extends NativeObject {
 
   private static final Logger logger = Logger.getLogger(OrtEnvironment.class.getName());
 
   public static final String DEFAULT_NAME = "ort-java";
 
-  static {
-    try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
-    }
-  }
-
   private static volatile OrtEnvironment INSTANCE;
 
-  private static final AtomicInteger refCount = new AtomicInteger();
+  private final OrtLoggingLevel logLevel;
 
-  private static volatile OrtLoggingLevel curLogLevel;
-
-  private static volatile String curLoggingName;
+  private final String loggingName;
 
   /**
    * Gets the OrtEnvironment. If there is not an environment currently created, it creates one using
@@ -81,26 +69,18 @@ public class OrtEnvironment implements AutoCloseable {
     if (INSTANCE == null) {
       try {
         INSTANCE = new OrtEnvironment(loggingLevel, name);
-        curLogLevel = loggingLevel;
-        curLoggingName = name;
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to create OrtEnvironment", e);
       }
     } else {
-      if ((loggingLevel.getValue() != curLogLevel.getValue()) || (!name.equals(curLoggingName))) {
+      if ((loggingLevel.getValue() != INSTANCE.logLevel.getValue())
+          || (!name.equals(INSTANCE.loggingName))) {
         logger.warning(
             "Tried to change OrtEnvironment's logging level or name while a reference exists.");
       }
     }
-    refCount.incrementAndGet();
     return INSTANCE;
   }
-
-  final long nativeHandle;
-
-  final OrtAllocator defaultAllocator;
-
-  private volatile boolean closed = false;
 
   /**
    * Create an OrtEnvironment using a default name.
@@ -119,8 +99,9 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the environment couldn't be created.
    */
   private OrtEnvironment(OrtLoggingLevel loggingLevel, String name) throws OrtException {
-    nativeHandle = createHandle(OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name);
-    defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
+    super(createHandle(OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name));
+    this.logLevel = loggingLevel;
+    this.loggingName = name;
   }
 
   /**
@@ -132,7 +113,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
   public OrtSession createSession(String modelPath) throws OrtException {
-    return createSession(modelPath, new OrtSession.SessionOptions());
+    return createSession(modelPath, OrtSession.SessionOptions.DEFAULT_SESSION_OPTIONS);
   }
 
   /**
@@ -145,7 +126,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
   public OrtSession createSession(String modelPath, SessionOptions options) throws OrtException {
-    return createSession(modelPath, defaultAllocator, options);
+    return createSession(modelPath, OrtAllocator.DEFAULT_ALLOCATOR, options);
   }
 
   /**
@@ -159,11 +140,7 @@ public class OrtEnvironment implements AutoCloseable {
    */
   OrtSession createSession(String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    if (!closed) {
-      return new OrtSession(this, modelPath, allocator, options);
-    } else {
-      throw new IllegalStateException("Trying to create an OrtSession on a closed OrtEnvironment.");
-    }
+    return OrtSession.fromPath(this, modelPath, allocator, options);
   }
 
   /**
@@ -176,7 +153,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
    */
   public OrtSession createSession(byte[] modelArray, SessionOptions options) throws OrtException {
-    return createSession(modelArray, defaultAllocator, options);
+    return createSession(modelArray, OrtAllocator.DEFAULT_ALLOCATOR, options);
   }
 
   /**
@@ -188,7 +165,7 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
    */
   public OrtSession createSession(byte[] modelArray) throws OrtException {
-    return createSession(modelArray, new OrtSession.SessionOptions());
+    return createSession(modelArray, OrtSession.SessionOptions.DEFAULT_SESSION_OPTIONS);
   }
 
   /**
@@ -202,11 +179,7 @@ public class OrtEnvironment implements AutoCloseable {
    */
   OrtSession createSession(byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
-    if (!closed) {
-      return new OrtSession(this, modelArray, allocator, options);
-    } else {
-      throw new IllegalStateException("Trying to create an OrtSession on a closed OrtEnvironment.");
-    }
+    return OrtSession.fromBytes(this, modelArray, allocator, options);
   }
 
   /**
@@ -216,42 +189,31 @@ public class OrtEnvironment implements AutoCloseable {
    * @throws OrtException If the call failed.
    */
   public void setTelemetry(boolean sendTelemetry) throws OrtException {
-    setTelemetry(OnnxRuntime.ortApiHandle, nativeHandle, sendTelemetry);
-  }
-
-  /**
-   * Is this environment closed?
-   *
-   * @return True if the environment is closed.
-   */
-  public boolean isClosed() {
-    return closed;
+    try (NativeReference environmentReference = reference()) {
+      setTelemetry(OnnxRuntime.ortApiHandle, environmentReference.handle(), sendTelemetry);
+    }
   }
 
   @Override
   public String toString() {
-    return "OrtEnvironment(name=" + curLoggingName + ",logLevel=" + curLogLevel + ")";
+    return super.toString() + "(name=" + loggingName + ",logLevel=" + logLevel + ")";
   }
 
   /**
-   * Closes the OrtEnvironment. If this is the last reference to the environment then it closes the
-   * native handle.
-   *
-   * @throws OrtException If the close failed.
+   * This closes the environment freeing all associated resources. This allows for subsequent calls
+   * to getEnviroment() to return a newly created environment. It is advised to use a single
+   * environment for the duration of your application.
    */
   @Override
-  public synchronized void close() throws OrtException {
-    synchronized (refCount) {
-      int curCount = refCount.get();
-      if (curCount != 0) {
-        refCount.decrementAndGet();
-      }
-      if (curCount == 1) {
-        close(OnnxRuntime.ortApiHandle, nativeHandle);
-        closed = true;
-        INSTANCE = null;
-      }
-    }
+  public synchronized void close() {
+    super.close();
+    // reset getEnvironment()
+    INSTANCE = null;
+  }
+
+  @Override
+  protected void doClose(long handle) {
+    close(OnnxRuntime.ortApiHandle, handle);
   }
 
   /**
@@ -267,22 +229,12 @@ public class OrtEnvironment implements AutoCloseable {
       throws OrtException;
 
   /**
-   * Gets a reference to the default allocator.
-   *
-   * @param apiHandle The API handle to use.
-   * @return A pointer to the default allocator.
-   * @throws OrtException If it failed to get the allocator.
-   */
-  private static native long getDefaultAllocator(long apiHandle) throws OrtException;
-
-  /**
    * Closes the OrtEnvironment, frees the handle.
    *
    * @param apiHandle The API pointer.
    * @param nativeHandle The handle to free.
-   * @throws OrtException If an error was caused by freeing the handle.
    */
-  private static native void close(long apiHandle, long nativeHandle) throws OrtException;
+  private static native void close(long apiHandle, long nativeHandle);
 
   /**
    * Enables or disables the telemetry.

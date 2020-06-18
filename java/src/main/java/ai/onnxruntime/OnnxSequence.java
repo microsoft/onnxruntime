@@ -4,7 +4,6 @@
  */
 package ai.onnxruntime;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -17,19 +16,9 @@ import java.util.stream.Collectors;
  * <p>Supports the types mentioned in "onnxruntime_c_api.h", currently String, Long, Float, Double,
  * Map&gt;String,Float&lt;, Map&gt;Long,Float&lt;.
  */
-public class OnnxSequence implements OnnxValue {
+public class OnnxSequence extends NativeObject implements OnnxValue {
 
-  static {
-    try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
-    }
-  }
-
-  final long nativeHandle;
-
-  private final long allocatorHandle;
+  private final OrtAllocator allocator;
 
   private final SequenceInfo info;
 
@@ -39,12 +28,12 @@ public class OnnxSequence implements OnnxValue {
    * <p>Called from native code.
    *
    * @param nativeHandle The reference to the native sequence object.
-   * @param allocatorHandle The reference to the allocator.
+   * @param allocator The allocator used to when extracting data from this object.
    * @param info The sequence type information.
    */
-  OnnxSequence(long nativeHandle, long allocatorHandle, SequenceInfo info) {
-    this.nativeHandle = nativeHandle;
-    this.allocatorHandle = allocatorHandle;
+  OnnxSequence(long nativeHandle, OrtAllocator allocator, SequenceInfo info) {
+    super(nativeHandle);
+    this.allocator = allocator;
     this.info = info;
   }
 
@@ -64,48 +53,67 @@ public class OnnxSequence implements OnnxValue {
    */
   @Override
   public List<Object> getValue() throws OrtException {
-    if (info.sequenceOfMaps) {
-      List<Object> outputSequence = new ArrayList<>();
-      for (int i = 0; i < info.length; i++) {
-        HashMap<Object, Object> map = new HashMap<>();
-        Object[] keys = getMapKeys(i);
-        Object[] values = getMapValues(i);
-        for (int j = 0; j < keys.length; j++) {
-          map.put(keys[j], values[j]);
-        }
-        outputSequence.add(map);
-      }
-      return outputSequence;
-    } else {
-      switch (info.sequenceType) {
-        case FLOAT:
-          float[] floats = getFloats(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-          ArrayList<Object> boxed = new ArrayList<>(floats.length);
-          for (float aFloat : floats) {
-            // box float to Float
-            boxed.add(aFloat);
+    try (NativeReference sequenceReference = reference();
+        NativeReference allocatorReference = allocator.reference()) {
+      if (info.sequenceOfMaps) {
+        List<Object> outputSequence = new ArrayList<>();
+        for (int i = 0; i < info.length; i++) {
+          HashMap<Object, Object> map = new HashMap<>();
+          Object[] keys = getMapKeys(i);
+          Object[] values = getMapValues(i);
+          for (int j = 0; j < keys.length; j++) {
+            map.put(keys[j], values[j]);
           }
-          return boxed;
-        case DOUBLE:
-          return Arrays.stream(getDoubles(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .collect(Collectors.toList());
-        case INT64:
-          return Arrays.stream(getLongs(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .collect(Collectors.toList());
-        case STRING:
-          String[] strings = getStrings(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-          ArrayList<Object> list = new ArrayList<>(strings.length);
-          list.addAll(Arrays.asList(strings));
-          return list;
-        case BOOL:
-        case INT8:
-        case INT16:
-        case INT32:
-        case UNKNOWN:
-        default:
-          throw new OrtException("Unsupported type in a sequence, found " + info.sequenceType);
+          outputSequence.add(map);
+        }
+        return outputSequence;
+      } else {
+        switch (info.sequenceType) {
+          case FLOAT:
+            float[] floats =
+                getFloats(
+                    OnnxRuntime.ortApiHandle,
+                    sequenceReference.handle(),
+                    allocatorReference.handle());
+            ArrayList<Object> boxed = new ArrayList<>(floats.length);
+            for (float aFloat : floats) {
+              // box float to Float
+              boxed.add(aFloat);
+            }
+            return boxed;
+          case DOUBLE:
+            return Arrays.stream(
+                    getDoubles(
+                        OnnxRuntime.ortApiHandle,
+                        sequenceReference.handle(),
+                        allocatorReference.handle()))
+                .boxed()
+                .collect(Collectors.toList());
+          case INT64:
+            return Arrays.stream(
+                    getLongs(
+                        OnnxRuntime.ortApiHandle,
+                        sequenceReference.handle(),
+                        allocatorReference.handle()))
+                .boxed()
+                .collect(Collectors.toList());
+          case STRING:
+            String[] strings =
+                getStrings(
+                    OnnxRuntime.ortApiHandle,
+                    sequenceReference.handle(),
+                    allocatorReference.handle());
+            ArrayList<Object> list = new ArrayList<>(strings.length);
+            list.addAll(Arrays.asList(strings));
+            return list;
+          case BOOL:
+          case INT8:
+          case INT16:
+          case INT32:
+          case UNKNOWN:
+          default:
+            throw new OrtException("Unsupported type in a sequence, found " + info.sequenceType);
+        }
       }
     }
   }
@@ -117,13 +125,13 @@ public class OnnxSequence implements OnnxValue {
 
   @Override
   public String toString() {
-    return "OnnxSequence(info=" + info.toString() + ")";
+    return super.toString() + "(info=" + info.toString() + ")";
   }
 
   /** Closes this sequence, releasing the native memory backing it and it's elements. */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  protected void doClose(long handle) {
+    close(OnnxRuntime.ortApiHandle, handle);
   }
 
   /**
@@ -134,13 +142,24 @@ public class OnnxSequence implements OnnxValue {
    * @throws OrtException If the native code failed to read the keys.
    */
   private Object[] getMapKeys(int index) throws OrtException {
-    if (info.mapInfo.keyType == OnnxJavaType.STRING) {
-      return getStringKeys(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index);
-    } else {
-      return Arrays.stream(
-              getLongKeys(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index))
-          .boxed()
-          .toArray();
+    try (NativeReference sequenceReference = reference();
+        NativeReference allocatorReference = allocator.reference()) {
+      if (info.mapInfo.keyType == OnnxJavaType.STRING) {
+        return getStringKeys(
+            OnnxRuntime.ortApiHandle,
+            sequenceReference.handle(),
+            allocatorReference.handle(),
+            index);
+      } else {
+        return Arrays.stream(
+                getLongKeys(
+                    OnnxRuntime.ortApiHandle,
+                    sequenceReference.handle(),
+                    allocatorReference.handle(),
+                    index))
+            .boxed()
+            .toArray();
+      }
     }
   }
 
@@ -152,38 +171,57 @@ public class OnnxSequence implements OnnxValue {
    * @throws OrtException If the native code failed to read the values.
    */
   private Object[] getMapValues(int index) throws OrtException {
-    switch (info.mapInfo.valueType) {
-      case STRING:
-        {
-          return getStringValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index);
-        }
-      case INT64:
-        {
-          return Arrays.stream(
-                  getLongValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index))
-              .boxed()
-              .toArray();
-        }
-      case FLOAT:
-        {
-          float[] floats =
-              getFloatValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index);
-          Float[] boxed = new Float[floats.length];
-          for (int i = 0; i < floats.length; i++) {
-            // cast float to Float
-            boxed[i] = floats[i];
+    try (NativeReference sequenceReference = reference();
+        NativeReference allocatorReference = allocator.reference()) {
+      switch (info.mapInfo.valueType) {
+        case STRING:
+          {
+            return getStringValues(
+                OnnxRuntime.ortApiHandle,
+                sequenceReference.handle(),
+                allocatorReference.handle(),
+                index);
           }
-          return boxed;
-        }
-      case DOUBLE:
-        {
-          return Arrays.stream(
-                  getDoubleValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index))
-              .boxed()
-              .toArray();
-        }
-      default:
-        throw new RuntimeException("Invalid or unknown valueType: " + info.mapInfo.valueType);
+        case INT64:
+          {
+            return Arrays.stream(
+                    getLongValues(
+                        OnnxRuntime.ortApiHandle,
+                        sequenceReference.handle(),
+                        allocatorReference.handle(),
+                        index))
+                .boxed()
+                .toArray();
+          }
+        case FLOAT:
+          {
+            float[] floats =
+                getFloatValues(
+                    OnnxRuntime.ortApiHandle,
+                    sequenceReference.handle(),
+                    allocatorReference.handle(),
+                    index);
+            Float[] boxed = new Float[floats.length];
+            for (int i = 0; i < floats.length; i++) {
+              // cast float to Float
+              boxed[i] = floats[i];
+            }
+            return boxed;
+          }
+        case DOUBLE:
+          {
+            return Arrays.stream(
+                    getDoubleValues(
+                        OnnxRuntime.ortApiHandle,
+                        sequenceReference.handle(),
+                        allocatorReference.handle(),
+                        index))
+                .boxed()
+                .toArray();
+          }
+        default:
+          throw new RuntimeException("Invalid or unknown valueType: " + info.mapInfo.valueType);
+      }
     }
   }
 

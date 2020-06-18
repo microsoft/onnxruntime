@@ -4,7 +4,6 @@
  */
 package ai.onnxruntime;
 
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,15 +14,7 @@ import java.util.Map;
  * <p>Supported types are those mentioned in "onnxruntime_c_api.h", keys: String and Long, values:
  * String, Long, Float, Double.
  */
-public class OnnxMap implements OnnxValue {
-
-  static {
-    try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
-    }
-  }
+public class OnnxMap extends NativeObject implements OnnxValue {
 
   /** An enum representing the Java type of the values stored in an {@link OnnxMap}. */
   public enum OnnxMapValueType {
@@ -32,6 +23,7 @@ public class OnnxMap implements OnnxValue {
     LONG(2),
     FLOAT(3),
     DOUBLE(4);
+
     final int value;
 
     OnnxMapValueType(int value) {
@@ -88,9 +80,7 @@ public class OnnxMap implements OnnxValue {
     }
   }
 
-  final long nativeHandle;
-
-  final long allocatorHandle;
+  private final OrtAllocator allocator;
 
   private final MapInfo info;
 
@@ -104,12 +94,12 @@ public class OnnxMap implements OnnxValue {
    * <p>Called from native code.
    *
    * @param nativeHandle The reference to the native map object.
-   * @param allocatorHandle The reference to the allocator that created the map.
+   * @param allocator The allocator used to when extracting data from this object.
    * @param info The type information.
    */
-  OnnxMap(long nativeHandle, long allocatorHandle, MapInfo info) {
-    this.nativeHandle = nativeHandle;
-    this.allocatorHandle = allocatorHandle;
+  OnnxMap(long nativeHandle, OrtAllocator allocator, MapInfo info) {
+    super(nativeHandle);
+    this.allocator = allocator;
     this.info = info;
     this.stringKeys = info.keyType == OnnxJavaType.STRING;
     this.valueType = OnnxMapValueType.mapFromOnnxJavaType(info.valueType);
@@ -153,12 +143,18 @@ public class OnnxMap implements OnnxValue {
    * @throws OrtException If the onnxruntime failed to read the keys.
    */
   private Object[] getMapKeys() throws OrtException {
-    if (stringKeys) {
-      return getStringKeys(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-    } else {
-      return Arrays.stream(getLongKeys(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-          .boxed()
-          .toArray();
+    try (NativeReference mapReference = reference();
+        NativeReference allocatorReference = allocator.reference()) {
+      if (stringKeys) {
+        return getStringKeys(
+            OnnxRuntime.ortApiHandle, mapReference.handle(), allocatorReference.handle());
+      } else {
+        return Arrays.stream(
+                getLongKeys(
+                    OnnxRuntime.ortApiHandle, mapReference.handle(), allocatorReference.handle()))
+            .boxed()
+            .toArray();
+      }
     }
   }
 
@@ -169,37 +165,49 @@ public class OnnxMap implements OnnxValue {
    * @throws OrtException If the onnxruntime failed to read the values.
    */
   private Object[] getMapValues() throws OrtException {
-    switch (valueType) {
-      case STRING:
-        {
-          return getStringValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-        }
-      case LONG:
-        {
-          return Arrays.stream(
-                  getLongValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .toArray();
-        }
-      case FLOAT:
-        {
-          float[] floats = getFloatValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-          Float[] boxed = new Float[floats.length];
-          for (int i = 0; i < floats.length; i++) {
-            // cast float to Float
-            boxed[i] = floats[i];
+    try (NativeReference mapReference = reference();
+        NativeReference allocatorReference = allocator.reference()) {
+      switch (valueType) {
+        case STRING:
+          {
+            return getStringValues(
+                OnnxRuntime.ortApiHandle, mapReference.handle(), allocatorReference.handle());
           }
-          return boxed;
-        }
-      case DOUBLE:
-        {
-          return Arrays.stream(
-                  getDoubleValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .toArray();
-        }
-      default:
-        throw new RuntimeException("Invalid or unknown valueType: " + valueType);
+        case LONG:
+          {
+            return Arrays.stream(
+                    getLongValues(
+                        OnnxRuntime.ortApiHandle,
+                        mapReference.handle(),
+                        allocatorReference.handle()))
+                .boxed()
+                .toArray();
+          }
+        case FLOAT:
+          {
+            float[] floats =
+                getFloatValues(
+                    OnnxRuntime.ortApiHandle, mapReference.handle(), allocatorReference.handle());
+            Float[] boxed = new Float[floats.length];
+            for (int i = 0; i < floats.length; i++) {
+              // cast float to Float
+              boxed[i] = floats[i];
+            }
+            return boxed;
+          }
+        case DOUBLE:
+          {
+            return Arrays.stream(
+                    getDoubleValues(
+                        OnnxRuntime.ortApiHandle,
+                        mapReference.handle(),
+                        allocatorReference.handle()))
+                .boxed()
+                .toArray();
+          }
+        default:
+          throw new RuntimeException("Invalid or unknown valueType: " + valueType);
+      }
     }
   }
 
@@ -210,13 +218,13 @@ public class OnnxMap implements OnnxValue {
 
   @Override
   public String toString() {
-    return "ONNXMap(size=" + size() + ",info=" + info.toString() + ")";
+    return super.toString() + "(size=" + size() + ",info=" + info.toString() + ")";
   }
 
   /** Closes this map, releasing the native memory backing it and it's elements. */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  protected void doClose(long handle) {
+    close(OnnxRuntime.ortApiHandle, handle);
   }
 
   private native String[] getStringKeys(long apiHandle, long nativeHandle, long allocatorHandle)

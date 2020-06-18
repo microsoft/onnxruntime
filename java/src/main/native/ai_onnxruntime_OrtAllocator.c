@@ -6,6 +6,21 @@
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtAllocator.h"
+
+/*
+ * Class:     ai_onnxruntime_OrtAllocator
+ * Method:    getDefaultAllocator
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtAllocator_getDefaultAllocator
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtAllocator* allocator;
+    checkOrtStatus(jniEnv,api,api->GetAllocatorWithDefaultOptions(&allocator));
+    return (jlong)allocator;
+}
+
 /*
  * Class:     ai_onnxruntime_OrtAllocator
  * Method:    closeAllocator

@@ -4,7 +4,6 @@
  */
 package ai.onnxruntime;
 
-import java.io.IOException;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -18,19 +17,9 @@ import java.nio.ShortBuffer;
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
  * returned as outputs.
  */
-public class OnnxTensor implements OnnxValue {
+public class OnnxTensor extends NativeObject implements OnnxValue {
 
-  static {
-    try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
-    }
-  }
-
-  private final long nativeHandle;
-
-  private final long allocatorHandle;
+  private final OrtAllocator allocator;
 
   private final TensorInfo info;
 
@@ -40,13 +29,13 @@ public class OnnxTensor implements OnnxValue {
    */
   private final Buffer buffer;
 
-  OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
-    this(nativeHandle, allocatorHandle, info, null);
+  OnnxTensor(long nativeHandle, OrtAllocator allocator, TensorInfo info) {
+    this(nativeHandle, allocator, info, null);
   }
 
-  OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer) {
-    this.nativeHandle = nativeHandle;
-    this.allocatorHandle = allocatorHandle;
+  OnnxTensor(long nativeHandle, OrtAllocator allocator, TensorInfo info, Buffer buffer) {
+    super(nativeHandle);
+    this.allocator = allocator;
     this.info = info;
     this.buffer = buffer;
   }
@@ -54,10 +43,6 @@ public class OnnxTensor implements OnnxValue {
   @Override
   public OnnxValueType getType() {
     return OnnxValueType.ONNX_TYPE_TENSOR;
-  }
-
-  long getNativeHandle() {
-    return nativeHandle;
   }
 
   /**
@@ -73,32 +58,42 @@ public class OnnxTensor implements OnnxValue {
    */
   @Override
   public Object getValue() throws OrtException {
-    if (info.isScalar()) {
-      switch (info.type) {
-        case FLOAT:
-          return getFloat(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
-        case DOUBLE:
-          return getDouble(OnnxRuntime.ortApiHandle, nativeHandle);
-        case INT8:
-          return getByte(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
-        case INT16:
-          return getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
-        case INT32:
-          return getInt(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
-        case INT64:
-          return getLong(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value);
-        case BOOL:
-          return getBool(OnnxRuntime.ortApiHandle, nativeHandle);
-        case STRING:
-          return getString(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-        case UNKNOWN:
-        default:
-          throw new OrtException("Extracting the value of an invalid Tensor.");
+    try (NativeReference tensorReference = reference();
+        NativeReference allocatorReference = allocator.reference()) {
+      if (info.isScalar()) {
+        switch (info.type) {
+          case FLOAT:
+            return getFloat(
+                OnnxRuntime.ortApiHandle, tensorReference.handle(), info.onnxType.value);
+          case DOUBLE:
+            return getDouble(OnnxRuntime.ortApiHandle, tensorReference.handle());
+          case INT8:
+            return getByte(OnnxRuntime.ortApiHandle, tensorReference.handle(), info.onnxType.value);
+          case INT16:
+            return getShort(
+                OnnxRuntime.ortApiHandle, tensorReference.handle(), info.onnxType.value);
+          case INT32:
+            return getInt(OnnxRuntime.ortApiHandle, tensorReference.handle(), info.onnxType.value);
+          case INT64:
+            return getLong(OnnxRuntime.ortApiHandle, tensorReference.handle(), info.onnxType.value);
+          case BOOL:
+            return getBool(OnnxRuntime.ortApiHandle, tensorReference.handle());
+          case STRING:
+            return getString(
+                OnnxRuntime.ortApiHandle, tensorReference.handle(), allocatorReference.handle());
+          case UNKNOWN:
+          default:
+            throw new OrtException("Extracting the value of an invalid Tensor.");
+        }
+      } else {
+        Object carrier = info.makeCarrier();
+        getArray(
+            OnnxRuntime.ortApiHandle,
+            tensorReference.handle(),
+            allocatorReference.handle(),
+            carrier);
+        return carrier;
       }
-    } else {
-      Object carrier = info.makeCarrier();
-      getArray(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, carrier);
-      return carrier;
     }
   }
 
@@ -109,16 +104,12 @@ public class OnnxTensor implements OnnxValue {
 
   @Override
   public String toString() {
-    return "OnnxTensor(info=" + info.toString() + ")";
+    return super.toString() + "(info=" + info.toString() + ")";
   }
 
-  /**
-   * Closes the tensor, releasing it's underlying memory (if it's not backed by an NIO buffer). If
-   * it is backed by a buffer then the memory is released when the buffer is GC'd.
-   */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  protected void doClose(long handle) {
+    close(OnnxRuntime.ortApiHandle, handle);
   }
 
   /**
@@ -130,14 +121,15 @@ public class OnnxTensor implements OnnxValue {
    * @return A ByteBuffer copy of the OnnxTensor.
    */
   public ByteBuffer getByteBuffer() {
-    if (info.type != OnnxJavaType.STRING) {
-      ByteBuffer buffer = getBuffer(OnnxRuntime.ortApiHandle, nativeHandle);
+    if (info.type == OnnxJavaType.STRING) {
+      return null;
+    }
+    try (NativeReference tensorReference = reference()) {
+      ByteBuffer buffer = getBuffer(OnnxRuntime.ortApiHandle, tensorReference.handle());
       ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
       output.put(buffer);
       output.rewind();
       return output;
-    } else {
-      return null;
     }
   }
 
@@ -252,7 +244,10 @@ public class OnnxTensor implements OnnxValue {
    * @return A ByteBuffer wrapping the data.
    */
   private ByteBuffer getBuffer() {
-    return getBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
+    try (NativeReference tensorReference = reference()) {
+      return getBuffer(OnnxRuntime.ortApiHandle, tensorReference.handle())
+          .order(ByteOrder.nativeOrder());
+    }
   }
 
   /**
@@ -311,7 +306,7 @@ public class OnnxTensor implements OnnxValue {
    * @throws OrtException If the onnx runtime threw an error.
    */
   public static OnnxTensor createTensor(OrtEnvironment env, Object data) throws OrtException {
-    return createTensor(env, env.defaultAllocator, data);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data);
   }
 
   /**
@@ -326,22 +321,24 @@ public class OnnxTensor implements OnnxValue {
    */
   static OnnxTensor createTensor(OrtEnvironment env, OrtAllocator allocator, Object data)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
+      long allocatorHandle = allocatorReference.handle();
       TensorInfo info = TensorInfo.constructFromJavaArray(data);
       if (info.type == OnnxJavaType.STRING) {
         if (info.shape.length == 0) {
           return new OnnxTensor(
-              createString(OnnxRuntime.ortApiHandle, allocator.handle, (String) data),
-              allocator.handle,
+              createString(OnnxRuntime.ortApiHandle, allocatorHandle, (String) data),
+              allocator,
               info);
         } else {
           return new OnnxTensor(
               createStringTensor(
                   OnnxRuntime.ortApiHandle,
-                  allocator.handle,
+                  allocatorHandle,
                   OrtUtil.flattenString(data),
                   info.shape),
-              allocator.handle,
+              allocator,
               info);
         }
       } else {
@@ -350,12 +347,10 @@ public class OnnxTensor implements OnnxValue {
         }
         return new OnnxTensor(
             createTensor(
-                OnnxRuntime.ortApiHandle, allocator.handle, data, info.shape, info.onnxType.value),
-            allocator.handle,
+                OnnxRuntime.ortApiHandle, allocatorHandle, data, info.shape, info.onnxType.value),
+            allocator,
             info);
       }
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor with a closed OrtAllocator.");
     }
   }
 
@@ -372,7 +367,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, String[] data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -389,18 +384,17 @@ public class OnnxTensor implements OnnxValue {
    */
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, String[] data, long[] shape) throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       TensorInfo info =
           new TensorInfo(
               shape,
               OnnxJavaType.STRING,
               TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
       return new OnnxTensor(
-          createStringTensor(OnnxRuntime.ortApiHandle, allocator.handle, data, shape),
-          allocator.handle,
+          createStringTensor(OnnxRuntime.ortApiHandle, allocatorReference.handle(), data, shape),
+          allocator,
           info);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 
@@ -418,7 +412,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, FloatBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -437,7 +431,8 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, FloatBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       OnnxJavaType type = OnnxJavaType.FLOAT;
       int bufferSize = data.capacity() * type.size;
       FloatBuffer tmp;
@@ -452,16 +447,14 @@ public class OnnxTensor implements OnnxValue {
       return new OnnxTensor(
           createTensorFromBuffer(
               OnnxRuntime.ortApiHandle,
-              allocator.handle,
+              allocatorReference.handle(),
               tmp,
               bufferSize,
               shape,
               info.onnxType.value),
-          allocator.handle,
+          allocator,
           info,
           tmp);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 
@@ -479,7 +472,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, DoubleBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -498,7 +491,8 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, DoubleBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       OnnxJavaType type = OnnxJavaType.DOUBLE;
       int bufferSize = data.capacity() * type.size;
       DoubleBuffer tmp;
@@ -513,16 +507,14 @@ public class OnnxTensor implements OnnxValue {
       return new OnnxTensor(
           createTensorFromBuffer(
               OnnxRuntime.ortApiHandle,
-              allocator.handle,
+              allocatorReference.handle(),
               tmp,
               bufferSize,
               shape,
               info.onnxType.value),
-          allocator.handle,
+          allocator,
           info,
           tmp);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 
@@ -540,7 +532,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, ByteBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -577,7 +569,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(
       OrtEnvironment env, ByteBuffer data, long[] shape, OnnxJavaType type) throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape, type);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape, type);
   }
 
   /**
@@ -597,7 +589,8 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape, OnnxJavaType type)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       int bufferSize = data.capacity();
       ByteBuffer tmp;
       if (data.isDirect()) {
@@ -610,16 +603,14 @@ public class OnnxTensor implements OnnxValue {
       return new OnnxTensor(
           createTensorFromBuffer(
               OnnxRuntime.ortApiHandle,
-              allocator.handle,
+              allocatorReference.handle(),
               tmp,
               bufferSize,
               shape,
               info.onnxType.value),
-          allocator.handle,
+          allocator,
           info,
           tmp);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 
@@ -637,7 +628,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, ShortBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -656,7 +647,8 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, ShortBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       OnnxJavaType type = OnnxJavaType.INT16;
       int bufferSize = data.capacity() * type.size;
       ShortBuffer tmp;
@@ -671,16 +663,14 @@ public class OnnxTensor implements OnnxValue {
       return new OnnxTensor(
           createTensorFromBuffer(
               OnnxRuntime.ortApiHandle,
-              allocator.handle,
+              allocatorReference.handle(),
               tmp,
               bufferSize,
               shape,
               info.onnxType.value),
-          allocator.handle,
+          allocator,
           info,
           tmp);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 
@@ -698,7 +688,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, IntBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -717,7 +707,8 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, IntBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       OnnxJavaType type = OnnxJavaType.INT32;
       int bufferSize = data.capacity() * type.size;
       IntBuffer tmp;
@@ -732,16 +723,14 @@ public class OnnxTensor implements OnnxValue {
       return new OnnxTensor(
           createTensorFromBuffer(
               OnnxRuntime.ortApiHandle,
-              allocator.handle,
+              allocatorReference.handle(),
               tmp,
               bufferSize,
               shape,
               info.onnxType.value),
-          allocator.handle,
+          allocator,
           info,
           tmp);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 
@@ -759,7 +748,7 @@ public class OnnxTensor implements OnnxValue {
    */
   public static OnnxTensor createTensor(OrtEnvironment env, LongBuffer data, long[] shape)
       throws OrtException {
-    return createTensor(env, env.defaultAllocator, data, shape);
+    return createTensor(env, OrtAllocator.DEFAULT_ALLOCATOR, data, shape);
   }
 
   /**
@@ -778,7 +767,8 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, LongBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    env.ensureOpen();
+    try (NativeReference allocatorReference = allocator.reference()) {
       OnnxJavaType type = OnnxJavaType.INT64;
       int bufferSize = data.capacity() * type.size;
       LongBuffer tmp;
@@ -793,16 +783,14 @@ public class OnnxTensor implements OnnxValue {
       return new OnnxTensor(
           createTensorFromBuffer(
               OnnxRuntime.ortApiHandle,
-              allocator.handle,
+              allocatorReference.handle(),
               tmp,
               bufferSize,
               shape,
               info.onnxType.value),
-          allocator.handle,
+          allocator,
           info,
           tmp);
-    } else {
-      throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
     }
   }
 

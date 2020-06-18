@@ -25,20 +25,6 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle(JNIEnv *
 
 /*
  * Class:     ai_onnxruntime_OrtEnvironment
- * Method:    getDefaultAllocator
- * Signature: (J)J
- */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_getDefaultAllocator
-  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    OrtAllocator* allocator;
-    checkOrtStatus(jniEnv,api,api->GetAllocatorWithDefaultOptions(&allocator));
-    return (jlong)allocator;
-}
-
-/*
- * Class:     ai_onnxruntime_OrtEnvironment
  * Method:    close
  * Signature: (JJ)V
  */

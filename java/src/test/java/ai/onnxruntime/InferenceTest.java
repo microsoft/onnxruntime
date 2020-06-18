@@ -7,6 +7,7 @@ package ai.onnxruntime;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -68,11 +69,16 @@ public class InferenceTest {
     Logger.getLogger(OrtEnvironment.class.getName()).setLevel(Level.SEVERE);
     OrtEnvironment env = OrtEnvironment.getEnvironment("repeatedCloseTest");
     try (OrtEnvironment otherEnv = OrtEnvironment.getEnvironment()) {
+      assertEquals(otherEnv, env);
       assertFalse(otherEnv.isClosed());
     }
-    assertFalse(env.isClosed());
+    assertTrue(env.isClosed());
     env.close();
     assertTrue(env.isClosed());
+    try (OrtEnvironment otherEnv2 = OrtEnvironment.getEnvironment()) {
+      assertNotEquals(otherEnv2, env);
+      assertFalse(otherEnv2.isClosed());
+    }
   }
 
   @Test
@@ -289,32 +295,18 @@ public class InferenceTest {
       inputMap.clear();
       requestedOutputs.clear();
 
-      /* The native library does all the computations, rather than the requested subset.
-       * Leaving these tests commented out until it's fixed.
-      // Request single output ab, supply required inputs
-      inputMap.put("a:0",a);
-      inputMap.put("b:0",b);
-      requestedOutputs.add("ab:0");
-      try (Result r = session.run(inputMap,requestedOutputs)) {
-          assertEquals(1,r.size());
-          float abVal = unwrapFunc.apply(r,"ab:0");
-          assertEquals(6.0f,abVal,1e-10);
-      }
-      inputMap.clear();
-      requestedOutputs.clear();
-
-      // Request single output bc, supply required inputs
-      inputMap.put("b:0",b);
-      inputMap.put("c:0",c);
-      requestedOutputs.add("bc:0");
-      try (Result r = session.run(inputMap,requestedOutputs)) {
-          assertEquals(1,r.size());
-          float bcVal = unwrapFunc.apply(r,"bc:0");
-          assertEquals(15.0f,bcVal,1e-10);
-      }
-      inputMap.clear();
-      requestedOutputs.clear();
-      */
+      /*
+       * The native library does all the computations, rather than the requested subset. Leaving these tests
+       * commented out until it's fixed. // Request single output ab, supply required inputs
+       * inputMap.put("a:0",a); inputMap.put("b:0",b); requestedOutputs.add("ab:0"); try (Result r =
+       * session.run(inputMap,requestedOutputs)) { assertEquals(1,r.size()); float abVal =
+       * unwrapFunc.apply(r,"ab:0"); assertEquals(6.0f,abVal,1e-10); } inputMap.clear(); requestedOutputs.clear();
+       *
+       * // Request single output bc, supply required inputs inputMap.put("b:0",b); inputMap.put("c:0",c);
+       * requestedOutputs.add("bc:0"); try (Result r = session.run(inputMap,requestedOutputs)) {
+       * assertEquals(1,r.size()); float bcVal = unwrapFunc.apply(r,"bc:0"); assertEquals(15.0f,bcVal,1e-10); }
+       * inputMap.clear(); requestedOutputs.clear();
+       */
 
       // Request output but don't supply the inputs
       inputMap.put("c:0", c);
@@ -739,10 +731,8 @@ public class InferenceTest {
             OnnxTensor outputValue = outputContainer.get(result.getKey());
             if (outputValue == null) {
               outputValue =
-                  outputContainer
-                      .values()
-                      .iterator()
-                      .next(); // in case the output data file does not contain the name
+                  outputContainer.values().iterator().next(); // in case the output data file
+              // does not contain the name
             }
             if (result.getValue() instanceof OnnxTensor) {
               OnnxTensor resultTensor = (OnnxTensor) result.getValue();
@@ -1091,8 +1081,8 @@ public class InferenceTest {
   public void testModelSequenceOfMapIntFloat() throws OrtException {
     // test model trained using lightgbm classifier
     // produces 2 named outputs
-    //   "label" is a tensor,
-    //   "probabilities" is a sequence<map<int64, float>>
+    // "label" is a tensor,
+    // "probabilities" is a sequence<map<int64, float>>
     // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
 
     String modelPath = getResourcePath("/test_sequence_map_int_float.pb").toString();
@@ -1158,8 +1148,8 @@ public class InferenceTest {
   public void testModelSequenceOfMapStringFloat() throws OrtException {
     // test model trained using lightgbm classifier
     // produces 2 named outputs
-    //   "label" is a tensor,
-    //   "probabilities" is a sequence<map<int64, float>>
+    // "label" is a tensor,
+    // "probabilities" is a sequence<map<int64, float>>
     // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
     String modelPath = getResourcePath("/test_sequence_map_string_float.pb").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelSequenceOfMapStringFloat");

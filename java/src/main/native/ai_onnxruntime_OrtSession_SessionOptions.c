@@ -107,7 +107,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setOpt
  * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_createOptions
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSessionOptions* opts;

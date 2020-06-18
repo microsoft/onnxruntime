@@ -4,24 +4,20 @@
  */
 package ai.onnxruntime;
 
-import java.io.IOException;
-
 /** An ONNX Runtime memory allocator. */
-class OrtAllocator implements AutoCloseable {
+class OrtAllocator extends NativeObject {
+
+  static final OrtAllocator DEFAULT_ALLOCATOR;
 
   static {
     try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
+      DEFAULT_ALLOCATOR = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
+    } catch (OrtException e) {
+      throw new RuntimeException("Failed to create OrtEnvironment defaults", e);
     }
   }
 
-  final long handle;
-
   private final boolean isDefault;
-
-  private boolean closed = false;
 
   /**
    * Constructs an OrtAllocator wrapped around a native reference.
@@ -30,17 +26,8 @@ class OrtAllocator implements AutoCloseable {
    * @param isDefault Is this the default allocator.
    */
   OrtAllocator(long handle, boolean isDefault) {
-    this.handle = handle;
+    super(handle);
     this.isDefault = isDefault;
-  }
-
-  /**
-   * Is this allocator closed?
-   *
-   * @return True if the allocator is closed.
-   */
-  public boolean isClosed() {
-    return closed;
   }
 
   /**
@@ -52,26 +39,27 @@ class OrtAllocator implements AutoCloseable {
     return isDefault;
   }
 
-  /**
-   * Closes the allocator, must be done after all it's child objects have been closed.
-   *
-   * <p>The default allocator is not closeable, and this operation is a no-op on that allocator.
-   *
-   * @throws OrtException If it failed to close.
-   */
+  /** Frees all resources. Only non-default allocators can be closed. */
   @Override
-  public void close() throws OrtException {
-    if (!closed) {
-      if (!isDefault) {
-        // Can only close custom allocators.
-        closeAllocator(OnnxRuntime.ortApiHandle, handle);
-        closed = true;
-      }
-    } else {
-      throw new IllegalStateException("Trying to close an already closed OrtAllocator.");
+  public void close() {
+    if (!isDefault) {
+      super.close();
     }
   }
 
-  // The default allocator cannot be closed, this is guarded in the close method above.
-  private native void closeAllocator(long apiHandle, long nativeHandle) throws OrtException;
+  @Override
+  protected void doClose(long handle) {
+    closeAllocator(OnnxRuntime.ortApiHandle, handle);
+  }
+
+  /**
+   * Gets a reference to the default allocator.
+   *
+   * @param apiHandle The API handle to use.
+   * @return A pointer to the default allocator.
+   * @throws OrtException If it failed to get the allocator.
+   */
+  private static native long getDefaultAllocator(long apiHandle) throws OrtException;
+
+  private native void closeAllocator(long apiHandle, long nativeHandle);
 }

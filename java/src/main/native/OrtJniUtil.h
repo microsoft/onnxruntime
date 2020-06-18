@@ -57,13 +57,13 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
 
 jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor);
 
-jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor);
+jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, jobject allocatorObject, OrtValue* tensor);
 
-jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence);
+jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, jobject allocatorObject, OrtValue* sequence);
 
-jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* map);
+jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, jobject allocatorObject, OrtValue* map);
 
-jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* onnxValue);
+jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, jobject allocatorObject, OrtValue* onnxValue);
 
 jint throwOrtException(JNIEnv *env, int messageId, const char *message);
 
