@@ -1379,17 +1379,21 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length) {
   API_IMPL_BEGIN
-  const int MAX_LEN = 30;
+  const size_t MAX_LEN = 30;
   int available_count = (int)(sizeof(providers_available) / sizeof(char *));
   char **out = (char **)malloc(available_count * sizeof(char *));
-  for(int i = 0; i < available_count; i++) {
-      out[i] = (char *)malloc(
-        strnlen(providers_available[i], MAX_LEN) * sizeof(char));
+  if(out) {
+    for(int i = 0; i < available_count; i++) {
+      out[i] = (char *)malloc((MAX_LEN + 1) * sizeof(char));
+      if(out[i]) {
 #ifdef _MSC_VER
-      strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
+        strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
 #else
-      strncpy(out[i], providers_available[i], MAX_LEN);
+        strncpy(out[i], providers_available[i], MAX_LEN);
 #endif
+        out[i][MAX_LEN] = '\0';
+      }
+    }
   }
   *providers_length = available_count;
   *out_ptr = out;
@@ -1400,9 +1404,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char **ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
-    for(int i = 0; i < providers_length; i++)
+  if(ptr) {
+    for(int i = 0; i < providers_length; i++) {
+      if(ptr[i]) {
         free(ptr[i]);
+      }
+    }
     free(ptr);
+  }
   API_IMPL_END
   return NULL;
 }
