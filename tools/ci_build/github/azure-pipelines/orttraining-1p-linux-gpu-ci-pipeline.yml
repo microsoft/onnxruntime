@@ -99,6 +99,6 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - template: component-governance-component-detection-steps.yml
+      - template: templates/component-governance-component-detection-steps.yml
 
-      - template: clean-agent-build-directory-step.yml
+      - template: templates/clean-agent-build-directory-step.yml
