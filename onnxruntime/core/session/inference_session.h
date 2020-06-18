@@ -357,10 +357,6 @@ class InferenceSession {
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
-
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
@@ -409,6 +405,10 @@ class InferenceSession {
   common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
 
   common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
+
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
 
   void InitLogger(logging::LoggingManager* logging_manager);
 

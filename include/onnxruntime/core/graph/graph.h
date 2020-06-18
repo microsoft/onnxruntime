@@ -76,10 +76,6 @@ class Node {
     @returns the destination arg index of <*this> edge.*/
     int GetDstArgIndex() const;
 
-    /** return true if this is a control edge
-    @returns boolean of whether this is a control edge.*/
-    bool IsControlEdge() const;
-
    private:
     const Node* node_;
     const int src_arg_index_;
@@ -238,6 +234,9 @@ class Node {
   /** Gets an iterator to the end of the output edges from this Node. */
   EdgeConstIterator OutputEdgesEnd() const noexcept { return relationships_.output_edges.cend(); }
 
+  /** Gets the Node's control inputs. */
+  const std::set<std::string>& ControlInputs() const noexcept { return relationships_.control_inputs; }
+
   /** Gets the number of input edges to this Node */
   size_t GetInputEdgesCount() const noexcept { return relationships_.input_edges.size(); }
 
@@ -366,31 +365,10 @@ class Node {
    public:
     Relationships() = default;
 
-    void Clear(bool clear_control_edges = false) noexcept {
+    void Clear() noexcept {
       input_edges.clear();
       output_edges.clear();
-      if (clear_control_edges) {
-        control_input_edges.clear();
-        control_output_edges.clear();
-      } else {
-        // restore control edges after clear
-        input_edges.insert(control_input_edges.begin(), control_input_edges.end());
-        output_edges.insert(control_output_edges.begin(), control_output_edges.begin());
-      }
-    }
-
-    void AddControlInputEdge(const EdgeEnd& edge) {
-      GSL_SUPPRESS(es .84) {  // ignoring return from insert()
-        input_edges.insert(edge);
-        control_input_edges.insert(edge);
-      }
-    }
-
-    void AddControlOutputEdge(const EdgeEnd& edge) {
-      GSL_SUPPRESS(es .84) {  // ignoring return from insert()
-        output_edges.insert(edge);
-        control_output_edges.insert(edge);
-      }
+      control_inputs.clear();
     }
 
     /** The edges for Nodes that provide inputs to this Node. */
@@ -399,11 +377,8 @@ class Node {
     /** The edges for Nodes that receive outputs from this Node. */
     EdgeSet output_edges;
 
-    /** The edges for Nodes that provide control inputs to this Node. */
-    EdgeSet control_input_edges;
-
-    /** The edges for Nodes that receive control outputs from this Node. */
-    EdgeSet control_output_edges;
+    /** The Node names of the control inputs to this Node. */
+    std::set<std::string> control_inputs;
 
    private:
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Relationships);

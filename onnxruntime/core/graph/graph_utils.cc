@@ -16,42 +16,27 @@ struct GraphEdge {
   int src_arg_index;
   int dst_arg_index;
   std::string arg_name;
-  bool is_control_edge;
 
   GraphEdge(NodeIndex src_node, NodeIndex dst_node,
             int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
                                                                                  dst_node(dst_node),
                                                                                  src_arg_index(src_arg_index),
                                                                                  dst_arg_index(dst_arg_index),
-                                                                                 arg_name(arg_name),
-                                                                                 is_control_edge(false) {}
-
-  GraphEdge(NodeIndex src_node, NodeIndex dst_node) : src_node(src_node),
-                                                      dst_node(dst_node),
-                                                      src_arg_index(INT_MAX),
-                                                      dst_arg_index(INT_MAX),
-                                                      arg_name(""),
-                                                      is_control_edge(true) {}
+                                                                                 arg_name(arg_name) {}
 
   // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
   static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
     return is_input_edge
-               ? (edge_end.IsControlEdge()
-                      ? GraphEdge(edge_end.GetNode().Index(),
-                                  node.Index())
-                      : GraphEdge(edge_end.GetNode().Index(),
-                                  node.Index(),
-                                  edge_end.GetSrcArgIndex(),
-                                  edge_end.GetDstArgIndex(),
-                                  GetNodeInputName(node, edge_end.GetDstArgIndex())))
-               : (edge_end.IsControlEdge()
-                      ? GraphEdge(node.Index(),
-                                  edge_end.GetNode().Index())
-                      : GraphEdge(node.Index(),
-                                  edge_end.GetNode().Index(),
-                                  edge_end.GetSrcArgIndex(),
-                                  edge_end.GetDstArgIndex(),
-                                  GetNodeOutputName(node, edge_end.GetSrcArgIndex())));
+               ? GraphEdge(edge_end.GetNode().Index(),
+                           node.Index(),
+                           edge_end.GetSrcArgIndex(),
+                           edge_end.GetDstArgIndex(),
+                           GetNodeInputName(node, edge_end.GetDstArgIndex()))
+               : GraphEdge(node.Index(),
+                           edge_end.GetNode().Index(),
+                           edge_end.GetSrcArgIndex(),
+                           edge_end.GetDstArgIndex(),
+                           GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
   }
 };
 
@@ -249,11 +234,8 @@ static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_nod
   auto input_edges = GetNodeInputEdges(src_node);
 
   for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
-    if (cur->is_control_edge) {
-      graph.AddControlEdge(cur->src_node, target_idx);
-    } else {
-      graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, cur->dst_arg_index);
-    }
+    auto target_arg_index = GetNodeInputIndexFromInputName(target_node, cur->arg_name);
+    graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, target_arg_index);
   }
 
   RemoveGraphEdges(graph, input_edges);
@@ -270,11 +252,7 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   auto output_edges = GetNodeOutputEdges(src_node);
 
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
-    if (cur->is_control_edge) {
-      graph.AddControlEdge(target_idx, cur->dst_node);
-    } else {
-      graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
-    }
+    graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
   }
 
   RemoveGraphEdges(graph, output_edges);
