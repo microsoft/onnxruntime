@@ -73,11 +73,53 @@ MlasQuantizeLinearVector(
     return IntegerVector;
 }
 
+MLAS_FORCEINLINE
+__m256i
+MlasQuantizeLinearVector(
+   __m256 FloatVector,
+   __m256 ScaleVector,
+   __m256 MinimumValueVector,
+   __m256 MaximumValueVector,
+   __m256i ZeroPointVector
+)
+{
+   //
+   // Scale the input vector and clamp the values to the minimum and maximum
+   // range (adjusted by the zero point value).
+   //
+
+   FloatVector = _mm256_div_ps( FloatVector, ScaleVector );
+
+   // N.B. MINPS and MAXPS returns the value from the second vector if the
+   // value from the first vector is a NaN.
+   FloatVector = _mm256_max_ps( FloatVector, MinimumValueVector );
+   FloatVector = _mm256_min_ps( FloatVector, MaximumValueVector );
+
+   //
+   // Convert the float values to integer using "round to nearest even" and
+   // then shift the output range using the zero point value.
+   //
+
+    // N.B. Assumes MXCSR has been configured with the default rounding mode of
+    // "round to nearest even".
+   auto IntegerVector = _mm256_cvtps_epi32( FloatVector );
+   IntegerVector = _mm256_add_epi32( IntegerVector, ZeroPointVector );
+
+   return IntegerVector;
+}
+
+
 template<typename OutputType>
 MLAS_INT32X4
 MlasQuantizeLinearPackBytes(
     MLAS_INT32X4 IntegerVector
     );
+
+template<typename OutputType>
+__m128i
+MlasQuantizeLinearPackBytes(
+   __m256i IntegerVector
+);
 
 #if defined(MLAS_NEON64_INTRINSICS)
 
@@ -128,8 +170,39 @@ MlasQuantizeLinearPackBytes<int8_t>(
     return IntegerVector;
 }
 
+template<>
+MLAS_FORCEINLINE
+__m128i
+MlasQuantizeLinearPackBytes<uint8_t>(
+   __m256i IntegerVector
+   )
+{
+   __m128i low = _mm256_castsi256_si128( IntegerVector );
+   __m128i high = _mm256_extractf128_si256( IntegerVector, 1 );
+   low = _mm_packus_epi16( low, high );
+   low = _mm_packus_epi16( low, low );
+
+   return low;
+}
+
+template<>
+MLAS_FORCEINLINE
+__m128i
+MlasQuantizeLinearPackBytes<int8_t>(
+   __m256i IntegerVector
+   )
+{
+   __m128i low = _mm256_castsi256_si128( IntegerVector );
+   __m128i high = _mm256_extractf128_si256( IntegerVector, 1 );
+   low = _mm_packs_epi16( low, high );
+   low = _mm_packs_epi16( low, low );
+
+   return low;
+}
+
 #endif
 
+#if 0
 template<typename OutputType>
 void
 MLASCALL
@@ -208,6 +281,75 @@ Return Value:
         *((uint8_t*)Output + n) = (uint8_t)_mm_cvtsi128_si32(IntegerVector);
 #endif
     }
+}
+#endif
+
+template<typename OutputType>
+void
+MLASCALL
+MlasQuantizeLinear(
+   const float* Input,
+   OutputType* Output,
+   size_t N,
+   float Scale,
+   OutputType ZeroPoint
+)
+/*++
+
+Routine Description:
+
+    This routine quantizes the input buffer using the supplied quantization
+    parameters.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+    Scale - Supplies the quantization scale.
+
+    ZeroPoint - Supplies the quantization zero point value.
+
+Return Value:
+
+    None.
+
+--*/
+{
+   constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+   constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
+
+   auto ScaleVector = _mm256_set1_ps( Scale );
+   auto MinimumValueVector = _mm256_set1_ps( float( MinimumValue - ZeroPoint ) );
+   auto MaximumValueVector = _mm256_set1_ps( float( MaximumValue - ZeroPoint ) );
+   auto ZeroPointVector = _mm256_set1_epi32( ZeroPoint );
+
+   while( N >= 8 )
+   {
+
+      auto FloatVector = _mm256_loadu_ps( Input );
+      auto IntegerVector = MlasQuantizeLinearVector( FloatVector, ScaleVector,
+         MinimumValueVector, MaximumValueVector, ZeroPointVector );
+
+      auto PackedVector = MlasQuantizeLinearPackBytes<OutputType>( IntegerVector );
+      * ( ( int64_t* ) Output ) = _mm_cvtsi128_si64( PackedVector );
+
+      Output += 8;
+      Input += 8;
+      N -= 8;
+   }
+
+   for( size_t n = 0; n < N; n++ )
+   {
+      auto FloatVector = _mm256_loadu_ps( Input + n );
+      auto IntegerVector = MlasQuantizeLinearVector( FloatVector, ScaleVector,
+         MinimumValueVector, MaximumValueVector, ZeroPointVector );
+
+      * ( ( uint8_t* ) Output + n ) = ( uint8_t ) _mm256_cvtsi256_si32( IntegerVector );
+   }
 }
 
 #else
@@ -423,52 +565,165 @@ Return Value:
 
 #endif
 
+//void
+//MLASCALL
+//MlasMinMaxElement(
+//   const float* a,
+//   float* min,
+//   float* max,
+//   size_t N)
+//{
+//   if( N <= 0 )
+//   {
+//      *min = 0.0f;
+//      *max = 0.0f;
+//      return;
+//   }
+//
+//   float temp_min = *a, temp_max = *a;
+//   int i = 0;
+//
+////#ifdef __AVX__
+//   __m256 min_v = _mm256_set1_ps( *a );
+//   __m256 max_v = _mm256_set1_ps( *a );
+//   constexpr int VLEN = 8;
+//   if( N >= VLEN )
+//   {
+//      for( ; i < N / VLEN * VLEN; i += VLEN )
+//      {
+//         min_v = _mm256_min_ps( min_v, _mm256_loadu_ps( a + i ) );
+//         max_v = _mm256_max_ps( max_v, _mm256_loadu_ps( a + i ) );
+//      }
+//
+//      float min_buf[ VLEN ], max_buf[ VLEN ];
+//      _mm256_storeu_ps( min_buf, min_v );
+//      _mm256_storeu_ps( max_buf, max_v );
+//      for( int j = 0; j < VLEN; ++j )
+//      {
+//         temp_min = std::min( temp_min, min_buf[ j ] );
+//         temp_max = std::max( temp_max, max_buf[ j ] );
+//      }
+//   }
+////#endif
+//
+//   for( ; i < N; i++ )
+//   {
+//      temp_min = std::min( temp_min, a[ i ] );
+//      temp_max = std::max( temp_max, a[ i ] );
+//   }
+//   *min = temp_min;
+//   *max = temp_max;
+//}
+
+
 void
 MLASCALL
 MlasMinMaxElement(
-   const float* a,
+   const float* Input,
    float* min,
    float* max,
-   size_t len)
+   size_t N )
+/*++
+
+Routine Description:
+
+    This routine implements the generic kernel to find the maximum value of
+    the supplied buffer.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    Returns the maximum value of the supplied buffer.
+
+--*/
 {
-   if( len <= 0 )
+   if( N <= 0 )
    {
       *min = 0.0f;
       *max = 0.0f;
       return;
    }
 
-   float temp_min = *a, temp_max = *a;
-   int i = 0;
-
-//#ifdef __AVX__
-   __m256 min_v = _mm256_set1_ps( *a );
-   __m256 max_v = _mm256_set1_ps( *a );
-   constexpr int VLEN = 8;
-   if( len >= VLEN )
+   if( N >= 8 )
    {
-      for( ; i < len / VLEN * VLEN; i += VLEN )
+
+      __m256 MaximumVector0 = _mm256_set1_ps( *Input );
+      __m256 MinimumVector0 = _mm256_set1_ps( *Input );
+
+      if( N >= 32 )
       {
-         min_v = _mm256_min_ps( min_v, _mm256_loadu_ps( a + i ) );
-         max_v = _mm256_max_ps( max_v, _mm256_loadu_ps( a + i ) );
+
+         __m256 MaximumVector1 = MaximumVector0;
+         __m256 MaximumVector2 = MaximumVector0;
+         __m256 MaximumVector3 = MaximumVector0;
+
+         __m256 MinimumVector1 = MinimumVector0;
+         __m256 MinimumVector2 = MinimumVector0;
+         __m256 MinimumVector3 = MinimumVector0;
+
+         while( N >= 32 )
+         {
+
+            __m256 InputVector0 = _mm256_loadu_ps( Input );
+            __m256 InputVector1 = _mm256_loadu_ps( Input + 8 );
+            __m256 InputVector2 = _mm256_loadu_ps( Input + 16);
+            __m256 InputVector3 = _mm256_loadu_ps( Input + 24);
+
+            MaximumVector0 = _mm256_max_ps( MaximumVector0, InputVector0 );
+            MaximumVector1 = _mm256_max_ps( MaximumVector1, InputVector1 );
+            MaximumVector2 = _mm256_max_ps( MaximumVector2, InputVector2 );
+            MaximumVector3 = _mm256_max_ps( MaximumVector3, InputVector3);
+
+            MinimumVector0 = _mm256_min_ps( MinimumVector0, InputVector0 );
+            MinimumVector1 = _mm256_min_ps( MinimumVector1, InputVector1 );
+            MinimumVector2 = _mm256_min_ps( MinimumVector2, InputVector2 );
+            MinimumVector3 = _mm256_min_ps( MinimumVector3, InputVector3 );
+
+            Input += 32;
+            N -= 32;
+         }
+
+         MaximumVector0 = _mm256_max_ps( MaximumVector0, MaximumVector1 );
+         MaximumVector2 = _mm256_max_ps( MaximumVector2, MaximumVector3 );
+         MaximumVector0 = _mm256_max_ps( MaximumVector0, MaximumVector2 );
+
+         MinimumVector0 = _mm256_min_ps( MinimumVector0, MinimumVector1 );
+         MinimumVector2 = _mm256_min_ps( MinimumVector2, MinimumVector3 );
+         MinimumVector0 = _mm256_min_ps( MinimumVector0, MinimumVector2 );
       }
 
-      float min_buf[ VLEN ], max_buf[ VLEN ];
-      _mm256_storeu_ps( min_buf, min_v );
-      _mm256_storeu_ps( max_buf, max_v );
-      for( int j = 0; j < VLEN; ++j )
+      while( N >= 8 )
       {
-         temp_min = std::min( temp_min, min_buf[ j ] );
-         temp_max = std::max( temp_max, max_buf[ j ] );
+         __m256 InputVector0 = _mm256_loadu_ps( Input );
+         MaximumVector0 = _mm256_max_ps( MaximumVector0, InputVector0 );
+         MinimumVector0 = _mm256_min_ps( MinimumVector0, InputVector0 );
+
+         Input += 8;
+         N -= 8;
+      }
+
+      float min_buf[ 8 ], max_buf[ 8 ];
+      _mm256_storeu_ps( min_buf, MinimumVector0 );
+      _mm256_storeu_ps( max_buf, MaximumVector0 );
+      for( int j = 0; j < 8; ++j )
+      {
+         *min = std::min( *min, min_buf[ j ] );
+         *max = std::max( *max, max_buf[ j ] );
       }
    }
-//#endif
 
-   for( ; i < len; i++ )
+   while( N > 0 )
    {
-      temp_min = std::min( temp_min, a[ i ] );
-      temp_max = std::max( temp_max, a[ i ] );
+
+      *max = std::max( *max, *Input );
+      *min = std::min( *min, *Input );
+
+      Input += 1;
+      N -= 1;
    }
-   *min = temp_min;
-   *max = temp_max;
 }
