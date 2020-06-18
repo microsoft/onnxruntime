@@ -82,6 +82,7 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
+                --build-arg BUILD_EXTR_PAR="${{ parameters.build_py_parameters }}" \
                 -f Dockerfile.manylinux1 .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
         - task: CmdLine@2
@@ -91,7 +92,8 @@ stages:
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
                 --volume /data/models:/build/models:ro \
-                -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER \
+                -e NIGHTLY_BUILD \
+                -e BUILD_BUILDNUMBER \
                 ${{ parameters.docker_image_prefix }}-manylinux-$(python.version) \
                   $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                     --build_dir /build \
