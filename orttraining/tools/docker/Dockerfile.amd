@@ -1,6 +1,6 @@
-# sudo docker build --network=host --file Dockerfile.amd --tag rocm/tensorflow:rocm3.3-tf2.1-dev-wezhan .
+# sudo docker build --network=host --file Dockerfile.amd --tag ort:rocm3.5-ort-dev .
 
-FROM rocm/tensorflow:rocm3.3-tf2.1-dev
+FROM rocm/tensorflow:rocm3.5-tf2.1-dev
 
 RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 
@@ -26,7 +26,7 @@ RUN apt-get -y update && \
     #  g++ \
     #  gcc \
     #  ifconfig \ 
-    #  net-tools \
+      net-tools \
     # this is for MOFED - https://github.com/horovod/horovod/issues/1117#issuecomment-502917200
       librdmacm1 \
       libnl-route-3-200 \
@@ -37,7 +37,6 @@ RUN apt-get -y update && \
     apt-get autoremove
 
 # ROCm library
-RUN apt-get -y purge rccl
 RUN apt-get -y install rocm-libs miopen-hip
 
 ENV WORK_DIR=/work
@@ -76,15 +75,34 @@ ENV PATH=$OMPI_DIR/bin:${PATH}
 ENV LD_LIBRARY_PATH=$OMPI_DIR/lib:$UCX_DIR/lib:${LD_LIBRARY_PATH}
 
 # RCCL
-RUN git clone https://github.com/ROCmSoftwarePlatform/rccl.git && cd rccl && ./install.sh -i
+# RUN apt-get -y purge rccl
+# RUN git clone https://github.com/ROCmSoftwarePlatform/rccl.git && cd rccl && ./install.sh -i
 ENV HSA_FORCE_FINE_GRAIN_PCIE=1
 ENV NCCL_MAX_NCHANNELS=4
 
+# CMake
 ENV CMAKE_VERSION=3.17.3
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
+# Enable ssh access without password needed
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
+RUN sed -i 's/#StrictModes yes/StrictModes no/g' /etc/ssh/sshd_config
+RUN sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd_config
+
+# Start or Restart sshd service
+RUN echo "\nif [ ! -e /var/run/sshd ]; then" >> /root/.bashrc
+RUN echo "    service ssh start" >> /root/.bashrc
+RUN echo "else" >> /root/.bashrc
+RUN echo "    service ssh restart" >> /root/.bashrc
+RUN echo "fi" >> /root/.bashrc
+
+# Remove gtest and gmock
+RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
+
+# Add model and scripts
 ENV BERT_DIR=$WORK_DIR/bert
 RUN mkdir -p $BERT_DIR
 
