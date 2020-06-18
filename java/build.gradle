@@ -39,6 +39,10 @@ java {
 jar {
 }
 
+javadoc {
+	options.memberLevel = JavadocMemberLevel.PUBLIC
+}
+
 // Add explicit sources jar with pom file.
 task sourcesJar(type: Jar, dependsOn: classes) {
 	classifier = "sources"
