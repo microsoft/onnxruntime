@@ -38,7 +38,7 @@ constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
-constexpr const char *available_providers[] = {
+constexpr const char *providers_available[] = {
   kCpuExecutionProvider,
 #ifdef USE_CUDA
   kCudaExecutionProvider,
