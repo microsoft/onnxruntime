@@ -69,6 +69,7 @@ public class OrtEnvironment extends NativeObject {
     if (INSTANCE == null) {
       try {
         INSTANCE = new OrtEnvironment(loggingLevel, name);
+        logger.fine("New " + INSTANCE);
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to create OrtEnvironment", e);
       }
@@ -205,10 +206,13 @@ public class OrtEnvironment extends NativeObject {
    * environment for the duration of your application.
    */
   @Override
-  public synchronized void close() {
-    super.close();
-    // reset getEnvironment()
-    INSTANCE = null;
+  public void close() {
+    synchronized (OrtEnvironment.class) {
+      super.close();
+      // reset getEnvironment()
+      logger.fine("Closed " + INSTANCE);
+      INSTANCE = null;
+    }
   }
 
   @Override
