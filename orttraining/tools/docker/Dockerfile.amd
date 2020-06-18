@@ -91,7 +91,8 @@ WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
 RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxruntime.git \
   && cd onnxruntime \
-  && python3 tools/ci_build/build.py --build_dir build --config Release --parallel --update --skip_tests --use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR --enable_training
+  && python3 tools/ci_build/build.py --build_dir build --config Release --parallel --skip_tests --use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR --enable_training > build.log 2>&1; exit 0 \
+  && chmod a+x $ORT_DIR/build/Release/onnxruntime_training_bert
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
