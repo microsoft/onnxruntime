@@ -1379,63 +1379,16 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length) {
   API_IMPL_BEGIN
-  const int MAX_NUM_PROVIDERS = 14, MAX_LEN = 30;
-  /* Ordering of providers in the following enum should be same as
-   * all_providers array defined in "constants.h".
-   */
-  enum providers {cpu, cuda, dnnl, ngraph, openvino, nuphar, vitisai, tensorrt,
-                  nnapi, rknpu, dml, migraph, acl, armnn};
-  int available_count = 0;
-  enum providers available_providers[MAX_NUM_PROVIDERS];
-  available_providers[available_count++] = cpu;
-#ifdef USE_CUDA
-  available_providers[available_count++] = cuda;
-#endif
-#ifdef USE_DNNL
-  available_providers[available_count++] = dnnl;
-#endif
-#ifdef USE_NGRAPH
-  available_providers[available_count++] = ngraph;
-#endif
-#ifdef USE_OPENVINO
-  available_providers[available_count++] = openvino;
-#endif
-#ifdef USE_NUPHAR
-  available_providers[available_count++] = nuphar;
-#endif
-#ifdef USE_VITISAI
-  available_providers[available_count++] = vitisai;
-#endif
-#ifdef USE_TENSORRT
-  available_providers[available_count++] = tensorrt;
-#endif
-#ifdef USE_NNAPI
-  available_providers[available_count++] = nnapi;
-#endif
-#ifdef USE_RKNPU
-  available_providers[available_count++] = rknpu;
-#endif
-#ifdef USE_DML
-  available_providers[available_count++] = dml;
-#endif
-#ifdef USE_MIGRAPHX
-  available_providers[available_count++] = migraph;
-#endif
-#ifdef USE_ACL
-  available_providers[available_count++] = acl;
-#endif
-#ifdef USE_ARMNN
-  available_providers[available_count++] = armnn;
-#endif
+  const int MAX_LEN = 30;
+  int available_count = (int)(sizeof(available_providers) / sizeof(char *));
   char **out = (char **)malloc(available_count * sizeof(char *));
   for(int i = 0; i < available_count; i++) {
-      out[i] = (char *)malloc(strnlen(
-        all_providers[available_providers[i]], MAX_LEN) * sizeof(char));
+      out[i] = (char *)malloc(
+        strnlen(available_providers[i], MAX_LEN) * sizeof(char));
 #ifdef _MSC_VER
-      strncpy_s(out[i], MAX_LEN, all_providers[available_providers[i]],
-                MAX_LEN);
+      strncpy_s(out[i], MAX_LEN, available_providers[i], MAX_LEN);
 #else
-      strncpy(out[i], all_providers[available_providers[i]], MAX_LEN);
+      strncpy(out[i], available_providers[i], MAX_LEN);
 #endif
   }
   *providers_length = available_count;
