@@ -202,7 +202,7 @@ class EinsumComputePreprocessor final {
   EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
 
   // Holds CUDA assets required for CUDA ops that need to be executed
-  void* einsum_cuda_assets_;
+  void* einsum_ep_assets_;
 };
 
 }  // namespace onnxruntime

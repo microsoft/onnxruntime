@@ -24,7 +24,7 @@ class EinsumTypedComputeProcessor {
         allocator_(allocator),
         tp_(tp),
         einsum_compute_preprocessor_(einsum_compute_preprocessor),
-        einsum_cuda_assets_(einsum_cuda_assets) {}
+        einsum_ep_assets_(einsum_cuda_assets) {}
 
   // Pass-in device specific functions
   // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
@@ -65,8 +65,8 @@ class EinsumTypedComputeProcessor {
   EinsumOp::DeviceHelpers::ReduceSum<T> device_reduce_sum_func_;
   EinsumOp::DeviceHelpers::DataCopy device_data_copy_func_;
 
-  // Holds CUDA assets required for CUDA ops that need to be executed
-  void* einsum_cuda_assets_;
+  // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
+  void* einsum_ep_assets_;
 };
 
 }  // namespace onnxruntime

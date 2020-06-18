@@ -190,8 +190,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
                                     right_permutation)) {
     current_right = EinsumOp::Transpose(current_right ? *current_right : right,
                                         current_right ? current_right->Shape().GetDims() : right_dims,
-                                        right_permutation, this->allocator_, this->einsum_cuda_assets_,
-                                        this->device_transpose_func_);
+                                        right_permutation, allocator_, einsum_cuda_assets_,
+                                        device_transpose_func_);
   }
 
   // Calculate output size
@@ -252,14 +252,14 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // Multiply the mutated inputs
   auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, {lro_size, lo_size, reduced_size},
                                     current_right ? *current_right : right, {lro_size, reduced_size, ro_size},
-                                    this->allocator_, this->tp_, this->einsum_cuda_assets_, this->device_matmul_func_);
+                                    allocator_, tp_, einsum_cuda_assets_, device_matmul_func_);
 
   output->Reshape(output_dims);
 
   if (!is_final_pair) {  // This is not the final pair - so bring the axes order to what the inputs conformed to
     if (EinsumOp::IsTransposeRequired(output_dims.size(), output_permutation)) {
-      output = EinsumOp::Transpose(*output, output_dims, output_permutation, this->allocator_,
-                                   this->einsum_cuda_assets_, this->device_transpose_func_);
+      output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,
+                                   einsum_cuda_assets_, device_transpose_func_);
     }
   } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
     FinalizeOutput(*output, current_subscript_order);

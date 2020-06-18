@@ -49,7 +49,6 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   auto einsum_compute_preprocessor =
       EinsumComputePreprocessor(*einsum_equation_preprocessor_, inputs, allocator, nullptr);
 
-  // Set device specific methods (CPU methods) to be used during pre-processing
   einsum_compute_preprocessor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CpuDeviceHelpers::Diagonal,
                                                EinsumOp::DeviceHelpers::CpuDeviceHelpers::Transpose);
   // Compute all required metadata to be used at Einsum compute time and return error status code if one was generated
