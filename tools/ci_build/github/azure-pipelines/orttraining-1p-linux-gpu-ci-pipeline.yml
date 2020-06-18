@@ -1,0 +1,104 @@
+parameters:
+- name: build_py_parameters
+  displayName: 'Extra parameters to pass to build.py.'
+  type: string
+  default: ''
+
+- name: enable_training
+  displayName: 'Whether training functionality is enabled.'
+  type: boolean
+  default: false
+
+- name: python_version_strategy_matrix
+  displayName: 'Strategy matrix specifying the possible values of the python.version variable.'
+  type: object
+  default:
+    Python36:
+      python.version: '3.6'
+
+
+stages:
+- stage: Python_Packaging
+
+  variables:
+    ${{ if eq(parameters.enable_training, true) }}:
+      actual_extra_build_py_parameters: >
+        ${{ parameters.build_py_parameters }}
+        --enable_training
+        --wheel_name_suffix training
+      docker_image_prefix: onnxruntime-training
+      linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
+
+    ${{ if ne(parameters.enable_training, true) }}:
+      actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }}'
+      docker_image_prefix: onnxruntime
+      linux_gpu_dockerfile: Dockerfile.manylinux2010_gpu
+
+- job: Linux_py_GPU_Wheels
+  timeoutInMinutes: 90
+  workspace:
+    clean: all
+  pool: Linux-GPU-CUDA10
+  strategy:
+    matrix:
+      ${{ parameters.python_version_strategy_matrix }}
+  steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - template: set-py-packaging-variables-step.yml
+
+    - task: CmdLine@2
+      inputs:
+        script: |
+          sudo docker build \
+            --pull \
+            -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+            --build-arg BUILD_USER=onnxruntimedev \
+            --build-arg BUILD_UID=$(id -u) \
+            --build-arg PYTHON_VERSION=$(python.version) \
+            --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
+            -f ${{ variables.linux_gpu_dockerfile }} .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+
+    - task: CmdLine@2
+      inputs:
+        script: |
+          sudo --preserve-env docker run \
+            --gpus all \
+            --rm \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+            $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build \
+              --config Release \
+              --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+              --skip_submodule_sync \
+              --parallel \
+              --build_wheel \
+              --enable_onnx_tests \
+              --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+              ${{ variables.actual_extra_build_py_parameters }}
+        workingDirectory: $(Build.SourcesDirectory)
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)'
+        Contents: 'Release/dist/*.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime_gpu
+
+    - template: component-governance-component-detection-steps.yml
+
+    - template: clean-agent-build-directory-step.yml
