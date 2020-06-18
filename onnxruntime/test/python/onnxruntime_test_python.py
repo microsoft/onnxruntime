@@ -74,6 +74,8 @@ class TestInferenceSession(unittest.TestCase):
                     return
 
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+
+                # configure session to be ready to run on all available cuda devices  
                 for i in range(num_device.value):
                     option = {'device_id': i}
                     sess.set_providers(['CUDAExecutionProvider'], [option])
@@ -85,6 +87,20 @@ class TestInferenceSession(unittest.TestCase):
                         print("cuCtxGetDevice failed with error code %d: %s" % (result, error_str.value.decode()))
                         return
                     self.assertEqual(i, device.value)
+
+                # configure session with not legit option values and that shloud fail
+                with self.assertRaises(RuntimeError):
+                    option = {'device_id': num_device.value}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    option = {'device_id': 'non_legit_value'}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                # configure session with not legit option should cause no effect  
+                option = {'device_id': 0}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                option = {'non_legit_option': num_device.value}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
 
             libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
             for libname in libnames:

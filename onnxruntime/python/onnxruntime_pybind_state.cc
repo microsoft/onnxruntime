@@ -137,6 +137,8 @@ std::string nuphar_settings;
 #include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
 
+#define PYBIND_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
+
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
@@ -168,8 +170,8 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
-using ProviderOptionsMap = std::map<std::string, std::map<std::string, std::string>>;  
-using ProviderOptionsVector = std::vector<std::map<std::string, std::string>>;  
+using ProviderOptionsMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;  
+using ProviderOptionsVector = std::vector<std::unordered_map<std::string, std::string>>;  
 
 template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -338,13 +340,13 @@ bool IsCudaDeviceIdValid(int id) {
 
     if (0 == num_devices)
     {
-        printf("your system does not have a CUDA capable device.\n");
+        LOGS_DEFAULT(WARNING) << "your system does not have a CUDA capable device.";
         return false;
     }
 
     if (id < 0 || id >= num_devices)
     {
-        printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", id, num_devices - 1);
+        LOGS_DEFAULT(WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
         return false;
     }
 
@@ -352,8 +354,8 @@ bool IsCudaDeviceIdValid(int id) {
 }
 
 
-void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::map<std::string, std::string> options_map) {
-    std::map<std::string, std::string>::iterator it;
+void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::unordered_map<std::string, std::string> options_map) {
+    std::unordered_map<std::string, std::string>::iterator it;
 
     it = options_map.find("device_id");
     if (it != options_map.end()) {
@@ -362,17 +364,14 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::m
           device_id = std::stoi(it->second); 
         }
         catch (const std::invalid_argument& ia) {
-            std::cerr << "Invalid argument: " << ia.what() << '\n';
             throw std::runtime_error("Please provide device id with integer.");
-            return;
         }
 
         if (!IsCudaDeviceIdValid(device_id)) {
             throw std::runtime_error("Please provide available device id.");
-            return;
         }
         options.device_id = device_id; 
-        std::cout << "cuda device id is set to " << device_id << '\n';
+        LOGS_DEFAULT(INFO) << "cuda device id is set to " << device_id;
     }
 
     it = options_map.find("cuda_mem_limit");
@@ -382,18 +381,15 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::m
           size = std::stoul(it->second, nullptr, 0);
         }
         catch (const std::invalid_argument& ia) {
-            std::cerr << "Invalid argument: " << ia.what() << '\n';
             throw std::runtime_error("Please provide cuda memory limitation size with integer.");
-            return;
         }
 
         if (size > std::numeric_limits<size_t>::max()) {
             throw std::runtime_error("Please provide cuda memory limitation size within the range.");
-            return;
         }
         
         options.cuda_mem_limit = size; 
-        std::cout << "cuda memory limitation is set to " << size << '\n';
+        LOGS_DEFAULT(INFO) << "cuda memory limitation is set to " << size;
     }
 
     it = options_map.find("arena_extend_strategy");
@@ -408,11 +404,10 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::m
         } 
         else {
             throw std::runtime_error("Please provide proper cuda arena extend strategy.");
-            return;
         }
         
         options.arena_extend_strategy = strategy; 
-        std::cout << "cuda arean extend strategy is set to " << it->second << '\n';
+        LOGS_DEFAULT(INFO) << "cuda arean extend strategy is set to " << it->second;
     }
 }
 #endif
@@ -469,6 +464,8 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
  * (note: currently only cuda EP supports this feature and rest of EPs use default options) 
  */
 void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsMap& provider_options_map) {
+  PYBIND_UNREFERENCED_PARAMETER(provider_options_map);
+
   for (const std::string& type : provider_types) {
     if (type == kCpuExecutionProvider) {
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
@@ -527,7 +524,7 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
  * 
  * @param providers vector of excution providers. [ep1, ep2, ...]
  * @param provider_options_vector vector of excution provider options. [option1, option2 ...] 
- * @param provider_options_map a map for mapping excution provider to excution provider options. {'ep1' -> option1, 'ep2' -> option2 ...}
+ * @param provider_options_map an unordered map for mapping excution provider to excution provider options. {'ep1' -> option1, 'ep2' -> option2 ...}
  *                                                                      
  */
 void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
@@ -1043,7 +1040,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
       .def(
-          "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types, std::vector<std::map<std::string, std::string>>& provider_options) {
+          "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
             OrtPybindThrowIfError(sess->Load());
             InitializeSession(sess, provider_types, provider_options);
           },
