@@ -51,19 +51,19 @@ static NodeDef& GetGlobalHorovodBarrierNode(
   return *std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
 }
 
-static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs, int64_t reduce_op, std::string name_suffix) {
+static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs, int64_t reduce_op) {
   const std::string& gradient_name = gradient_argdef.name;
-  ArgDef reduce_output(gradient_name + "_AllReduce_Out" + name_suffix, gradient_argdef.type_proto);
-  ArgDef reduce_ready(gradient_name + "_AllReduce_Ready"+ name_suffix);
-  ArgDef local_barrier_output(gradient_name + "_Barrier_Out" + name_suffix, gradient_argdef.type_proto);
-  ArgDef local_barrier_ready(gradient_name + "_Barrier_Ready" + name_suffix);
+  ArgDef reduce_output(gradient_name + "_AllReduce_Out", gradient_argdef.type_proto);
+  ArgDef reduce_ready(gradient_name + "_AllReduce_Ready");
+  ArgDef local_barrier_output(gradient_name + "_Barrier_Out", gradient_argdef.type_proto);
+  ArgDef local_barrier_ready(gradient_name + "_Barrier_Ready");
 
   // Add horovod all reduce node.
   graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce",
                                   {gradient_argdef},
                                   {reduce_output, reduce_ready},
                                   {ONNX_NAMESPACE::MakeAttribute("reduce_op", static_cast<int64_t>(reduce_op))},
-                                  gradient_name + "_AllReduce" + name_suffix)});
+                                  gradient_name + "_AllReduce")});
 
   // Add ready check to global horovod barrier.
   const std::string global_barrier_name = "horovod/barrier";
@@ -76,17 +76,16 @@ static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugm
                                   {reduce_output, global_barrier_ready},
                                   {local_barrier_output, local_barrier_ready},
                                   NodeAttributes(),
-                                  gradient_name + "_Barrier" + name_suffix)});
+                                  gradient_name + "_Barrier")});
 
   return local_barrier_output;
 }
 
 Status AllreduceOptimizerGraphBuilder::AddHorovodAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
                                                                        GraphAugmenter::GraphDefs& graph_defs,
-                                                                       const int64_t horovod_reduce_op,
-                                                                       std::string name_suffix) {
+                                                                       const int64_t horovod_reduce_op) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs, horovod_reduce_op, name_suffix);
+    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs, horovod_reduce_op);
   }
   return Status::OK();
 }
