@@ -33,7 +33,7 @@ class TestIOBinding(unittest.TestCase):
         
         # Run Pytorch
         touch_input = torch.randn(batch_size, channels, sample_dim, sample_dim).to(device)
-        torch_output = model(x).cpu().detach().numpy()
+        torch_output = model(touch_input).cpu().detach().numpy()
         
         # Run ORT
         input_names = [ "input" ]
@@ -45,7 +45,7 @@ class TestIOBinding(unittest.TestCase):
         return touch_input, torch_output
 
     def test_bind_input_only(self):
-        x, torch_output = create_model_and_input()
+        x, torch_output = self.create_model_and_input()
 
         session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
@@ -57,7 +57,7 @@ class TestIOBinding(unittest.TestCase):
         self.assertTrue(np.array_equal(torch_output, ort_output))
 
     def test_bind_input_to_cpu_arr(self):
-        torch_input, torch_output = create_model_and_input()
+        torch_input, torch_output = self.create_model_and_input()
 
         session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
