@@ -52,7 +52,7 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   if (EinsumOp::IsTransposeRequired(candidate_output_shape_without_reduced_dims.size(), output_permutation)) {
     auto candidate_output_transposed = EinsumOp::Transpose(candidate_output, candidate_output_shape_without_reduced_dims,
                                                            output_permutation,
-                                                           allocator_, einsum_cuda_assets_, device_transpose_func_);
+                                                           allocator_, einsum_ep_assets_, device_transpose_func_);
 
     // We have the result in an output "candidate". Now we have to copy the contents in its buffer
     // into the buffer of the actual output given to us by the execution frame
@@ -138,10 +138,10 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
         reduced_size *= left_dim;
       } else if (has_left_dim) {  // if it is only in one of left and right, we can reduce right away
         current_left = EinsumOp::ReduceSum<T>(
-            left, left_dims, {i}, allocator_, tp_, einsum_cuda_assets_, device_reduce_sum_func_);
+            left, left_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       } else if (has_right_dim) {
         current_right = EinsumOp::ReduceSum<T>(
-            right, right_dims, {i}, allocator_, tp_, einsum_cuda_assets_, device_reduce_sum_func_);
+            right, right_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       }
     } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
       // Both the left and right operands have non-trivial dimension value along this axis
@@ -175,7 +175,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
                                     left_permutation)) {
     current_left = EinsumOp::Transpose(current_left ? *current_left : left,
                                        current_left ? current_left->Shape().GetDims() : left_dims,
-                                       left_permutation, allocator_, einsum_cuda_assets_,
+                                       left_permutation, allocator_, einsum_ep_assets_,
                                        device_transpose_func_);
   }
 
@@ -190,7 +190,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
                                     right_permutation)) {
     current_right = EinsumOp::Transpose(current_right ? *current_right : right,
                                         current_right ? current_right->Shape().GetDims() : right_dims,
-                                        right_permutation, allocator_, einsum_cuda_assets_,
+                                        right_permutation, allocator_, einsum_ep_assets_,
                                         device_transpose_func_);
   }
 
@@ -252,14 +252,14 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // Multiply the mutated inputs
   auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, {lro_size, lo_size, reduced_size},
                                     current_right ? *current_right : right, {lro_size, reduced_size, ro_size},
-                                    allocator_, tp_, einsum_cuda_assets_, device_matmul_func_);
+                                    allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
 
   output->Reshape(output_dims);
 
   if (!is_final_pair) {  // This is not the final pair - so bring the axes order to what the inputs conformed to
     if (EinsumOp::IsTransposeRequired(output_dims.size(), output_permutation)) {
       output = EinsumOp::Transpose(*output, output_dims, output_permutation, allocator_,
-                                   einsum_cuda_assets_, device_transpose_func_);
+                                   einsum_ep_assets_, device_transpose_func_);
     }
   } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
     FinalizeOutput(*output, current_subscript_order);
@@ -315,7 +315,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     if (reduced_dims.size() != 0) {
       result = EinsumOp::ReduceSum<T>(preprocessed_inputs[0] ? *preprocessed_inputs[0] : *raw_inputs[0],
                                       homogenized_input_dims[0].GetDims(), reduced_dims, allocator_, tp_,
-                                      einsum_cuda_assets_, device_reduce_sum_func_);
+                                      einsum_ep_assets_, device_reduce_sum_func_);
     } else {
       // Check if there is a pre-processed version of this input
       // If so assign it to result
