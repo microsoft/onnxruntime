@@ -117,7 +117,7 @@ TEST(ConvTransposeTest, ConvTranspose_1D) {
       vector<int64_t>{3},     // kernel_shape
       {},                     // output_padding
       {},                     // output_shape
-      vector<int64_t>{1, 1},  // pads
+      vector<int64_t>{0, 0},  // pads
       vector<int64_t>{1},     // strides
       vector<int64_t>{1},     // dilations
       1                       // group
@@ -717,8 +717,7 @@ TEST(ConvTransposeTest, ConvTranspose_3D) {
       0.012351051f,
       0.017721564f,
       -0.013308428f,
-      -0.011259012f,
-  };
+      -0.011259012f};
 
   vector<int64_t> W_shape = {1, 2, 3, 3, 3};
 
