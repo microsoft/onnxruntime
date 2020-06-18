@@ -620,11 +620,11 @@ void addObjectMethods(py::module& m, Environment& env) {
 
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
-      .def(py::init<std::shared_ptr<InferenceSession>>())
+      .def(py::init<InferenceSession*>())
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
         OrtValue mlvalue;
 
-        std::shared_ptr<InferenceSession> sess = io_binding->GetInferenceSession();
+        InferenceSession* sess = io_binding->GetInferenceSession();
         auto px = sess->GetModelInputs();
         if (!px.first.IsOK() || !px.second) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");

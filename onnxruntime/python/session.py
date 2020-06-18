@@ -230,8 +230,6 @@ class IOBinding:
         '''
         if device_type == 'cpu':
             self._iobinding.bind_output(name)
-        elif (element_type is None) or (shape is None) or (buffer_ptr is None):
-            raise Exception("Missing element_type/shape/buffer_ptr for binding output to device other than CPU.")
         else:
             self._iobinding.bind_output(name,
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
