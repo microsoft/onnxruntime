@@ -67,7 +67,9 @@ bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::s
 }
 
 static const std::string Loss_Scale_Input = "loss_scale";
-static const std::string Scaled_Loss_Grad_Entry_Node = "scaled_loss_Grad/Mul_0";
+static const std::string Scaled_Loss_Node = "scaled_loss";
+static const std::string Scaled_Loss_Grad_Mul_Node = "scaled_loss_Grad/Mul_0";
+static const std::string Scaled_Loss_Grad_ReduceSum_Node = "scaled_loss_Grad/ReduceSum_1";
 
 static const std::unordered_set<std::string> Loss_Subgraph_Entry_Nodes = {
     "SparseSoftmaxCrossEntropy",
@@ -238,7 +240,7 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
 }
 
 struct LossSubgraph {
-  // All nodes belongs to this subgraph.
+  // All nodes belong to this subgraph.
   std::unordered_set<Node*> nodes_;
 
   // NodeArgs that are inputs of this subgraph from outside, which need to be converted to FP32.
@@ -254,28 +256,42 @@ struct LossSubgraph {
   LossSubgraph(Graph& graph) {
     GraphViewer graph_viewer(graph);
     const auto& order = graph_viewer.GetNodesInTopologicalOrder();
+    bool has_loss_subgraph_entry_node = false;
+    // Check if graph contains any loss Op from the white-list.
+    // If not, then the loss subgraph contains only scaled_loss and its grad nodes.
     for (auto index : order) {
       Node* node = graph.GetNode(index);
-      // Loss, loss grad and scaled loss grad node belongs to loss subgraph.
-      if (IsLossSubgraphEntryNode(node) ||
-          IsLossSubgraphExitNode(node) ||
-          node->Name() == Scaled_Loss_Grad_Entry_Node) {
+      if (node->Name() == Scaled_Loss_Node ||
+          node->Name() == Scaled_Loss_Grad_Mul_Node ||
+          node->Name() == Scaled_Loss_Grad_ReduceSum_Node) {
         nodes_.insert(node);
-      } else {
-        // For other nodes, if it consumes any output of any node from loss subgraph, it also belongs to loss subgraph.
-        bool part_of_loss_subgraph = false;
-        for (NodeArg* input : node->MutableInputDefs()) {
-          Node* producer_node = graph.GetMutableProducerNode(input->Name());
-          if (producer_node != nullptr &&
-              !IsLossSubgraphExitNode(producer_node) &&
-              nodes_.find(producer_node) != nodes_.cend()) {
-            part_of_loss_subgraph = true;
-            break;
-          }
-        }
+      } else if (IsLossSubgraphEntryNode(node)) {
+        has_loss_subgraph_entry_node = true;
+      }
+    }
 
-        if (part_of_loss_subgraph) {
+    // If it contains one or more loss Ops from white-list, travel the graph again to get the whole loss subgraph.
+    if (has_loss_subgraph_entry_node) {
+      for (auto index : order) {
+        Node* node = graph.GetNode(index);
+        if (IsLossSubgraphEntryNode(node) || IsLossSubgraphExitNode(node)) {
           nodes_.insert(node);
+        } else {
+          // For other nodes, if it consumes any output of any node from loss subgraph, it also belongs to loss subgraph.
+          bool part_of_loss_subgraph = false;
+          for (NodeArg* input : node->MutableInputDefs()) {
+            Node* producer_node = graph.GetMutableProducerNode(input->Name());
+            if (producer_node != nullptr &&
+                !IsLossSubgraphExitNode(producer_node) &&
+                nodes_.find(producer_node) != nodes_.cend()) {
+              part_of_loss_subgraph = true;
+              break;
+            }
+          }
+
+          if (part_of_loss_subgraph) {
+            nodes_.insert(node);
+          }
         }
       }
     }
@@ -640,7 +656,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   for (auto& node : graph.Nodes()) {
     // For send and recv node, if the tensor being sent or received is FP32, update its
     // attribute and change it to FP16.
-    if (!node.OpType().compare("Send") || !node.OpType().compare("Recv")) {
+    if ((!node.OpType().compare("Send") || !node.OpType().compare("Recv")) && !loss_subgraph.Contains(&node)) {
       auto& attributes = node.GetMutableAttributes();
       auto* element_type = &(attributes.find("element_types")->second);
       int ints_size = element_type->ints_size();
