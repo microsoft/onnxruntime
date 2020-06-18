@@ -553,7 +553,7 @@ struct SessionIOBinding {
   SessionIOBinding(std::shared_ptr<InferenceSession> session);
 
   IOBinding* Get();
-  InferenceSession* GetInferenceSession();
+  std::shared_ptr<InferenceSession> GetInferenceSession();
 
  private:
   std::shared_ptr<InferenceSession> sess_;

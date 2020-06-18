@@ -61,7 +61,7 @@ class TestIOBinding(unittest.TestCase):
 
         session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
-        io_binding.bind_input('input', torch_input.cpu().detach().numpy())
+        io_binding.bind_cpu_input('input', torch_input.cpu().detach().numpy())
         io_binding.bind_output('output')
         session.run_with_iobinding(io_binding)
         ort_output = io_binding.get_outputs()[0]

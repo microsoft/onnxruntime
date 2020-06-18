@@ -624,14 +624,34 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
         OrtValue mlvalue;
 
-        InferenceSession* sess = io_binding->GetInferenceSession();
+        std::shared_ptr<InferenceSession> sess = io_binding->GetInferenceSession();
         auto px = sess->GetModelInputs();
         if (!px.first.IsOK() || !px.second) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
         }
-        if (PyDict_Check(arr_on_cpu.ptr())) {
-          throw std::runtime_error("Cannot bind to dictionary type of values");
+
+        //Check if input is sequence of tensors 
+        onnx::TypeProto type_proto;
+        const auto& def_list = *px.second;
+        auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
+                                   [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
+        if (ret_it == std::end(def_list)) {
+          throw std::runtime_error("Failed to find input with name: " + name + " in the model input def list");
         }
+        const auto* temp = (*ret_it)->TypeAsProto();
+        if (!temp) {
+          throw std::runtime_error("Corresponding type_proto is null");
+        } else {
+        type_proto = *temp;
+        }
+        if (type_proto.has_sequence_type()) {
+          throw std::runtime_error("Cannot bind input to sequence of tensors");
+        }
+
+        if (PyDict_Check(arr_on_cpu.ptr())) {
+          throw std::runtime_error("Cannot bind input to dictionary type of values");
+        }
+
         CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &mlvalue);
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())

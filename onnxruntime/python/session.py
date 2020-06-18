@@ -197,15 +197,15 @@ class IOBinding:
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
-    def bind_input(self, name, arr_on_cpu):
+    def bind_cpu_input(self, name, arr_on_cpu):
         '''
-        bind an input to CPU
+        bind an input to array on CPU
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
         '''
         self._iobinding.bind_input(name, arr_on_cpu)
 
-    def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+    def bind_input(self, name, device_type='cpu', device_id=0, element_type, shape, buffer_ptr):
         '''
         :param name: input name
         :param device_type: e.g. CPU, CUDA
