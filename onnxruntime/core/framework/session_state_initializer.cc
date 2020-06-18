@@ -86,13 +86,13 @@ common::Status SessionStateInitializer::CreatePlan(
   const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
 
-  std::unique_ptr<ITensorAllocator> tensor_allocator_(ITensorAllocator::Create(
+  std::unique_ptr<ITensorAllocator> tensor_allocator(ITensorAllocator::Create(
       enable_mem_pattern_, *exec_plan_ptr, execution_providers_, session_state_.GetMutableWeightsBuffers()));
 
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
-      env, graph_loc_, graph_, execution_providers_, ort_value_name_idx_map, tensor_allocator_.get(),
+      env, graph_loc_, graph_, execution_providers_, ort_value_name_idx_map, tensor_allocator.get(),
       [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
         return session_state_.AddInitializedTensor(idx, value, &d, constant);
       },
@@ -191,7 +191,17 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   }
 
   //2. allocate weight buffer on different locations
-  ORT_RETURN_IF_ERROR(planner->FinalizePlan());
+  // planned_initializers_memory_size_in_byte is not actual physical size.
+  // It's the virtual size computed by planner.
+  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  ORT_RETURN_IF_ERROR(
+    planner->FinalizePlan(planned_initializers_memory_sizes_in_byte));
+
+  for (auto i: planned_initializers_memory_sizes_in_byte) {
+    LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
+                       << i.second << " bytes for " << i.first << std::endl;
+  }
+
   OrtCallback deleter;
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {

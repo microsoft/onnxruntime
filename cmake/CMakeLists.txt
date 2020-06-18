@@ -377,7 +377,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
   set(protobuf_MODULE_COMPATIBLE ON)
-  find_package(protobuf)
+  find_package(Protobuf)
 endif()
 
 
