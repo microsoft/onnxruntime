@@ -141,6 +141,7 @@ else()
     enable_language(ASM)
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
     )
   elseif(POWER)
     set(mlas_platform_srcs
