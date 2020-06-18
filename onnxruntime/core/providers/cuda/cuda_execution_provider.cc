@@ -1439,7 +1439,14 @@ static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
     auto attr_name = attr.first;
     auto attr_value = attr.second;
 
-    //cudnn only supports symmetric padding
+    //cudnn only supports symmetric padding, so fall back to CPU in case we encounter asymmetric padding
+    // TODO: In some cases, pads may be computed at run time
+    // For example, using auto_pad values of "SAME_UPPER" or "SAME_LOWER" in Conv and ConvTranspose
+    // and explicitly specifying output_shape in ConvTranspose
+    // This *could* lead to run time CUDA op failures if pads are asymmetric
+    // We want to avoid generically making nodes using `auto_pad` or `output_shape` attributes fall back to CPU
+    // because there could be prod models using these attributes resulting in symmetric pads that could be slowed
+    // down if we generically make all such nodes using these attributes fall back to CPU
     if ("pads" == attr_name && ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS == attr_value.type()) {
       auto& pads = attr_value.ints();
       int pads_size = pads.size();
@@ -1528,7 +1535,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       std::vector<std::string> activations_supported{"sigmoid", "tanh", "sigmoid", "tanh"};
       not_supported = RNNNeedFallbackToCPU(node, activations_supported, node.OpType());
       force_inside = !not_supported;
-    } else if ("Conv" == node.OpType()) {
+    } else if ("Conv" == node.OpType() || "ConvTranspose" == node.OpType()) {
       not_supported = ConvNeedFallbackToCPU(node);
       force_inside = !not_supported;
     } else if ("Cast" == node.OpType()) {
