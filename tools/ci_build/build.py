@@ -1420,8 +1420,8 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
-        use_acl, nightly_build=False, featurizers_build=False, use_ninja=False):
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn,
+        wheel_name_suffix, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1465,6 +1465,8 @@ def build_python_wheel(
             args.append('--use_vitisai')
         elif use_acl:
             args.append('--use_acl')
+        elif use_armnn:
+            args.append('--use_armnn')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1818,8 +1820,9 @@ def main():
                 args.use_openvino,
                 args.use_nuphar,
                 args.use_vitisai,
-                args.wheel_name_suffix,
                 args.use_acl,
+                args.use_armnn,
+                args.wheel_name_suffix,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
