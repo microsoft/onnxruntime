@@ -86,6 +86,13 @@ RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
+#ONNX Runtime
+WORKDIR $GITHUB_DIR
+ENV ORT_DIR=$GITHUB_DIR/onnxruntime
+RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxruntime.git \
+  && cd onnxruntime \
+  && python3 tools/ci_build/build.py --build_dir build --config Release --parallel --update --skip_tests --use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR --enable_training
+
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
 RUN sed -i 's/#StrictModes yes/StrictModes no/g' /etc/ssh/sshd_config
@@ -106,11 +113,10 @@ RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
 ENV BERT_DIR=$WORK_DIR/bert
 RUN mkdir -p $BERT_DIR
 
-WORKDIR $BERT_DIR
-#ADD model $BERT_DIR/model
+ADD model $BERT_DIR/model
 ADD script $BERT_DIR/script
 RUN chmod a+x $BERT_DIR/script/run_perf.sh
 
 ENV LOG_DIR=/data/wezhan/logs
 
-WORKDIR $BERT_DIR/
+WORKDIR $BERT_DIR/script
