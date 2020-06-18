@@ -82,7 +82,6 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
-                --build-arg BUILD_EXTR_PAR="${{ parameters.build_py_parameters }}" \
                 -f Dockerfile.manylinux1 .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
         - task: CmdLine@2
@@ -154,6 +153,7 @@ stages:
                 --build-arg BUILD_USER=onnxruntimedev \
                 --build-arg BUILD_UID=$(id -u) \
                 --build-arg PYTHON_VERSION=$(python.version) \
+                --build-arg BUILD_EXTR_PAR="${{ parameters.build_py_parameters }}" \
                 -f ${{ parameters.linux_gpu_dockerfile }} .
             workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
         - task: CmdLine@2
