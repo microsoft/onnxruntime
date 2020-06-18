@@ -47,7 +47,7 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: set-py-packaging-variables-step.yml
+      - template: templates/set-py-packaging-variables-step.yml
 
       - task: CmdLine@2
         inputs:
