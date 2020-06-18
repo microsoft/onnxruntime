@@ -59,7 +59,6 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
 // it's safer to wrap it with automatically memory deleter as CudnnReduceDescriptor.
 // An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t
@@ -301,26 +300,19 @@ template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, CUD
     cudnnReduceTensorOp_t cudnn_reduce_op,
     std::vector<int64_t>& output_dims) const;
 
-static Status PrepareForReduce(OpKernelContext* ctx,
+// `input_shape_override` (if provided) is the input shape for compute purposes
+static Status PrepareForReduce(const Tensor* X,
                                bool keepdims,
                                const std::vector<int64_t>& axes,
-                               const Tensor** x_pp,
-                               Tensor** y_pp,
-                               int64_t& input_count,
-                               int64_t& output_count,
-                               std::vector<int64_t>& output_dims,
-                               std::vector<int64_t>& input_dims_cudnn,
-                               std::vector<int64_t>& output_dims_cudnn,
-                               int64_t& rank,
-                               int64_t& stride) {
-  const Tensor* X = ctx->Input<Tensor>(0);
+                               PrepareReduceMetadata& prepare_reduce_metadata,
+                               const TensorShape* input_shape_override = nullptr) {
   ORT_ENFORCE(nullptr != X);
-  *x_pp = X;
 
-  const TensorShape input_shape{X->Shape()};
-  rank = input_shape.NumDimensions();
-  input_count = input_shape.Size();
-  stride = (rank > 0) ? input_shape[input_shape.NumDimensions() - 1] : 1;
+  const TensorShape& input_shape = input_shape_override ? *input_shape_override : X->Shape();
+  int64_t rank = static_cast<int64_t>(input_shape.NumDimensions());
+  prepare_reduce_metadata.rank = rank;
+  prepare_reduce_metadata.input_count = input_shape.Size();
+  prepare_reduce_metadata.stride = (rank > 0) ? input_shape[input_shape.NumDimensions() - 1] : 1;
 
   if (rank > 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuDNN only supports up to 8-D tensors in reduction");
@@ -328,10 +320,9 @@ static Status PrepareForReduce(OpKernelContext* ctx,
 
   const auto& input_dims = input_shape.GetDims();
   std::vector<bool> reduced(rank, false);
-  std::vector<int64_t> squeezed_output_dims;
-  output_dims.reserve(input_dims.size());
+  prepare_reduce_metadata.output_dims.reserve(input_dims.size());
   if (axes.size() > 0) {
-    output_dims = input_dims;
+    prepare_reduce_metadata.output_dims = input_dims;
     for (auto reduced_axis : axes) {
       const int64_t axis = HandleNegativeAxis(reduced_axis, rank);
       ORT_ENFORCE(axis < rank, "Reduced axis is greater than rank: ", axis);
@@ -339,7 +330,7 @@ static Status PrepareForReduce(OpKernelContext* ctx,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
-      output_dims[axis] = 1;
+      prepare_reduce_metadata.output_dims[axis] = 1;
       reduced[axis] = true;
     }
   } else {
@@ -349,77 +340,68 @@ static Status PrepareForReduce(OpKernelContext* ctx,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
-      output_dims.push_back(dim == 0 ? 0 : 1);
+      prepare_reduce_metadata.output_dims.push_back(dim == 0 ? 0 : 1);
     }
   }
 
   if (keepdims) {
-    squeezed_output_dims = output_dims;
+    prepare_reduce_metadata.squeezed_output_dims = prepare_reduce_metadata.output_dims;
   } else if (axes.size() > 0) {
     // we are not going to keep the reduced dims, hence compute the final output dim accordingly
-    squeezed_output_dims.reserve(rank);  // even though we won't use the full capacity, it is better to reserve for peak possible usage
+    prepare_reduce_metadata.squeezed_output_dims.reserve(rank);  // even though we won't use the full capacity, it is better to reserve for peak possible usage
     for (auto i = 0; i < rank; ++i) {
       if (!reduced[i])
-        squeezed_output_dims.push_back(input_dims[i]);
+        prepare_reduce_metadata.squeezed_output_dims.push_back(input_dims[i]);
     }
   } else {
     // 'axes' is empty and keepdims is false => we reduce on all axes AND drop all dims,
     // so the result is just a scalar, we keep 'squeezed_output_dims' empty (i.e.) no-op
   }
 
-  Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));
-  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
-  // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
-  *y_pp = Y;
-
   // CUDNN requires at least 3D input, so pad 1s if needed
-  input_dims_cudnn = input_dims;
-  output_dims_cudnn = output_dims;
+  prepare_reduce_metadata.input_dims_cudnn = input_dims;
+  prepare_reduce_metadata.output_dims_cudnn = prepare_reduce_metadata.output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
-    input_dims_cudnn.insert(input_dims_cudnn.end(), pads.begin(), pads.end());
-    output_dims_cudnn.insert(output_dims_cudnn.end(), pads.begin(), pads.end());
+    prepare_reduce_metadata.input_dims_cudnn.insert(prepare_reduce_metadata.input_dims_cudnn.end(), pads.begin(), pads.end());
+    prepare_reduce_metadata.output_dims_cudnn.insert(prepare_reduce_metadata.output_dims_cudnn.end(), pads.begin(), pads.end());
   }
 
-  output_count = Y->Shape().Size();
+  prepare_reduce_metadata.output_count = TensorShape(prepare_reduce_metadata.output_dims).Size();
 
-  if (rank == 0) {
-    rank = 1;
+  if (prepare_reduce_metadata.rank == 0) {
+    prepare_reduce_metadata.rank = 1;
   }
 
   return Status::OK();
 }
 
-template <bool allow_multi_axes>
+// `input_shape_override` is the input shape for compute purposes (if provided)
+// `input_shape_override` is the input shape for compute purposes (if provided)
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
+static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+                                /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+                                const std::vector<int64_t>& axes,
+                                bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                                const TensorShape* input_shape_override = nullptr) {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  const Tensor* X = nullptr;
-  Tensor* Y = nullptr;
+  const TensorShape& input_shape = input_shape_override ? *input_shape_override : input.Shape();
 
-  int64_t input_count = 0;
-  int64_t output_count = 0;
-  std::vector<int64_t> output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
-  int64_t rank = 0;
-  int64_t stride = 0;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(ctx,
-                                       keepdims_,
-                                       axes_,
-                                       &X,
-                                       &Y,
-                                       input_count,
-                                       output_count,
-                                       output_dims,
-                                       input_dims_cudnn,
-                                       output_dims_cudnn,
-                                       rank, stride));
+  int64_t input_count = prepare_reduce_metadata.input_count;
+  int64_t output_count = prepare_reduce_metadata.output_count;
+  std::vector<int64_t>& output_dims = prepare_reduce_metadata.output_dims;
+  std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
+  std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
+  int64_t rank = prepare_reduce_metadata.rank;
+  int64_t stride = prepare_reduce_metadata.stride;
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
 
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
-    assert(Y->Shape().Size() == 0);
+    assert(output.Shape().Size() == 0);
     return Status::OK();
   }
 
@@ -430,13 +412,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   // It relies on new atomicAdd for half type, so old CUDA can't use it.
   const auto reduction_size = input_count / stride;
   if (!std::is_same<T, int8_t>::value && !std::is_same<T, uint8_t>::value) {
-    if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
+    if (fast_reduction && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
         is_matrix_row_reduction(cudnn_reduce_op,
                                 static_cast<int>(reduction_size),
-                                static_cast<int>(stride), rank, axes_)) {
+                                static_cast<int>(stride), rank, axes)) {
       reduce_matrix_rows(
-          reinterpret_cast<const CudaT*>(X->template Data<T>()),
-          reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+          reinterpret_cast<const CudaT*>(input.template Data<T>()),
+          reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
       return Status::OK();
@@ -445,9 +427,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
     // ArgMax/ArgMin with FP16 are not supported by cudnn, so convert input to fp32 then call cudnn
-    temp_X = GetScratchBuffer<float>(input_count);
+    temp_X = cuda_ep.GetScratchBuffer<float>(input_count);
     cudnn_type_X = CUDNN_DATA_FLOAT;
-    Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(X->template Data<T>()), temp_X.get(), X->Shape().Size());
+    Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
   }
 
   CudnnReduceDescriptor reduce_desc;
@@ -462,58 +444,62 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
   size_t workspace_bytes = 0;
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
-  auto workspace_cuda = GetScratchBuffer<CudaT>(workspace_bytes);
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(cuda_ep.PerThreadCudnnHandle(), reduce_desc,
+                                                       input_tensor, output_tensor, &workspace_bytes));
+  auto workspace_cuda = cuda_ep.GetScratchBuffer<CudaT>(workspace_bytes);
 
   size_t indices_bytes = 0;
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-  auto indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes);
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(cuda_ep.PerThreadCudnnHandle(), reduce_desc,
+                                                     input_tensor, output_tensor, &indices_bytes));
+  auto indices_cuda = cuda_ep.GetScratchBuffer<uint32_t>(indices_bytes);
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     CudaT* input_data = nullptr;
-    if (calculate_sqt_) {
-      input_data_buffer = GetScratchBuffer<T>(input_count);
+    if (calculate_sqt) {
+      input_data_buffer = cuda_ep.GetScratchBuffer<T>(input_count);
       input_data = reinterpret_cast<CudaT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<CudaT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
-                      reinterpret_cast<const CudaT*>(X->template Data<T>()), nullptr,
-                      reinterpret_cast<const CudaT*>(X->template Data<T>()), nullptr,
+                      reinterpret_cast<const CudaT*>(input.template Data<T>()), nullptr,
+                      reinterpret_cast<const CudaT*>(input.template Data<T>()), nullptr,
                       tmp_div, tmp_div,
                       input_data, input_count);
-    } else if (log_sum_exp_) {
+    } else if (log_sum_exp) {
       // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       // This happens when the input is Scalar
       if (input_count == output_count) {
-        if (Y->template MutableData<T>() != X->template Data<T>()) {
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
+        if (output.template MutableData<T>() != input.template Data<T>()) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
         }
       } else {
         // Reduce max -- Max/Min will output indices data
         CudnnReduceDescriptor reduce_max_desc;
         ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
         size_t indices_bytes_max = 0;
-        CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_max_desc, input_tensor, output_tensor, &indices_bytes_max));
-        auto indices_cuda_max = GetScratchBuffer<uint32_t>(indices_bytes);
+        CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(cuda_ep.PerThreadCudnnHandle(), reduce_max_desc,
+                                                           input_tensor, output_tensor, &indices_bytes_max));
+        auto indices_cuda_max = cuda_ep.GetScratchBuffer<uint32_t>(indices_bytes);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudnnHandle(), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max, workspace_cuda.get(), workspace_bytes,
-            &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
-            &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+            cuda_ep.PerThreadCudnnHandle(), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
+            workspace_cuda.get(), workspace_bytes,
+            &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+            &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
       }
 
       // Exp(X-ReduceMax)
       const TensorShape output_shape(output_dims);
-      auto exp_result_buffer = GetScratchBuffer<T>(input_count);
+      auto exp_result_buffer = cuda_ep.GetScratchBuffer<T>(input_count);
       auto exp_result = exp_result_buffer.get();
-      auto log_sum_result_buffer = GetScratchBuffer<T>(output_count);
+      auto log_sum_result_buffer = cuda_ep.GetScratchBuffer<T>(output_count);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
-      prepare.BinaryElementwiseBroadcastPrepareHelper(X->Shape(), output_shape, X->Shape());
+      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape);
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
                       &prepare.lhs_padded_strides,
-                      reinterpret_cast<const CudaT*>(X->template Data<T>()),
+                      reinterpret_cast<const CudaT*>(input.template Data<T>()),
                       &prepare.rhs_padded_strides,
-                      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                      reinterpret_cast<CudaT*>(output.template MutableData<T>()),
                       &prepare.fdm_output_strides,
                       prepare.fdm_H, prepare.fdm_C,
                       reinterpret_cast<CudaT*>(exp_result), input_count);
@@ -529,7 +515,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       } else {
         // ReduceSum
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+            cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+            workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, exp_result,
             &zero, output_tensor, reinterpret_cast<CudaT*>(log_sum_result)));
       }
@@ -543,62 +530,83 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       fast_divmod tmp_div;
       Impl_Add<CudaT>(static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
                       reinterpret_cast<CudaT*>(log_sum_result), nullptr,
-                      reinterpret_cast<CudaT*>(Y->template MutableData<T>()), nullptr,
+                      reinterpret_cast<CudaT*>(output.template MutableData<T>()), nullptr,
                       tmp_div, tmp_div,
-                      reinterpret_cast<CudaT*>(Y->template MutableData<T>()), output_count);
+                      reinterpret_cast<CudaT*>(output.template MutableData<T>()), output_count);
 
       return Status::OK();
     }
-    if (calculate_sqt_) {
+    if (calculate_sqt) {
       // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       // This happens when the input is Scalar. We do not need to add anything in this case.
       if (input_count == output_count) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), input_data, input_count * sizeof(T), cudaMemcpyDeviceToDevice));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(reinterpret_cast<CudaT*>(output.template MutableData<T>()), input_data, input_count * sizeof(T), cudaMemcpyDeviceToDevice));
       } else {
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+            cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+            workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, input_data,
-            &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+            &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
       }
     } else {
       // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       if (input_count == output_count) {
-        if (Y->template MutableData<T>() != X->template Data<T>()) {
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
+        if (output.template MutableData<T>() != input.template Data<T>()) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice));
         }
       } else {
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-            &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
-            &zero, output_tensor, reinterpret_cast<CudaT*>(Y->template MutableData<T>())));
+            cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+            workspace_cuda.get(), workspace_bytes,
+            &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+            &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
       }
     }
   } else {  // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     if (temp_X) {
-      auto temp_output = GetScratchBuffer<float>(output_count);
+      auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
+          cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+          workspace_cuda.get(), workspace_bytes,
           &one, input_tensor, temp_X.get(),
           &zero, output_tensor, temp_output.get()));
     } else {
-      auto temp_output = GetScratchBuffer<CudaT>(output_count);
+      auto temp_output = cuda_ep.GetScratchBuffer<CudaT>(output_count);
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-          CudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
-          &one, input_tensor, reinterpret_cast<const CudaT*>(X->template Data<T>()),
+          cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+          workspace_cuda.get(), workspace_bytes,
+          &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
           &zero, output_tensor, temp_output.get()));
     }
 
     // CUDA reduction index is uint32_t for now, cast it to int64_t according to ONNX spec
-    Impl_Cast<uint32_t, int64_t>(reinterpret_cast<uint32_t*>(indices_cuda.get()), Y->template MutableData<int64_t>(), output_count);
+    Impl_Cast<uint32_t, int64_t>(reinterpret_cast<uint32_t*>(indices_cuda.get()), output.template MutableData<int64_t>(), output_count);
   }
 
-  if (calculate_log_) {
-    Impl_Log<CudaT>(reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-                    reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+  if (calculate_log) {
+    Impl_Log<CudaT>(reinterpret_cast<CudaT*>(output.template MutableData<T>()),
+                    reinterpret_cast<CudaT*>(output.template MutableData<T>()),
                     output_count);
   }
 
   return Status::OK();
+}
+
+template <bool allow_multi_axes>
+template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
+Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
+
+  PrepareReduceMetadata prepare_reduce_metadata;
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
+                                       keepdims_,
+                                       axes_,
+                                       prepare_reduce_metadata));
+
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
+
+  return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes_,
+                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction_);
 }
 
 template <>
@@ -606,27 +614,24 @@ template <>
 Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   typedef typename ToCudaType<int32_t>::MappedType CudaT;
 
-  const Tensor* X = nullptr;
-  Tensor* Y = nullptr;
+  const Tensor* X = ctx->Input<Tensor>(0);
+  PrepareReduceMetadata prepare_reduce_metadata;
 
-  int64_t input_count = 0;
-  int64_t output_count = 0;
-  std::vector<int64_t> output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
-  int64_t rank = 0;
-  int64_t stride = 0;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(ctx,
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
                                        axes_,
-                                       &X,
-                                       &Y,
-                                       input_count,
-                                       output_count,
-                                       output_dims,
-                                       input_dims_cudnn,
-                                       output_dims_cudnn,
-                                       rank, stride));
+                                       prepare_reduce_metadata));
+
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
+
+  int64_t input_count = prepare_reduce_metadata.input_count;
+  int64_t output_count = prepare_reduce_metadata.output_count;
+  std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
+  std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
@@ -686,27 +691,24 @@ template <>
 Status ReduceKernel<true>::ComputeImpl<int8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   typedef typename ToCudaType<int8_t>::MappedType CudaT;
 
-  const Tensor* X = nullptr;
-  Tensor* Y = nullptr;
+  const Tensor* X = ctx->Input<Tensor>(0);
+  PrepareReduceMetadata prepare_reduce_metadata;
 
-  int64_t input_count = 0;
-  int64_t output_count = 0;
-  std::vector<int64_t> output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
-  int64_t rank = 0;
-  int64_t stride = 0;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(ctx,
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
                                        axes_,
-                                       &X,
-                                       &Y,
-                                       input_count,
-                                       output_count,
-                                       output_dims,
-                                       input_dims_cudnn,
-                                       output_dims_cudnn,
-                                       rank, stride));
+                                       prepare_reduce_metadata));
+
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
+
+  int64_t input_count = prepare_reduce_metadata.input_count;
+  int64_t output_count = prepare_reduce_metadata.output_count;
+  std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
+  std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
@@ -768,27 +770,24 @@ template <>
 Status ReduceKernel<true>::ComputeImpl<uint8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   typedef typename ToCudaType<uint8_t>::MappedType CudaT;
 
-  const Tensor* X = nullptr;
-  Tensor* Y = nullptr;
+  const Tensor* X = ctx->Input<Tensor>(0);
+  PrepareReduceMetadata prepare_reduce_metadata;
 
-  int64_t input_count = 0;
-  int64_t output_count = 0;
-  std::vector<int64_t> output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
-  int64_t rank = 0;
-  int64_t stride = 0;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(ctx,
+  ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
                                        axes_,
-                                       &X,
-                                       &Y,
-                                       input_count,
-                                       output_count,
-                                       output_dims,
-                                       input_dims_cudnn,
-                                       output_dims_cudnn,
-                                       rank, stride));
+                                       prepare_reduce_metadata));
+
+  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
+
+  int64_t input_count = prepare_reduce_metadata.input_count;
+  int64_t output_count = prepare_reduce_metadata.output_count;
+  std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
+  std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
@@ -844,6 +843,54 @@ Status ReduceKernel<true>::ComputeImpl<uint8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
 
   return Status::OK();
 }
+
+namespace ReductionOps {
+
+template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
+Tensor ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
+                     const Tensor& input, const std::vector<int64_t>& axes,
+                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                     bool fast_reduction, const TensorShape* input_shape_override) {
+  PrepareReduceMetadata prepare_reduce_metadata;
+  auto status = PrepareForReduce(&input,
+                                 keep_dims,
+                                 axes,
+                                 prepare_reduce_metadata,
+                                 input_shape_override);
+
+  if (!status.IsOK()) {
+    ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
+  }
+
+  Tensor output(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
+
+  status = ReduceComputeCore<T, ReduceTensorIndices>(cuda_ep, input, prepare_reduce_metadata, output, cudnn_reduce_op, axes,
+                                                     calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
+
+  if (!status.IsOK()) {
+    ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
+  }
+
+  return output;
+}
+
+// Explicit template instantiation (needed to be used in einsum_auxiliary_ops.cc)
+
+template Tensor ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    AllocatorPtr allocator,
+    const Tensor& input, const std::vector<int64_t>& axes,
+    bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+    bool fast_reduction, const TensorShape* input_shape_override);
+
+template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+    CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
+    AllocatorPtr allocator,
+    const Tensor& input, const std::vector<int64_t>& axes,
+    bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+    bool fast_reduction, const TensorShape* input_shape_override);
+
+}  // namespace ReductionOps
 
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
