@@ -184,7 +184,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
       int64_t* pad_head,
       int64_t* pad_tail,
       int64_t* out_size) const {
-    // Output shape is explicitly provided - pad values may have to be computed
+    // Output shape is explicitly provided - pad values will have to be computed
     if (*out_size != -1) {
       ORT_ENFORCE(*out_size >= 0);
       // total pad
