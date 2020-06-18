@@ -141,6 +141,7 @@ else()
     enable_language(ASM)
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
     )
   elseif(POWER)
     set(mlas_platform_srcs
@@ -164,6 +165,12 @@ else()
     )
   elseif(X86_64)
     enable_language(ASM)
+
+    # Forward the flags for the minimum target platform version from the C
+    # compiler to the assembler. This works around CMakeASMCompiler.cmake.in
+    # not including the logic to set this flag for the assembler.
+
+    set(CMAKE_ASM${ASM_DIALECT}_OSX_DEPLOYMENT_TARGET_FLAG "${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")
 
     # The LLVM assembler does not support the .arch directive to enable instruction
     # set extensions and also doesn't support AVX-512F instructions without

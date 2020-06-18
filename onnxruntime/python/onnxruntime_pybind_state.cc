@@ -100,7 +100,19 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX
+#if USE_ACL
+#define BACKEND_ACL "-ACL"
+#else
+#define BACKEND_ACL ""
+#endif
+
+#if USE_ARMNN
+#define BACKEND_ARMNN "-ARMNN"
+#else
+#define BACKEND_ARMNN ""
+#endif
+
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -132,6 +144,12 @@ std::string nuphar_settings;
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
+#ifdef USE_ACL
+#include "core/providers/acl/acl_provider_factory.h"
+#endif
+#ifdef USE_ARMNN
+#include "core/providers/armnn/armnn_provider_factory.h"
+#endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
@@ -145,7 +163,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
-
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -209,7 +228,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
   }
 }
 
-static std::string GetDeviceName(const OrtDevice& device) {
+static const char* GetDeviceName(const OrtDevice& device) {
   switch (device.Type()) {
     case OrtDevice::CPU:
       return CPU;
@@ -218,7 +237,7 @@ static std::string GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     default:
-      throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
+      ORT_THROW("Unknown device type: ", device.Type());
   }
 }
 
@@ -287,7 +306,8 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider};
+                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider,
+                                                   kAclExecutionProvider, kArmNNExecutionProvider};
   return all_providers;
 }
 
@@ -318,6 +338,12 @@ const std::vector<std::string>& GetAvailableProviders() {
 #ifdef USE_VITISAI
     available_providers.push_back(kVitisAIExecutionProvider);
 #endif
+#ifdef USE_ACL
+    available_providers.push_back(kAclExecutionProvider);
+#endif
+#ifdef USE_ARMNN
+    available_providers.push_back(kArmNNExecutionProvider);
+#endif
     return available_providers;
   };
   static std::vector<std::string> available_providers = InitializeProviders();
@@ -339,9 +365,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
-      cuda_device_id = 0;
-      cuda_mem_limit = static_cast<size_t>(INT_MAX);
-      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -364,6 +387,14 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
+#endif
+    } else if (type == kAclExecutionProvider) {
+#ifdef USE_ACL
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
+    } else if (type == kArmNNExecutionProvider) {
+#ifdef USE_ARMNN
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else {
       // unknown provider
@@ -439,7 +470,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
@@ -458,6 +489,12 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #endif
 #ifdef USE_VITISAI
             onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+#endif
+#ifdef USE_ACL
+            onnxruntime::CreateExecutionProviderFactory_ACL(0)
+#endif
+#ifdef USE_ARMNN
+            onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
 #endif
         };
 
@@ -514,7 +551,8 @@ void addOpSchemaSubmodule(py::module& m) {
   auto schemadef = m.def_submodule("schemadef");
   schemadef.doc() = "Schema submodule";
 
-  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema");
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema", py::module_local());
   op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
       .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
       .def_property_readonly("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
@@ -540,7 +578,8 @@ void addOpSchemaSubmodule(py::module& m) {
         return v == std::numeric_limits<int>::max();
       });
 
-  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute", py::module_local())
       .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
       .def_readonly("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
@@ -553,7 +592,8 @@ void addOpSchemaSubmodule(py::module& m) {
           })
       .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam", py::module_local())
       .def_readonly(
           "type_param_str", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::type_param_str)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
@@ -561,12 +601,14 @@ void addOpSchemaSubmodule(py::module& m) {
           "allowed_type_strs",
           &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::allowed_type_strs);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption", py::module_local())
       .value("Single", ONNX_NAMESPACE::OpSchema::Single)
       .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
       .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter", py::module_local())
       .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
       .def_property_readonly("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
       .def_property_readonly("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
@@ -576,7 +618,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .def_property_readonly(
           "isHomogeneous", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetIsHomogeneous);
 
-  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType", py::module_local())
       .value("FLOAT", ONNX_NAMESPACE::AttributeProto::FLOAT)
       .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
       .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
@@ -588,7 +631,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("TENSORS", ONNX_NAMESPACE::AttributeProto::TENSORS)
       .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType", py::module_local())
       .value("COMMON", ONNX_NAMESPACE::OpSchema::SupportType::COMMON)
       .value("EXPERIMENTAL", ONNX_NAMESPACE::OpSchema::SupportType::EXPERIMENTAL);
 }
@@ -624,9 +668,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        std::string device_name = GetDeviceName(device);
-
-        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
@@ -644,9 +686,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        std::string device_name = GetDeviceName(device);
-
-        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;

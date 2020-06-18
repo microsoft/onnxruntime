@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from onnx import helper, numpy_helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 
 logger = getLogger(__name__)
@@ -14,7 +14,7 @@ logger = getLogger(__name__)
 class FusionBiasGelu(Fusion):
     def __init__(self, model: OnnxModel, is_fastgelu):
         if is_fastgelu:
-            super().__init__(model, 'FastGelu(add bias)', 'FastGelu')
+            super().__init__(model, 'FastGelu', 'FastGelu', 'add bias')
         else:
             super().__init__(model, 'BiasGelu', 'Gelu')
 

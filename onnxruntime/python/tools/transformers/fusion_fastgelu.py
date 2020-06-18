@@ -5,7 +5,7 @@
 from typing import Dict, Optional
 from logging import getLogger
 from onnx import helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 
 logger = getLogger(__name__)

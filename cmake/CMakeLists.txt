@@ -11,6 +11,7 @@ endif()
 
 # Support OS X versions 10.12+
 # This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
+# TODO: Make the miniumum deployment target MacOSX version configurable
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
 
 # Project
@@ -107,6 +108,7 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
+option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
@@ -375,7 +377,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
   set(protobuf_MODULE_COMPATIBLE ON)
-  find_package(protobuf)
+  find_package(Protobuf)
 endif()
 
 
@@ -823,7 +825,13 @@ if (onnxruntime_USE_CUDA)
     string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   endif()
   enable_language(CUDA)
-  set(CMAKE_CUDA_STANDARD 11)
+  string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\1" CUDA_VERSION_MAJOR "${CMAKE_CUDA_COMPILER_VERSION}")
+  message( STATUS "CUDA_VERSION_MAJOR: ${CUDA_VERSION_MAJOR}")
+  if (CUDA_VERSION_MAJOR EQUAL 11)
+    set(CMAKE_CUDA_STANDARD 14)
+  else()
+    set(CMAKE_CUDA_STANDARD 11)
+  endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
@@ -849,8 +857,12 @@ if (onnxruntime_USE_CUDA)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+  # the following compute capabilities are deprecated in CUDA 11 Toolkit
+  if (CUDA_VERSION_MAJOR LESS 11)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+  endif()
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
@@ -917,28 +929,108 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING)
-  if (onnxruntime_USE_HOROVOD)
+
+  if (UNIX)
+    # Find MPI
+    find_path(MPI_INCLUDE_DIR
+      NAMES mpi.h
+      HINTS
+      ${onnxruntime_MPI_HOME}/include
+      /bert_ort/openmpi/include)
+
+    set(MPI_LIBNAME "mpi")
+
+    find_library(MPI_LIBRARY
+      NAMES ${MPI_LIBNAME}
+      HINTS
+      ${onnxruntime_MPI_HOME}/lib
+      /bert_ort/openmpi/lib)
+
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
+
+    if (MPI_FOUND)
+      execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
+      message( STATUS "MPI Version: ${MPI_VERSION}")
+
+      set(MPI_INCLUDE_DIRS ${MPI_INCLUDE_DIR})
+      set(MPI_LIBRARIES ${MPI_LIBRARY})
+      message( STATUS "MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
+      mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
+
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    else ()
+      set(onnxruntime_USE_NCCL OFF)
+      set(onnxruntime_USE_HOROVOD OFF)
+      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL or HOROVOD will be disabled." )
+    endif()
+
+    # Find NCCL and MPI
+    if (onnxruntime_USE_NCCL AND MPI_FOUND)
+      find_path(NCCL_INCLUDE_DIR
+        NAMES nccl.h
+        HINTS
+        ${onnxruntime_NCCL_HOME}/include
+        $ENV{CUDA_ROOT}/include)
+
+      set(NCCL_LIBNAME "nccl")
+
+      find_library(NCCL_LIBRARY
+        NAMES ${NCCL_LIBNAME}
+        HINTS
+        ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+        $ENV{CUDA_ROOT}/lib64)
+
+      include(FindPackageHandleStandardArgs)
+      find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
+
+      if (NCCL_FOUND)
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+        message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
+        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
+              REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+        if (NCCL_MAJOR_VERSION_DEFINED)
+          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+                  NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
+          message( STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}" )
+        endif()
+        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
+              REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+        if (NCCL_MINOR_VERSION_DEFINED)
+          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+                  NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
+          message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
+        endif()
+
+        set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
+        set(NCCL_LIBRARIES ${NCCL_LIBRARY})
+        message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
+        mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
+
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
+
+        add_definitions(-DUSE_NCCL=1)
+        message( STATUS "NCCL is enabled in Linux GPU Build." )
+      else ()
+        set(onnxruntime_USE_NCCL OFF)
+        message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
+      endif()
+    endif()
+  endif()
+
+  if (onnxruntime_USE_HOROVOD AND MPI_FOUND)
     if (WIN32)
       message( FATAL_ERROR "Horovod is not supported on Windows." )
     elseif (UNIX)
-      find_package(MPI REQUIRED)
       add_definitions(-DUSE_HOROVOD=1)
       set(HOROVOD_ROOT ${PROJECT_SOURCE_DIR}/external/horovod)
-      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common" ${MPI_CXX_INCLUDE_PATH})
+      set(HOROVOD_INCLUDE_DIRS  "${HOROVOD_ROOT}/horovod/common")
       add_subdirectory(horovod EXCLUDE_FROM_ALL)
       # use external/horovod/third_party/gloo/cmake/Modules/Findnccl.cmake to locate nccl lib path
       list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
       find_package(nccl REQUIRED)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod ${NCCL_LIBRARIES} ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    endif()
-  endif()
-
-  if (onnxruntime_USE_CUDA)
-    if (WIN32)
-      message(WARNING "NCCL is not supported on Windows GPU Build." )
-    elseif (UNIX)
-      message( "NCCL is enabled in Linux GPU Build." )
-      add_definitions(-DUSE_NCCL=1)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod)
     endif()
   endif()
 
