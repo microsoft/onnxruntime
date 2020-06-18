@@ -856,14 +856,19 @@ function commandMessage(key) {
         	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
 		
 		"linux,Java,X64,DefaultCPU":
-			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+			"Add dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven",
 			
 		"linux,Java,X64,CUDA":
-			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+			"Add dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven",
 			
-		"mac,Java,X64,DefaultCPU":
-			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "linux,Javascript,X64,DefaultCPU":
+            "npm install onnxruntime",
+        
+        "mac,Java,X64,DefaultCPU":
+			"Add dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven",
 
+        "mac,Javascript,X64,DefaultCPU":
+            "npm install onnxruntime",
 
         "windows,WinRT,X86,DefaultCPU":
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
@@ -884,10 +889,10 @@ function commandMessage(key) {
             "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
 
         "windows,Java,X64,DefaultCPU":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Add dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven",
 
         "windows,Java,X64,CUDA":
-            "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+            "Add dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven",
 
         "windows,Java,X64,TensorRT":
             "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
@@ -924,6 +929,10 @@ function commandMessage(key) {
 
         "linux,Java,X64,OpenVINO":
             "Follow <a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        
+        "windows,Javascript,X64,DefaultCPU":
+            "npm install onnxruntime",
+    
 
     };
 
