@@ -1820,9 +1820,9 @@ def main():
                 args.use_openvino,
                 args.use_nuphar,
                 args.use_vitisai,
-                args.wheel_name_suffix,
                 args.use_acl,
                 args.use_armnn,
+                args.wheel_name_suffix,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
