@@ -8,14 +8,15 @@ from onnx import helper
 import torch
 import torch.nn
 import torch.onnx
+import onnxruntime as ort
+import onnxruntime.capi.postprocess as postprocess
 from distutils.version import LooseVersion
 import warnings
 
-import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
-DEFAULT_OPSET_VERSION = 10
+DEFAULT_OPSET_VERSION = 12
 
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):
@@ -204,7 +205,7 @@ def wrap_for_input_match(model, loss_fn, input_names):
         if len(sig_loss.parameters) != 2:
             raise RuntimeError("loss function should take two arguments - predict and label.")
 
-        # label shall be the second input to loss_fn. 
+        # label shall be the second input to loss_fn.
         ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
 
     class model_loss_cls(torch.nn.Module):
@@ -274,7 +275,7 @@ def wrap_for_input_match(model, loss_fn, input_names):
 
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -323,17 +324,20 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
+    other_export_options['training'] = True
 
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
+    # This option was added after 1.6 release.
+    if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
+        other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       training=True,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
@@ -360,7 +364,8 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
 
-    onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
+    if _enable_internal_postprocess:
+        onnx_model = postprocess.run_postprocess(onnx_model)
 
     return onnx_model
 
@@ -518,10 +523,11 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
 class ORTTrainer():
 
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
-                 learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
+                 learning_rate_description, device, gradient_accumulation_steps=1,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION):
+                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
+                 _enable_internal_postprocess=True, _extra_postprocess=None):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -586,6 +592,10 @@ class ORTTrainer():
                Defaults to True.
             frozen_weights: list of model parameters to be frozen (not trained).
                Defaults to [].
+            _enable_internal_postprocess: whether to run or not the internal postprocesses.
+               Defaults to True
+            _extra_postprocess: a callable to postprocess the ONNX model that is converted from PyTorch.
+               Defaults to None
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -621,7 +631,7 @@ class ORTTrainer():
         # we use self.global_step_ to count optimizations being performed.
         # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
         self.global_step_ = global_step
-        self.post_process_model_fn_ = postprocess_model
+        self._extra_postprocess = _extra_postprocess
         self.get_lr_this_step_ = get_lr_this_step
         self.loss_scaler_ = loss_scaler
 
@@ -636,6 +646,7 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.state_dict_ = None
+        self._enable_internal_postprocess = _enable_internal_postprocess
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -646,6 +657,12 @@ class ORTTrainer():
     def _init_session(self):
         if self.onnx_model_ is None:
             return
+
+        if self._enable_internal_postprocess:
+            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
+
+        if self._extra_postprocess:
+            self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -702,10 +719,10 @@ class ORTTrainer():
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
-                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
+                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
 
-            if self.post_process_model_fn_:
-                self.post_process_model_fn_(self.onnx_model_)
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 

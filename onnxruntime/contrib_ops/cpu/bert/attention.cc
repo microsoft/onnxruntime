@@ -9,7 +9,6 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
-#include "core/mlas/inc/mlas.h"
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -43,7 +42,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
   //   mask_index  : (batch_size) if presented
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
 
-  const auto dims = input->Shape().GetDims();
+  const auto& dims = input->Shape().GetDims();
   if (dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 0 is expected to have 3 dimensions, got ",
                            dims.size());
@@ -55,7 +54,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                            "Input 0 dimension 2 should be divisiable by value of the num_heads attribute.");
   }
 
-  const auto weights_dims = weights->Shape().GetDims();
+  const auto& weights_dims = weights->Shape().GetDims();
   if (weights_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 is expected to have 2 dimensions, got ",
                            weights_dims.size());
@@ -68,7 +67,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 1 dimension 1 should be 3 times of dimension 0");
   }
 
-  const auto bias_dims = bias->Shape().GetDims();
+  const auto& bias_dims = bias->Shape().GetDims();
   if (bias_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 2 is expected to have 1 dimension, got ",
                            bias_dims.size());
@@ -84,7 +83,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
     }
 
-    const auto mask_dims = mask_index->Shape().GetDims();
+    const auto& mask_dims = mask_index->Shape().GetDims();
     if (mask_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 1 dimension, got ",
                              mask_dims.size());
@@ -99,7 +98,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 4 (past) is only allowed for unidirectional");
     }
 
-    const auto past_dims = past->Shape().GetDims();
+    const auto& past_dims = past->Shape().GetDims();
     if (past_dims.size() != 5) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 4 is expected to have 5 dimension, got ",
                              past_dims.size());
@@ -133,7 +132,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
 
   std::vector<int64_t> present_dims{2, batch_size, num_heads_, sequence_length, head_size};
   if (nullptr != past) {
-    const auto past_dims = past->Shape().GetDims();
+    const auto& past_dims = past->Shape().GetDims();
     past_sequence_length = static_cast<int>(past_dims[3]);
     present_dims[3] += past_dims[3];
   }
@@ -161,14 +160,13 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(CheckInputs(input, weights, bias, mask_index, past));
 
-  const auto dims = input->Shape().GetDims();
-  const int batch_size = static_cast<int>(dims[0]);
-  const int sequence_length = static_cast<int>(dims[1]);
-  const int hidden_size = static_cast<int>(dims[2]);
+  const auto& shape = input->Shape().GetDims();
+  const int batch_size = static_cast<int>(shape[0]);
+  const int sequence_length = static_cast<int>(shape[1]);
+  const int hidden_size = static_cast<int>(shape[2]);
   const int head_size = hidden_size / num_heads_;
 
-  TensorShape output_shape(dims);
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* output = context->Output(0, shape);
 
   int past_sequence_length = 0;
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
