@@ -201,7 +201,7 @@ class EinsumComputePreprocessor final {
   // Device specific transpose function
   EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
 
-  // Holds CUDA assets required for CUDA ops that need to be executed
+  // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
   void* einsum_ep_assets_;
 };
 
