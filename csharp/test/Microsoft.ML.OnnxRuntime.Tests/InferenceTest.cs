@@ -576,6 +576,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
                 skipModels["test_zfnet512"] = "System out of memory";
                 skipModels["test_bvlc_reference_caffenet"] = "System out of memory";
+                skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
             }
 
             return skipModels;
@@ -1055,12 +1056,41 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestCreateFixedBufferOnnxValueFromStringTensor()
         {
             var tensor = new DenseTensor<string>(new string[] { "a", "b" }, new int[] { 1, 2 });
+            using (var value = FixedBufferOnnxValue.CreateFromTensor(tensor)) { }
+        }
 
-            Assert.Throws<ArgumentException>("value", () =>
+        [Fact]
+        public void TestReusingStringFixedBufferOnnxValue()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "test_types_STRING.pb");
+            using (var session = new InferenceSession(modelPath))
             {
-                // cannot create from string tensor
-                FixedBufferOnnxValue.CreateFromTensor(tensor);
-            });
+                var tensorA = new DenseTensor<string>(new string[] { "a", "b", "c", "d", "e" }, new int[] { 1, 5 });
+                var tensorB = new DenseTensor<string>(new string[] { "v", "w", "x", "y", "z" }, new int[] { 1, 5 });
+                var tensorC = new DenseTensor<string>(new string[] { "i", "j", "k", "l", "m" }, new int[] { 1, 5 });
+                var tensorD = new DenseTensor<string>(new string[] { "i", "j", "k", "l", "m" }, new int[] { 1, 5 });
+                using (FixedBufferOnnxValue a = FixedBufferOnnxValue.CreateFromTensor(tensorA),
+                                            b = FixedBufferOnnxValue.CreateFromTensor(tensorB),
+                                            c = FixedBufferOnnxValue.CreateFromTensor(tensorC),
+                                            d = FixedBufferOnnxValue.CreateFromTensor(tensorD))
+                {
+                    // OK to use string type FixedBufferOnnxValue only in input
+                    session.Run(new[] { "input" }, new[] { a });
+
+                    // Cannot use string type FixedBufferOnnxValue in output
+                    Assert.Throws<NotSupportedException>(() =>
+                    {
+                        // NamedOnnxValue inputs
+                        session.Run(new[] { NamedOnnxValue.CreateFromTensor("input", tensorB) }, new[] { "output" }, new[] { b });
+                    });
+                    Assert.Throws<NotSupportedException>(() =>
+                    {
+                        // both FixedBufferOnnxValue for inputs and outputs
+                        session.Run(new[] { "input" }, new[] { c }, new[] { "output" }, new[] { d });
+                    });
+                }
+
+            }
         }
 
         [Fact]
@@ -1745,9 +1775,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
         static NamedOnnxValue LoadTensorFromFilePb(string filename, IReadOnlyDictionary<string, NodeMetadata> nodeMetaDict)
         {
-            var file = File.OpenRead(filename);
-            var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
-            file.Close();
+            //Set buffer size to 4MB
+            int readBufferSize = 4194304;
+            Onnx.TensorProto tensor = null;
+            using (var file = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read, readBufferSize))
+            {
+                tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+            }
 
             Type tensorElemType = null;
             int width = 0;

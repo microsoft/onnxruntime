@@ -42,12 +42,12 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
 /**
  * Find the subgraph that matches [root] -> Shape -> Gather -> Unsqueeze
  */
-bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, const Node& concat, 
-  int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+bool ReshapeFusion::Fuse_Subgraph2(Graph& graph, const NodeArg& root_input, const Node& concat,
+                                   int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-        {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain},
-        {0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, index, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     const Node& unsqueeze = edges[0]->GetNode();
@@ -116,41 +116,67 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   }
 
   auto concat_input_count = concat.InputArgCount().front();
-  if (concat.GetOutputEdgesCount() > 1) {
+  if (!optimizer_utils::CheckOutputEdges(graph, concat, 1)) {
     return false;
   }
 
-  // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion. 
+  // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion.
   std::vector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
+
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
     if (optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[i]), shape_value, true)) {
       continue;
     }
+
     // Try to find path [Root] --> Shape --> Gather(indices=i) --> Unsqueeze (axes=0) --> Concat [input i]
     bool matched = ReshapeFusion::Fuse_Subgraph2(graph, root_input, concat, i, shape_value, logger);
-    const Node* p_cur_node = graph_utils::GetInputNode(concat, i);
     if (matched) {
       shape_value.push_back(0);
-    } else if (p_cur_node != nullptr) {
-      // This node could lead to a potential subgraph pattern fusion. Mark the shape value to -1.
-      shape_value.push_back(-1);
-    } else {
+      // We have matched the pattern for this input into Concat
+      // Proceed to the next input
+      continue;
+    }
+
+    // If we haven't been able to match the pattern, check if this is a candidate for subgraph pattern fusion
+
+    // For this input to be a candidate, the number of elements in the input tensor to Concat has to be 1
+    // We use shape info (if made available via shape inference) for this.
+    const NodeArg* concat_input_node_arg = concat.InputDefs()[i];
+
+    const auto* input_shape = concat_input_node_arg->Shape();
+    if (!input_shape) {
+      // We need shape to be able to be certain of number of elements
+      // Can't proceed with fusion
       return false;
     }
-  }  
+
+    // Check if number of elements in this input to Concat is 1
+    if (utils::GetTensorShapeFromTensorShapeProto(*concat_input_node_arg->Shape()).Size() != 1) {
+      // Some dim values may be > 1 or some dim values may be missing
+      // Can't proceed with fusion
+      return false;
+    }
+
+    // This node has met all required criteria thus far.
+    // This node could lead to a potential subgraph pattern fusion.
+    shape_value.push_back(-1);
+  }
 
   // Check how many -1 are there in shape_value.
+  // -1s may be contributed by multiple subgraph pattern fusions
+  // or from values in const initializers (as inputs) to the Concat node.
+  // Only one value of -1 is legal in the shape initializer to the Reshape node,
+  // and hence we can't proceed with the fusion if we do encounter multiple -1s
   int subgraph_cnt = 0;
   for (auto it = shape_value.begin(); it < shape_value.end(); ++it) {
     if ((*it) == -1) {
-      subgraph_cnt++;
+      if (++subgraph_cnt > 1) {
+        // If more than one "-1" value is present in shape_value, return false to exit current fusion.
+        return false;
+      }
     }
-  }
-  // If more than one "-1" value is present in shape_value, return false to exit current fusion.  
-  if (subgraph_cnt > 1) {
-    return false;
   }
 
   // Create an initializer with the same name as the concat node output, and replace the concat node

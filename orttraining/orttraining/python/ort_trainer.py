@@ -8,14 +8,15 @@ from onnx import helper
 import torch
 import torch.nn
 import torch.onnx
+import onnxruntime as ort
+import onnxruntime.capi.postprocess as postprocess
 from distutils.version import LooseVersion
 import warnings
 
-import onnxruntime as ort
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
-DEFAULT_OPSET_VERSION = 10
+DEFAULT_OPSET_VERSION = 12
 
 class IODescription():
     def __init__(self, name, shape, dtype=None, num_classes=None):
@@ -111,19 +112,6 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     return torch_outputs
 
 
-class model_loss_cls(torch.nn.Module):
-    def __init__(self, model, loss_fn):
-        super(model_loss_cls, self).__init__()
-        self.model_ = model
-        self.loss_fn_ = loss_fn
-
-    def forward(self, *inputs):
-        # here we assume input can be unpacked into input and label
-        input, label = inputs[:-1], inputs[-1]
-        preds = self.model_(*input)
-        return self.loss_fn_(preds, label), preds
-
-
 def FuseSofmaxNLLToSoftmaxCE(onnx_model):
     nll_count = 0
     while True:
@@ -208,26 +196,46 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
         return np.int16
 
-def wrap_for_input_match(model, input_names):
+def wrap_for_input_match(model, loss_fn, input_names):
     import inspect
     sig = inspect.signature(model.forward)
     ordered_list_keys = list(sig.parameters.keys())
+    if loss_fn:
+        sig_loss = inspect.signature(loss_fn)
+        if len(sig_loss.parameters) != 2:
+            raise RuntimeError("loss function should take two arguments - predict and label.")
 
-    if len(ordered_list_keys) < len(input_names):
+        # label shall be the second input to loss_fn.
+        ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
+
+    class model_loss_cls(torch.nn.Module):
+        def __init__(self, model, loss_fn):
+            super(model_loss_cls, self).__init__()
+            self.model_ = model
+            self.loss_fn_ = loss_fn
+
+        def forward(self, *inputs):
+            # here we assume input can be unpacked into input and label
+            input, label = inputs[:-1], inputs[-1]
+            preds = self.model_(*input)
+            return self.loss_fn_(preds, label), preds
+
+    # name match is needed only when input_names are a subset
+    # of expected inputs (inputs to model and loss_fn combined).
+    if len(input_names) > len(ordered_list_keys):
         # this is likely the case where input arguments are packed.
-        # For example when model_loss_cls is used.
         # TODO: to unpack the input argument.
-        return model
-    elif len(ordered_list_keys) == len(input_names):
-        # in this case, we do not require name match. we will if train_step supports dictionary input
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
+    elif len(input_names) == len(ordered_list_keys):
+        # in this case, we do not require name match.
+        return model_loss_cls(model, loss_fn) if loss_fn else model
 
     if not all(x in ordered_list_keys for x in input_names):
         # model desc has name(s) not matching the model signature. We cannot do anything in this case.
         # better to warning the user.
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
 
-    # if input_names match the first ordered_list_keys, there is not need for wrapping
+    # if input_names match ordered_list_keys, there is not need for wrapping
     match = True
     for i, input_name in enumerate(input_names):
         if input_name != ordered_list_keys[i]:
@@ -235,12 +243,13 @@ def wrap_for_input_match(model, input_names):
             break
 
     if match:
-        return model
+        return model_loss_cls(model, loss_fn) if loss_fn else model
 
     class WrapModel(torch.nn.Module):
-        def __init__(self, model, input_names):
+        def __init__(self, model, loss_fn, input_names):
             super(WrapModel, self).__init__()
             self.model_ = model
+            self.loss_fn_ = loss_fn
             self.input_names_ = input_names
 
         def forward(self, *inputs):
@@ -254,12 +263,19 @@ def wrap_for_input_match(model, input_names):
                 if key in self.input_names_:
                     input_dict[key] = inputs[self.input_names_.index(key)]
 
-            return self.model_(**input_dict)
+            model_out = self.model_(**input_dict)
+            if self.loss_fn_ is None:
+                return model_out
 
-    model = WrapModel(model, input_names)
+            label = inputs[-1]
+            preds = model_out
+            return self.loss_fn_(preds, label), preds
+
+    model = WrapModel(model, loss_fn, input_names)
+
     return model
 
-def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
+def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
     dynamic_axes = {}
     for input in model_desc.inputs_:
@@ -290,13 +306,10 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     else:
         raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
-    if loss_fn:
-        model = model_loss_cls(model, loss_fn)
-
     # pytorch onnx exporter/trace does not try to match argument names.
     # e.g. for models with optional inputs, it requires all inputs be present.
     # this is a problem because the model graph depends on inputs provided.
-    model = wrap_for_input_match(model, input_names)
+    model = wrap_for_input_match(model, loss_fn, input_names)
 
     model.eval()
     with torch.no_grad():
@@ -311,17 +324,20 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
+    other_export_options['training'] = True
 
     # This option was added after 1.4 release.
     if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
         other_export_options['enable_onnx_checker'] = False
+    # This option was added after 1.6 release.
+    if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
+        other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
 
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names,
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       training=True,
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
@@ -342,12 +358,14 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
 
     # onnx model initializer may contain non-trainable registered buffers that are not part
     # of pytorch model named parameteres.
-    assert set([n for n, t in model.model_.named_parameters()]).issubset(
+    named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
+    assert set([n for n, t in named_parameters]).issubset(
         set([n.name for n in onnx_model.graph.initializer])), \
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
 
-    onnx_model = FuseSofmaxNLLToSoftmaxCE(onnx_model)
+    if _enable_internal_postprocess:
+        onnx_model = postprocess.run_postprocess(onnx_model)
 
     return onnx_model
 
@@ -505,10 +523,11 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
 class ORTTrainer():
 
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
-                 learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
+                 learning_rate_description, device, gradient_accumulation_steps=1,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
-                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION):
+                 enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
+                 _enable_internal_postprocess=True, _extra_postprocess=None):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -573,6 +592,10 @@ class ORTTrainer():
                Defaults to True.
             frozen_weights: list of model parameters to be frozen (not trained).
                Defaults to [].
+            _enable_internal_postprocess: whether to run or not the internal postprocesses.
+               Defaults to True
+            _extra_postprocess: a callable to postprocess the ONNX model that is converted from PyTorch.
+               Defaults to None
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -608,7 +631,7 @@ class ORTTrainer():
         # we use self.global_step_ to count optimizations being performed.
         # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
         self.global_step_ = global_step
-        self.post_process_model_fn_ = postprocess_model
+        self._extra_postprocess = _extra_postprocess
         self.get_lr_this_step_ = get_lr_this_step
         self.loss_scaler_ = loss_scaler
 
@@ -623,6 +646,7 @@ class ORTTrainer():
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.state_dict_ = None
+        self._enable_internal_postprocess = _enable_internal_postprocess
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -633,6 +657,12 @@ class ORTTrainer():
     def _init_session(self):
         if self.onnx_model_ is None:
             return
+
+        if self._enable_internal_postprocess:
+            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
+
+        if self._extra_postprocess:
+            self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -687,12 +717,12 @@ class ORTTrainer():
             self.torch_model_.cpu()
             # torch buffers created using 'register_buffer' are not meant to be trainable.
             torch_buffers = list(dict(self.torch_model_.named_buffers()).keys())
-            self.frozen_weights_.extend(torch_buffers)
+            self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
-                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_)
+                self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
 
-            if self.post_process_model_fn_:
-                self.post_process_model_fn_(self.onnx_model_)
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 
@@ -958,7 +988,8 @@ class ORTTrainer():
                 model.graph.output[0].type.tensor_type.elem_type != onnx.TensorProto().BFLOAT16:
             raise RuntimeError("the first output of a model to run with fully optimized ORT backend must be float types.")
         if len(model.graph.output[0].type.tensor_type.shape.dim) != 0:
-            raise RuntimeError("the first output of a model to run with fully optimized ORT backend must be a scaler.")
+            raise RuntimeError(
+                "the first output of a model to run with fully optimized ORT backend assumed to be loss and must be a scalar.")
 
 class LossScaler():
     def __init__(self, loss_scale_input_name, is_dynamic_scale,

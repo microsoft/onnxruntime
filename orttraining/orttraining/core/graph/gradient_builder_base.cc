@@ -83,7 +83,10 @@ void ComputeBroadcastBackwardAxes(
 }
 
 std::vector<Dimension> GetShape(const ArgDef& arg_def) {
-  ORT_ENFORCE(arg_def.type_proto, "During GetShape, ", arg_def.name, "'s type_proto is null.");
+  ORT_ENFORCE(arg_def.type_proto
+              && arg_def.type_proto->has_tensor_type()
+              && arg_def.type_proto->tensor_type().has_shape(),
+              "During GetShape, ", arg_def.name, "'s shape is null.");
   std::vector<Dimension> shape;
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
   for (auto dim = dims.begin(); dim < dims.end(); dim++) {

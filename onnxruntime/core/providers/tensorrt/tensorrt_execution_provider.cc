@@ -1018,6 +1018,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           cuda::Impl_Cast<int32_t, int64_t>(reinterpret_cast<int32_t*>(buffers[i + num_binding_inputs]), ort.GetTensorMutableData<int64_t>(output_tensor[i]), output_dim_sizes[i]);
+          cudaDeviceSynchronize();
+          cudaFree(buffers[i + num_binding_inputs]);
         }
       }
 

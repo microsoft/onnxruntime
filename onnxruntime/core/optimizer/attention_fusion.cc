@@ -413,16 +413,14 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
 
-  if (add.GetOutputEdgesCount() != 1 ||
-      matmul.GetOutputEdgesCount() != 1 ||
-      reshape.GetOutputEdgesCount() != 1 ||
-      transpose.GetOutputEdgesCount() != 1 ||
-      qkv_matmul.GetOutputEdgesCount() != 1 ||
-      v_transpose.GetOutputEdgesCount() != 1 ||
-      v_reshape.GetOutputEdgesCount() != 1 ||
-      v_add.GetOutputEdgesCount() != 1 ||
-      v_matmul.GetOutputEdgesCount() != 1 ||
-      v_root.GetOutputEdgesCount() != 4) {
+  // Internal nodes of attention subgraph only allow edges within the subgraph, and no graph output is allowed.
+  // No constraints for four nodes: reshape node is last node of Attention; and add, matmul and v_root are not in attention subgraph.
+  if (!optimizer_utils::CheckOutputEdges(graph, transpose, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, qkv_matmul, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, v_transpose, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, v_reshape, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, v_add, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, v_matmul, 1)) {
     DEBUG_LOG("Output edge count not expected for nodes in path v");
     return false;
   }
@@ -513,12 +511,13 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
   const Node& mask_unsqueeze_2 = *p_mask_unsqueeze_2;
   const Node& mask_unsqueeze_1 = *p_mask_unsqueeze_1;
 
-  if (softmax.GetOutputEdgesCount() != 1 ||
-      mask_add.GetOutputEdgesCount() != 1 ||
-      mask_sub.GetOutputEdgesCount() != 1 ||
-      (p_mask_cast != nullptr && (*p_mask_cast).GetOutputEdgesCount() != 1) ||
-      mask_unsqueeze_2.GetOutputEdgesCount() != 1 ||
-      mask_unsqueeze_1.GetOutputEdgesCount() != 1) {
+
+  if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, mask_add, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, mask_sub, 1) ||
+      (p_mask_cast != nullptr && !optimizer_utils::CheckOutputEdges(graph, *p_mask_cast, 1)) ||
+      !optimizer_utils::CheckOutputEdges(graph, mask_unsqueeze_2, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, mask_unsqueeze_1, 1)) {
     DEBUG_LOG("Output edge count not expected for mask nodes");
     return false;
   }
@@ -713,7 +712,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       k_matmul.Index()};
 
   // When the last Attention node is fused. Original mask processing nodes can be removed safely.
-  if (mask_mul.GetOutputEdgesCount() == 1) {
+  if (optimizer_utils::CheckOutputEdges(graph, mask_mul, 1)) {
     nodes_to_remove.push_back(mask_mul.Index());
     nodes_to_remove.push_back(mask_sub.Index());
     if (p_mask_cast != nullptr) {
