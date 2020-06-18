@@ -58,6 +58,9 @@ class ModelBuilder {
   GetInitializerTensors() const { return initializers_; }
 
   const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
+  std::string GetUniqueName(const std::string& base_name);
+
+  void SetUseNCHW(bool enabled) { use_nchw_ = enabled; }
   bool UseNCHW() const { return use_nchw_; }
 
  private:
@@ -66,6 +69,7 @@ class ModelBuilder {
   std::unique_ptr<Model> nnapi_model_;
 
   bool use_nchw_{true};
+  uint32_t name_token_{0};
 
   Shaper shaper_;
 

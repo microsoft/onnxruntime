@@ -458,5 +458,11 @@ IOpBuilder* ModelBuilder::GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node) {
   return op_builders_[node.op_type()].get();
 }
 
+std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
+  std::ostringstream os;
+  os << base_name << "_token_" << name_token_++;
+  return os.str();
+}
+
 }  // namespace nnapi
 }  // namespace onnxruntime

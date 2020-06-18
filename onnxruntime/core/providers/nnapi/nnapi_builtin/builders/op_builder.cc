@@ -470,7 +470,7 @@ void TransposeOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
   }
 
   ModelBuilder::Shape perm_dimen = {SafeInt<uint32_t>(input_dims)};
-  std::string perm_name = node.name() + input + "perm";
+  std::string perm_name = model_builder.GetUniqueName(node.name() + input + "perm");
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
   uint32_t perm_idx = model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
   input_indices.push_back(perm_idx);
@@ -554,7 +554,7 @@ void ReshapeOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
   }
 
   ModelBuilder::Shape shape_dimen = {size};
-  std::string shape_name = node.name() + input + "newshape";
+  std::string shape_name = model_builder.GetUniqueName(node.name() + input + "newshape");
   OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
   uint32_t shape_idx = model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type);
   input_indices.push_back(shape_idx);
@@ -653,9 +653,9 @@ void BatchNormalizationOpBuilder::AddOperatorImpl(ModelBuilder& model_builder,
                 bias_data[i]);
   }
 
-  const auto tensor_a_name = input + "_imm_a";
-  const auto tensor_b_name = input + "_imm_b";
-  const auto tensor_imm_product_name = input + "_imm_mul";
+  const auto tensor_a_name = model_builder.GetUniqueName(node.name() + input + "_imm_a");
+  const auto tensor_b_name = model_builder.GetUniqueName(node.name() + input + "_imm_b");
+  const auto tensor_imm_product_name = model_builder.GetUniqueName(node.name() + input + "_imm_mul");
   ModelBuilder::Shape tensor_a_dimen;
   if (model_builder.UseNCHW())
     tensor_a_dimen = {size, 1, 1};  // {C, H, W}
