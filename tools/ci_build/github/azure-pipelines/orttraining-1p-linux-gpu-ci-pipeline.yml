@@ -94,7 +94,7 @@ stages:
           SecretsFilter: '*'
           RunAsPreJob: false
 
-      - task: CmdLine@3
+      - task: CmdLine@2
         inputs:
           scripts: |
             docker login jingywatest.azurecr.io -u jingywatest -p $(DockerPassword) \
