@@ -1439,8 +1439,8 @@ static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
     auto attr_name = attr.first;
     auto attr_value = attr.second;
 
-    //cudnn only supports symmetric padding, so fall back to CPU in case we encounter asymmetric padding
-    // TODO: In some cases, pads may be computed at run time
+    // cudnn only supports symmetric padding, so fall back to CPU in case we encounter asymmetric padding
+    // TODO: In some cases, pads may be computed at run-time
     // For example, using auto_pad values of "SAME_UPPER" or "SAME_LOWER" in Conv and ConvTranspose
     // and explicitly specifying output_shape in ConvTranspose
     // This *could* lead to run time CUDA op failures if pads are asymmetric
