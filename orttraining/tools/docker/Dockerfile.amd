@@ -101,11 +101,7 @@ RUN sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/ssh
 RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd_config
 
 # Start or Restart sshd service
-RUN echo "\nif [ ! -e /var/run/sshd ]; then" >> /root/.bashrc
-RUN echo "    service ssh start" >> /root/.bashrc
-RUN echo "else" >> /root/.bashrc
-RUN echo "    service ssh restart" >> /root/.bashrc
-RUN echo "fi" >> /root/.bashrc
+ENTRYPOINT service ssh restart && /bin/bash
 
 # Remove gtest and gmock
 RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
