@@ -253,7 +253,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 
 1. Build the docker image from the Dockerfile in this repository.
   ```
-  docker build -t onnxruntime-trt -f Dockerfile.migraphx .
+  docker build -t onnxruntime-migraphx -f Dockerfile.migraphx .
   ```
 
 2. Run the Docker image

@@ -984,7 +984,7 @@ If you want to use NNAPI Execution Provider on Android, see [docs/execution_prov
 
 ---
 
-### AMDMIGraphX
+### AMD MIGraphX
 
 See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
 

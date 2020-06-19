@@ -1,7 +1,6 @@
 # MIGraphX Execution Provider
 
-The MIGraphX execution provider in the ONNX Runtime uses AMD's
-[MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) Deep Learning graph optimization engine to accelerate ONNX model in their GPUs. Microsoft and AMD worked closely to integrate the MIGraphX execution provider to ONNX Runtime.
+ONNX Runtime's [MIGraphX] (https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
 
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#migraphx). 
@@ -25,7 +24,9 @@ status = session_object.Load(model_file_name);
 The C API details are [here](../C_API.md#c-api).
 
 ### Python
-When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider. Python APIs details are .
+When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically
+prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution
+provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../ONNX_Runtime_Perf_Tuning.md)
