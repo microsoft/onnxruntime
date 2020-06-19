@@ -32,11 +32,6 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
-  if (OpKernel::Node().Name() == "ConvTranspose_3289") {
-    double a = 1.2;
-    ORT_IGNORE_RETURN_VALUE(std::floor(a));
-  }
-
   return DoConvTranspose(context, false);
 }
 
