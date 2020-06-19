@@ -74,6 +74,10 @@ def pytorch_inference(model, inputs, total_runs=100):
     logger.debug(f"start pytorch_inference")
     input_ids, past, attention_mask, position_ids = inputs
 
+    # Convert it back to fp32 as the PyTroch model cannot deal with half input.
+    attention_mask = attention_mask.to(dtype=torch.float32) if attention_mask else None
+    past = [p.to(dtype=torch.float32) for p in past]
+
     latency = []
     with torch.no_grad():
         for _ in range(total_runs):
@@ -171,8 +175,8 @@ def onnxruntime_inference_with_binded_io(ort_session, inputs, output_buffers, ou
     io_binding.bind_input('input_ids', input_ids.device.type, 0, numpy.longlong, list(input_ids.size()),
                           input_ids.data_ptr())
 
-    float_type = numpy.float16 if output_buffers[ort_session.get_outputs()
-                                                 [0].name].dtype == torch.float16 else numpy.float32
+    data_type = output_buffers[ort_session.get_outputs()[0].name].dtype
+    float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
 
     if past is not None:
         for i, past_i in enumerate(past):
@@ -452,6 +456,9 @@ def main():
     setup_logger(args.verbose)
 
     logger.info(f"Arguments:{args}")
+    if args.float16:
+        assert args.optimize_onnx and args.use_gpu, "--float16 requires --optimize_onnx --use_gpu"
+
     dump_environment()
 
     cache_dir = args.cache_dir
@@ -473,6 +480,8 @@ def main():
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     #if use_torchscript:
     #    model = torch.jit.trace(model, (input_ids, past))
+    #if args.float16:
+    #    model.half()
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
@@ -499,7 +508,7 @@ def main():
                            optimization_options=None,
                            use_gpu=args.use_gpu)
         if args.float16:
-            m.convert_float32_to_float16()
+            m.convert_model_float32_to_float16(cast_input_output=False)
 
         filename_prefix = "gpt2{}_past{}".format("_lm" if use_LMHead else "",
                                                  "_mask" if args.use_attention_mask else "")
