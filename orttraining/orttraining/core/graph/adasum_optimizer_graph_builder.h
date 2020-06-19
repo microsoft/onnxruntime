@@ -28,13 +28,13 @@ class AdasumOptimizerGraphBuilder : public AllreduceOptimizerGraphBuilder {
       const NodeArgNameGeneratorFn& nodearg_name_generator,
       const ArgDef& gradient,
       ArgDef& weight,
-      const ArgDef* gradient_finite_argdef,
+      const ArgDef& gradient_finite_argdef,
       GraphAugmenter::GraphDefs& graph_defs);
 
   Status AddWeightUpdateNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
       std::vector<ArgDef>& gradient_argdefs,
       std::vector<ArgDef>& weight_argdefs,
-      const ArgDef* adasum_gradient_finite_argdef,
+      const ArgDef& adasum_gradient_finite_argdef,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& output_weight_argdefs);
 
