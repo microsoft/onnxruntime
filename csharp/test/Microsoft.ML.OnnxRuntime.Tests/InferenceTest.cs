@@ -542,7 +542,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             session.Dispose();
         }
 
-        private static Dictionary<string, string> GetSkippedModels()
+        private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
             var skipModels = new Dictionary<string, string>() {
                 { "mxnet_arcface", "Model is an invalid ONNX model"},
@@ -568,6 +568,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
             }
 
+            // Skip traditional ML models
+            var disableMlOpsEnvVar = Environment.GetEnvironmentVariable("DisableMlOps");
+            var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
+            if (isMlOpsDisabled)
+            {
+                foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+                {
+                    foreach (var modelDir in opsetDir.EnumerateDirectories())
+                    {
+                        var modelDirName = modelDir.Name;
+                        if (modelDirName.StartsWith("scikit_") ||
+                        modelDirName.StartsWith("libsvm_") ||
+                        modelDirName.StartsWith("coreml_") ||
+                        modelDirName.StartsWith("XGBoost_"))
+                        {
+                            skipModels[modelDirName] = "Fails when ML ops are disabled";
+                        }
+                    } //model
+                } //opset
+            }
+
             // This model fails on x86 Win CI
             if (System.Environment.Is64BitProcess == false)
             {
@@ -586,7 +607,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var modelsDir = GetTestModelsDir();
             var modelsDirInfo = new DirectoryInfo(modelsDir);
-            var skipModels = GetSkippedModels();
+            var skipModels = GetSkippedModels(modelsDirInfo);
 
             foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
@@ -605,7 +626,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             var modelsDir = GetTestModelsDir();
             var modelsDirInfo = new DirectoryInfo(modelsDir);
-            var skipModels = GetSkippedModels();
+            var skipModels = GetSkippedModels(modelsDirInfo);
 
             foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
