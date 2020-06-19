@@ -165,7 +165,6 @@ class TrainingRunner {
     VectorString pipeline_stage_paths;
     // Enable gradient clipping.
     bool enable_grad_norm_clip = true;
-    bool optimize_gathernd = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);

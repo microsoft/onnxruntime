@@ -160,7 +160,6 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
       "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
-      ("optimize_gathernd", "whether we apply gatherND optimization.", cxxopts::value<bool>()->default_value("false"))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"));
 
@@ -327,10 +326,6 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.partition_optimizer = flags["partition_optimizer"].as<bool>();
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
-    params.optimize_gathernd = flags["optimize_gathernd"].as<bool>();
-    if (params.optimize_gathernd) {
-      printf("ReduceComputation Transformer is enabled.\n");
-    }
 
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();

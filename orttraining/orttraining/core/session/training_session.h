@@ -172,8 +172,6 @@ class TrainingSession : public InferenceSession {
     // If pipeline is enabled, this field's has_value() returns true.
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
-
-    bool optimize_gathernd{false};
   };
 
   /**
@@ -433,7 +431,7 @@ class TrainingSession : public InferenceSession {
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
   @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
   */
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights,
                                                                 const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;
