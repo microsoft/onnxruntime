@@ -2363,7 +2363,8 @@ public:
     }
 };
 
-class MlasMinMaxElementsTest : public MlasTestBase {
+class MlasMinMaxElementsTest : public MlasTestBase
+{
 private:
     MatrixGuardBuffer<float> BufferInput;
 
@@ -2372,7 +2373,8 @@ private:
             size_t N,
             float MinimumValue,
             float MaximumValue
-        ) {
+        )
+    {
         float* Input = BufferInput.GetBuffer(N);
 
         std::default_random_engine generator(static_cast< unsigned >(N));
@@ -2406,7 +2408,8 @@ public:
     void
         ExecuteShort(
             void
-        ) override {
+        ) override
+    {
         for (size_t n = 1; n < 128; n++) {
             Test(n, -10.f, 10.f);
         }

@@ -78,6 +78,7 @@ MlasMinMaxF32KernelAvx2(
         }
 
         while (N >= 8) {
+
             __m256 InputVector0 = _mm256_loadu_ps(Input);
             MaximumVector0 = _mm256_max_ps(MaximumVector0, InputVector0);
             MinimumVector0 = _mm256_min_ps(MinimumVector0, InputVector0);

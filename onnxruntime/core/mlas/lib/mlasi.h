@@ -1467,7 +1467,8 @@ MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
 
 MLAS_FORCEINLINE
 float
-MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector) {
+MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector)
+{
 #if defined(MLAS_NEON64_INTRINSICS)
     return vminvq_f32(Vector);
 #elif defined(MLAS_NEON32_INTRINSICS)

@@ -78,6 +78,7 @@ MlasMinMaxF32Kernel(
         }
 
         while (N >= 4) {
+
             MLAS_FLOAT32X4 InputVector0 = MlasLoadFloat32x4(Input);
             MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, InputVector0);
             MinimumVector0 = MlasMinimumFloat32x4(MinimumVector0, InputVector0);
