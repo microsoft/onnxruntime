@@ -67,9 +67,6 @@ bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::s
 }
 
 static const std::string Loss_Scale_Input = "loss_scale";
-static const std::string Scaled_Loss_Node = "scaled_loss";
-static const std::string Scaled_Loss_Grad_Mul_Node = "scaled_loss_Grad/Mul_0";
-static const std::string Scaled_Loss_Grad_ReduceSum_Node = "scaled_loss_Grad/ReduceSum_1";
 
 static const std::unordered_set<std::string> Loss_Subgraph_Entry_Nodes = {
     "SparseSoftmaxCrossEntropy",
@@ -256,17 +253,34 @@ struct LossSubgraph {
   LossSubgraph(Graph& graph) {
     GraphViewer graph_viewer(graph);
     const auto& order = graph_viewer.GetNodesInTopologicalOrder();
-    bool has_loss_subgraph_entry_node = false;
+
+    // Get the nodes related to loss scale. It's a Mul node and it's grad nodes.
+    // We initialize loss subgraph only when there is loss scale as input.
+    std::vector<Node*> loss_scale_consumers = graph.GetMutableConsumerNodes(Loss_Scale_Input);
+    if (loss_scale_consumers.size() == 0) {
+      return;
+    }
+
+    nodes_.insert(loss_scale_consumers.begin(), loss_scale_consumers.end());
+    for (Node* node : loss_scale_consumers) {
+      for (const NodeArg* output : node->OutputDefs()) {
+        std::vector<Node*> level2_consumers = graph.GetMutableConsumerNodes(output->Name());
+        nodes_.insert(level2_consumers.begin(), level2_consumers.end());
+      }
+    }
+
+    // The node number here depends on how to implement the gradient of Mul.
+    // Add this check here for safety at certain level.
+    ORT_ENFORCE(nodes_.size() == 3,
+                "The node number of the loss scale and it's grad subgraph is expected to be 3.");
+
     // Check if graph contains any loss Op from the white-list.
-    // If not, then the loss subgraph contains only scaled_loss and its grad nodes.
+    // If not, then above loss scale related nodes are all we need.
+    bool has_loss_subgraph_entry_node = false;
     for (auto index : order) {
-      Node* node = graph.GetNode(index);
-      if (node->Name() == Scaled_Loss_Node ||
-          node->Name() == Scaled_Loss_Grad_Mul_Node ||
-          node->Name() == Scaled_Loss_Grad_ReduceSum_Node) {
-        nodes_.insert(node);
-      } else if (IsLossSubgraphEntryNode(node)) {
+      if (IsLossSubgraphEntryNode(graph.GetNode(index))) {
         has_loss_subgraph_entry_node = true;
+        break;
       }
     }
 
