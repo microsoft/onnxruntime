@@ -1,6 +1,8 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * This is the base class for anything backed by JNI. It manages open versus closed state and
@@ -20,15 +22,16 @@ abstract class NativeObject implements AutoCloseable {
 
   private final long handle;
 
-  private volatile boolean closed;
+  private final AtomicBoolean closed;
 
-  private int activeCount;
+  private final AtomicInteger referenceCount;
 
   private final NativeReference reference;
 
   NativeObject(long handle) {
     this.handle = handle;
-    this.closed = false;
+    this.closed = new AtomicBoolean(false);
+    this.referenceCount = new AtomicInteger(1);
     this.reference = new DefaultNativeReference();
   }
 
@@ -48,12 +51,12 @@ abstract class NativeObject implements AutoCloseable {
    * @return true if closed
    */
   public final boolean isClosed() {
-    return closed;
+    return closed.get();
   }
 
   /** Throw an exception if the resource is closed. */
   final void ensureOpen() {
-    if (closed) {
+    if (isClosed()) {
       throw new IllegalStateException(
           this.getClass().getSimpleName() + " has been closed already.");
     }
@@ -77,10 +80,12 @@ abstract class NativeObject implements AutoCloseable {
   @Override
   public void close() {
     synchronized (handleLock) {
-      if (closed) {
+      if (closed.getAndSet(true)) {
+        // already closed
         return;
       }
-      while (activeCount > 0) {
+      if (!release()) {
+        // there are still references out there, so wait
         try {
           handleLock.wait();
         } catch (InterruptedException e) {
@@ -89,8 +94,18 @@ abstract class NativeObject implements AutoCloseable {
         }
       }
       doClose(handle);
-      closed = true;
     }
+  }
+
+  /**
+   * Check the reference back in from use.
+   *
+   * @return whether the caller is the last user of this object.
+   */
+  private final boolean release() {
+    // if value is 0 then there are no references left.
+    // else there are still references out there.
+    return (referenceCount.decrementAndGet() == 0);
   }
 
   /** A managed reference to the backing native object. */
@@ -115,10 +130,8 @@ abstract class NativeObject implements AutoCloseable {
    * @return a reference from which the backing native object's handle can be used.
    */
   final NativeReference reference() {
-    synchronized (handleLock) {
-      ensureOpen();
-      ++activeCount;
-    }
+    ensureOpen();
+    referenceCount.incrementAndGet();
     return reference;
   }
 
@@ -146,11 +159,8 @@ abstract class NativeObject implements AutoCloseable {
 
     @Override
     public void close() {
-      synchronized (handleLock) {
-        if (closed) {
-          return;
-        }
-        if (--activeCount == 0) {
+      if (release()) {
+        synchronized (handleLock) {
           handleLock.notifyAll();
         }
       }
