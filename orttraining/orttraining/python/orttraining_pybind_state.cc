@@ -195,7 +195,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
       .def_readwrite("use_adasum", &TrainingParameters::use_adasum)
-      .def_readwrite("perform_fp16_allreduce", &TrainingParameters::perform_fp16_allreduce);
+      .def_readwrite("perform_fp16_allreduce", &TrainingParameters::perform_fp16_allreduce)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
