@@ -106,7 +106,7 @@ class BertOnnxModel(OnnxModel):
             if input.name in bert_inputs:
                 utils.remove_cast_int32(input.name)
                 int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32,
-                                                            self.tesnor_shape_to_list(input.type.tensor_type))
+                                                            self.tensor_shape_to_list(input.type.tensor_type))
                 new_graph_inputs.append(int32_input)
             else:
                 new_graph_inputs.append(input)

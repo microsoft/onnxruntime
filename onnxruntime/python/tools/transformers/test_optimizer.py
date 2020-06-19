@@ -223,5 +223,6 @@ class TestBertOptimization(unittest.TestCase):
         for output in model.graph().output:
             self.assertEqual(output.type.tensor_type.elem_type, TensorProto.FLOAT16)
 
+
 if __name__ == '__main__':
     unittest.main()
