@@ -338,7 +338,11 @@ inline std::vector<std::string> ExperimentalSession::GetInputNames() const {
   Ort::AllocatorWithDefaultOptions allocator;
   size_t node_count = GetInputCount();
   std::vector<std::string> out(node_count);
-  for (size_t i=0; i<node_count; i++) out[i] = GetInputName(i, allocator);
+  for (size_t i=0; i<node_count; i++) {
+    char* tmp = GetInputName(i, allocator);
+    out[i] = tmp;
+    allocator.Free(tmp); // prevent memory leak
+  }
   return out;
 }
 
@@ -346,7 +350,11 @@ inline std::vector<std::string> ExperimentalSession::GetOutputNames() const {
   Ort::AllocatorWithDefaultOptions allocator;
   size_t node_count = GetOutputCount();
   std::vector<std::string> out(node_count);
-  for (size_t i=0; i<node_count; i++) out[i] = GetOutputName(i, allocator);
+  for (size_t i=0; i<node_count; i++) {
+    char* tmp = GetOutputName(i, allocator);
+    out[i] = tmp;
+    allocator.Free(tmp); // prevent memory leak
+  }
   return out;
 }
 
@@ -354,7 +362,11 @@ inline std::vector<std::string> ExperimentalSession::GetOverridableInitializerNa
   Ort::AllocatorWithDefaultOptions allocator;
   size_t init_count = GetOverridableInitializerCount();
   std::vector<std::string> out(init_count);
-  for (size_t i=0; i<init_count; i++) out[i] = GetOverridableInitializerName(i, allocator);
+  for (size_t i=0; i<init_count; i++) {
+    char* tmp = GetOverridableInitializerName(i, allocator);
+    out[i] = tmp;
+    allocator.Free(tmp); // prevent memory leak
+  }
   return out;
 }
 
@@ -373,7 +385,6 @@ inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOutputShapes(
 }
 
 inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOverridableInitializerShapes() const {
-  Ort::AllocatorWithDefaultOptions allocator;
   size_t init_count = GetOverridableInitializerCount();
   std::vector< std::vector<int64_t> > out(init_count);
   for (size_t i=0; i<init_count; i++) out[i] = GetOverridableInitializerTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
