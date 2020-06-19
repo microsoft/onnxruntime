@@ -82,13 +82,6 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
-      // Bail out early if one of the output dimensions is zero after making note of the current output dimensions
-      // to be used in subsequent runs if there has been no change in the shapes of the input and the filter
-      if (p.Y->Shape().Size() == 0) {
-        s_.y_dims = p.Y->Shape().GetDims();
-        return Status::OK();
-      }
-
       auto y_dims = p.Y->Shape().GetDims();
       if (x_dimensions == 3) {
         y_dims.insert(y_dims.begin() + 2, 1);
@@ -99,6 +92,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         p.dilations.insert(p.dilations.begin(), 1);
       }
       s_.y_dims = y_dims;
+
+      // Bail out early if one of the dimensions is zero.
+      if (p.Y->Shape().Size() == 0) {
+        return Status::OK();
+      }
 
       ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
