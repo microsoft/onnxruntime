@@ -571,6 +571,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // Skip traditional ML models
             var disableMlOpsEnvVar = Environment.GetEnvironmentVariable("DisableMlOps");
             var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
+            Console.WriteLine("isMlOpsDisabled: {0}", isMlOpsDisabled);
             if (isMlOpsDisabled)
             {
                 foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
@@ -581,8 +582,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         if (modelDirName.StartsWith("scikit_") ||
                         modelDirName.StartsWith("libsvm_") ||
                         modelDirName.StartsWith("coreml_") ||
+                        modelDirName.StartsWith("keras2coreml_") ||
                         modelDirName.StartsWith("XGBoost_"))
                         {
+                            Console.WriteLine("skipping model: {0}", modelDirName);
                             skipModels[modelDirName] = "Fails when ML ops are disabled";
                         }
                     } //model
@@ -1412,7 +1415,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        private class IgnoreWhenMlOpsDisabledFact : FactAttribute
+        {
+            public IgnoreWhenMlOpsDisabledFact()
+            {
+                var disableMlOpsEnvVar = Environment.GetEnvironmentVariable("DisableMlOps");
+                var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
+                if (isMlOpsDisabled)
+                {
+                    Skip = "Skipping this test since Ml Ops are disabled.";
+                }
+            }
+        }
+
+        [IgnoreWhenMlOpsDisabledFact]
         private void TestModelSequenceOfMapIntFloat()
         {
             // test model trained using lightgbm classifier
@@ -1473,7 +1489,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [IgnoreWhenMlOpsDisabledFact]
         private void TestModelSequenceOfMapStringFloat()
         {
             // test model trained using lightgbm classifier
