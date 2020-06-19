@@ -37,6 +37,11 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
     return Status::OK();
   }
 
+  // bugbug
+  std::cout<<"worker group: "<<worker_group_type<<" has ranks:"<<std::endl;
+  for (size_t i=0; i<worker_group.ranks.size(); i++)
+    std::cout<<" "<<worker_group.ranks[i]<<" "<<std::endl;
+
   // Create new group
   MPI_Group mpi_group;
   MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group);

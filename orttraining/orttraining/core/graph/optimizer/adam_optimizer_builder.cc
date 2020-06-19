@@ -131,13 +131,17 @@ Status AdamOptimizerBuilder::Build(
       } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
         ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
+        std::cout<<"gradient_norm_argdef is null."<<std::endl;
         input_args.push_back(ArgDef());
       }
 
       if (gradient_norm_finite_argdef) {
         input_args.push_back(*gradient_norm_finite_argdef);
+        //bugbug
+        std::cout<<"gradient_norm_finite_argdef is not null."<<std::endl;
       } else {
         input_args.push_back(ArgDef());
+        std::cout<<"gradient_norm_finite_argdef is null."<<std::endl;
       }
 
       graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
