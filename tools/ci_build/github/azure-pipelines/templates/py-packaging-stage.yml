@@ -15,6 +15,13 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_linux_gpu_py35
+  displayName: >
+    Whether Linux GPU package is built for Python 3.5.
+    enable_linux_gpu must be true for this to have an effect.
+  type: boolean
+  default: true
+
 - name: enable_windows_cpu
   displayName: 'Whether Windows CPU package is built.'
   type: boolean
@@ -130,8 +137,9 @@ stages:
       pool: Linux-GPU-CUDA10
       strategy:
         matrix:
-          Python35:
-            python.version: '3.5'
+          ${{ if eq(parameters.enable_linux_gpu_py35, true) }}:
+            Python35:
+              python.version: '3.5'
           Python36:
             python.version: '3.6'
           Python37:
