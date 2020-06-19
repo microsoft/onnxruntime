@@ -3,7 +3,7 @@
 ONNX Runtime's [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#migraphx). 
+For build instructions, please see the [BUILD page](../../BUILD.md#AMD-MIGraphX). 
 
 ## Using the MIGraphX execution provider
 ### C/C++
