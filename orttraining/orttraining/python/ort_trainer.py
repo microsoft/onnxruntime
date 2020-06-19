@@ -358,7 +358,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                partition_optimizer=False,
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
-                                               use_adasum=False, perform_fp16_allreduce=True):
+                                               use_adasum=False, perform_fp16_allreduce=True, data_parallel_size=1,
+                                               horizontal_parallel_size=1):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -373,6 +374,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_adasum = use_adasum
     ort_parameters.perform_fp16_allreduce = perform_fp16_allreduce
+    ort_parameters.data_parallel_size = data_parallel_size
+    ort_parameters.horizontal_parallel_size = horizontal_parallel_size
     output_types = {}
     for output in model.graph.output:
         output_types[output.name] = output.type.tensor_type
@@ -511,7 +514,7 @@ class ORTTrainer():
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION, use_adasum=False,
-                 perform_fp16_allreduce=True):
+                 perform_fp16_allreduce=True, data_parallel_size=1, horizontal_parallel_size=1):
         super(ORTTrainer, self).__init__()
         """
         Initializes ORTTrainer.
@@ -566,7 +569,8 @@ class ORTTrainer():
         self.session = None
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
-
+        self.data_parallel_size = data_parallel_size
+        self.horizontal_parallel_size = horizontal_parallel_size
         # we use self.current_step to count calls to train_step. It is used for gradient accumulation.
         # gradients are being accumulated when self.current_step is not divisible by gradient_accumulation_steps.
         # gradients are updated when self.current_step is divisible by gradient_accumulation_steps.
@@ -613,7 +617,8 @@ class ORTTrainer():
                 partition_optimizer=self.partition_optimizer_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_, use_adasum=self.use_adasum,
-                perform_fp16_allreduce=self.perform_fp16_allreduce)
+                perform_fp16_allreduce=self.perform_fp16_allreduce, data_parallel_size=self.data_parallel_size,
+                horizontal_parallel_size=self.horizontal_parallel_size)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
