@@ -581,6 +581,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         if (modelDirName.StartsWith("scikit_") ||
                         modelDirName.StartsWith("libsvm_") ||
                         modelDirName.StartsWith("coreml_") ||
+                        modelDirName.StartsWith("keras2coreml_") ||
                         modelDirName.StartsWith("XGBoost_"))
                         {
                             skipModels[modelDirName] = "Fails when ML ops are disabled";
@@ -1412,7 +1413,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        private class IgnoreWhenMlOpsDisabledFact : FactAttribute
+        {
+            public IgnoreWhenMlOpsDisabledFact()
+            {
+                var disableMlOpsEnvVar = Environment.GetEnvironmentVariable("DisableMlOps");
+                var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
+                if (isMlOpsDisabled)
+                {
+                    Skip = "Skipping this test since Ml Ops are disabled.";
+                }
+            }
+        }
+
+        [IgnoreWhenMlOpsDisabledFact]
         private void TestModelSequenceOfMapIntFloat()
         {
             // test model trained using lightgbm classifier
@@ -1473,7 +1487,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [IgnoreWhenMlOpsDisabledFact]
         private void TestModelSequenceOfMapStringFloat()
         {
             // test model trained using lightgbm classifier
