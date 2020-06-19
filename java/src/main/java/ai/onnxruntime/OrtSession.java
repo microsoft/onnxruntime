@@ -27,6 +27,8 @@ import java.util.logging.Logger;
  */
 public class OrtSession extends NativeObject {
 
+  private final OrtEnvironment environment;
+
   private final OrtAllocator allocator;
 
   private final long numInputs;
@@ -66,7 +68,7 @@ public class OrtSession extends NativeObject {
               environmentReference.handle(),
               modelPath,
               optionsReference.handle());
-      return new OrtSession(sessionHandle, allocator);
+      return new OrtSession(sessionHandle, env, allocator);
     }
   }
 
@@ -91,7 +93,7 @@ public class OrtSession extends NativeObject {
               environmentReference.handle(),
               modelArray,
               optionsReference.handle());
-      return new OrtSession(sessionHandle, allocator);
+      return new OrtSession(sessionHandle, env, allocator);
     }
   }
 
@@ -99,11 +101,14 @@ public class OrtSession extends NativeObject {
    * Private constructor to build the Java object wrapped around a native session.
    *
    * @param sessionHandle The pointer to the native session.
+   * @param environment The environment to check to be open.
    * @param allocator The allocator to use.
    * @throws OrtException If the model's inputs, outputs or metadata could not be read.
    */
-  private OrtSession(long sessionHandle, OrtAllocator allocator) throws OrtException {
+  private OrtSession(long sessionHandle, OrtEnvironment environment, OrtAllocator allocator)
+      throws OrtException {
     super(sessionHandle);
+    this.environment = environment;
     this.allocator = allocator;
     try (NativeReference allocatorReference = allocator.reference()) {
       long allocatorHandle = allocatorReference.handle();
@@ -286,8 +291,9 @@ public class OrtSession extends NativeObject {
               + ") found "
               + numRequestedInputs);
     }
-    try (NativeReference sessionReference = reference();
+    try (NativeReference environmentReference = environment.reference();
         NativeReference allocatorReference = allocator.reference();
+        NativeReference sessionReference = reference();
         NativeReference runOptionsReference = optionalReference(runOptions);
         NativeInputReferences inputsReferences = new NativeInputReferences(numRequestedInputs)) {
       String[] requestedInputsArray = new String[numRequestedInputs];
