@@ -17,6 +17,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/basic/min_max_elements.cpp
 )
 
 if(MSVC)
@@ -79,6 +80,7 @@ if(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/LogisticKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/TanhKernelFma3.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/ErfKernelFma3.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/min_max_elements.cpp
     )
   else()
     enable_language(ASM_MASM)
@@ -208,6 +210,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/LogisticKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TanhKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/min_max_elements.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 

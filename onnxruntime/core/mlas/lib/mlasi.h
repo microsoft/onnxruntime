@@ -448,6 +448,18 @@ float
 
 typedef MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_MIN_MAX_FLOAT_KERNEL)(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+typedef MLAS_MIN_MAX_FLOAT_KERNEL* PMLAS_MIN_MAX_FLOAT_KERNEL;
+
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -556,6 +568,11 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
 #endif
 
+    MLAS_MIN_MAX_FLOAT_KERNEL MlasMinMaxF32Kernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_MIN_MAX_FLOAT_KERNEL MlasMinMaxF32KernelAvx2;
+#endif
+
 }
 
 //
@@ -640,6 +657,7 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL ComputeSoftmaxOutputF32Kernel;
     PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
     PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
+    PMLAS_MIN_MAX_FLOAT_KERNEL MinMaxF32Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif
@@ -1443,6 +1461,28 @@ MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
 #else
     Vector = MlasMaximumFloat32x4(Vector, MlasShuffleFloat32x4<2, 3, 2, 3>(Vector));
     Vector = MlasMaximumFloat32x4(Vector, MlasShuffleFloat32x4<1, 1, 1, 1>(Vector));
+    return MlasExtractLaneFloat32x4<0>(Vector);
+#endif
+}
+
+MLAS_FORCEINLINE
+float
+MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector) {
+#if defined(MLAS_NEON64_INTRINSICS)
+    return vminvq_f32(Vector);
+#elif defined(MLAS_NEON32_INTRINSICS)
+    float32x2_t VectorLow = vget_low_f32(Vector);
+    float32x2_t VectorHigh = vget_high_f32(Vector);
+    VectorLow = vpmin_f32(VectorLow, VectorHigh);
+    VectorLow = vpmin_f32(VectorLow, VectorHigh);
+    return vget_lane_f32(VectorLow, 0);
+#elif defined(MLAS_VSX_INTRINSICS)
+    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMinimumFloat32x4(Vector, vec_splat(Vector, 1));
+    return Vector[0];
+#else
+    Vector = MlasMinimumFloat32x4(Vector, MlasShuffleFloat32x4<2, 3, 2, 3>(Vector));
+    Vector = MlasMinimumFloat32x4(Vector, MlasShuffleFloat32x4<1, 1, 1, 1>(Vector));
     return MlasExtractLaneFloat32x4<0>(Vector);
 #endif
 }
