@@ -12,33 +12,21 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T, typename GeluComputationMode, int num_consecutive_elements_per_group, int num_groups_per_thread>
-__global__ void BiasGeluGradDxKernel(
-    CUDA_LONG input_size, fast_divmod bias_size_fdm,
-    const T* dY, const T* X, const T* B, T* dX) {
-  const auto& num_threads_per_block = blockDim.x;
-  const int& bias_size = bias_size_fdm.d_;
-  CUDA_LONG base_idx =
-      num_consecutive_elements_per_group * num_groups_per_thread * num_threads_per_block * blockIdx.x +
-      num_consecutive_elements_per_group * threadIdx.x;
+__global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X, const T* B, T* dX) {
+  const int64_t input_base_idx = bias_size * blockIdx.x + num_consecutive_elements_per_group * threadIdx.x;
+  const int64_t bias_base_idx = num_consecutive_elements_per_group * threadIdx.x;
+  const int64_t group_stride = num_consecutive_elements_per_group * blockDim.x;
 
 #pragma unroll
-  for (int i = 0; i < num_groups_per_thread; ++i) {
-    if (base_idx < input_size) {
-      int q, r;
-      bias_size_fdm.divmod(base_idx, q, r);
-      const int& base_bias_idx = r;
-
+  for (int group_idx = 0; group_idx < num_groups_per_thread; ++group_idx) {
 #pragma unroll
-      for (int element_idx = 0; element_idx < num_consecutive_elements_per_group; ++element_idx) {
-        const int input_idx = base_idx + element_idx;
-        if (input_idx < input_size) {
-          const int bias_idx =
-              base_bias_idx + element_idx - static_cast<int>((base_bias_idx + element_idx) >= bias_size) * bias_size;
-          dX[input_idx] = ComputeGeluGradScalar(dY[input_idx], X[input_idx] + B[bias_idx], GeluComputationMode{});
-        }
+    for (int element_idx = 0; element_idx < num_consecutive_elements_per_group; ++element_idx) {
+      const auto offset = group_stride * group_idx + element_idx;
+      if (bias_base_idx + offset < bias_size) {
+        dX[input_base_idx + offset] = ComputeGeluGradScalar(
+            dY[input_base_idx + offset], X[input_base_idx + offset] + B[bias_base_idx + offset],
+            GeluComputationMode{});
       }
-
-      base_idx += num_consecutive_elements_per_group * num_threads_per_block;
     }
   }
 }
@@ -47,17 +35,16 @@ template <typename T, typename GeluComputationMode>
 void LaunchBiasGeluGradDxKernel(
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX) {
+  // each block handles bias_size elements
+  // there are input_size / bias_size blocks
   constexpr int num_consecutive_elements_per_group = 4;
   constexpr int num_groups_per_thread = 4;
-  constexpr int num_threads_per_block = GridDim::maxThreadsPerBlock;
-  const auto num_blocks_per_grid = CeilDiv(
-      input_size,
-      num_threads_per_block * num_consecutive_elements_per_group * num_groups_per_thread);
-  const fast_divmod bias_size_fdm{static_cast<int>(bias_size)};
+
+  const auto num_threads_per_block = CeilDiv(bias_size, num_consecutive_elements_per_group * num_groups_per_thread);
+  const auto num_blocks_per_grid = input_size / bias_size;
 
   BiasGeluGradDxKernel<T, GeluComputationMode, num_consecutive_elements_per_group, num_groups_per_thread>
-      <<<num_blocks_per_grid, num_threads_per_block>>>(
-          static_cast<CUDA_LONG>(input_size), bias_size_fdm, dY, X, B, dX);
+      <<<num_blocks_per_grid, num_threads_per_block>>>(bias_size, dY, X, B, dX);
 }
 
 // explicit instantiations
