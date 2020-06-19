@@ -1303,7 +1303,6 @@ TEST_F(GraphTransformationTests, ReshapeFusionOverridableInitializer) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
-  std::cout << "ret " << ret << std::endl;
   ASSERT_TRUE(ret.IsOK());
 
   // The optimization does not apply.
