@@ -163,6 +163,8 @@ Status TrainingRunner::Initialize() {
     config.pipeline_config = pipe;
   }
 
+  config.enable_gelu_approximation = params_.enable_gelu_approximation;
+
   TrainingSession::TrainingConfigurationResult config_result{};
 
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
