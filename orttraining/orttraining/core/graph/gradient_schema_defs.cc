@@ -873,7 +873,8 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group,"
+                           "2 - node local parallel group, 3 - cross node parallel group",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)

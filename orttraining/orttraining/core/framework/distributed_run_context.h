@@ -9,6 +9,8 @@ namespace training {
 enum WorkerGroupType {
   DataParallel = 0,
   HorizontalParallel = 1,
+  NodeLocalParallel = 2,
+  CrossNodeParallel = 3,
 };
 
 struct WorkerGroup {

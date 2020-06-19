@@ -60,6 +60,26 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
                                                   WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
+  
+  // Node local parallel group
+  const int32_t node_group_id = world_rank / local_size;
+  const int32_t rank_in_owning_node_group = local_rank;
+  std::vector<int32_t> node_group_ranks;
+  for (auto r = 0; r < local_size; r++) {
+    node_group_ranks.push_back(node_group_id * local_size + r);
+  }
+  groups_[WorkerGroupType::NodeLocalParallel] = {node_group_ranks, node_group_id,
+                                                  WorkerGroupType::HorizontalParallel, rank_in_owning_node_group};
+
+  // Cross node parallel group
+  const int32_t cross_node_group_id = local_rank;
+  const int32_t rank_in_owning_cross_node_group = world_rank / local_size;
+  std::vector<int32_t> cross_node_group_ranks;
+  for (auto r = 0; r < (world_size / local_size); r++) {
+    cross_node_group_ranks.push_back(cross_node_group_id + local_size * r);
+  }
+  groups_[WorkerGroupType::CrossNodeParallel] = {cross_node_group_ranks, cross_node_group_id,
+                                                  WorkerGroupType::HorizontalParallel, rank_in_owning_cross_node_group};
 }
 
 }  // namespace training

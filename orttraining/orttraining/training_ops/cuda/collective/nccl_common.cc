@@ -88,6 +88,16 @@ NcclContext::NcclContext() {
                                &horizontal_group_comm_);
   ORT_ENFORCE(ret.IsOK());
 
+  // Initialize node local Parallel Group NCCL Communicator
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::NodeLocalParallel,
+                               &node_local_comm_);
+  ORT_ENFORCE(ret.IsOK());
+
+  // Initialize cross node Parallel Group NCCL Communicator
+  ret = CreateNcclCommunicator(&mpi_world_group, training::WorkerGroupType::CrossNodeParallel,
+                               &cross_node_comm_);
+  ORT_ENFORCE(ret.IsOK());
+
   MPI_Group_free(&mpi_world_group);
 }
 
@@ -96,6 +106,12 @@ ncclComm_t NcclContext::Comm(training::WorkerGroupType group_type) {
     return data_group_comm_;
   } else if (training::WorkerGroupType::HorizontalParallel == group_type) {
     return horizontal_group_comm_;
+  }
+  else if (training::WorkerGroupType::NodeLocalParallel == group_type) {
+    return node_local_comm_;
+  }
+  else if (training::WorkerGroupType::CrossNodeParallel == group_type) {
+    return cross_node_comm_;
   }
 
   return nullptr;
@@ -108,6 +124,14 @@ NcclContext::~NcclContext() {
 
   if (horizontal_group_comm_ != nullptr) {
     ncclCommDestroy(horizontal_group_comm_);
+  }
+
+  if (node_local_comm_ != nullptr) {
+    ncclCommDestroy(node_local_comm_);
+  }
+
+  if (cross_node_comm_ != nullptr) {
+    ncclCommDestroy(cross_node_comm_);
   }
 
   int is_mpi_finalized = 0;

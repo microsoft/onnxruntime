@@ -104,14 +104,15 @@ static Status AddNcclAllReduceForGradients(
     std::vector<ArgDef>& gradient_argdefs,
     ArgDef& fused_gradient_argdef,
     GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& fused_allreduce_output) {
+    ArgDef& fused_allreduce_output,
+    const int64_t group_type = 0) {
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {fused_gradient_argdef},
                                   {fused_allreduce_output},
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("group_type", static_cast<int64_t>(group_type))},
                                   "NcclAllReduce")});
 
   std::vector<ArgDef> view_inputs(gradient_argdefs.size() + 1);
@@ -188,7 +189,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // add Allreduce for gradients
   ArgDef reduced_fused_gradient_argdef;
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
-    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
+    ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef, (int64_t)2/*node local*/));
   }
 
   // check if all gradients are finite
