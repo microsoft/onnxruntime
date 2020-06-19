@@ -15,13 +15,14 @@ class Model {
   friend class ModelBuilder;
 
  public:
-  struct InputOutputInfo {
+  struct InputOutputBuffer {
     void* buffer{nullptr};
     android::nn::wrapper::OperandType type;
   };
 
+  // Memory for persist data such as initializers and intermediate result
 #ifdef USENNAPISHAREDMEM
-  // Manage NNAPI shared memory handle
+  // Use NNAPI shared memory
   class NNMemory {
    public:
     NNMemory(const NnApi* nnapi, const char* name, size_t size);
@@ -39,6 +40,7 @@ class Model {
     ANeuralNetworksMemory* nn_memory_handle_{nullptr};
   };
 #else
+  // Use system memory buffer
   class NNMemory {
    public:
     NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size);
@@ -55,20 +57,32 @@ class Model {
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
 
+  // Get the names of inputs/outputs
+  // in the order of NNAPI inputs/outputs order
   const std::vector<std::string>& GetInputs() const;
   const std::vector<std::string>& GetOutputs() const;
+
+  // Get the input/output type of a particular input/output
+  // Returns the data type and dimension of the given input/output
+  // Please note the output type will have updated dimensions
   const android::nn::wrapper::OperandType& GetInputType(const std::string& name) const;
   const android::nn::wrapper::OperandType GetOutputType(const std::string& name) const;
 
+  // Set the mapping between input/output name and ORT kernel context
+  // input/output index, at execution time
   void SetInputMap(std::unordered_map<std::string, size_t>&& input_map);
   void SetOutputMap(std::unordered_map<std::string, size_t>&& output_map);
 
+  // Get the ORT kernel context input/output index with given name
   size_t GetMappedInputIdx(const std::string& name) const;
   size_t GetMappedOutputIdx(const std::string& name) const;
 
-  void SetInputs(const std::vector<InputOutputInfo>& inputs);
-  void SetOutputs(const std::vector<InputOutputInfo>& outputs);
+  // Set the input/output data buffers
+  // These need to be called before calling Predict()
+  void SetInputBuffers(const std::vector<InputOutputBuffer>& inputs);
+  void SetOutputBuffers(const std::vector<InputOutputBuffer>& outputs);
 
+  // Execute the NNAPI model
   void Predict();
 
  private:
@@ -98,8 +112,8 @@ class Model {
   void AddOutput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
   void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
-  void SetInputBuffer(const int32_t index, const InputOutputInfo& input);
-  void SetOutputBuffer(const int32_t index, const InputOutputInfo& output);
+  void SetInputBuffer(const int32_t index, const InputOutputBuffer& input);
+  void SetOutputBuffer(const int32_t index, const InputOutputBuffer& output);
 
   void PrepareForExecution();
   void ResetExecution();

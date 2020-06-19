@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/logging/logging.h>
+
 #include "core/common/safeint.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
@@ -29,12 +31,12 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
 }
 
-std::pair<bool, std::string> ModelBuilder::IsNodeSupported(
+bool ModelBuilder::IsNodeSupported(
     const ONNX_NAMESPACE::NodeProto& node) {
   if (auto* opBuilder = GetOpBuilder(node)) {
     return opBuilder->IsOpSupported(*this, node);
   } else {
-    return {false, ""};
+    return false;
   }
 }
 
@@ -63,22 +65,22 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   int32_t android_sdk_ver = nnapi_ ? nnapi_->android_sdk_version : 0;
 #ifdef __ANDROID__
   if (android_sdk_ver < 27) {
-    LOGI("Android API level %d is lower than 27", android_sdk_ver);
+    LOGS_DEFAULT(VERBOSE) << "Android API level "
+                          << android_sdk_ver
+                          << " is lower than 27";
     return supported_node_vecs;
   }
 #endif
 
   std::vector<int> supported_node_vec;
   for (int i = 0; i < model_proto_.graph().node_size(); i++) {
-    bool supported;
-    std::string error_msg;
-    std::tie(supported, error_msg) = IsNodeSupported(model_proto_.graph().node(i));
-
-    LOGV("Node: %s, index %d, name: %s, supported: %d, message: %s",
-         model_proto_.graph().node(i).op_type().c_str(), i,
-         model_proto_.graph().node(i).name().c_str(),
-         supported, error_msg.c_str());
-
+    const auto& node(model_proto_.graph().node(i));
+    bool supported = IsNodeSupported(node);
+    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.op_type()
+                          << "] index: [" << i
+                          << "] name: [" << node.name()
+                          << "] supported: [" << supported
+                          << "]";
     if (supported) {
       supported_node_vec.push_back(i);
     } else {
@@ -91,6 +93,10 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 
   if (IsValidSupportedNodesVec(supported_node_vec, model_proto_))
     supported_node_vecs.push_back(supported_node_vec);
+
+  LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
+  for (const auto& group : supported_node_vecs)
+    LOGS_DEFAULT(VERBOSE) << "Support vector size is " << group.size();
 
   return supported_node_vecs;
 }
@@ -113,7 +119,7 @@ DEFINE_ADD_OPERAND_FROM_SCALAR(float, FLOAT32);
 
 #undef DEFINE_ADD_OPERAND_FROM_SCALAR
 
-void ModelBuilder::AddSkippedInitializer(const std::string& tensor_name) {
+void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
 }
 
@@ -355,7 +361,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
 void ModelBuilder::AddOperations() {
   for (const auto& node : model_proto_.graph().node()) {
     if (auto* opBuilder = GetOpBuilder(node)) {
-      opBuilder->AddOperator(*this, node);
+      opBuilder->AddToModelBuilder(*this, node);
     } else {
       throw std::invalid_argument(
           "Node not supported" + node.name());

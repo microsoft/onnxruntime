@@ -6,10 +6,10 @@
 
 class Shaper {
  public:
-  using len_t = uint32_t;
-  using Shape = std::vector<len_t>;
+  using Shape = std::vector<uint32_t>;
 
-  static len_t total(const Shape& shape);
+  void AddShape(const std::string& name, const Shape& shape);
+
   void Conv(const std::string& input_name,
             const std::string& weight_name,
             const std::vector<int32_t>& onnx_pads,
@@ -47,18 +47,21 @@ class Shaper {
           const std::string& input2_name,
           const std::string& output_name);
 
-  void AddShape(const std::string& name, const Shape& shape);
+  // If the shape of certain input is dynamic
+  // Use the following 2 functions to update the particular shape
+  // and calculate the new output shape
   void UpdateShape(const std::string& name, const Shape& new_shape);
   void UpdateDynamicDimensions();
 
-  size_t GetSize(const std::string& name) const;
-
+  // Need to call Finalize() after the entire graph
+  // is converted to NNAPI
   void Finalize() { shaper_finalized_ = true; }
-  void Clear();
 
   inline const Shape& operator[](const std::string& key) const {
     return shape_map_.at(key);
   }
+
+  void Clear();
 
  private:
   bool shaper_finalized_{false};

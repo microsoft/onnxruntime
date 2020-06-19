@@ -21,29 +21,39 @@ class ModelBuilder {
 
   ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto);
   ~ModelBuilder() = default;
+
   std::vector<std::vector<int>> GetSupportedNodes();
+
   std::unique_ptr<Model> Compile();
 
   int32_t GetAndroidSdkVer() const;
 
+  // Add an NNAPI operation (operator)
   void AddOperation(int op, IndexSeq input_indices, std::vector<std::string> output_names,
                     std::vector<android::nn::wrapper::OperandType> types);
-  void RegisterOperand(const std::string& name, Index index,
-                       const android::nn::wrapper::OperandType& operand_type);
 
-  uint32_t AddOperandFromPersistMemoryBuffer(const std::string& name, const void* buffer,
-                                             const android::nn::wrapper::OperandType& operand_type);
-
+  // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const std::string& output);
-  Shaper& GetShaper() { return shaper_; }
 
+  // Add an NNAPI scalar operand
   uint32_t AddOperandFromScalar(bool value);
   uint32_t AddOperandFromScalar(float value);
   uint32_t AddOperandFromScalar(int32_t value);
 
-  void AddSkippedInitializer(const std::string& tensor_name);
+  // Add an NNAPI tensor operand (and allocate persist buffer)
+  uint32_t AddOperandFromPersistMemoryBuffer(const std::string& name, const void* buffer,
+                                             const android::nn::wrapper::OperandType& operand_type);
+
+  // The initializer will be processed separately, skip it as an initializer
+  void AddInitializerToSkip(const std::string& tensor_name);
+
+  // Register informations for a particular operand
+  void RegisterOperand(const std::string& name, Index index,
+                       const android::nn::wrapper::OperandType& operand_type);
 
   // Accessors for members
+  Shaper& GetShaper() { return shaper_; }
+
   const std::unordered_map<std::string, uint32_t>&
   GetOperandIndices() const { return operand_indices_; }
 
@@ -89,7 +99,7 @@ class ModelBuilder {
 
   uint32_t next_index_ = 0;
 
-  std::pair<bool, std::string> IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
+  bool IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();

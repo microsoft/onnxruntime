@@ -1,15 +1,9 @@
-#include <core/common/common.h>
-
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "helper.h"
 #include "shaper.h"
 
 using std::string;
 using std::vector;
-
-Shaper::len_t Shaper::total(const Shape& shape) {
-  return Product(shape);
-}
 
 void Shaper::Conv(const std::string& input_name,
                   const std::string& weight_name,
@@ -85,11 +79,6 @@ void Shaper::Conv(const std::string& input_name,
                       output_name);
         });
   }
-
-  // LOGV("Conv %s nchw %d", input_name.c_str(), nchw);
-  // LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
-  // LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
-  // LOGV("weight %d %d %d %d", weightDimen[0], weightDimen[1], weightDimen[2], weightDimen[3]);
 }
 
 void Shaper::DepthwiseConv(const std::string& input_name,
@@ -165,10 +154,6 @@ void Shaper::DepthwiseConv(const std::string& input_name,
                                output_name);
         });
   }
-  // LOGV("DepthwiseConv %s nchw %d", input_name.c_str(), nchw);
-  // LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
-  // LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
-  // LOGV("weight %d %d %d %d", weightDimen[0], weightDimen[1], weightDimen[2], weightDimen[3]);
 }
 
 void Shaper::Pool(const std::string& input_name,
@@ -226,9 +211,6 @@ void Shaper::Pool(const std::string& input_name,
                       output_name);
         });
   }
-  // LOGV("Pool %s nchw %d", input_name.c_str(), nchw);
-  // LOGV("input %d %d %d %d", inputDimen[0], inputDimen[1], inputDimen[2], inputDimen[3]);
-  // LOGV("output %d %d %d %d", outputDimen[0], outputDimen[1], outputDimen[2], outputDimen[3]);
 }
 
 void Shaper::Reshape(const std::string& input_name,
@@ -305,11 +287,24 @@ void Shaper::Eltwise(const std::string& input1_name,
   bool shape1IsBigger = shape1.size() >= shape2.size();
   auto max_shape = shape1IsBigger ? shape1 : shape2;
   auto min_shape = shape1IsBigger ? shape2 : shape1;
-  for (int i = (int)max_shape.size() - 1, j = (int)min_shape.size() - 1;
+  for (int i = (int)max_shape.size() - 1,
+           j = (int)min_shape.size() - 1;
        i >= 0 && j >= 0;
        i--, j--) {
-    if (max_shape[i] < min_shape[j])
-      max_shape[i] = min_shape[j];
+    int dim_max_shape = max_shape[i];
+    int dim_min_shape = min_shape[j];
+    if (dim_max_shape != dim_min_shape) {
+      ORT_ENFORCE(dim_max_shape == 1 || dim_min_shape == 1,
+                  "Dimensions are not compatible, dim1: " +
+                      std::to_string(dim_max_shape) + "dim2: " +
+                      std::to_string(dim_min_shape));
+    }
+
+    if (dim_max_shape == 0 || dim_min_shape == 0) {
+      max_shape[i] = 0;
+    } else if (dim_max_shape < dim_min_shape) {
+      max_shape[i] = dim_min_shape;
+    }
   }
 
   shape_map_[output_name] = max_shape;
@@ -317,17 +312,9 @@ void Shaper::Eltwise(const std::string& input1_name,
   if (!shaper_finalized_) {
     shape_ops_.push_back(
         [input1_name, input2_name, output_name](Shaper& shaper) {
-          LOGV("lambda eltwise input1 %s, input2 %s, output %s",
-               input1_name.c_str(), input2_name.c_str(), output_name.c_str());
-
           shaper.Eltwise(input1_name, input2_name, output_name);
         });
   }
-  // LOGV("Eltwise input1 %s", input1_name.c_str());
-  // LOGV("Eltwise input2 %s", input2_name.c_str());
-  // LOGV("input1 %d %d %d %d", shape1[0], shape1[1], shape1[2], shape1[3]);
-  // LOGV("input2 %d %d %d %d", shape2[0], shape2[1], shape2[2], shape2[3]);
-  // LOGV("output %d %d %d %d", max_shape[0], max_shape[1], max_shape[2], max_shape[3]);
 }
 
 void Shaper::Identity(const std::string& input_name,
@@ -379,10 +366,6 @@ void Shaper::UpdateDynamicDimensions() {
 
   for (auto& shape_op : shape_ops_)
     shape_op(*this);
-}
-
-size_t Shaper::GetSize(const std::string& name) const {
-  return static_cast<size_t>(Product(shape_map_.at(name)));
 }
 
 void Shaper::Clear() {

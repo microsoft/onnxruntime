@@ -13,9 +13,8 @@ class IOpBuilder {
   virtual ~IOpBuilder() = default;
 
   // Check if an operator is supported
-  virtual std::pair<bool, std::string> IsOpSupported(
-      ModelBuilder& model_builder,
-      const ONNX_NAMESPACE::NodeProto& node) = 0;
+  virtual bool IsOpSupported(ModelBuilder& model_builder,
+                             const ONNX_NAMESPACE::NodeProto& node) = 0;
 
   // Check if the initializers of this operator need preprocess
   // which will not be copied
@@ -23,10 +22,12 @@ class IOpBuilder {
                                      const ONNX_NAMESPACE::NodeProto& node) = 0;
 
   // Add the operator to NNAPI model
-  virtual void AddOperator(ModelBuilder& model_builder,
-                           const ONNX_NAMESPACE::NodeProto& node) = 0;
+  virtual void AddToModelBuilder(ModelBuilder& model_builder,
+                                 const ONNX_NAMESPACE::NodeProto& node) = 0;
 };
 
+// Generate a lookup table with IOpBuilder delegates
+// for different onnx operators
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
 CreateOpBuilders();
 
