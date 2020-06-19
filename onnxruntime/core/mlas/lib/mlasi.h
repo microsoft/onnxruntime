@@ -228,6 +228,20 @@ typedef MLAS_GEMM_FLOAT_KERNEL* PMLAS_GEMM_FLOAT_KERNEL;
 typedef MLAS_GEMM_DOUBLE_KERNEL* PMLAS_GEMM_DOUBLE_KERNEL;
 
 typedef
+size_t
+(MLASCALL MLAS_GEMV_FLOAT_KERNEL)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMV_FLOAT_KERNEL* PMLAS_GEMV_FLOAT_KERNEL;
+
+typedef
 void
 (MLASCALL MLAS_SGEMM_KERNEL_M1_ROUTINE)(
     const float* A,
@@ -473,6 +487,8 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)

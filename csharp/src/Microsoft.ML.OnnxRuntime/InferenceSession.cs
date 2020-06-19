@@ -366,6 +366,11 @@ namespace Microsoft.ML.OnnxRuntime
             int outputIndex = 0;
             foreach (var output in outputValues)
             {
+                if (output.ElementType == TensorElementType.String)
+                {
+                    throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
+                }
+
                 outputValuesArray[outputIndex] = output.Value;
 
                 outputIndex++;
@@ -556,6 +561,11 @@ namespace Microsoft.ML.OnnxRuntime
                 int outputIndex = 0;
                 foreach (var output in outputValues)
                 {
+                    if (output.ElementType == TensorElementType.String)
+                    {
+                        throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
+                    }
+
                     outputValuesArray[outputIndex] = output.Value;
 
                     outputIndex++;
@@ -695,7 +705,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle, 
+            IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle,
                                                                   NativeMemoryAllocator.DefaultInstance.Handle,
                                                                   out nameHandle);
 
@@ -708,7 +718,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                  NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
 

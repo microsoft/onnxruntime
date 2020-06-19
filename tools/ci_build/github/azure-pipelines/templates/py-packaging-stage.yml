@@ -224,6 +224,7 @@ stages:
         buildArch: x64
         setVcvars: true
         BuildConfig: 'Release'
+        GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       timeoutInMinutes: 60
       workspace:
         clean: all
@@ -304,6 +305,19 @@ stages:
           Contents: '**\dist\*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+      - script: |
+          rename *.whl *.zip
+        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+        displayName: 'Rename file extension for codesign validation'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**\*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
+
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
@@ -313,7 +327,9 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - template: clean-agent-build-directory-step.yml
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
 
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - job: Windows_py_GPU_Wheels
@@ -325,6 +341,7 @@ stages:
         CUDA_VERSION: '10.1'
         buildArch: x64
         EnvSetupScript: setup_env_cuda.bat
+        GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
           Python35:
@@ -410,6 +427,19 @@ stages:
             Contents: '**\dist\*.whl'
             TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+        - script: |
+            rename *.whl *.zip
+          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+          displayName: 'Rename file extension for codesign validation'
+
+        - task: PublishTestResults@2
+          displayName: 'Publish unit test results'
+          inputs:
+            testResultsFiles: '**\*.results.xml'
+            searchFolder: '$(Build.BinariesDirectory)'
+            testRunTitle: 'Unit Test Run'
+          condition: succeededOrFailed()
+
         - task: PublishBuildArtifacts@1
           displayName: 'Publish Artifact: ONNXRuntime python wheel'
           inputs:
@@ -417,7 +447,9 @@ stages:
 
         - template: component-governance-component-detection-steps.yml
 
-        - template: clean-agent-build-directory-step.yml
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
