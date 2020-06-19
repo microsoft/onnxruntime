@@ -22,7 +22,7 @@
     * [ArmNN](#ArmNN)
     * [Rockchip RKNPU](#RKNPU)
     * [Xilinx Vitis-AI](#Vitis-AI)
-    * [AMD MIGraphX](#AMDMIGraphX)
+    * [AMD MIGraphX](#AMD-MIGraphX)
   * Options
     * [OpenMP](#OpenMP)
     * [OpenBLAS](#OpenBLAS)
@@ -995,10 +995,6 @@ See more information on the MIGraphX Execution Provider [here](./docs/execution_
    * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
 
 #### Build Instructions
-##### Windows
-```
-We do not have support MIGraphX to run on Windows for now, to be added in the future.
-```
 
 ##### Linux
 
