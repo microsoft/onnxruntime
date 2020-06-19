@@ -39,7 +39,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   params_.data_parallel_size = data_parallel_size;
   params_.horizontal_parallel_size = horizontal_parallel_size;
   params_.pipeline_stage_size = pipeline_stage_size;
-  groups_.resize(2);
+  groups_.resize(4);
 
   // Initialize Data Parallel Group
   const int32_t data_group_id = world_rank % horizontal_parallel_size;
@@ -69,7 +69,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
     node_group_ranks.push_back(node_group_id * local_size + r);
   }
   groups_[WorkerGroupType::NodeLocalParallel] = {node_group_ranks, node_group_id,
-                                                  WorkerGroupType::HorizontalParallel, rank_in_owning_node_group};
+                                                  WorkerGroupType::NodeLocalParallel, rank_in_owning_node_group};
 
   // Cross node parallel group
   const int32_t cross_node_group_id = local_rank;
@@ -79,7 +79,7 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
     cross_node_group_ranks.push_back(cross_node_group_id + local_size * r);
   }
   groups_[WorkerGroupType::CrossNodeParallel] = {cross_node_group_ranks, cross_node_group_id,
-                                                  WorkerGroupType::HorizontalParallel, rank_in_owning_cross_node_group};
+                                                  WorkerGroupType::CrossNodeParallel, rank_in_owning_cross_node_group};
 }
 
 }  // namespace training
