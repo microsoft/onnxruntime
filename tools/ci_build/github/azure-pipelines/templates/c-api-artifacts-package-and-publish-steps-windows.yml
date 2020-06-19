@@ -21,16 +21,24 @@ steps:
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
-          # copy the README, licence and TPN
+          REM copy the README, licence and TPN
           copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md
           copy $(Build.SourcesDirectory)\docs\C_API.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\C_API.md
           copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\Privacy.md
           copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
           copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
-          copy $(Build.SourcesDirectory)/VERSION_NUMBER $(Build.BinariesDirectory)\${{parameters.artifactName}}\VERSION_NUMBER
+          copy $(Build.SourcesDirectory)\VERSION_NUMBER $(Build.BinariesDirectory)\${{parameters.artifactName}}\VERSION_NUMBER
           @echo ${{parameters.commitId}} > $(Build.BinariesDirectory)\${{parameters.artifactName}}\GIT_COMMIT_ID
 
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
+
+
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+        DisplayName: 'ESRP - Sign Native dlls'
+        DoEsrp: true
+        Pattern: '*.dll,*.exe'
 
     - task: ArchiveFiles@2
       inputs:
@@ -39,7 +47,7 @@ steps:
         archiveType: 'zip' # Options: zip, 7z, tar, wim
         archiveFile: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 
         replaceExistingArchive: true 
-      
+
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.ArtifactStagingDirectory)\${{parameters.artifactName}}.zip' 

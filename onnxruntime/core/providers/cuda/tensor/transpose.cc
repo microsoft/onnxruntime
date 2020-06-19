@@ -64,8 +64,14 @@ Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Te
   return Status::OK();
 }
 
-Status Transpose::DoTranspose(const Transpose& kernel,
+Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+  return Transpose::DoTranspose(transpose_kernel.CublasHandle(), permutations, input, output);
+}
+
+Status Transpose::DoTranspose(const cublasHandle_t cublas_handle,
+                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                              const TensorShape* input_shape_override) {
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
     return Status::OK();
@@ -74,21 +80,21 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   if (element_type == utils::GetONNXTensorElementDataType<float>() ||
       element_type == utils::GetONNXTensorElementDataType<double>() ||
       element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
-    auto mn = TryTransposeWithCublas(permutations, input.Shape());
+    auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithCublas<float>(kernel.CublasHandle(), input, output, M, N);
+        return TransposeWithCublas<float>(cublas_handle, input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithCublas<double>(kernel.CublasHandle(), input, output, M, N);
+        return TransposeWithCublas<double>(cublas_handle, input, output, M, N);
       } else {
-        return TransposeWithCublas<MLFloat16>(kernel.CublasHandle(), input, output, M, N);
+        return TransposeWithCublas<MLFloat16>(cublas_handle, input, output, M, N);
       }
     }
   }
 
-  const std::vector<int64_t>& input_dims = input.Shape().GetDims();
+  const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
 
   auto rank = static_cast<int32_t>(input_dims.size());
@@ -129,7 +135,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(*this, *p_perm, X, *Y);
+  return DoTranspose(this->CublasHandle(), *p_perm, X, *Y);
 }
 
 }  // namespace cuda
