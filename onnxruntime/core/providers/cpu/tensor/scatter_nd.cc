@@ -45,8 +45,8 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
     if (update_rank < indice_rank - 1) {
       return true;
     }
-    if ((update_rank >= indice_rank - 1) &&
-        (indice_rank - 1 >= 0) &&
+    if (update_rank >= indice_rank - 1 &&
+        indice_rank >= 1 &&
         (indice_shape.Slice(0, indice_rank - 1) != update_shape.Slice(0, indice_rank - 1))) {
       return true;
     }
