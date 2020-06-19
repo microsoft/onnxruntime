@@ -3,16 +3,10 @@
 //
 #pragma once
 
-#include <android/log.h>
 #include <core/common/common.h>
 #include <string>
-#include <vector>
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
-
-#define LOG_TAG "ORT NNAPI"
-
-#define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
 
 #define THROW_ON_ERROR(val)                                               \
   {                                                                       \
@@ -42,22 +36,27 @@ inline bool Contains(Map map, Key key) {
 
 inline std::string GetErrorCause(int errorCode) {
   switch (errorCode) {
+    case ANEURALNETWORKS_NO_ERROR:
+      return "No error";
     case ANEURALNETWORKS_OUT_OF_MEMORY:
       return "Out of memory";
-    case ANEURALNETWORKS_BAD_DATA:
-      return "Bad data";
-    case ANEURALNETWORKS_BAD_STATE:
-      return "Bad state";
     case ANEURALNETWORKS_INCOMPLETE:
       return "Incomplete";
     case ANEURALNETWORKS_UNEXPECTED_NULL:
       return "Unexpected null";
+    case ANEURALNETWORKS_BAD_DATA:
+      return "Bad data";
     case ANEURALNETWORKS_OP_FAILED:
       return "Op failed";
+    case ANEURALNETWORKS_BAD_STATE:
+      return "Bad state";
     case ANEURALNETWORKS_UNMAPPABLE:
       return "Unmappable";
-    case ANEURALNETWORKS_NO_ERROR:
-      return "No error";
+    case ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE:
+      return "Output Insufficient size";
+    case ANEURALNETWORKS_UNAVAILABLE_DEVICE:
+      return "Unavaliable device";
+
     default:
       return "Unknown error code";
   }
