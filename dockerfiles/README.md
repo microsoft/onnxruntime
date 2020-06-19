@@ -259,7 +259,7 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 2. Run the Docker image
 
   ```
-  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-trt
+  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
   ```
 
 ## ONNX Runtime Server
