@@ -109,7 +109,10 @@ struct OperandType {
   OperandType(const OperandType& other);
   OperandType& operator=(const OperandType& other);
 
+  // Get the size of a single element in bytes
   size_t GetElementByteSize() const;
+
+  // Get the whole blob size in bytes
   size_t GetOperandBlobByteSize() const;
 
   operator ANeuralNetworksOperandType() const { return operandType; }

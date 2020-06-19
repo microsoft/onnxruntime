@@ -113,6 +113,7 @@ void Model::Predict() {
       nnapi_->ANeuralNetworksEvent_wait(event));
 
   nnapi_->ANeuralNetworksEvent_free(event);
+
   ResetExecution();
 }
 

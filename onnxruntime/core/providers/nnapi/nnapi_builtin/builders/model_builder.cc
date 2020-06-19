@@ -387,11 +387,6 @@ void ModelBuilder::AddOperation(int op, IndexSeq input_indices,
 std::unique_ptr<Model> ModelBuilder::Compile() {
   Prepare();
 
-  // THROW_ON_ERROR_WITH_NOTE(
-  //     nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
-  //         nnapi_model_->model_, true),
-  //     "Set fp16");
-
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_identifyInputsAndOutputs(
           nnapi_model_->model_, static_cast<uint32_t>(input_index_vec_.size()),
@@ -399,6 +394,13 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
           static_cast<uint32_t>(output_index_vec_.size()),
           &output_index_vec_[0]),
       "on identifyInputsAndOutputs");
+
+  if (use_fp16_) {
+    THROW_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+            nnapi_model_->model_, true),
+        "Set fp16");
+  }
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
@@ -408,10 +410,10 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
       nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
       "on create");
 
-  // THROW_ON_ERROR_WITH_NOTE(
-  //     nnapi_->ANeuralNetworksCompilation_setPreference(
-  //         nnapi_model_->compilation_, ANEURALNETWORKS_PREFER_SUSTAINED_SPEED),
-  //     "on setPreference");
+  THROW_ON_ERROR_WITH_NOTE(
+      nnapi_->ANeuralNetworksCompilation_setPreference(
+          nnapi_model_->compilation_, static_cast<int32_t>(exe_pref_)),
+      "on setPreference");
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_finish(nnapi_model_->compilation_),

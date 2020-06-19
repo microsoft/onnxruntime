@@ -68,18 +68,34 @@ class ModelBuilder {
   GetInitializerTensors() const { return initializers_; }
 
   const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
+
+  // Generate an unique name for intermediate result
   std::string GetUniqueName(const std::string& base_name);
 
-  void SetUseNCHW(bool enabled) { use_nchw_ = enabled; }
+  // Enable and disable using NCHW
+  void SetUseNCHW(bool use_nchw) { use_nchw_ = use_nchw; }
   bool UseNCHW() const { return use_nchw_; }
+
+  // Relax fp32 computation to fp16
+  // It is off by default
+  void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
+
+  // Set NNAPI execution preference
+  // Default preference is PREFER_SUSTAINED_SPEED
+  void ExecutePreference(
+      android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
  private:
   const NnApi* nnapi_{nullptr};
   ONNX_NAMESPACE::ModelProto& model_proto_;
   std::unique_ptr<Model> nnapi_model_;
 
-  bool use_nchw_{true};
   uint32_t name_token_{0};
+
+  bool use_nchw_{true};
+  bool use_fp16_{false};
+  android::nn::wrapper::ExecutePreference exe_pref_{
+      android::nn::wrapper::ExecutePreference::PREFER_FAST_SINGLE_ANSWER};
 
   Shaper shaper_;
 

@@ -63,17 +63,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                            std::vector<ONNX_NAMESPACE::FunctionProto>(),
                            *GetLogger());
   std::unordered_set<std::string> all_node_inputs;
-
-  // for (const auto& node : graph.Nodes()) {
-  //   for (auto input : node.InputDefs()) {
-  //     all_node_inputs.insert(input->Name());
-  //   }
-  // }
-
-  // ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  // *(model_proto.mutable_graph()) = graph.GetGraph().ToGraphProto();
-  // model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
@@ -310,7 +299,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
         ORT_ENFORCE(type.dimensions == model_input_type.dimensions ||
                         model_input_type.GetOperandBlobByteSize() == 0,
-                    "dimanesions should match or model input dimension has 0");
+                    "The actual input dimanesions should match the model input "
+                    "dimensions, or model input dimension has 0 (dynamic)");
 
         void* inputBuffer = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
         inputs.push_back({inputBuffer, std::move(type)});
