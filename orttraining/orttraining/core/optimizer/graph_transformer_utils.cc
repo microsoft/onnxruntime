@@ -66,10 +66,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(compatible_eps, weights_to_train));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
-        LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
-        transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
-            training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
-            horizontal_parallel_size, compatible_eps));
+        //bugbug
+        LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is disabled";
+        // transformers.emplace_back(onnxruntime::make_unique<MegatronTransformer>(
+        //     training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
+        //     horizontal_parallel_size, compatible_eps));
       }
 
     } break;
