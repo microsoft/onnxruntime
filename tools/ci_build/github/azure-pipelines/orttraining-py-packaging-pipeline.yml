@@ -3,7 +3,7 @@ trigger: none
 stages:
 - template: templates/py-packaging-stage.yml
   parameters:
-    build_py_parameters: --enable_training --wheel_name_suffix training
+    build_py_parameters: --enable_training --wheel_name_suffix=training
     enable_linux_cpu: false
     enable_linux_gpu: true
     # Python 3.5 build has issues with nightly torch and torchvision dependencies
