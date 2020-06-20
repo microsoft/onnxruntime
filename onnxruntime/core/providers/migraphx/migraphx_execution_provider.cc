@@ -397,95 +397,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4)
-    {
-      return true;
-    }
-
-    // migraphx does not support count_include_pad to be 1
-    const auto cip_attr = attributes.find("count_include_pad");
-    if (cip_attr != attributes.end() && cip_attr->second.i() != 0)
-    {
-      return true;
-    }
-
-    const auto ap_attr = attributes.find("auto_pad");
-    if (ap_attr != attributes.end())
-    {
-      // explicit pad should be symmetric in migraphx
-      auto s_pad = ap_attr->second.s();
-      auto pads_attr = attributes.find("pads");
-      if (s_pad == "NOTSET")
-      {
-        if (pads_attr != attributes.end())
-        {
-          auto pads = pads_attr->second.ints();
-          if (pads.size() != 4)
-          {
-            return true;
-          }
-
-          if ((pads[0] != pads[2]) || (pads[1] != pads[3]))
-          {
-            return true;
-          }
-        }
-      }
-      // either SAME_UPPER or SAME_LOWER
-      else if (s_pad.find("SAME") != std::string::npos)
-      {
-        // pads cannot exist when auto_pad is same_upper or same_lower
-        if (pads_attr != attributes.end())
-        {
-          return true;
-        }
-
-        // compute the padding size to see whether they are symmetric
-        std::vector<int> strides = {1, 1};
-        auto stride_attr = attributes.find("strides");
-        if (stride_attr != attributes.end())
-        {
-          auto attr_strides = stride_attr->second.ints();
-          strides.clear();
-          std::copy(attr_strides.begin(), attr_strides.end(), std::back_inserter(strides));
-        }
-
-        std::vector<int> kernel_lens = {1, 1};
-        auto kernel_attr = attributes.find("kernel_shape");
-        if (kernel_attr != attributes.end())
-        {
-          auto attr_k = kernel_attr->second.ints();
-          std::copy(attr_k.begin(), attr_k.end(), kernel_lens.begin());
-        }
-
-        auto tensor_dims = input_shape->dim();
-        std::vector<int> in_lens;
-        std::transform(tensor_dims.begin(),
-                       tensor_dims.end(),
-                       std::back_inserter(in_lens),
-                       [&](auto&& d) -> std::size_t {
-                           if(d.has_dim_value())
-                           {
-                               return d.dim_value();
-                           }
-                           return 1;
-                       });
-
-        std::vector<int> out_lens(2);
-        out_lens[0]  = (in_lens[2] + strides[0] - 1) / strides[0];
-        out_lens[1]  = (in_lens[3] + strides[1] - 1) / strides[1];
-        std::vector<int> explicit_pads(2);
-        explicit_pads[0] = (out_lens[0] - 1) * strides[0] + kernel_lens[0] - in_lens[2];
-        explicit_pads[1] = (out_lens[1] - 1) * strides[1] + kernel_lens[1] - in_lens[3];
-        if ((explicit_pads[0] & 1) != 0 or (explicit_pads[1] & 1) != 0)
-        {
-          return true;
-        }
-      }
-    }
   } else if (optype == "BatchNormalization") {
     // input can only have 4 dims
     const auto input_shape = node->InputDefs()[0]->Shape();
@@ -596,9 +507,15 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     }
 
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4)
+    // do not support int8 and uint8 type
+    const auto& input_type = node->InputDefs()[0]->TypeAsProto();
+    if (input_type == nullptr)
+    {
+      return true;
+    }
+    auto data_type = input_type->tensor_type().elem_type();
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 or
+        data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
     {
       return true;
     }
@@ -948,7 +865,7 @@ static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-
+  std::cout << "GetCapability()........................" << std::endl;
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -996,9 +913,9 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::string onnx_string_buffer;
   model_proto.SerializeToString(&onnx_string_buffer);
 
-  // std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
-  // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-  // ofs.close();
+  std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
+  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+  ofs.close();
 
   // This is a list of initializers that migraphx considers as constants. 
   // Example weights, reshape shape etc.
@@ -1143,6 +1060,7 @@ bool get_input_output_names(std::string& onnx_buffer,
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
+  std::cout << "Compile().............................." << std::endl;
   migraphx::onnx_options options;
   bool no_input_shape = false;
   // std::size_t fused_node_idx = 0;
@@ -1162,13 +1080,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
 
-    // // dump onnx file
-    // std::string name("ort_compile_");
-    // name.append(fused_node->Name());
-    // name.append(".onnx");
-    // std::ofstream ofs(name, std::ios::binary);
-    // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    // ofs.close();
+    // dump onnx file
+    std::cout << "Run on MIGraphx.............................." << std::endl;
+    std::string name("ort_compile_");
+    name.append(fused_node->Name());
+    name.append(".onnx");
+    std::ofstream ofs(name, std::ios::binary);
+    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    ofs.close();
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
