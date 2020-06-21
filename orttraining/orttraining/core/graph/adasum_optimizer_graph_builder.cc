@@ -229,7 +229,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
         "adasum_all_gradients_finite"));
-    optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
+    //[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
   // //Add weight update.
   std::vector<ArgDef> output_weight_args;
