@@ -652,7 +652,7 @@ class ORTTrainer():
         global_norm = [x for x in self.session._outputs_meta if 'global_gradient_norm' in x.name]
         if len(global_norm) > 0:
             if self.use_mixed_precision:
-                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(global_norm[0].name, [1], torch.float32))
+                self.output_desc_with_all_fp_16_or_fp32_gradients_finite.append(IODescription(global_norm[0].name, [], torch.float32))
             else:
                 self.model_desc_.outputs_.append(IODescription(global_norm[0].name, [], torch.float32))
 
