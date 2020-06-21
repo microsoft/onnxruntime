@@ -476,6 +476,26 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // MIGraphX only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
     return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
+  } else if (optype == "Pow") {
+    // we do not have a implementation to support different types of 
+    // the input data
+    const auto args = node->InputDefs();
+    const auto& input1_type = args[0]->TypeAsProto();
+    if (input1_type == nullptr)
+    {
+      return true;
+    }
+    auto data_type1 = input1_type->tensor_type().elem_type();
+    const auto& input2_type = args[1]->TypeAsProto();
+    if (input2_type == nullptr)
+    {
+      return true;
+    }
+    auto data_type2 = input2_type->tensor_type().elem_type();
+    if (data_type1 != data_type2)
+    {
+      return true;
+    }
   } else if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
     if (node->OutputDefs().size() > 1) {
@@ -642,6 +662,33 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
   }
+  else if (optype == "Split")
+  {
+    // cannot process input dim of 0 size
+    const auto arg_s = node->InputDefs()[0]->Shape();
+    if (arg_s != nullptr)
+    {
+      auto tensor_dims = arg_s->dim();
+      std::vector<std::size_t> dims;
+      std::transform(tensor_dims.begin(),
+                      tensor_dims.end(),
+                      std::back_inserter(dims),
+                      [&](auto&& d) -> std::size_t {
+                          if(d.has_dim_value())
+                          {
+                            return d.dim_value();
+                          }
+                          else
+                          {
+                            return 0;
+                          }
+                      });
+      if (dims == std::vector<std::size_t>{0})
+      {
+        return true;
+      }
+    }
+  }
   else if (optype == "Tile")
   {
     const auto& args = node->InputDefs();
@@ -721,8 +768,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", 
       "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "Gemm", 
       "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN", 
-      "LSTM", "LeakyRelu", 
-      "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "OneHot", "Pad", "Pow", "PRelu", 
+      "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "Neg", 
+      "OneHot", "Pad", "Pow", "PRelu",
       "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
       "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
