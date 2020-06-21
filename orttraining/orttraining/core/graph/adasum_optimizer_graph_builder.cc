@@ -204,6 +204,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
+    std::cout<<"########finite output's name is : "<<global_grad_norm_finite_argdef.name<<std::endl;
   }
 
   // add weight update
