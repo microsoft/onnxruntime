@@ -224,19 +224,19 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
 
   //check if allreduced deltas are finite
-  // ArgDef adasum_global_grad_finite_argdef;
-  // if (opt_graph_config_.use_mixed_precision) {
-  //   ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-  //       nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
-  //       "adasum_all_gradients_finite"));
-  //   optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
-  // }
+  ArgDef adasum_global_grad_finite_argdef;
+  if (opt_graph_config_.use_mixed_precision) {
+    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+        nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
+        "adasum_all_gradients_finite"));
+    optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
+  }
   // //Add weight update.
   std::vector<ArgDef> output_weight_args;
   ORT_RETURN_IF_ERROR(AddWeightUpdateNodes(nodearg_name_generator,
                                            gradient_argdefs,
                                            weight_argdefs,
-                                           global_grad_norm_finite_argdef,
+                                           adasum_global_grad_finite_argdef,
                                            graph_defs,
                                            output_weight_args));
 
