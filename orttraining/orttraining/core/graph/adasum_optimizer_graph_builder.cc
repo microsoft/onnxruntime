@@ -204,7 +204,6 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
-    std::cout<<"########finite output's name is : "<<global_grad_norm_finite_argdef.name<<std::endl;
   }
 
   // add weight update
@@ -230,6 +229,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
         "adasum_all_gradients_finite"));
+    std::cout<<"########delta finite output's name is : "<<adasum_global_grad_finite_argdef.name<<std::endl;
+    std::cout<<"########finite output's name is : "<<optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite]<<std::endl;
     //[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
   // //Add weight update.

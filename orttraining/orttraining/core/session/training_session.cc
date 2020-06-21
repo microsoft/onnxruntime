@@ -273,8 +273,11 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
         optimizer_config_result.output_key_to_graph_output_name));
-
     config_result.opt_config_result = optimizer_config_result;
+    //bugbug
+    const auto it = optimizer_config_result.output_key_to_graph_output_name.find(OptimizerOutputKey::GradientAllIsFinite);
+    std::cout<<"#######graph output: "<<it->second<<std::endl;
+
   } else {
     if (config.gradient_accumulation_steps > 1) {
       ORT_RETURN_IF_ERROR(BuildAccumulationNode(weights_to_train_));
@@ -283,7 +286,6 @@ Status TrainingSession::ConfigureForTraining(
 
   // Set eval feed names for Dropout ratio.
   ORT_RETURN_IF_ERROR(SetDropoutEvalFeedNames());
-
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
     const auto& tensorboard_config = config.tensorboard_config.value();
