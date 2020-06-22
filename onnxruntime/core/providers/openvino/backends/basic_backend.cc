@@ -34,9 +34,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     : global_context_(global_context), subgraph_context_(subgraph_context) {
 
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
-  if(subgraph_context_.device_id == "CPU"){
-    SetIODefs(model_proto, ie_cnn_network_);
-  }
+  SetIODefs(model_proto, ie_cnn_network_);
   InferenceEngine::ExecutableNetwork exe_network;
 
   // Loading model to the plugin
