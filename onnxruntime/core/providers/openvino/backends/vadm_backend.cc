@@ -81,7 +81,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   //If batching is disabled just schedule on the first VPU
   else {
     i = GetFirstAvailableDevice(global_context);
-    std::cout << "Device Tag is: " << i << std::endl;
+    LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
     config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
     InferenceEngine::ExecutableNetwork exe_network;
     try {
