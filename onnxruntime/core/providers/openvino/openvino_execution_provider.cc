@@ -84,8 +84,6 @@ bool IsDimensionSupported(const Node* node) {
 bool IsOpSupported(std::string name, std::string device) {
   std::set<std::string> common_supported_ops = {
       "Add",
-      "ArgMax",
-      "ArgMin",
       "AveragePool",
       "BatchNormalization",
       "Cast",
@@ -144,6 +142,8 @@ bool IsOpSupported(std::string name, std::string device) {
     "Abs",
     "Acos",
     "Acosh",
+    "ArgMax",
+    "ArgMin",
     "Asin",
     "Asinh",
     "Atan",
@@ -165,8 +165,23 @@ bool IsOpSupported(std::string name, std::string device) {
 
   std::set<std::string> supported_ops_gpu = {
     "HardSigmoid",
+    "Abs",
+    "Asin",
+    "Asinh",
+    "Atan",
+    "Erf",
+    "HardSigmoid",
+    "Selu",
+    "Tan",
   };
-  std::set<std::string> supported_ops_vpu = {};
+  std::set<std::string> supported_ops_vpu = {
+    "Erf",
+    "ReduceLogSum",
+    "ReduceProd",
+    "ReduceSumSquare",
+    "Selu",
+    "SinFloat",
+  };
 
   std::set<std::string> supported_ops = {};
 
@@ -411,7 +426,14 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // nGraph only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
     return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
-  }
+  } else if (optype == "ArgMax" || optype == "ArgMin" ) {
+      
+    auto dtype = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (!(dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
+          dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)) {
+      return true;      
+    }
+  }  
 
   //Op doesn't fall into known any of unsupported modes.
   return false;
