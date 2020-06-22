@@ -168,9 +168,9 @@ class ORTTransformerTrainer:
             # no_decay_keys = ["bias", "LayerNorm.weight"]
             no_decay = "bias" in name or "LayerNorm.weight" in name
             if no_decay:
-                return {"weight_decay": 0.0, "weight_decay_mode" : 1}
+                return {"weight_decay": 0.0, "weight_decay_mode" : 0}
             else:
-                return {"weight_decay": self.args.weight_decay, "weight_decay_mode" : 1}
+                return {"weight_decay": self.args.weight_decay, "weight_decay_mode" : 0}
 
         self.model = ORTTrainer(self.model, None,
             self.model_desc, 
@@ -212,6 +212,17 @@ class ORTTransformerTrainer:
             epochs_trained, int(num_train_epochs), desc="Epoch", disable=self.args.local_rank not in [-1, 0],
         )
 
+        torch.set_printoptions(precision=30)
+
+        def print_tensor(name, tensors):
+            print('\n')
+            if type(tensors) == dict:
+                for k in tensors.keys():
+                    print(name, k, torch.sum(torch.square(tensors[k])).item())
+            else:
+                for k, tensor in enumerate(tensors):
+                    print(name, k, torch.sum(torch.square(tensor)).item())
+
         for epoch in train_iterator:
             epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=self.args.local_rank not in [-1, 0])
             for step, inputs in enumerate(epoch_iterator):
@@ -221,15 +232,30 @@ class ORTTransformerTrainer:
                     steps_trained_in_current_epoch -= 1
                     continue
 
-                if step == 0:
-                    self.model.eval()
-                    for k, v in inputs.items():
-                        inputs[k] = v.to(self.args.device)
-                    outputs = self.model(**inputs)
+                # for k, v in inputs.items():
+                #     inputs[k] = v.to(self.args.device)
+                # self.model.eval()
+                # outputs = self.model(**inputs)
+                # print_tensor('inputs', inputs)
+                # print_tensor('outputs', outputs)
+                # self.model.train()
 
+                # state_dict = self.model.state_dict()
+                # print_tensor('state_dict0', state_dict)
+
+                # print("running train_step")
                 tr_loss += self._training_step(self.model, inputs)
 
+                # import pdb; pdb.set_trace()
+                # state_dict = self.model.state_dict()
+                # print_tensor('state_dict', state_dict)
 
+                # self.model.eval()
+                # outputs = self.model(**inputs)
+                # print_tensor('outputs', outputs)
+                # self.model.train()
+
+                # import pdb; pdb.set_trace()
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
                     len(epoch_iterator) <= self.args.gradient_accumulation_steps
                     and (step + 1) == len(epoch_iterator)
@@ -268,12 +294,21 @@ class ORTTransformerTrainer:
     def _training_step(
         self, model: ORTTrainer, inputs: Dict[str, torch.Tensor]
     ) -> float:
-        model.train()
         for k, v in inputs.items():
             inputs[k] = v.to(self.args.device)
 
+        # model.eval()
+        # eval_outputs = model(**inputs)
+        # # print(eval_outputs[0].item())
+
+        model.train()
+
         outputs = model(**inputs)
         loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+
+        # model.eval()
+        # eval_outputs = model(**inputs)
+        # # print(eval_outputs[0].item())
 
         return loss.item()
 

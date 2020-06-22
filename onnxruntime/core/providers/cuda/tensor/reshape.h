@@ -39,6 +39,11 @@ class Reshape final : public CudaKernel {
       CopyTensor(*X, *Y);
     }
 
+    if (context->NodeOutputName(0) == "82_grad") {
+        // PrintTensor(*shapeTensor, "Reshape-shapeTensor: " + context->NodeName(), true);
+        // PrintTensor(*X, "Reshape-X: " + context->NodeName(), true);
+        // PrintTensor(*Y, "Reshape-Y: " + context->NodeName(), true);
+    }
     return Status::OK();
   }
 };

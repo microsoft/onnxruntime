@@ -105,10 +105,19 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t num_inputs = data_shape.SizeFromDimension(axis);
   const int64_t param_itrs = data_shape.SizeFromDimension(0) / num_inputs;
 
-  return DispatchToGatherGradImpl(
+  Status status = DispatchToGatherGradImpl(
       T_type, Tin_type, *this,
       num_weights, stride, num_inputs, param_itrs,
       *grad, *indices, *output);
+
+  // if(context->NodeName() == "Gather_30_Grad/GatherGrad_1") {
+  //   PrintTensor(*shape, "GatherGrad-shape: " + context->NodeName(), true);
+  //   PrintTensor(*indices, "GatherGrad-indices: " + context->NodeName(), true);
+  //   PrintTensor(*grad, "GatherGrad-grad: " + context->NodeName(), true);
+  //   PrintTensor(*output, "GatherGrad-output: " + context->NodeName(), true);
+  // }
+
+  return status;
 }
 
 }  // namespace cuda

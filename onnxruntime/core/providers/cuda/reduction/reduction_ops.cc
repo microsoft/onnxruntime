@@ -116,7 +116,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   // Block of fast matrix row reduction.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
-  if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
+  if (false && fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
       is_matrix_row_reduction(cudnn_reduce_op,
                               static_cast<int>(reduction_size),
                               static_cast<int>(stride), rank, axes_)) {
@@ -430,7 +430,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   // It relies on new atomicAdd for half type, so old CUDA can't use it.
   const auto reduction_size = input_count / stride;
   if (!std::is_same<T, int8_t>::value && !std::is_same<T, uint8_t>::value) {
-    if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
+    if (false && fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
         is_matrix_row_reduction(cudnn_reduce_op,
                                 static_cast<int>(reduction_size),
                                 static_cast<int>(stride), rank, axes_)) {
@@ -439,6 +439,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
           reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
+
+      if(ctx->NodeName() == "Add_53_Grad/ReduceSum_1") {
+      // // if(ctx->NodeName() == "Add_151_Grad/ReduceSum_1") {
+      //   PrintTensor(*X, "Reduce-X-all: " + ctx->NodeName(), false);
+      //   PrintTensor(*Y, "Reduce-Y-all: " + ctx->NodeName(), false);
+      //   PrintTensor(*X, "Reduce-X: " + ctx->NodeName(), true);
+      //   PrintTensor(*Y, "Reduce-Y: " + ctx->NodeName(), true);
+      }
       return Status::OK();
     }
   }
@@ -546,7 +554,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                       reinterpret_cast<CudaT*>(Y->template MutableData<T>()), nullptr,
                       tmp_div, tmp_div,
                       reinterpret_cast<CudaT*>(Y->template MutableData<T>()), output_count);
-
       return Status::OK();
     }
     if (calculate_sqt_) {
@@ -598,6 +605,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                     output_count);
   }
 
+  if(ctx->NodeName() == "Add_53_Grad/ReduceSum_1") {
+  // if(ctx->NodeName() == "Add_151_Grad/ReduceSum_1") {
+    // PrintTensor(*X, "Reduce-X-all: " + ctx->NodeName(), false);
+    // PrintTensor(*Y, "Reduce-Y-all: " + ctx->NodeName(), false);
+    // PrintTensor(*X, "Reduce-X: " + ctx->NodeName(), true);
+    // PrintTensor(*Y, "Reduce-Y: " + ctx->NodeName(), true);
+  }
   return Status::OK();
 }
 

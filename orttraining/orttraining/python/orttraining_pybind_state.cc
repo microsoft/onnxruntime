@@ -226,6 +226,8 @@ void addObjectMethodsForTraining(py::module& m) {
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
 
+        const std::string model_uri("/bert_ort/liqun/test_out/hf_bert_backprop.onnx");
+        sess->Save(model_uri, onnxruntime::training::TrainingSession::SaveOption::NO_RELOAD);
         return config_result;
       })
       .def("get_state", [](onnxruntime::training::TrainingSession* sess) {

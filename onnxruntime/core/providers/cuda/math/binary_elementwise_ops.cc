@@ -404,6 +404,12 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
           prepare.fdm_C,
           reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
           prepare.output_tensor->Shape().Size());
+          // if(context->NodeName() == "AccumulateGrad_63_grad" || context->NodeName() == "AccumulateGrad_66_grad") {
+          //   for (int index = 0; index < input_count; index++) {
+          //     PrintTensor(*context->Input<Tensor>(index), "Sum: " + context->NodeInputName(index), true);
+          //   }
+          //   PrintTensor(*output_tensor, "Sum: " + context->NodeOutputName(0), true);
+          // }
     } else {
       // for more than 2 inputs, we need to accumulate into output tensor, as the shape from input0 + input1 might be different from output shape
       CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
@@ -435,6 +441,12 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
             reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
             prepare.output_tensor->Shape().Size());
       }
+      // if(context->NodeName() == "AccumulateGrad_76_grad") {
+      //   for (int index = 0; index < input_count; index++) {
+      //     PrintTensor(*context->Input<Tensor>(index), "Sum: " + context->NodeInputName(index), true);
+      //   }
+      //   PrintTensor(*output_tensor, "Sum: " + context->NodeOutputName(0), true);
+      // }
     }
   }
   return Status::OK();
