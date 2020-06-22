@@ -228,7 +228,7 @@ class Test_PostPasses(unittest.TestCase):
             #        |                   |
             #        |________   ________|
             #                 | |
-            #                Minus
+            #                 Sub
             #                  |
             #             (subgraph 3)
             add_nodes = [n for n in model.graph.node if n.op_type == 'Add']
@@ -273,6 +273,24 @@ class Test_PostPasses(unittest.TestCase):
         sub_nodes = self.find_nodes(onnx_model, "Sub")
         assert len(add_nodes) == 2
         assert len(sub_nodes) == 1
+
+
+        unprocessed_onnx_model = self.get_onnx_model(model, model_desc, input_args, device,
+                _extra_postprocess=None, _enable_internal_postprocess=False)
+        # check that the model is unchanged.
+        add_nodes = self.find_nodes(unprocessed_onnx_model, "Add")
+        sub_nodes = self.find_nodes(unprocessed_onnx_model, "Sub")
+        assert len(add_nodes) == 3
+        assert len(sub_nodes) == 0
+
+        processed_onnx_model = self.get_onnx_model(unprocessed_onnx_model, model_desc, input_args, device,
+                _extra_postprocess=postpass_replace_first_add_with_sub)
+        # check that extra postpass is called, and called only once.
+        add_nodes = self.find_nodes(processed_onnx_model, "Add")
+        sub_nodes = self.find_nodes(processed_onnx_model, "Sub")
+        assert len(add_nodes) == 2
+        assert len(sub_nodes) == 1
+
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
