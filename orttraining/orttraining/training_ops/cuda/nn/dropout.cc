@@ -150,6 +150,13 @@ Status BiasDropout<T>::ComputeInternal(OpKernelContext* context) const {
     t_disp.Invoke(ratio, ratio_data);
   }
 
+  //Check for inference mode.
+  const Tensor* training_mode = context->Input<Tensor>(4);
+  bool is_training_mode = (training_mode != nullptr) && training_mode->Data<bool>();
+  if (!is_training_mode) {
+    ratio_data = 0.0f;
+  }
+
   IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
   bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableData<bool>();

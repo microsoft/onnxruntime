@@ -10,6 +10,63 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
+                          std::vector<NodeArg*>& dropout_input,
+                          std::vector<NodeArg*>& dropout_output,
+                          std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) {
+  bool has_residual_add = false;
+  for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
+    const Node& last_node = (*last_node_itr);
+
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7}) &&
+        last_node.GetExecutionProviderType() == dropout_node.GetExecutionProviderType()) {
+      const TensorShapeProto* input1_shape = last_node.InputDefs()[0]->Shape();
+      const TensorShapeProto* input2_shape = last_node.InputDefs()[1]->Shape();
+
+      if (input1_shape == nullptr ||
+          input2_shape == nullptr ||
+          input1_shape->dim_size() < 1 ||
+          input2_shape->dim_size() < 1 ||
+          input1_shape->dim_size() != input2_shape->dim_size()) {
+        continue;
+      }
+
+      // Inputs of Residual Add must match in shape
+      bool match = true;
+      for (int i = 0; i < input1_shape->dim_size(); ++i) {
+        match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
+      }
+      if (!match) {
+        continue;
+      }
+
+      // dropout's output is not part of of graph output
+      if (!graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
+        continue;
+      }
+
+      Node& residual_add_node = *graph.GetNode(last_node.Index());
+      const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
+      if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
+        dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);  // residual
+      } else if (dropout_output_name == residual_add_node.InputDefs()[1]->Name()) {
+        dropout_input.push_back(residual_add_node.MutableInputDefs()[0]);  // residual
+      }
+
+      dropout_output[0] = residual_add_node.MutableOutputDefs()[0];
+
+      nodes_to_fuse.push_back(residual_add_node);
+      has_residual_add = true;
+      break;
+    }
+  }
+
+  if (!has_residual_add) {
+    NodeArg& dummy = graph.GetOrCreateNodeArg("", nullptr);
+    dropout_input.push_back(&dummy);  // add a dummy residual
+  }
+}
+
 Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -81,72 +138,33 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     Node& dropout_node = *graph.GetNode(next_node.Index());
-    //  const_cast<Node&>(next_node);
     nodes_to_fuse.push_back(dropout_node);
 
     dropout_output.push_back(dropout_node.MutableOutputDefs()[0]);
     dropout_output.push_back(dropout_node.MutableOutputDefs()[1]);
 
-    bool is_onnx_dropout = (dropout_node.OpType() == "Dropout");
-
-    // matching for residual Add node
-    bool has_residual_add = false;
-    for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
-      const Node& last_node = (*last_node_itr);
-
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7}) &&
-          last_node.GetExecutionProviderType() == node.GetExecutionProviderType()) {
-        const TensorShapeProto* residual_input1_shape = last_node.InputDefs()[0]->Shape();
-        const TensorShapeProto* residual_input2_shape = last_node.InputDefs()[1]->Shape();
-
-        if (residual_input1_shape == nullptr ||
-            residual_input2_shape == nullptr ||
-            residual_input1_shape->dim_size() < 1 ||
-            residual_input2_shape->dim_size() < 1 ||
-            residual_input1_shape->dim_size() != residual_input2_shape->dim_size()) {
-          continue;
-        }
-
-        // Inputs of Residual Add must match in shape
-        bool match = true;
-        for (int i = 0; i < residual_input1_shape->dim_size(); ++i) {
-          match &= ONNX_NAMESPACE::operator==(residual_input1_shape->dim(i), residual_input2_shape->dim(i));
-        }
-        if (!match) {
-          continue;
-        }
-
-        // dropout's output is not part of of graph output
-        if (!graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
-          continue;
-        }
-
-        Node& residual_add_node = *graph.GetNode(last_node.Index());
-        const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
-        if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
-          dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);  // residual
-        } else if (dropout_output_name == residual_add_node.InputDefs()[1]->Name()) {
-          dropout_input.push_back(residual_add_node.MutableInputDefs()[0]);  // residual
-        }
-
-        dropout_output[0] = residual_add_node.MutableOutputDefs()[0];
-
-        nodes_to_fuse.push_back(residual_add_node);
-        has_residual_add = true;
-        break;
-      }
-    }
-
-    if (!has_residual_add) {
-      NodeArg& dummy = graph.GetOrCreateNodeArg("", nullptr);
-      dropout_input.push_back(&dummy);  // add a dummy residual
-    }
+    FuseResidualAddIfAny(graph, dropout_node, dropout_input, dropout_output, nodes_to_fuse);
 
     if (dropout_node.InputDefs().size() > 1) {
       dropout_input.push_back(dropout_node.MutableInputDefs()[1]);  // ratio
     }
-    if (is_onnx_dropout && dropout_node.InputDefs().size() > 2) {
-      dropout_input.push_back(dropout_node.MutableInputDefs()[2]);  // training_mode
+
+    // populate training_mode
+    bool is_trainable_dropout = (dropout_node.OpType() == "TrainableDropout");
+    if (is_trainable_dropout) {
+      // Create training_mode initializer
+      ONNX_NAMESPACE::TensorProto training_mode_initializer;
+      training_mode_initializer.set_name(graph.GenerateNodeArgName("training_mode"));
+      training_mode_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+      const bool data = true;
+      training_mode_initializer.set_raw_data(&data, sizeof(bool));
+
+      NodeArg& training_mode_node_arg = graph_utils::AddInitializer(graph, training_mode_initializer);
+      dropout_input.push_back(&training_mode_node_arg);
+    } else {
+      if (dropout_node.InputDefs().size() > 2) {
+        dropout_input.push_back(dropout_node.MutableInputDefs()[2]);
+      }
     }
 
     const std::string op_type = "BiasDropout";
