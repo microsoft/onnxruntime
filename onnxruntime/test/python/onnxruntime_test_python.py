@@ -49,10 +49,10 @@ class TestInferenceSession(unittest.TestCase):
             import ctypes
             CUDA_SUCCESS = 0
 
-            def runBaseTest():
+            def runBaseTest1():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
-                # confirm that CUDA Provider is in list of registered providers.
                 self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+
                 option1 = {'device_id': 0}
                 sess.set_providers(['CUDAExecutionProvider'], [option1])
                 self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
@@ -61,6 +61,50 @@ class TestInferenceSession(unittest.TestCase):
                     sess.set_providers(['CUDAExecutionProvider'], [option2])
                 sess.set_providers(['CUDAExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
                 self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def runBaseTest2():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+
+                # test get/set of "cuda_mem_limit" configuration. 
+                options = sess.get_provider_options()
+                self.assertTrue('CUDAExecutionProvider' in options)
+                option = options['CUDAExecutionProvider']
+                self.assertTrue('cuda_mem_limit' in option)
+                mem_limit = option['cuda_mem_limit']
+                new_mem_limit = int(mem_limit) // 2  
+                option['cuda_mem_limit'] = new_mem_limit 
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
+
+                option['cuda_mem_limit'] = -1024 
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 1024.1024 
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 'wrong_value' 
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+
+                # test get/set of "arena_extend_strategy" configuration. 
+                options = sess.get_provider_options()
+                self.assertTrue('CUDAExecutionProvider' in options)
+                option = options['CUDAExecutionProvider']
+                self.assertTrue('arena_extend_strategy' in option)
+                for strategy in ['kNextPowerOfTwo', 'kSameAsRequested']:
+                    option['arena_extend_strategy'] = strategy
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    options = sess.get_provider_options()
+                    self.assertEqual(options['CUDAExecutionProvider']['arena_extend_strategy'], strategy)
+
+                option['arena_extend_strategy'] = 'wrong_value' 
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
 
             def runAdvancedTest():
                 num_device = ctypes.c_int()
@@ -106,16 +150,17 @@ class TestInferenceSession(unittest.TestCase):
             for libname in libnames:
                 try:
                     cuda = ctypes.CDLL(libname)
-                    runBaseTest()
+                    runBaseTest1()
+                    runBaseTest2()
                     runAdvancedTest()
                 except OSError:
                     continue
                 else:
                     break
             else:
-                runBaseTest()
+                runBaseTest1()
+                runBaseTest2()
                 # raise OSError("could not load any of: " + ' '.join(libnames))
-
             
 
     def testInvalidSetProviders(self):

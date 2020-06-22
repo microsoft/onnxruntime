@@ -99,6 +99,18 @@ class IExecutionProvider {
   virtual int GetDeviceId() const { return -1; };
 
   /**
+     Get execution provider's configurations. 
+   */
+  const UnorderedMapStringToString& GetProviderOptions() const { return provider_options_; }
+
+  /**
+     Store execution provider's configurations. 
+   */
+  void SetProviderOptions(UnorderedMapStringToString& options) { 
+    provider_options_ = options;
+  }
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting
@@ -179,5 +191,7 @@ class IExecutionProvider {
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
+  // It will be set when constructor is being called
+  UnorderedMapStringToString provider_options_;
 };
 }  // namespace onnxruntime

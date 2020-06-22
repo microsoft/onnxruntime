@@ -318,6 +318,11 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
+  /*
+   * Get all the providers' options this session was initialized with.
+   */
+  const ProviderOptionsMap& GetAllProviderOptions() const;
+
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.

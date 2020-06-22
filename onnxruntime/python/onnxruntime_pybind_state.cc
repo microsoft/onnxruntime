@@ -170,8 +170,6 @@ namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
-using ProviderOptionsMap = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;  
-using ProviderOptionsVector = std::vector<std::unordered_map<std::string, std::string>>;  
 
 template <typename T>
 void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -333,6 +331,24 @@ const std::vector<std::string>& GetAvailableProviders() {
 }
 
 #ifdef USE_CUDA
+
+/*
+ * Validate a string that is positive integer or zero.
+ *
+ * (-1234, 43.21, +43.21 ..... are not valid) 
+ */
+bool IsPositiveInteger(const std::string & s)
+{
+   if(s.empty() || ((!isdigit(s[0])) && (s[0] != '+'))) { 
+       return false;
+    }
+
+   char * p;
+   std::strtol(s.c_str(), &p, 10);
+
+   return (*p == 0);
+}
+
 bool IsCudaDeviceIdValid(int id) {
     
     int num_devices = 0;
@@ -376,12 +392,22 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::u
 
     it = options_map.find("cuda_mem_limit");
     if (it != options_map.end()) {
+
+        // The reason to check whether the string is positive integer upfront is that
+        // when calling stoul(), if the minus sign was part of the input sequence, 
+        // the numeric value calculated from the sequence of digits is negated.
+        // In other words, it will cause wraparound. 
+        // So, we rule out negative integer string beforehand. 
+        if (!IsPositiveInteger(it->second)) {
+            throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
+        }
+
         size_t size;
         try {
           size = std::stoul(it->second, nullptr, 0);
         }
         catch (const std::invalid_argument& ia) {
-            throw std::runtime_error("Please provide cuda memory limitation size with integer.");
+            throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
         }
 
         if (size > std::numeric_limits<size_t>::max()) {
@@ -1099,6 +1125,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](InferenceSession* sess) -> const std::vector<std::string>& {
         return sess->GetRegisteredProviderTypes();
+      })
+      .def("get_provider_options", [](const InferenceSession* sess) -> const ProviderOptionsMap& {
+        return sess->GetAllProviderOptions();
       })
       .def_property_readonly("session_options", [](InferenceSession* sess) -> const SessionOptions& {
         return sess->GetSessionOptions();

@@ -47,6 +47,9 @@ class ExecutionProviders {
       ORT_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
     }
 
+    // update execution provider options
+    exec_provider_options_[provider_id] = p_exec_provider->GetProviderOptions();
+
     exec_provider_ids_.push_back(provider_id);
     exec_providers_.push_back(std::move(p_exec_provider));
     return Status::OK();
@@ -96,6 +99,7 @@ class ExecutionProviders {
   }
 
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
+  const ProviderOptionsMap& GetAllProviderOptions() const { return exec_provider_options_; }
 
  private:
   // Some compilers emit incomprehensive output if this is allowed
@@ -104,6 +108,7 @@ class ExecutionProviders {
 
   std::vector<std::unique_ptr<IExecutionProvider>> exec_providers_;
   std::vector<std::string> exec_provider_ids_;
+  ProviderOptionsMap exec_provider_options_;
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;

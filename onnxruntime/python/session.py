@@ -57,6 +57,10 @@ class Session:
         "Return list of registered execution providers."
         return self._providers
 
+    def get_provider_options(self):
+        "Return registered execution providers' configurations."
+        return self._provider_options
+
     def set_providers(self, providers, provider_options=None):
         """
         Register the input list of execution providers. The underlying session is re-created.
@@ -201,6 +205,7 @@ class InferenceSession(Session):
         self._overridable_initializers = self._sess.overridable_initializers
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
+        self._provider_options = self._sess.get_provider_options()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in C.get_available_providers():
