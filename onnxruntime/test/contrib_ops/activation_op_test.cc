@@ -47,6 +47,18 @@ TEST_F(ActivationOpTest, Gelu) {
       "Gelu", input_values, [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {},
       false, 1, kMSDomain);
 }
-}  // namespace test
 
+TEST_F(ActivationOpTest, Mish) {
+  TestActivationOp("Mish", input_values, 
+                    [](float x) {
+                     if (x > 0)
+                       return x * tanh(x + logf(expf(-x) + 1));
+                     else
+                       return x * tanh(logf(expf(x) + 1));
+      },
+      {},
+      false, 1, kMSDomain);
+}
+
+}  // namespace test
 }  // namespace onnxruntime
