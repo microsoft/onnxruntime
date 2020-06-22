@@ -236,7 +236,8 @@ struct Session : Base<OrtSession> {
  *   at the cost of some (minimal) overhead.
  * Where possible default values are defined by the session unless otherwise specified by the user.
  * 
- * NOTE: Experimental API components provide no guarantee of backwards compatibility in future releases.
+ * NOTE: Experimental API components are subject to change and provide no guarantee of backwards
+ *  compatibility in future releases.
  */
 struct ExperimentalSession : Session {
   ExperimentalSession(Env& env, ORTCHAR_T* model_path, SessionOptions& options) 
