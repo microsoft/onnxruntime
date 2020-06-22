@@ -22,7 +22,8 @@ MlasReduceMinimumMaximumF32KernelAvx(
     const float* Input,
     float* min,
     float* max,
-    size_t N)
+    size_t N
+    )
 {
     *min = std::numeric_limits<float>::max();
     *max = std::numeric_limits<float>::lowest();
