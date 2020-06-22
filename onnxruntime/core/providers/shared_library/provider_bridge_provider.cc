@@ -57,8 +57,9 @@ std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> Provider_AttributeProto
 
 namespace onnxruntime {
 
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id) {
-  return g_host->CreateAllocator(info, device_id);
+Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id,
+                                      bool use_arena) {
+  return g_host->CreateAllocator(info, device_id, use_arena);
 }
 
 std::unique_ptr<Provider_KernelDefBuilder> Provider_KernelDefBuilder::Create() {
@@ -69,7 +70,8 @@ std::shared_ptr<Provider_KernelRegistry> Provider_KernelRegistry::Create() {
   return g_host->KernelRegistry_Create();
 }
 
-std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
+std::unique_ptr<Provider_OrtMemoryInfo> Provider_OrtMemoryInfo::Create(
+    const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) {
   return g_host->OrtMemoryInfo_Create(name_, type_, device_, id_, mem_type_);
 }
 
@@ -156,16 +158,8 @@ bool CPUIDInfo::HasAVX512f() const {
   return g_host->CPU_HasAVX512f();
 }
 
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo info, int16_t device_id) {
-  return g_host->CreateAllocator(info, device_id);
-}
-
 std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> info) {
   return g_host->CreateCPUAllocator(std::move(info));
-}
-
-Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) {
-  return g_host->CreateDummyArenaAllocator(std::move(resource_allocator));
 }
 
 Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type) {
@@ -266,7 +260,8 @@ std::vector<std::string> GetStackTrace() {
   return {};
 }
 
-void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) {
+void LogRuntimeError(uint32_t session_id, const common::Status& status,
+                     const char* file, const char* function, uint32_t line) {
   return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
 
