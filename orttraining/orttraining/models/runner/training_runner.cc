@@ -561,16 +561,16 @@ Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
     } else {
       // No pipeline. All fetched names should appear in the graph handled by this process.
       fetch_names = params_.fetch_names;
-    }
 
-    if (params_.use_mixed_precision) {
-      auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
-      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
-      fetch_names.push_back(it->second);
-      if (params_.use_adasum) {
-        it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
-        ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
+      if (params_.use_mixed_precision) {
+        auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
+        ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
         fetch_names.push_back(it->second);
+        if (params_.use_adasum) {
+          it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
+          ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
+          fetch_names.push_back(it->second);
+        }
       }
     }
   } else if (mode == GradientAccumulateStep) {
@@ -667,7 +667,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches));
   }, worker_id, step_);
 
-  // Wait all workers to finish this round of pipeline parallelism. 
+  // Wait all workers to finish this round of pipeline parallelism.
   // The last batch in a pipeline collects gradient and update the model.
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
@@ -795,6 +795,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
+  auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
       auto training_data = training_data_loader.CurrentDataSet();
@@ -831,33 +832,32 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
         auto start = std::chrono::high_resolution_clock::now();
 
         if (is_weight_update_step) {
-          PrepareFeedNamesAndFeeds(ModelUpdateStep,
+          ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(ModelUpdateStep,
                                   training_data_loader,
                                   *training_data,
                                   lr_scheduler.get(),
                                   batch,
                                   feed_names,
-                                  feeds);
+                                  feeds));
           ORT_RETURN_IF_ERROR(
             PrepareFetchNamesAndFetches(ModelUpdateStep,
                                         fetch_names,
                                         fetches));
           RunWithUpdate(feed_names, fetch_names, feeds, fetches);
         } else {
-          PrepareFeedNamesAndFeeds(GradientAccumulateStep,
+          ORT_RETURN_IF_ERROR(PrepareFeedNamesAndFeeds(GradientAccumulateStep,
                                   training_data_loader,
                                   *training_data,
                                   lr_scheduler.get(),
                                   batch,
                                   feed_names,
-                                  feeds);
+                                  feeds));
           ORT_RETURN_IF_ERROR(
             PrepareFetchNamesAndFetches(GradientAccumulateStep,
                                         fetch_names,
                                         fetches));
           RunWithoutUpdate(feed_names, fetch_names, feeds,
                             gradient_accumulation_step_count);
-
         }
 
         // at this point, step_ already be increased by 1.
@@ -922,6 +922,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
     ++epoch;
   }
+  auto all_steps_time_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> all_steps_duration_seconds = all_steps_time_end - all_steps_time_start;
 
   const double e2e_throughput = [&]() {
     if (end_to_end_perf_start_step >= params_.num_train_steps) return 0.0;
@@ -946,7 +948,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.perf_output_dir));
     // saving json file
     ORT_RETURN_IF_ERROR(SavePerfMetrics(number_of_batches, gradient_accumulation_step_count, weight_update_steps,
-                                        total_time, avg_time_per_batch, throughput, stabilized_throughput, 
+                                        total_time, avg_time_per_batch, throughput, stabilized_throughput,
                                         e2e_throughput, mapped_dimensions,
                                         average_cpu_usage, peak_workingset_size));
   }
@@ -960,7 +962,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Running Time Per Batch: " << avg_time_per_batch << " ms\n"
             << "Throughput: " << throughput << " Examples / Second\n"
             << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n"
-            << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n";
+            << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n"
+            << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start)<< " Second\n"
+            << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
   return Status::OK();
 }
@@ -1138,7 +1142,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
     if (params_.pipeline_parallel_size == 1) {
       auto status = Status::OK();
       // When there is no pipeline, we always use the first thread
-      // to launch session_.Run(...) to avoid multiple activation allocations. 
+      // to launch session_.Run(...) to avoid multiple activation allocations.
 
       // Always use the first thread to evaluate.
       const size_t worker_id = 0;
@@ -1170,7 +1174,6 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
         fetch_names,
         &fetches));
     }
-
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and

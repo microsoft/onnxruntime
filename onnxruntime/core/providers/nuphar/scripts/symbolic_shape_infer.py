@@ -1139,6 +1139,13 @@ class SymbolicShapeInference:
             self._onnx_infer_single_node(node)
             if node.op_type in self.dispatcher_:
                 self.dispatcher_[node.op_type](node)
+            elif node.op_type in ['ConvTranspose']:
+                # onnx shape inference ops like ConvTranspose may have empty shape for symbolic input
+                # before adding symbolic compute for them
+                # mark the output type as UNDEFINED to allow guessing of rank
+                vi = self.known_vi_[node.output[0]]
+                if len(vi.type.tensor_type.shape.dim) == 0:
+                    vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
 
             if self.verbose_ > 2:
                 print(node.op_type + ': ' + node.name)
@@ -1175,9 +1182,12 @@ class SymbolicShapeInference:
                         if node.op_type in ['Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat', 'Where', 'Sum']:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16']:
-                                # only support auto merge for MatMul for dim < rank-2 when rank > 2
-                                assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
-                                assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
+                                if None in out_shape:
+                                    idx = out_shape.index(None)
+                                    dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
+                                    # only support auto merge for MatMul for dim < rank-2 when rank > 2
+                                    assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
+                                    assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
                         elif node.op_type == 'Expand':
                             # auto merge for cases like Expand([min(batch, 1), min(seq, 512)], [batch, seq])
                             shapes = [self._get_shape(node, 0), self._get_value(node, 1)]
@@ -1246,8 +1256,9 @@ class SymbolicShapeInference:
     @staticmethod
     def infer_shapes(input_model, output_model, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
         in_mp = onnx.load(input_model)
-        if get_opset(in_mp) < 7:
-            print('Only support models of opset 7 and above.')
+        onnx_opset = get_opset(in_mp)
+        if not onnx_opset or onnx_opset < 7:
+            print('Only support models of onnx opset 7 and above.')
             return
         symbolic_shape_inference = SymbolicShapeInference(int_max, auto_merge, guess_output_rank, verbose)
         all_shapes_inferred = False

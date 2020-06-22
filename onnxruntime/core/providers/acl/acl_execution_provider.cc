@@ -37,6 +37,9 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOn
 // Opset 10
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOnnxDomain, 10, 10, float, AveragePool);
 
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOnnxDomain, 7, 9, BatchNormalization);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOnnxDomain, 4, 10, Concat);
+
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kAclExecutionProvider, kMSDomain, 1, float, FusedConv);
 
 static void RegisterACLKernels(KernelRegistry& kernel_registry) {
@@ -61,6 +64,9 @@ static void RegisterACLKernels(KernelRegistry& kernel_registry) {
   // Opset 10
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOnnxDomain, 10, 10, float, AveragePool)>());
 
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOnnxDomain, 7, 9, BatchNormalization)>());
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kAclExecutionProvider, kOnnxDomain, 4, 10, Concat)>());
+
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kAclExecutionProvider, kMSDomain, 1, float, FusedConv)>());
 }
 
@@ -76,30 +82,24 @@ ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kAclExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(ACL, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
   DeviceAllocatorRegistrationInfo default_memory_info{
       OrtMemTypeDefault,
-      std::move(default_allocator_factory),
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
+      },
       std::numeric_limits<size_t>::max()};
 
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  auto cpu_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-        ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
+  InsertAllocator(CreateAllocator(default_memory_info, 0, info.create_arena));
 
   DeviceAllocatorRegistrationInfo cpu_memory_info{
       OrtMemTypeCPUOutput,
-      std::move(cpu_allocator_factory),
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo(ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+      },
       std::numeric_limits<size_t>::max()};
 
-  InsertAllocator(CreateAllocator(cpu_memory_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info, 0, info.create_arena));
 }
 
 ACLExecutionProvider::~ACLExecutionProvider() {

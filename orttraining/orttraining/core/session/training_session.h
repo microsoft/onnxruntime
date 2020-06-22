@@ -370,7 +370,8 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  common::Status InsertPipelineOps(std::string& forward_waited_event_name,
+  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
+                                   std::string& forward_waited_event_name,
                                    std::string& forward_recorded_event_name,
                                    std::string& backward_waited_event_name,
                                    std::string& backward_recorded_event_name,
@@ -426,7 +427,12 @@ class TrainingSession : public InferenceSession {
                                       bool use_fp16_initializer,
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+  /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
+  @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
+  @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
+  */
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+                                                                const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 

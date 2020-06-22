@@ -41,6 +41,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
    
     - task: CmdLine@2
       inputs:
@@ -102,6 +103,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
 
     - task: CmdLine@2
       inputs:
@@ -150,6 +152,7 @@ jobs:
     buildArch: x64
     setVcvars: true
     BuildConfig: 'Release'
+    GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
   timeoutInMinutes: 60
   workspace:
     clean: all
@@ -158,6 +161,7 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
+  - template: templates/enable-telemetry.yml
 
   - task: UsePythonVersion@0
     inputs:
@@ -169,6 +173,7 @@ jobs:
   - template: templates/set-featurizer-build-flag-step.yml
     parameters:
       is_featurizers_build: $(is_featurizers_build)
+      is_nightly_build: $(NIGHTLY_BUILD)
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -196,8 +201,23 @@ jobs:
     displayName: 'BUILD'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --parallel'
+      arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --use_openmp --enable_onnx_tests $(FeaturizerBuildFlag) --parallel --use_telemetry'
       workingDirectory: '$(Build.BinariesDirectory)'
+
+  # Esrp signing
+  - template: templates/win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+      DisplayName: 'ESRP - Sign Native dlls'
+      DoEsrp: true
+      Pattern: '*.pyd,*.dll'
+
+  - task: PythonScript@0
+    displayName: 'Build wheel'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\setup.py'
+      arguments: bdist_wheel $(WheelBuildFlag)
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
   - task: CopyFiles@2
     displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -205,6 +225,20 @@ jobs:
       SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
       Contents: '**\dist\*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - script: |
+     rename *.whl *.zip
+
+    workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+    displayName: 'Rename file extension for codesign validation'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**\*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Artifact: ONNXRuntime python wheel'
@@ -215,7 +249,10 @@ jobs:
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
 
 - job:  Windows_py_GPU_Wheels
   workspace:
@@ -226,6 +263,7 @@ jobs:
     CUDA_VERSION: '10.1'
     buildArch: x64
     EnvSetupScript: setup_env_cuda.bat
+    GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
   strategy:
     matrix:
       Python35:
@@ -238,6 +276,7 @@ jobs:
     - checkout: self
       clean: true
       submodules: recursive
+    - template: templates/enable-telemetry.yml
 
     - task: UsePythonVersion@0
       inputs:
@@ -271,13 +310,29 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
 
     - task: PythonScript@0
       displayName: 'build'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests $(FeaturizerBuildFlag) --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
+        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests $(FeaturizerBuildFlag) --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda" --use_telemetry
         workingDirectory: '$(Build.BinariesDirectory)'
+
+    # Esrp signing
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+        DisplayName: 'ESRP - Sign Native dlls'
+        DoEsrp: true
+        Pattern: '*.pyd,*.dll'
+
+    - task: PythonScript@0
+      displayName: 'Build wheel'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\setup.py'
+        arguments: bdist_wheel --use_cuda $(WheelBuildFlag)
+        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -286,6 +341,20 @@ jobs:
         Contents: '**\dist\*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+    - script: |
+       rename *.whl *.zip
+
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+      displayName: 'Rename file extension for codesign validation'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**\*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
@@ -293,7 +362,9 @@ jobs:
 
     - template: templates/component-governance-component-detection-steps.yml
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - job: MacOS_py_Wheels
   workspace:
@@ -318,6 +389,7 @@ jobs:
     - template: templates/set-featurizer-build-flag-step.yml
       parameters:
         is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
 
     - task: UsePythonVersion@0
       displayName: 'Use Python'
@@ -349,6 +421,7 @@ jobs:
   workspace:
     clean: all
   pool: 'Linux-CPU'
+  condition: ne(variables['is_featurizers_build'], 'true')
   strategy:
     matrix:
       Py37:
@@ -361,17 +434,17 @@ jobs:
         python.include: '3.5m'
         cp.tag: 'cp35-cp35m'
   steps:
+    - template: templates/set-featurizer-build-flag-step.yml
+      parameters:
+        is_featurizers_build: $(is_featurizers_build)
+        is_nightly_build: $(NIGHTLY_BUILD)
+
     - task: CmdLine@2
       inputs:
         script: |
           set -e -x
-          sudo rm -rf *
-          cd $(Build.SourcesDirectory)
-          git submodule update --init --recursive
-          cd -
           sudo apt-get install -y qemu-user-static
-          sudo chmod a+x /usr/bin/azcopy
-
+ 
           cat << EOF > tool-chain.cmake
           SET(CMAKE_SYSTEM_NAME Linux)
           SET(CMAKE_SYSTEM_VERSION 1)
@@ -392,15 +465,11 @@ jobs:
           sudo tar -Jxf $(Build.BinariesDirectory)/toolchains.tar.xz -C /mnt/toolchains
           aria2c -q https://github.com/protocolbuffers/protobuf/releases/download/v3.11.1/protoc-3.11.1-linux-x86_64.zip
           unzip protoc-3.11.1-linux-x86_64.zip
-          aria2c -q https://github.com/Kitware/CMake/releases/download/v3.17.1/cmake-3.17.1-Linux-x86_64.tar.gz
-          tar --strip=1 -zxf cmake-3.17.1-Linux-x86_64.tar.gz
           sudo cp /mnt/toolchains/manylinux2014_aarch64/usr/include/stdlib.h /mnt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/aarch64-linux-gnu/libc/usr/include/
-          bin/cmake -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_LIBRARY=dl -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/opt/python/'$(cp.tag)'/bin/python3  -Donnxruntime_BUILD_SHARED_LIB=OFF  -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_DEV_MODE=ON -DONNX_CUSTOM_PROTOC_EXECUTABLE=$(Build.BinariesDirectory)/bin/protoc "-DPYTHON_INCLUDE_DIR=/mnt/toolchains/manylinux2014_aarch64/usr/include;/mnt/toolchains/manylinux2014_aarch64/opt/python/$(cp.tag)/include/python$(python.include)" -DNUMPY_INCLUDE_DIR=/mnt/toolchains $(Build.SourcesDirectory)/cmake
+          cmake -Donnxruntime_GCC_STATIC_CPP_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -Dprotobuf_WITH_ZLIB=OFF -DCMAKE_TOOLCHAIN_FILE=tool-chain.cmake -Donnxruntime_ENABLE_PYTHON=ON -DPYTHON_LIBRARY=dl -DPYTHON_EXECUTABLE=/mnt/toolchains/manylinux2014_aarch64/opt/python/'$(cp.tag)'/bin/python3  -Donnxruntime_BUILD_SHARED_LIB=OFF  -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_DEV_MODE=ON -DONNX_CUSTOM_PROTOC_EXECUTABLE=$(Build.BinariesDirectory)/bin/protoc "-DPYTHON_INCLUDE_DIR=/mnt/toolchains/manylinux2014_aarch64/usr/include;/mnt/toolchains/manylinux2014_aarch64/opt/python/$(cp.tag)/include/python$(python.include)" -DNUMPY_INCLUDE_DIR=/mnt/toolchains $(Build.SourcesDirectory)/cmake
           make -j$(getconf _NPROCESSORS_ONLN)
-          case $NIGHTLY_BUILD in
-            1) sudo --preserve-env docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel --nightly_build;;
-            *) sudo --preserve-env docker run -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel;;
-          esac
+          sudo --preserve-env docker run -e BUILD_BUILDNUMBER -v /usr/bin/qemu-aarch64-static:/usr/bin/qemu-aarch64-static -v $(Build.BinariesDirectory):/tmp/a -v $(Build.SourcesDirectory):/tmp/b -w /tmp/a -u $(id -u ${USER}):$(id -g ${USER}) --rm quay.io/pypa/manylinux2014_aarch64 /opt/python/'$(cp.tag)'/bin/python3 /tmp/b/setup.py bdist_wheel $(WheelBuildFlag)
+
         workingDirectory: $(Build.BinariesDirectory)
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

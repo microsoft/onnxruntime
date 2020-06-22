@@ -9,15 +9,19 @@ steps:
     - task: CmdLine@2
       inputs:
         script: |
-          echo "Java version"
-          java --version
+          @echo on
           set NATIVE_FOLDER=$(Build.BinariesDirectory)\${{parameters.artifactName}}\stage\ai\onnxruntime\native\win-x64
           mkdir %NATIVE_FOLDER%
           echo "Directories created"
           copy .\java\build\libs\*.jar $(Build.BinariesDirectory)\${{parameters.artifactName}}
           pushd $(Build.BinariesDirectory)\${{parameters.artifactName}}
-          jar xf onnxruntime-${{parameters.version}}.jar META-INF\maven\ai.onnxruntime\onnxruntime\pom.xml
-          move META-INF\maven\ai.onnxruntime\onnxruntime\pom.xml onnxruntime-${{parameters.version}}.pom
+          if ${{parameters.artifactName}} == onnxruntime-java-win-x64 (
+          set artifact_id=onnxruntime
+          ) else (
+          set artifact_id=onnxruntime_gpu
+          )
+          jar xf onnxruntime-${{parameters.version}}.jar META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml
+          move META-INF\maven\com.microsoft.onnxruntime\%artifact_id%\pom.xml onnxruntime-${{parameters.version}}.pom
           rd /s /q META-INF
           popd
           copy .\${{parameters.buildConfig}}\onnxruntime.pdb %NATIVE_FOLDER%

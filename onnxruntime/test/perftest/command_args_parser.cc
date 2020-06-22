@@ -25,7 +25,7 @@ namespace perftest {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
-      "perf_test [options...] model_path result_file\n"
+      "perf_test [options...] model_path [result_file]\n"
       "Options:\n"
       "\t-m [test_mode]: Specifies the test mode. Value could be 'duration' or 'times'.\n"
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
@@ -40,7 +40,7 @@ namespace perftest {
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
-      "\t-s: Show statistics result, like P75, P90.\n"
+      "\t-s: Show statistics result, like P75, P90. If no result_file provided this defaults to on.\n"
       "\t-v: Show verbose information.\n"
       "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
@@ -98,6 +98,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
         } else {
           return false;
         }
@@ -185,10 +187,19 @@ namespace perftest {
   // parse model_path and result_file_path
   argc -= optind;
   argv += optind;
-  if (argc != 2) return false;
+
+  switch (argc) {
+    case 2:
+      test_config.model_info.result_file_path = argv[1];
+      break;
+    case 1:
+      test_config.run_config.f_dump_statistics = true;
+      break;
+    default:
+      return false;
+  }
 
   test_config.model_info.model_file_path = argv[0];
-  test_config.model_info.result_file_path = argv[1];
 
   return true;
 }

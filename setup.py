@@ -59,7 +59,12 @@ elif '--use_nuphar' in sys.argv:
 elif '--use_vitisai' in sys.argv:
     package_name = 'onnxruntime-vitisai'
     sys.argv.remove('--use_vitisai')
-# --use_acl is specified in build.py, but not parsed here
+elif '--use_acl' in sys.argv:
+    package_name = 'onnxruntime-acl'
+    sys.argv.remove('--use_acl')
+elif '--use_armnn' in sys.argv:
+    package_name = 'onnxruntime-armnn'
+    sys.argv.remove('--use_armnn')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -326,6 +331,8 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: MacOS',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',
         'Programming Language :: Python :: 3.5',

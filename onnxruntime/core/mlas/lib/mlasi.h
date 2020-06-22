@@ -228,6 +228,20 @@ typedef MLAS_GEMM_FLOAT_KERNEL* PMLAS_GEMM_FLOAT_KERNEL;
 typedef MLAS_GEMM_DOUBLE_KERNEL* PMLAS_GEMM_DOUBLE_KERNEL;
 
 typedef
+size_t
+(MLASCALL MLAS_GEMV_FLOAT_KERNEL)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMV_FLOAT_KERNEL* PMLAS_GEMV_FLOAT_KERNEL;
+
+typedef
 void
 (MLASCALL MLAS_SGEMM_KERNEL_M1_ROUTINE)(
     const float* A,
@@ -254,18 +268,7 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 typedef
 void
 (MLASCALL MLAS_GEMM_U8X8_OPERATION)(
-    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    int16_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    int16_t offb,
-    int32_t* C,
-    size_t ldc
+    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     );
 
 typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
@@ -274,9 +277,9 @@ typedef
 size_t
 (MLASCALL MLAS_GEMM_U8S8_KERNEL)(
     const uint8_t* A,
-    const int8_t* B,
+    const uint8_t* B,
     int32_t* C,
-    size_t QuadCountK,
+    size_t PackedCountK,
     size_t CountM,
     size_t CountN,
     size_t ldc,
@@ -292,7 +295,7 @@ typedef
 size_t
 (MLASCALL MLAS_GEMV_U8S8_KERNEL)(
     const uint8_t* A,
-    const int8_t* B,
+    const uint8_t* B,
     int32_t* C,
     size_t CountK,
     size_t CountN,
@@ -307,7 +310,7 @@ size_t
     const int16_t* A,
     const uint8_t* B,
     int32_t* C,
-    size_t PairCountK,
+    size_t PackedCountK,
     size_t CountM,
     size_t CountN,
     size_t ldc,
@@ -340,7 +343,7 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
@@ -363,7 +366,7 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL;
@@ -382,7 +385,7 @@ void
     size_t OutputStride,
     size_t OutputCount,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_POINTWISE_FLOAT_KERNEL* PMLAS_CONV_POINTWISE_FLOAT_KERNEL;
@@ -484,6 +487,8 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)

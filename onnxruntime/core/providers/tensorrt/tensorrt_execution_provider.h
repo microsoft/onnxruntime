@@ -38,6 +38,21 @@ class TensorrtLogger : public nvinfer1::ILogger {
   }
 };
 
+namespace tensorrt_ptr {
+
+  struct TensorrtInferDeleter {
+    template <typename T>
+    void operator()(T* obj) const {
+      if (obj) {
+        obj->destroy();
+      }
+    }
+  };
+
+  template <typename T>
+  using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
+};
+
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
@@ -45,12 +60,13 @@ struct TensorrtExecutionProviderInfo {
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
+
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   nvonnxparser::IParser* parser = nullptr;
-  nvinfer1::ICudaEngine* engine = nullptr;
-  nvinfer1::IExecutionContext* context = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> * engine = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> * context = nullptr;
   nvinfer1::IBuilder* builder = nullptr;
   nvinfer1::INetworkDefinition* network = nullptr;
   std::vector<std::vector<int>> input_info;
@@ -89,25 +105,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool fp16_enable_ = false;
   bool dump_subgraphs_ = false;
 
-  struct InferDeleter {
-    template <typename T>
-    void operator()(T* obj) const {
-      if (obj) {
-        obj->destroy();
-      }
-    }
-  };
-
-  template <typename T>
-  using unique_pointer = std::unique_ptr<T, InferDeleter>;
 
   OrtMutex tensorrt_mu_;
   int device_id_;
-  std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
-  std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;
-  std::unordered_map<std::string, unique_pointer<nvinfer1::IExecutionContext>> contexts_;
-  std::unordered_map<std::string, unique_pointer<nvinfer1::IBuilder>> builders_;
-  std::unordered_map<std::string, unique_pointer<nvinfer1::INetworkDefinition>> networks_;
+  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
+  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
+  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
+  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>> builders_;
+  std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;

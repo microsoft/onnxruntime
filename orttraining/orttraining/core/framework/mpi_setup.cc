@@ -1,11 +1,14 @@
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "mpi_setup.h"
 
 namespace onnxruntime {
 namespace training {
 MPIContext::MPIContext(int w_rank, int l_rank, int w_size, int l_size) : world_rank(w_rank), local_rank(l_rank), world_size(w_size), local_size(l_size) {}
-#ifdef USE_HOROVOD
-MPIContext setup_horovod() {
-  using namespace horovod::common;
+
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+MPIContext setup_mpi() {
   // setup MPI amd horovod
   int is_mpi_initialized = 0;
   MPI_Initialized(&is_mpi_initialized);
@@ -24,7 +27,10 @@ MPIContext setup_horovod() {
 
   MPI_Allgather(&world_rank, 1, MPI_INT, ranks, 1, MPI_INT, MPI_COMM_WORLD);
 
+#ifdef USE_HOROVOD
+  using namespace horovod::common;
   horovod_init(ranks, world_size);
+#endif
 
   //Get local rank and size
   int local_rank;
@@ -46,8 +52,10 @@ MPIContext setup_horovod() {
   return MPIContext(world_rank, local_rank, world_size, local_size);
 }
 
-void shutdown_horovod() {
+void shutdown_mpi() {
+#ifdef USE_HOROVOD
   horovod::common::horovod_shutdown();
+#endif
 
   int is_mpi_initialized = 0;
   MPI_Initialized(&is_mpi_initialized);

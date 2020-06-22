@@ -1425,7 +1425,7 @@ public class InferenceTest {
   private static StringTensorPair loadTensorFromFilePb(
       OrtEnvironment env, File filename, Map<String, NodeInfo> nodeMetaDict)
       throws IOException, OrtException {
-    InputStream is = new BufferedInputStream(new FileInputStream(filename));
+    InputStream is = new BufferedInputStream(new FileInputStream(filename), 1024 * 1024 * 4);
     OnnxMl.TensorProto tensor = OnnxMl.TensorProto.parseFrom(is);
     is.close();
 
