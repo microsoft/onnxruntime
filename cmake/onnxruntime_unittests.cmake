@@ -162,6 +162,11 @@ file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
 file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/providers/cpu/*"
   )
+
+if(onnxruntime_DISABLE_ML_OPS)
+  list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
+endif()
+
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
 if (onnxruntime_USE_CUDA)

@@ -60,7 +60,7 @@ See below for description of some options of optimizer.py:
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
-  **use_gpu**: (*optional*)
+-  **use_gpu**: (*optional*)
     When opt_level > 1, please set this flag for GPU inference.
 - **opt_level**: (*optional*)
     Set a proper graph optimization level of OnnxRuntime: 0 - disable all (default), 1 - basic, 2 - extended, 99 - all. If the value is positive, OnnxRuntime will be used to optimize graph first.

@@ -56,7 +56,7 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
                                  const onnxruntime::Node* fused_node,
                                  const std::string &backend_type,
                                  const logging::Logger* logger)
-  : backend_type_(backend_type) 
+  : backend_type_(backend_type)
 {
   SetLogger(logger);
 
@@ -74,18 +74,16 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
 
   auto input_defs = fused_node->InputDefs();
   for (auto idef : input_defs) {
-    // std::cout << "DPU input def: " << idef->Name() << std::endl;
     in_tensor_names_.push_back(idef->Name());
   }
 
   auto output_defs = fused_node->OutputDefs();
   for (auto odef : output_defs) {
-    // std::cout << "DPU output def: " << odef->Name() << std::endl;
     out_tensor_names_.push_back(odef->Name());
   }
   
   pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
-  run_options->online_quantization = true;
+  run_options->on_the_fly_quantization = true;
   rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_, out_tensor_names_,
                             "vai", run_options);
 }
@@ -93,7 +91,7 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
 VitisAICustomOp::~VitisAICustomOp() {}
 
 
-Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const {
+Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const { 
   Ort::CustomOpApi ort{*api};
   const unsigned num_inputs = (unsigned) xg_->get_nb_inputs();
 
@@ -104,7 +102,6 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
   // Initialize input tensors.
   try {
     for (unsigned i = 0; i < num_inputs; ++i) {
-      // std::cout << "Input name: " << in_tensor_names_[i];
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_type = ort.GetTensorElementType(tensor_info);
@@ -134,7 +131,7 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
       std::vector<ssize_t> out_shape{shape.begin(), shape.end()};
       out_shape[0] = batch_size;
       std::vector<int64_t> ort_shape{out_shape.begin(), out_shape.end()};
-        
+
       OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, ort_shape.data(), ort_shape.size());
       auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
       auto tensor_type = ort.GetTensorElementType(tensor_info);
@@ -162,7 +159,7 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
   } catch (...) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, name_ + ": Unknown exception while executing Pyxir computation");
   }
-
+  
   return Status::OK();
 }
 

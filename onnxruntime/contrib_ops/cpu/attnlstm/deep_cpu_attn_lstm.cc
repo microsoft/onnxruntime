@@ -10,7 +10,6 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/threadpool.h"
 #include "core/framework/allocator.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
