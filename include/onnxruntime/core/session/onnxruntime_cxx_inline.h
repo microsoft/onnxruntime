@@ -290,24 +290,24 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
 
 inline std::vector<Value> ExperimentalSession::Run(const std::vector<std::string>& input_names, const std::vector<Value>& input_values,
                                                    const std::vector<std::string>& output_names, const RunOptions& run_options) {
-  size_t output_node_count = GetOutputNames().size();
+  size_t output_names_count = GetOutputNames().size();
   std::vector<Value> output_values;
-  for (size_t i = 0; i < output_node_count; i++) output_values.emplace_back(nullptr);
+  for (size_t i = 0; i < output_names_count; i++) output_values.emplace_back(nullptr);
   Run(input_names, input_values, output_names, output_values, run_options);
   return output_values;
 }
 
 inline void ExperimentalSession::Run(const std::vector<std::string>& input_names, const std::vector<Value>& input_values,
                                      const std::vector<std::string>& output_names, std::vector<Value>& output_values, const RunOptions& run_options) {
-  size_t input_node_count = input_names.size();
-  size_t output_node_count = output_names.size();
-  std::vector<const char*> input_names_(input_node_count, nullptr);
+  size_t input_names_count = input_names.size();
+  size_t output_names_count = output_names.size();
+  std::vector<const char*> input_names_(input_names_count, nullptr);
   size_t i = 0;
   for (auto it = input_names.begin(); it != input_names.end(); it++) input_names_[i++] = (*it).c_str();
-  std::vector<const char*> output_names_(output_node_count, nullptr);
+  std::vector<const char*> output_names_(output_names_count, nullptr);
   i = 0;
   for (auto it = output_names.begin(); it != output_names.end(); it++) output_names_[i++] = (*it).c_str();
-  Session::Run(run_options, input_names_.data(), input_values.data(), input_node_count, output_names_.data(), output_values.data(), output_node_count);
+  Session::Run(run_options, input_names_.data(), input_values.data(), input_names_count, output_names_.data(), output_values.data(), output_names_count);
 }
 
 inline std::vector<std::string> ExperimentalSession::GetInputNames() const {
