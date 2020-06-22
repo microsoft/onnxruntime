@@ -22,10 +22,9 @@ __global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X,
 #pragma unroll
     for (int element_idx = 0; element_idx < num_consecutive_elements_per_group; ++element_idx) {
       const auto offset = group_stride * group_idx + element_idx;
-      if (bias_base_idx + offset < bias_size) {
-        dX[input_base_idx + offset] = ComputeGeluGradScalar(
-            dY[input_base_idx + offset], X[input_base_idx + offset] + B[bias_base_idx + offset],
-            GeluComputationMode{});
+      const auto input_idx = input_base_idx + offset, bias_idx = bias_base_idx + offset;
+      if (bias_idx < bias_size) {
+        dX[input_idx] = ComputeGeluGradScalar(dY[input_idx], X[input_idx] + B[bias_idx], GeluComputationMode{});
       }
     }
   }
