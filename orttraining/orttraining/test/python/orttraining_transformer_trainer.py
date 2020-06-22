@@ -178,7 +178,6 @@ class ORTTransformerTrainer:
             map_optimizer_attributes=map_optimizer_attributes,
             learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
             device=self.args.device,
-            postprocess_model=postprocess_model,
             gradient_accumulation_steps=self.args.gradient_accumulation_steps,
             world_rank=0, world_size=1,     # only support single GPU cases
             use_mixed_precision=self.args.fp16,
