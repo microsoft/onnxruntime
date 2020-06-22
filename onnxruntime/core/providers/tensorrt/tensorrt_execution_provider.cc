@@ -96,12 +96,22 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault,
+       [](int id) {
+         return onnxruntime::make_unique<CUDAAllocator>(id, TRT);
+       },
+       std::numeric_limits<size_t>::max()});
   allocator_ = CreateAllocator(default_memory_info, device_id_);
+
   InsertAllocator(allocator_);
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput,
+       [](int) {
+         return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED);
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
   // Get environment variables
