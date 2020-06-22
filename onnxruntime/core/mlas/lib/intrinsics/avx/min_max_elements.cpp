@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the logic to find min and max elements with avx2 instructions.
+    This module implements the logic to find min and max elements with avx instructions.
 
 --*/
 

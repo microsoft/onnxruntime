@@ -431,7 +431,7 @@ MlasFindMinMaxElement(
     float* Max,
     size_t N
     )
- /*++
+/*++
 
 Routine Description:
 
