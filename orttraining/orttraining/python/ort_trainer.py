@@ -72,8 +72,6 @@ def input_get_device_index(input):
     return device_index
 
 def get_all_gradients_finite_arg_name(session):
-    for x in session._outputs_meta:
-        print("######python layer graph output: {}".format(x.name))
     all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
     if len(all_fp16_or_fp32_gradients_finite_node_args) < 1:
         raise RuntimeError("Failed to find a group NodeArg with name that matches 'all_gradients_finite'\
@@ -879,8 +877,8 @@ class ORTTrainer():
         #     results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
         
         #bugbug
-        if 'global_gradient_norm' in session_run_results:
-            print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
+        # if 'global_gradient_norm' in session_run_results:
+        #     print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
 
         return results[0] if len(results) == 1 else results
 
