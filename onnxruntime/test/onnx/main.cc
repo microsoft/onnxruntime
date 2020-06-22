@@ -256,6 +256,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   for (int i = 0; i != argc; ++i) {
     data_dirs.emplace_back(argv[i]);
   }
+
+  std::vector<std::unique_ptr<ITestCase>> owned_tests;
   {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
@@ -455,7 +457,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
-    std::vector<std::unique_ptr<ITestCase>> owned_tests;
     std::vector<ITestCase*> tests;
 
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
@@ -531,6 +532,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
   };
+
+#ifdef DISABLE_ML_OPS
+  auto starts_with = [](const std::string& find_in, const std::string& find_what) {
+    return find_in.compare(0, find_what.size(), find_what) == 0;
+  };
+  for (const auto& test_ptr : owned_tests) {
+    const std::string& test_name = test_ptr->GetTestCaseName();
+    if (starts_with(test_name, "XGBoost_") ||
+        starts_with(test_name, "coreml_") ||
+        starts_with(test_name, "scikit_") ||
+        starts_with(test_name, "libsvm_")) {
+      broken_tests.insert({test_name, "Traditional ML ops are disabled in this build."});
+    }
+  }
+#endif
 
   if (enable_ngraph) {
     broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
