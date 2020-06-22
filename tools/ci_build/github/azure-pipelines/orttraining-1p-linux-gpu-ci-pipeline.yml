@@ -5,17 +5,14 @@ parameters:
   default: ''
 
 - name: enable_training
-  displayName: 'Whether training functionality is enabled.'
+  displayName: 'Enable training'
   type: boolean
   default: false
 
-- name: python_version_strategy_matrix
-  displayName: 'Strategy matrix specifying the possible values of the python.version variable.'
-  type: object
-  default:
-    Python36:
-      python.version: '3.6'
-
+- name: python.version
+  displayName: 'Python version'
+  type: string
+  default: '3.6'
 
 stages:
 - stage: Python_Packaging
@@ -39,9 +36,6 @@ stages:
     workspace:
       clean: all
     pool: Linux-GPU-CUDA10
-    strategy:
-      matrix:
-        ${{ parameters.python_version_strategy_matrix }}
     steps:
       - checkout: self
         clean: true
