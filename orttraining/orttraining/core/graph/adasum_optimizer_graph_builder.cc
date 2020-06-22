@@ -228,7 +228,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   if (opt_graph_config_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, gradient_argdefs, graph_defs, adasum_global_grad_finite_argdef,
-        "adasum_all_gradients_finite"));
+        "adasum_all_deltas_finite"));
     std::cout<<"########delta finite output's name is : "<<adasum_global_grad_finite_argdef.name<<std::endl;
     std::cout<<"########finite output's name is : "<<optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite]<<std::endl;
     //[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;

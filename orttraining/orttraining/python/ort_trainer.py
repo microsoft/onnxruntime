@@ -75,7 +75,7 @@ def get_all_gradients_finite_arg_name(session):
     for x in session._outputs_meta:
         print("######python layer graph output: {}".format(x.name))
     all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
-    if len(all_fp16_or_fp32_gradients_finite_node_args) != 1:
+    if len(all_fp16_or_fp32_gradients_finite_node_args) < 1:
         raise RuntimeError("Failed to find a group NodeArg with name that matches 'all_gradients_finite'\
              from the training session.")
 
