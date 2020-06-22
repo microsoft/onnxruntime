@@ -42,7 +42,7 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   // find input range min and max
   float min, max;
-  MlasMinMaxElement(x_data, &min, &max, num_of_elements);
+  MlasFindMinMaxElement(x_data, &min, &max, num_of_elements);
 
   // ensure the input range includes zero
   min = std::min(min, 0.0f);

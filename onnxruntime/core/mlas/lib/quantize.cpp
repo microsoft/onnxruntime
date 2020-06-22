@@ -425,7 +425,7 @@ Return Value:
 
 void
 MLASCALL
-MlasMinMaxElement(
+MlasFindMinMaxElement(
     const float* Input,
     float* min,
     float* max,
@@ -450,9 +450,8 @@ MlasMinMaxElement(
    --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.MinMaxF32Kernel(
+    MlasPlatform.ReduceMinimumMaximumF32Kernel(Input, min, max, N);
 #else
-    MlasMinMaxF32Kernel(
+    MlasReduceMinimumMaximumF32Kernel(Input, min, max, N);
 #endif
-        Input, min, max, N);
 }

@@ -2363,7 +2363,7 @@ public:
     }
 };
 
-class MlasMinMaxElementsTest : public MlasTestBase
+class MlasFindMinMaxElementsTest : public MlasTestBase
 {
 private:
     MatrixGuardBuffer<float> BufferInput;
@@ -2384,12 +2384,12 @@ private:
             Input[n] = distribution(generator);
         }
 
-        auto MinMaxPair = std::minmax_element(Input, Input + N);
-        float min_ref = *MinMaxPair.first;
-        float max_ref = *MinMaxPair.second;
+        auto min_max_pair = std::minmax_element(Input, Input + N);
+        float min_ref = *min_max_pair.first;
+        float max_ref = *min_max_pair.second;
 
         float min, max;
-        MlasMinMaxElement(Input, &min, &max, N);
+        MlasFindMinMaxElement(Input, &min, &max, N);
 
         constexpr float epsilon = 1e-6f;
 
@@ -2498,7 +2498,7 @@ main(
     onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
 
     printf("MinMaxElements tests.\n");
-    onnxruntime::make_unique<MlasMinMaxElementsTest>()->ExecuteShort();
+    onnxruntime::make_unique<MlasFindMinMaxElementsTest>()->ExecuteShort();
 
     printf("ReorderOutput tests.\n");
     if (MlasNchwcGetBlockSize() > 1) {

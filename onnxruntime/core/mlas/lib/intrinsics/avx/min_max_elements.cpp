@@ -18,24 +18,19 @@ Abstract:
 
 void
 MLASCALL
-MlasMinMaxF32KernelAvx2(
+MlasReduceMinimumMaximumF32KernelAvx(
     const float* Input,
     float* min,
     float* max,
     size_t N)
 {
-    if (N <= 0) {
-        *min = 0.0f;
-        *max = 0.0f;
-        return;
-    }
-
-    *min = *max = *Input;
+    *min = std::numeric_limits<float>::max();
+    *max = std::numeric_limits<float>::lowest();
 
     if (N >= 8) {
 
-        __m256 MaximumVector0 = _mm256_set1_ps(*Input);
-        __m256 MinimumVector0 = _mm256_set1_ps(*Input);
+        __m256 MaximumVector0 = _mm256_set1_ps(*max);
+        __m256 MinimumVector0 = _mm256_set1_ps(*min);
 
         if (N >= 32) {
 
@@ -87,13 +82,13 @@ MlasMinMaxF32KernelAvx2(
             N -= 8;
         }
 
-        float min_buf[8], max_buf[8];
-        _mm256_storeu_ps(min_buf, MinimumVector0);
-        _mm256_storeu_ps(max_buf, MaximumVector0);
-        for (int j = 0; j < 8; ++j) {
-            *min = std::min(*min, min_buf[j]);
-            *max = std::max(*max, max_buf[j]);
-        }
+        __m128 low = _mm256_castps256_ps128(MaximumVector0);
+        __m128 high = _mm256_extractf128_ps(MaximumVector0, 1);
+        *max = MlasReduceMaximumFloat32x4(MlasMaximumFloat32x4(low, high));
+
+        low = _mm256_castps256_ps128(MinimumVector0);
+        high = _mm256_extractf128_ps(MinimumVector0, 1);
+        *min = MlasReduceMinimumFloat32x4(MlasMinimumFloat32x4(low, high));
     }
 
     while (N > 0) {

@@ -468,7 +468,7 @@ MlasRequantizeOutput(
 
 void
 MLASCALL
-MlasMinMaxElement(
+MlasFindMinMaxElement(
     const float* Input,
     float* Min,
     float* Max,

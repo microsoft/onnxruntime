@@ -33,7 +33,7 @@ REGISTER_DYNAMIC_QUANTIZE_MATMUL(uint8_t)
 static void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp) {
   // find input range min and max
   float min, max;
-  MlasMinMaxElement(data, &min, &max, num_of_elements);
+  MlasFindMinMaxElement(data, &min, &max, num_of_elements);
 
   // ensure the input range includes zero
   min = std::min(min, 0.0f);
