@@ -24,7 +24,7 @@ class ReshapeFusion : public GraphTransformer {
                                                   int index, std::vector<int64_t> shape_value, bool checkOneElementOnly, const logging::Logger& looger);
   static bool Match_One_Element_Output_Subgraph_2(Graph& graph, const NodeArg& root_input, const Node& concat,
                                                   int index, const logging::Logger& looger);
-  static bool Is_One_Element_Input(Graph& graph, const Node& cur_node, int index);
+  static bool Is_One_Element_Input(const Node& cur_node, int index);
   static bool Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& concat,
                                              int index, std::vector<int64_t> shape_value, const logging::Logger& logger);
 };

@@ -67,7 +67,7 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
       return false;
     }
 
-    if (checkOneElementOnly && ReshapeFusion::Is_One_Element_Input(graph, gather, 1)) {
+    if (checkOneElementOnly && ReshapeFusion::Is_One_Element_Input(gather, 1)) {
       return true;
     }
 
@@ -117,17 +117,11 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_2(Graph& graph, const Node
 }
 
 /**
- * Check if the i-th input of the current node contains exactly one number.
- * An input has exactly one element if it's a constant value or it has an inferred shape of [1].
+ * Check if the i-th input of the current node contains exactly one element by checking 
+ * its inferred shape.
  */
-bool ReshapeFusion::Is_One_Element_Input(Graph& graph, const Node& cur_node, int index) {
+bool ReshapeFusion::Is_One_Element_Input(const Node& cur_node, int index) {
   const NodeArg* cur_node_arg = cur_node.InputDefs()[index];
-  // Check if the i-th argument is constant, if it is then it's an eligible one element input.
-  if (graph_utils::NodeArgIsConstant(graph, *cur_node_arg)) {
-    std::cout << "nodearg is constant!!!" << std::endl;
-    std::cout << cur_node_arg->Shape() << std::endl;
-    return true;
-  }
   // Check if the i-th argument has an inferred shape.
   const auto* input_shape = cur_node_arg->Shape();
   if (!input_shape) {
@@ -149,17 +143,16 @@ bool ReshapeFusion::Is_One_Element_Input(Graph& graph, const Node& cur_node, int
  * Search all known patterns of one element subgraphs, which include - 
  * 1. A concat input with inferred shape that can only contain one element. 
  * 2. [root] -> Shape -> Gather(any 1d indice) -> Unsqueeze -> [Concat]
- * 3. [root] -> Shape -> Slice (slice to one element) -> Squeeze -> [Concat]
- * 4. [root] -> Shape -> Slice (slice to one element) -> Squeeze -> (Div/Mul) -> Unsqueeze -> [Concat]
+ * 3. [root] -> Shape -> Slice (slice to one element) -> Squeeze -> (Div/Mul) -> Unsqueeze -> [Concat]
  *                                                                      |
  *                                                           (one element output node)
  * If one of the above pattern is found, return true. Return false otherwise.
  */
 bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& concat,
                                                    int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
-  if (ReshapeFusion::Is_One_Element_Input(graph, concat, index) ||
-      ReshapeFusion::Match_One_Element_Output_Subgraph_1(graph, root_input, concat, index, shape_value, true, logger) ||
-      ReshapeFusion::Match_One_Element_Output_Subgraph_2(graph, root_input, concat, index, logger)) {
+  // Match "1-element subgraph from inferred shape -> concat" or "Shape -> Gather(1d indice) -> Unsqueeze -> [Concat]"
+  if (ReshapeFusion::Is_One_Element_Input(concat, index) ||
+      ReshapeFusion::Match_One_Element_Output_Subgraph_1(graph, root_input, concat, index, shape_value, true, logger)) {
     return true;
   }
 
@@ -183,10 +176,10 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
     if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
       return false;
     }
-    // Unsqueeze_path is found, check for shape -> slice -> squeeze -> unsqueeze to make sure
-    // the path produces one element output
+    // Unsqueeze_path is found, check for "one-element subgraph -> concat" or "shape -> slice -> squeeze ->
+    // unsqueeze" to make sure the path produces one element output.
     if (edges.size() == 1) {
-      if (ReshapeFusion::Is_One_Element_Input(graph, unsqueeze, 0) ||
+      if (ReshapeFusion::Is_One_Element_Input(unsqueeze, 0) ||
           ReshapeFusion::Match_One_Element_Output_Subgraph_2(graph, root_input, unsqueeze, 0, logger)) {
         return true;
       }
@@ -198,8 +191,9 @@ bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& 
     auto input_count = binary_node.InputArgCount().front();
 
     for (int i = 0; i < input_count; ++i) {
-      // If it's node input, look for shape -> slice -> squeeze path for a potential match.
-      if (!ReshapeFusion::Is_One_Element_Input(graph, binary_node, i) &&
+      // For each input, look for "one-element subgraph -> concat" or "shape -> slice -> squeeze" path for 
+      // a potential match.
+      if (!ReshapeFusion::Is_One_Element_Input(binary_node, i) &&
           !ReshapeFusion::Match_One_Element_Output_Subgraph_2(graph, root_input, binary_node, i, logger)) {
         return false;
       }
@@ -289,7 +283,6 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
       continue;
     }
     return false;
-
   }
 
   // Check how many -1 are there in shape_value.
