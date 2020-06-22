@@ -260,6 +260,8 @@ struct ExperimentalSession : Session {
   std::vector<std::string> GetInputNames() const;
   std::vector<std::string> GetOutputNames() const;
   std::vector<std::string> GetOverridableInitializerNames() const;
+  // Note: shape dimensions may have a negative value to indicate a symbolic/unknown dimension.
+  // This is typically used to denote batch size.
   std::vector< std::vector<int64_t> > GetInputShapes() const;
   std::vector< std::vector<int64_t> > GetOutputShapes() const;
   std::vector< std::vector<int64_t> > GetOverridableInitializerShapes() const;
