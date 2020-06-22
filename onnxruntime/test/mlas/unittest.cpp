@@ -2373,7 +2373,7 @@ private:
             size_t N,
             float MinimumValue,
             float MaximumValue
-        )
+            )
     {
         float* Input = BufferInput.GetBuffer(N);
 
@@ -2408,7 +2408,7 @@ public:
     void
         ExecuteShort(
             void
-        ) override
+            ) override
     {
         for (size_t n = 1; n < 128; n++) {
             Test(n, -10.f, 10.f);
