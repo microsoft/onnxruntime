@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
@@ -2666,6 +2666,19 @@ Example 4:
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Mish)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Mish is a smooth and nonmonotonic activation function which can be defined as: f(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + e^x ))")
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.

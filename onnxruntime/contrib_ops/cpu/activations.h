@@ -46,11 +46,34 @@ struct ParametricSoftplus : public ElementWiseRangedTransform<T> {
              .select(xm * (T)beta + ((-xm * (T)beta).exp() + 1.0f).log(), ((xm * (T)beta).exp() + 1.0f).log());
   }
 };
+template <typename T>
+struct Mish : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes&) {
+    return Status::OK();
+  }
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final {
+    return 16.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm * ((xm > 0).select(xm + ((-xm).exp() + 1.0f).log(), ((xm).exp() + 1.0f).log())).tanh();
+  }
+};
 }  // namespace functors
 
 namespace contrib {
 DEFINE_ELE_KERNEL(ScaledTanh);
 DEFINE_ELE_KERNEL(ParametricSoftplus);
+DEFINE_ELE_KERNEL(Mish);
 
 template <typename T>
 class Gelu : public OpKernel {
