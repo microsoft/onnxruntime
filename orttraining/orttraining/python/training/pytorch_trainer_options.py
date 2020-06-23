@@ -199,24 +199,27 @@ class PytorchTrainerOptions(object):
             fp16_enabled = opts.mixed_precision.enabled
      """
 
-    def __init__(self, options, _validate=True):
+    def __init__(self, options):
         # Keep a copy of original input for debug
         self._original_opts = dict(options)
 
+        # Used for logging purposes
+        self._main_class_name = self.__class__.__name__
+
+        # Validates user input
         self._validated_opts = dict(self._original_opts)
-        if _validate:
-            # Validates user input
-            validator = PytorchTrainerOptionsValidator(_PYTORCH_TRAINER_OPTIONS_SCHEMA)
-            self._validated_opts = validator.validated(self._validated_opts)
-            if self._validated_opts is None:
-                self._validated_opts = validator.errors
-            _validate = False
+        validator = PytorchTrainerOptionsValidator(
+            _PYTORCH_TRAINER_OPTIONS_SCHEMA)
+        self._validated_opts = validator.validated(self._validated_opts)
+        if self._validated_opts is None:
+            self._validated_opts = validator.errors
 
         # Convert dict in object
         for k, v in self._validated_opts.items():
-            setattr(self, k, self._wrap(v, _validate))
+            setattr(self, k, self._wrap(v))
 
         # Keep this in the last line
+        # After this point, this class becomes immutable
         self._initialized = True
 
     def __repr__(self):
@@ -226,14 +229,33 @@ class PytorchTrainerOptions(object):
 
     def __setattr__(self, k, v):
         if hasattr(self, '_initialized'):
-            raise Exception(f"{self.__class__.__name__} is an immutable class")
+            raise Exception(f"{self._main_class_name} is an immutable class")
         return super().__setattr__(k, v)
 
-    def _wrap(self, v, validate):
+    def _wrap(self, v):
         if isinstance(v, (tuple, list, set, frozenset)):
-            return type(v)([self._wrap(v, validate) for v in v])
+            return type(v)([self._wrap(v) for v in v])
         else:
-            return PytorchTrainerOptions(v, False) if isinstance(v, dict) else v
+            return _PytorchTrainerOptionsInternal(self._main_class_name, v) if isinstance(v, dict) else v
+
+
+class _PytorchTrainerOptionsInternal(PytorchTrainerOptions):
+    r"""Internal class used by ONNX Runtime training backend for input validation
+
+    NOTE: Users MUST NOT use this class in any way!
+    """
+
+    def __init__(self, main_class_name, options):
+        # Used for logging purposes
+        self._main_class_name = main_class_name
+
+        # Convert dict in object
+        for k, v in dict(options).items():
+            setattr(self, k, self._wrap(v))
+
+        # Keep this in the last line
+        # After this point, this class becomes immutable
+        self._initialized = True
 
 
 class PytorchTrainerOptionsValidator(cerberus.Validator):
@@ -264,7 +286,7 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'batch': {
         'type': 'dict',
         'default_setter': lambda _: {},
-        'required' : False,
+        'required': False,
         'schema': {
             'gradient_accumulation_steps': {
                 'type': 'integer',
@@ -276,7 +298,7 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'device': {
         'type': 'dict',
         'default_setter': lambda _: {},
-        'required' : False,
+        'required': False,
         'schema': {
             'id': {
                 'type': 'string',
@@ -293,7 +315,7 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'distributed': {
         'type': 'dict',
         'default_setter': lambda _: {},
-        'required' : False,
+        'required': False,
         'schema': {
             'world_rank': {
                 'type': 'integer',
@@ -333,7 +355,7 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'mixed_precision': {
         'type': 'dict',
         'default_setter': lambda _: {},
-        'required' : False,
+        'required': False,
         'schema': {
             'enabled': {
                 'type': 'boolean',
@@ -349,7 +371,7 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'utils': {
         'type': 'dict',
         'default_setter': lambda _: {},
-        'required' : False,
+        'required': False,
         'schema': {
             'grad_norm_clip': {
                 'type': 'boolean',
@@ -360,7 +382,7 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     '_internal_use': {
         'type': 'dict',
         'default_setter': lambda _: {},
-        'required' : False,
+        'required': False,
         'schema': {
             'frozen_weights': {
                 'type': 'list',
