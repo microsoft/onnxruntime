@@ -119,6 +119,8 @@ Status TrainingSession::ConfigureForTraining(
 
   TrainingConfigurationResult config_result{};
 
+  session_state_->SetUseDeterministicCompute(config.use_deterministic_compute);
+
   ORT_ENFORCE(config.distributed_config.pipeline_parallel_size > 0,
     "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
 

@@ -123,6 +123,13 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
 }
 
 Status GradientGraphBuilder::Build() {
+  // const std::vector<NodeIndex>& ordered_indices = graph_->GetNodesInTopologicalOrder();
+  // for (size_t i = 0; i < ordered_indices.size(); i++) {
+  //   const NodeIndex& node_index = ordered_indices[i];
+  //   auto& node = *graph_->GetNode(node_index);
+  //   std::cout << node.Name() << std::endl;
+  // }
+
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logging::LoggingManager::DefaultLogger());
   ORT_RETURN_IF_ERROR(opt_ret);
 
@@ -221,7 +228,22 @@ Status GradientGraphBuilder::Build() {
     }
   }
 
-  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
+
+  Status status = GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
+
+  std::cout << "--------------" << "x_nodes_" << std::endl;
+  for (NodeSet::const_iterator it = x_nodes_.cbegin(); it != x_nodes_.cend(); ++it)
+    std::cout << (*it)->Name() << std::endl;
+
+  std::cout << "--------------" << "GetNodesInTopologicalOrder" << std::endl;
+  const std::vector<NodeIndex>& ordered_indices = graph_->GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < ordered_indices.size(); i++) {
+    const NodeIndex& node_index = ordered_indices[i];
+    auto& node = *graph_->GetNode(node_index);
+    std::cout << node.Name() << std::endl;
+  }
+
+  return status;
 }
 
 }  // namespace training

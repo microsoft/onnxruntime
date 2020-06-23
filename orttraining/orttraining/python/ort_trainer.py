@@ -830,6 +830,7 @@ class ORTTrainer():
 
         return input, fetches
 
+
     def train_step(self, *args, **kwargs):
         """
         inputs: model inputs, labels, learning rate, and, if in mixed_precision mode, loss_scale.
@@ -902,6 +903,38 @@ class ORTTrainer():
                                                               self.device_,
                                                               run_options)
 
+        from torch import nn
+        from torch.nn import CrossEntropyLoss, MSELoss
+
+        def my_loss_fn(logits, labels):
+            loss_fct = CrossEntropyLoss()
+            loss_fct.to(logits.device)
+            loss = loss_fct(logits.view(-1, 2), labels.view(-1))
+            return loss
+
+        def my_loss_fn2(masked_lm_labels, next_sentence_label, prediction_scores, seq_relationship_scores):
+            loss_fct = CrossEntropyLoss()
+            loss_fct.to(masked_lm_labels.device)
+            config_vocab_size = 99
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, config_vocab_size), masked_lm_labels.view(-1))
+            next_sentence_loss = loss_fct(seq_relationship_scores.view(-1, 2), next_sentence_label.view(-1))
+            total_loss = masked_lm_loss + next_sentence_loss
+            return total_loss
+
+        torch.set_printoptions(precision=20)
+        if 'prediction_scores' in session_run_results.keys():
+            my_prediction_scores = session_run_results['prediction_scores']
+            my_seq_relationship_scores = session_run_results['seq_relationship_scores']
+            my_masked_lm_labels = input[3]
+            my_next_sentence_label = input[4]
+            my_loss = my_loss_fn2(my_masked_lm_labels, my_next_sentence_label, my_prediction_scores, my_seq_relationship_scores)
+        else:
+            my_logits = session_run_results['logits']
+            my_labels = input[3]
+            my_loss = my_loss_fn(my_logits, my_labels)
+
+        # print("train_step:   loss: ", session_run_results['loss'], "  my_loss: ", my_loss)
+
         if has_if_all_finite:
             # After session run with all_fp32_gradients_finite, we need to clear the iobinding's output state.
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
@@ -971,6 +1004,21 @@ class ORTTrainer():
                                                               output_desc,
                                                               self.device_,
                                                               run_options)
+
+        from torch import nn
+        from torch.nn import CrossEntropyLoss, MSELoss
+
+        def my_loss_fn(logits, labels):
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, 2), labels.view(-1))
+            return loss
+
+        my_logits = session_run_results['logits']
+        my_labels = input[3]
+
+        my_loss = my_loss_fn(my_logits, my_labels)
+
+        # print("eval_step:   loss: ", session_run_results['loss'], "  my_loss: ", my_loss)
 
         if len(session_run_results) == 1:
             return session_run_results[list(session_run_results.keys())[0]]

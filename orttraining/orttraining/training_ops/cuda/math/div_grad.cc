@@ -231,6 +231,13 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
   }
+  // if(context->NodeName() == "Div_45_Grad/DivGrad_0") {
+  //   PrintTensor(*dy_tensor, "DivGrad-dy_tensor: " + context->NodeName(), true);
+  //   PrintTensor(*a_tensor, "DivGrad-a_tensor: " + context->NodeName(), true);
+  //   PrintTensor(*b_tensor, "DivGrad-b_tensor: " + context->NodeName(), true);
+  //   PrintTensor(*da_output_tensor, "DivGrad-da_output_tensor: " + context->NodeName(), true);
+  //   PrintTensor(*db_output_tensor, "DivGrad-db_output_tensor: " + context->NodeName(), true);
+  // }
   return Status::OK();
 }
 

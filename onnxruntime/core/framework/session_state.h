@@ -55,6 +55,7 @@ class SessionState {
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool)
       : execution_providers_(execution_providers),
+        use_deterministic_compute_(false),
         enable_mem_pattern_(enable_mem_pattern),
         thread_pool_(thread_pool),
         inter_op_thread_pool_(inter_op_thread_pool) {
@@ -176,6 +177,9 @@ class SessionState {
   Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
+  bool GetUseDeterministicCompute() const {return use_deterministic_compute_;}
+  void SetUseDeterministicCompute(bool use_deterministic_compute) {use_deterministic_compute_ = use_deterministic_compute;}
+
   /**
   Get enable memory pattern flag
   */
@@ -279,6 +283,8 @@ class SessionState {
 
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_ = nullptr;
+
+  bool use_deterministic_compute_;
 
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_;

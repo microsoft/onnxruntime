@@ -1983,6 +1983,10 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
+const std::vector<NodeIndex>& Graph::GetNodesInTopologicalOrder() const {
+  return nodes_in_topological_order_;
+}
+
 Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));

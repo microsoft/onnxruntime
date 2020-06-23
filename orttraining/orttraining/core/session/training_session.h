@@ -48,6 +48,8 @@ class TrainingSession : public InferenceSession {
     // The number of gradient accumulation steps.
     int gradient_accumulation_steps{1};
 
+    bool use_deterministic_compute{false};
+
     struct DistributedConfiguration {
       // The rank of the node.
       int world_rank{0};

@@ -140,6 +140,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count)));
+
+    if(ctx->NodeName() == "MatMul_With_Transpose_token_5") {
+      // PrintTensor(*left_X, "MatMul-left_X: " + ctx->NodeName(), true);
+      // PrintTensor(*right_X, "MatMul-right_X: " + ctx->NodeName(), true);
+      // PrintTensor(*Y, "MatMul-Y: " + ctx->NodeName(), true);
+    }
     return Status::OK();
   }
 

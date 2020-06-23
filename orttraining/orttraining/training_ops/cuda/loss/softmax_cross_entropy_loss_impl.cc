@@ -8,6 +8,8 @@
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cuda/loss/softmax_cross_entropy_loss_impl.h"
 
+#include <iomanip>
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -29,6 +31,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   const Tensor& label = *ctx->Input<Tensor>(1);
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
+
   onnxruntime::contrib::VerifyLogitWeightAndLabelShape(logit_shape, label_shape,
                                                        OpKernel::Node().InputDefs().size() == 3 ? &(*(ctx->Input<Tensor>(2))).Shape() : nullptr);
 
@@ -51,6 +54,10 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   const T* logit_data = logit.template Data<T>();
   const Tin* label_data = label.template Data<Tin>();
+
+  // PrintTensor(logit, "logit");
+
+  // PrintTensor(label, "label");
 
   T* log_prob_data = nullptr;
   Tensor* log_prob = nullptr;
@@ -151,6 +158,8 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
         output_dims);
   }
 
+  // PrintTensor(*total_loss, "loss");
+
   return Status::OK();
 }
 
@@ -240,6 +249,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     d_logit->Reshape(new_shape);
   }
 
+  // PrintTensor(*d_logit, "d_logit" + ctx->NodeName());
   return Status::OK();
 }
 
