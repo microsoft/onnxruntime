@@ -38,9 +38,13 @@ constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider}, info_(info) {
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                               [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(OpenVINO, OrtDeviceAllocator)); },
-                                               std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -234,12 +238,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-
     if (GetInputCount(node, initializers) == 1)
       return true;
-    if(optype == "Max" || optype == "Min"){
-
-      for (size_t i = 0; i < node->InputDefs().size(); i++){
+    if (optype == "Max" || optype == "Min") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
         auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
         if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
             dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
@@ -276,7 +278,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Pow") {
-
     //Only supported if the data type of both inputs is same
     auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
@@ -889,20 +890,16 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
     //Myriad plugin can only load 10 subgraphs
-    if(info_.device_id_ == "MYRIAD" && connected_clusters.size() > 10){
-
+    if (info_.device_id_ == "MYRIAD" && connected_clusters.size() > 10) {
       std::sort(connected_clusters.begin(), connected_clusters.end(),
-        [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) ->bool
-        {
-          return v1.size() > v2.size();
-        });
+                [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
+                  return v1.size() > v2.size();
+                });
     }
     int no_of_clusters = 0;
 
     for (const auto& this_cluster : connected_clusters) {
-
-
-      if(info_.device_id_ == "MYRIAD" && no_of_clusters == 10){
+      if (info_.device_id_ == "MYRIAD" && no_of_clusters == 10) {
         break;
       }
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;

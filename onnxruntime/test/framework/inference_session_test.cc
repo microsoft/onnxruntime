@@ -95,8 +95,7 @@ class FuseExecutionProvider : public IExecutionProvider {
     DeviceAllocatorRegistrationInfo device_info(
         {OrtMemTypeDefault,
          [](int) {
-           return onnxruntime::make_unique<CPUAllocator>(
-               onnxruntime::make_unique<OrtMemoryInfo>("Fuse", OrtAllocatorType::OrtDeviceAllocator));
+           return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
          },
          std::numeric_limits<size_t>::max()});
     InsertAllocator(device_info.factory(0));

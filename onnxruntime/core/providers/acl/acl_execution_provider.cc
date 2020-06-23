@@ -82,30 +82,24 @@ ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kAclExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(ACL, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
   DeviceAllocatorRegistrationInfo default_memory_info{
       OrtMemTypeDefault,
-      std::move(default_allocator_factory),
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(ACL, OrtAllocatorType::OrtDeviceAllocator));
+      },
       std::numeric_limits<size_t>::max()};
 
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  auto cpu_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-        ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
+  InsertAllocator(CreateAllocator(default_memory_info, 0, info.create_arena));
 
   DeviceAllocatorRegistrationInfo cpu_memory_info{
       OrtMemTypeCPUOutput,
-      std::move(cpu_allocator_factory),
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(
+            OrtMemoryInfo(ACL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+      },
       std::numeric_limits<size_t>::max()};
 
-  InsertAllocator(CreateAllocator(cpu_memory_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info, 0, info.create_arena));
 }
 
 ACLExecutionProvider::~ACLExecutionProvider() {
