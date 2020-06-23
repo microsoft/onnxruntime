@@ -1,35 +1,13 @@
-parameters:
-- name: build_py_parameters
-  displayName: 'Extra parameters to pass to build.py.'
-  type: string
-  default: ''
-
-- name: enable_training
-  displayName: 'Enable training'
-  type: boolean
-  default: false
-
-- name: python.version
-  displayName: 'Python version'
-  type: string
-  default: '3.6'
-
 stages:
 - stage: Python_Packaging
 
   variables:
-    ${{ if eq(parameters.enable_training, true) }}:
-      actual_extra_build_py_parameters: >
-        ${{ parameters.build_py_parameters }}
-        --enable_training
-        --wheel_name_suffix training
-      docker_image_prefix: onnxruntime-training
-      linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
-
-    ${{ if ne(parameters.enable_training, true) }}:
-      actual_extra_build_py_parameters: '${{ parameters.build_py_parameters }}'
-      docker_image_prefix: onnxruntime
-      linux_gpu_dockerfile: Dockerfile.manylinux2010_gpu
+    actual_extra_build_py_parameters: >
+      --enable_training
+      --wheel_name_suffix training
+    docker_image_prefix: onnxruntime-training
+    linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
+    python_version: 3.6
   jobs:
   - job: Linux_py_GPU_Wheels
     timeoutInMinutes: 90
@@ -48,10 +26,10 @@ stages:
           script: |
             sudo docker build \
               --pull \
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-${{variables.python_version}} \
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=$(python.version) \
+              --build-arg PYTHON_VERSION=${{variables.python_version}} \
               --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
@@ -68,7 +46,7 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+              ${{ variables.docker_image_prefix }}-manylinux-gpu-${{variables.python_version}} \
               $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build \
                 --config Release \
@@ -92,7 +70,7 @@ stages:
         inputs:
           scripts: |
             docker login jingywatest.azurecr.io -u jingywatest -p $(DockerPassword) \
-            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) jingywatest.azurecr.io/test/onnxruntime-training-1p:latest \
+            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-${{variables.python_version}} jingywatest.azurecr.io/test/onnxruntime-training-1p:latest \
             docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
 
       - task: CopyFiles@2
