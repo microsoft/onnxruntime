@@ -1339,7 +1339,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
             "MeanSquaredError_reduce_mean_Grad/Scale",
             "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
             "MeanSquaredError_reduce_mean_Grad/Shaped_X",
-            "MeanSquaredError_reduce_mean_Grad/Constant_Of_Shaped_X",
             "MeanSquaredError_diff_square_grad",
             "MeanSquaredError_diff_grad",
             "predictions_grad",
