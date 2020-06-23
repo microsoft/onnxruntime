@@ -17,8 +17,13 @@ namespace test {
 class DistributedRunTestContext : public DistributedRunContext {
  public:
   DistributedRunTestContext(DistributedRunConfig config)
-      : DistributedRunContext(config.world_rank, config.world_size, config.local_rank,
-                              config.local_size, config.data_parallel_size, config.horizontal_parallel_size) {
+      : DistributedRunContext(config.world_rank,
+                              config.world_size,
+                              config.local_rank,
+                              config.local_size,
+                              config.data_parallel_size,
+                              config.horizontal_parallel_size,
+                              config.pipeline_stage_size) {
   }
 };
 
@@ -442,6 +447,16 @@ TEST(DistributedRunContextTest, FailTest2) {
     DistributedRunTestContext ctx(config);
   } catch (const std::exception& ex) {
     auto ret = std::string(ex.what()).find("data_parallel_size(8) * horizontal_parallel_size(4) * pipeline_stage_size(1) != world_size(64)");
+    ASSERT_TRUE(ret != std::string::npos);
+  }
+}
+
+TEST(DistributedRunContextTest, FailTest3) {
+  try {
+    DistributedRunConfig config = {63, 64, 3, 4, 1, 4, 4};
+    DistributedRunTestContext ctx(config);
+  } catch (const std::exception& ex) {
+    auto ret = std::string(ex.what()).find("data_parallel_size(1) * horizontal_parallel_size(4) * pipeline_stage_size(4) != world_size(64)");
     ASSERT_TRUE(ret != std::string::npos);
   }
 }
