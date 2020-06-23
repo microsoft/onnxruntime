@@ -369,28 +369,36 @@ struct OperatorRegistrationInformation
     // Type for numeric_limits<T>::max() terminated array of values. For small arrays of small types (such as int8_t),
     // it's cheaper to keep the array in the struct than to hold a span (8 bytes for pointer + 8 bytes for size counter
     // in x64)
-    template<typename T>
-    struct TerminatedArrayValue
+//    template<typename T>
+//    struct TerminatedArrayValue
+//    {
+//        static_assert(std::is_scalar<T>::value);
+//
+//        template<typename T>
+//        struct Terminator { static const T value = std::numeric_limits<T>::max(); };
+//
+//        T value;
+//
+//        constexpr TerminatedArrayValue() : value(Terminator<T>::value)
+//        {}
+//
+//        constexpr TerminatedArrayValue(const T value) : value(value)
+//        {
+//            static_assert(value != Terminator<T>::value);
+//        }
+//
+//        constexpr bool isTerminator()
+//        {
+//            return value == Terminator<T>::value;
+//        }
+//    };
+
+    template<typename T, T Default>
+    struct IntDefault
     {
-        static_assert(std::is_scalar<T>::value);
+        T value = Default;
 
-        template<typename T>
-        struct Terminator { static const T value = std::numeric_limits<T>::max(); };
-
-        T value;
-
-        constexpr TerminatedArrayValue() : value(Terminator<T>::value)
-        {}
-
-        constexpr TerminatedArrayValue(const T value) : value(value)
-        {
-            static_assert(value != Terminator<T>::value);
-        }
-
-        constexpr bool isTerminator()
-        {
-            return value == Terminator<T>::value;
-        }
+        operator T() const { return value; }
     };
 
     const char* operatorName;
@@ -407,7 +415,7 @@ struct OperatorRegistrationInformation
     DmGraphSupport dmGraphSupport : 1;
 
     int8_t requiredInputCountForDmlGraphSupport : 3;
-    std::array<const TerminatedArrayValue<uint8_t>, 4> requiredConstantCpuInputs;
+    std::array<const IntDefault<uint8_t, 255>, 4> requiredConstantCpuInputs;
 
     // For use by operators such as Sum, which may require multiple calls to DML, in which case they
     // can't be represented as nodes in an optimized graph yet.
@@ -417,259 +425,257 @@ static_assert(sizeof(OperatorRegistrationInformation) <= 48);
 
 // Define a single row of registration information.
 #define REG_INFO(version, operatorName, tensorTypeNames, supportedTensorDataTypes, ...) \
-    #operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, OnnxOperatorSet##version::sc_sinceVer_##operatorName, tensorTypeNames, supportedTensorDataTypes, false, false, ##__VA_ARGS__,
+    #operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, OnnxOperatorSet##version::sc_sinceVer_##operatorName, false, false, tensorTypeNames, supportedTensorDataTypes, ##__VA_ARGS__,
 
 // Versioned operator
 #define REG_INFO_VER(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, false, false, ##__VA_ARGS__, 
+    #operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, OnnxOperatorSet##version::sc_sinceVer_##operatorName, false, false, ##__VA_ARGS__,
 
 // Identity operators use Copy, alias their first input, and require floating point formats
 // for usage in the graph, besides constant inputs.  This is because they currently use 
 // element-wise identity operators  in the graph for striding support, but issue actual copies 
 // outside the graph.  Element-wise identity currently only supports floating point types.  
 #define REG_INFO_ID(version, operatorName, tensorTypeNames, supportedTensorDataTypes, ...) \
-    tensorTypeNames, supportedTensorDataTypes, #operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, OnnxOperatorSet##version::sc_sinceVer_##operatorName, true, true, ##__VA_ARGS__,
-//    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, true, ##__VA_ARGS__,
+    #operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, OnnxOperatorSet##version::sc_sinceVer_##operatorName, true, true, tensorTypeNames, supportedTensorDataTypes, ##__VA_ARGS__,
 
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, MsftOperatorSet##version::sc_sinceVer_##operatorName, false, false, ##__VA_ARGS__,
 
 // MS-domain operators
 #define REG_INFO_MSDML(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, MsftOperatorSet##version::sc_sinceVer_##operatorName, false, false, ##__VA_ARGS__,
 
 constexpr static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
 ///  Domain/Type, Ver,  Name,                               TypeNames,                       Types,                              Graph Support,                  Required const CPU inputs, 
 ///                                                                                                                                                              Input count required for graph support,
 ///                                                                                                                                                              Support query function
-
     // Deep Learning Standard Layers
-    {REG_INFO(      7,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ConvTranspose,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ConvTranspose,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     10,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  AveragePool,                        typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  GlobalAveragePool,                  typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      8,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, -1, QueryMaxPool)},
-    {REG_INFO(      10, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, -1, QueryMaxPool)},
-    {REG_INFO(      11, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, -1, QueryMaxPool)},
+    {REG_INFO(      7,  Conv,                               TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Conv,                               TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ConvTranspose,                      TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ConvTranspose,                      TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  AveragePool,                        TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     10,  AveragePool,                        TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  AveragePool,                        TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  GlobalAveragePool,                  TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  MaxPool,                            TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      8,  MaxPool,                            TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported, -1, {}, QueryMaxPool)},
+    {REG_INFO(      10, MaxPool,                            TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported, -1, {}, QueryMaxPool)},
+    {REG_INFO(      11, MaxPool,                            TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported, -1, {}, QueryMaxPool)},
 
-    {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  GlobalLpPool,                       typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  MaxRoiPool,                         typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  InstanceNormalization,              typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  BatchNormalization,                 typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, // v9 just removes 'spatial' attribute.
-    {REG_INFO(      7,  LRN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  MeanVarianceNormalization,          typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  LpNormalization,                    typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  RNN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
-    {REG_INFO(      7,  GRU,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
-    {REG_INFO(      7,  LSTM,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
-    {REG_INFO_MS(   1,  ConvTransposeWithDynamicPads,       typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})},
+    {REG_INFO(      7,  GlobalMaxPool,                      TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  LpPool,                             TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  LpPool,                             TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  GlobalLpPool,                       TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  MaxRoiPool,                         TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  InstanceNormalization,              TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  BatchNormalization,                 TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  BatchNormalization,                 TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)}, // v9 just removes 'spatial' attribute.
+    {REG_INFO(      7,  LRN,                                TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  MeanVarianceNormalization,          TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  MeanVarianceNormalization,          TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  LpNormalization,                    TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  RNN,                                TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::NotSupported)},
+    {REG_INFO(      7,  GRU,                                TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::NotSupported)},
+    {REG_INFO(      7,  LSTM,                               TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::NotSupported)},
+    {REG_INFO_MS(   1,  ConvTransposeWithDynamicPads,       TypeNameIndex::Default,             SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported, -1, {2})},
 
     // Data Reorganization Layers
-    {REG_INFO(      7,  Split,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Split,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)}, // Adds negative axis.
-    {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)}, // Adds negative axis.
-    {REG_INFO_VER( 7,   Slice,                              typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, -1, QuerySlice)}, // Adds negative axes.
-    {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,           DmGraphSupport::Supported,      {1, 2, 3, 4}, -1, QuerySlice)},
-    {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListPadWithoutFloat16, DmGraphSupport::Supported,      {1, 2} /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
-    {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
-    {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
-    {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListScalars8to32,      DmGraphSupport::Supported,      {1})},
-    {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
-    {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,   DmGraphSupport::NotSupported,   {0})},
-    {REG_INFO(      7,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  GatherElements,                     typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  GatherND,                           typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
-    {REG_INFO_VER(  9,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO_VER( 11,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,     DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,   DmGraphSupport::Supported)},
-    {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListScalars8to32,      DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Split,                              TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Split,                              TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)}, // Adds negative axis.
+    {REG_INFO(      7,  Transpose,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Concat,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Concat,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)}, // Adds negative axis.
+    {REG_INFO_VER( 7,   Slice,                              TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO_VER( 10,  Slice,                              TypeNameIndex::Slice10,            SupportedTypeIndex::Slice10,           DmGraphSupport::Supported,    -1, {1, 2, 3, 4}, QuerySlice)}, // Adds negative axes.
+    {REG_INFO_VER( 11,  Slice,                              TypeNameIndex::Slice10,            SupportedTypeIndex::Slice10,           DmGraphSupport::Supported,    -1, {1, 2, 3, 4}, QuerySlice)},
+    {REG_INFO_VER(  7,  Pad,                                TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO_VER( 11,  Pad,                                TypeNameIndex::Default,            SupportedTypeIndex::PadWithoutFloat16, DmGraphSupport::Supported,    -1, {1, 2} /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
+    {REG_INFO(      7,  SpaceToDepth,                       TypeNameIndex::Default,            SupportedTypeIndex::Scalars8to32,      DmGraphSupport::Supported)},
+    {REG_INFO(      7,  DepthToSpace,                       TypeNameIndex::Default,            SupportedTypeIndex::Scalars8to32,      DmGraphSupport::Supported)},
+    {REG_INFO(     11,  DepthToSpace,                       TypeNameIndex::Default,            SupportedTypeIndex::Scalars8to32,      DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Tile,                               TypeNameIndex::Default,            SupportedTypeIndex::Scalars8to32,      DmGraphSupport::Supported,    -1, {1})},
+    {REG_INFO(      8,  Expand,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,    -1, {1})},
+    {REG_INFO(      9,  ConstantOfShape,                    TypeNameIndex::ConstantOfShape,    SupportedTypeIndex::ConstantOfShape,   DmGraphSupport::NotSupported, -1, {0})},
+    {REG_INFO(      7,  Gather,                             TypeNameIndex::ScatterGather,      SupportedTypeIndex::ScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Gather,                             TypeNameIndex::ScatterGather,      SupportedTypeIndex::ScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  GatherElements,                     TypeNameIndex::ScatterGather,      SupportedTypeIndex::ScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  GatherND,                           TypeNameIndex::ScatterGatherND,    SupportedTypeIndex::ScatterGatherND,   DmGraphSupport::Supported)},
+    {REG_INFO_VER(  9,  Scatter,                            TypeNameIndex::ScatterGather,      SupportedTypeIndex::ScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO_VER( 11,  Scatter,                            TypeNameIndex::ScatterGather,      SupportedTypeIndex::ScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ScatterElements,                    TypeNameIndex::ScatterGather,      SupportedTypeIndex::ScatterGather,     DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ScatterND,                          TypeNameIndex::ScatterGatherND,    SupportedTypeIndex::ScatterGatherND,   DmGraphSupport::Supported)},
+    {REG_INFO(      9,  EyeLike,                            TypeNameIndex::EyeLike,            SupportedTypeIndex::Scalars8to32,      DmGraphSupport::Supported)},
 
     // Data reorganization that merely changes the dimensions while keeping the data identical.
-    {REG_INFO_ID(   7,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(   7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(   9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(  11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(   7,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(  11,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(   7,  Unsqueeze,                          typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(  11,  Unsqueeze,                          typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported)},
-    {REG_INFO_ID(   7,  Reshape,                            typeNameListDefault,            supportedTypeListAllScalars,        DmGraphSupport::Supported,      {1})},
+    {REG_INFO_ID(   7,  Identity,                           TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(   7,  Flatten,                            TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(   9,  Flatten,                            TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(  11,  Flatten,                            TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(   7,  Squeeze,                            TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(  11,  Squeeze,                            TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(   7,  Unsqueeze,                          TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(  11,  Unsqueeze,                          TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported)},
+    {REG_INFO_ID(   7,  Reshape,                            TypeNameIndex::Default,            SupportedTypeIndex::AllScalars,        DmGraphSupport::Supported,    -1, {1})},
 
     // Elementwise
-    {REG_INFO(      7,  Sqrt,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Reciprocal,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Pow,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Exp,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Log,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Abs,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Ceil,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Floor,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_VER(  7,  Clip,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_VER( 11,  Clip,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1, 2})},
-    {REG_INFO(      7,  Add,                                typeNameListDefault,            supportedTypeListFloat16to32Int32,  DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Sub,                                typeNameListDefault,            supportedTypeListFloat16to32Int32,  DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Mul,                                typeNameListDefault,            supportedTypeListFloat16to32Int32,  DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Div,                                typeNameListDefault,            supportedTypeListFloat16to32Int32,  DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Sum,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      8,  Sum,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      7,  Mean,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      8,  Mean,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      7,  Max,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      8,  Max,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      7,  Min,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      8,  Min,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
-    {REG_INFO(      7,  Cos,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Sin,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Tan,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Acos,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Asin,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Atan,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Affine,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      10, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,    DmGraphSupport::Supported)},
-    {REG_INFO(      10, DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear,  DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantize,          DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  DequantizeLinear,                   typeNameListTwo,                supportedTypeListQuantize,          DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Sign,                               typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(      9,  IsNan,                              typeNameListTwo,                supportedTypeListIsNan,             DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Sinh,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Cosh,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Asinh,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Acosh,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Atanh,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Erf,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Where,                              typeNameListWhere,              supportedTypeListWhere,             DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceSum,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceMean,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceMean,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceProd,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceProd,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceLogSum,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceLogSum,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceLogSumExp,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceLogSumExp,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceSumSquare,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceSumSquare,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceL1,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceL1,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceL2,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceL2,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceMax,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceMax,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ArgMax,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ArgMax,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ArgMin,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(     11,  ArgMin,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Gemm,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Gemm,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Gemm,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Neg,                                typeNameListDefault,            supportedTypeListSigned,            DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Greater,                            typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Greater,                            typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Less,                               typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Less,                               typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison7,DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Equal,                              typeNameListLogicalComparison,  supportedTypeListLogicalComparison9,DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Not,                                typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
-    {REG_INFO(      7,  And,                                typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Or,                                 typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Xor,                                typeNameListDefault,            supportedTypeListBool,              DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Sqrt,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Reciprocal,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Pow,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Exp,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Log,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Abs,                                TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Ceil,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Floor,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER(  7,  Clip,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER( 11,  Clip,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   -1, {1, 2})},
+    {REG_INFO(      7,  Add,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32Int32,  DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Sub,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32Int32,  DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Mul,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32Int32,  DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Div,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32Int32,  DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Sum,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      8,  Sum,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      7,  Mean,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      8,  Mean,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      7,  Max,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      8,  Max,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      7,  Min,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      8,  Min,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,   2, {})},
+    {REG_INFO(      7,  Cos,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Sin,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Tan,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Acos,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Asin,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Atan,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Affine,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      10, QuantizeLinear,                     TypeNameIndex::Two,                SupportedTypeIndex::QuantizeLinear,    DmGraphSupport::Supported)},
+    {REG_INFO(      10, DequantizeLinear,                   TypeNameIndex::Two,                SupportedTypeIndex::DequantizeLinear,  DmGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  QuantizeLinear,                     TypeNameIndex::Two,                SupportedTypeIndex::Quantize,          DmGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  DequantizeLinear,                   TypeNameIndex::Two,                SupportedTypeIndex::Quantize,          DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Sign,                               TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(      9,  IsNan,                              TypeNameIndex::Two,                SupportedTypeIndex::IsNan,             DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Sinh,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Cosh,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Asinh,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Acosh,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Atanh,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Erf,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Where,                              TypeNameIndex::Where,              SupportedTypeIndex::Where,             DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceSum,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceSum,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceMean,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceMean,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceProd,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceProd,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceLogSum,                       TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceLogSum,                       TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceLogSumExp,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceLogSumExp,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceSumSquare,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceSumSquare,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceL1,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceL1,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceL2,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceL2,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceMax,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceMax,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ReduceMin,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ReduceMin,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ArgMax,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ArgMax,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ArgMin,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(     11,  ArgMin,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Gemm,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Gemm,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Gemm,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Neg,                                TypeNameIndex::Default,            SupportedTypeIndex::Signed,            DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Greater,                            TypeNameIndex::LogicalComparison,  SupportedTypeIndex::LogicalComparison7,DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Greater,                            TypeNameIndex::LogicalComparison,  SupportedTypeIndex::LogicalComparison9,DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Less,                               TypeNameIndex::LogicalComparison,  SupportedTypeIndex::LogicalComparison7,DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Less,                               TypeNameIndex::LogicalComparison,  SupportedTypeIndex::LogicalComparison9,DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Equal,                              TypeNameIndex::LogicalComparison,  SupportedTypeIndex::LogicalComparison7,DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Equal,                              TypeNameIndex::LogicalComparison,  SupportedTypeIndex::LogicalComparison9,DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Not,                                TypeNameIndex::Default,            SupportedTypeIndex::Bool,              DmGraphSupport::Supported)},
+    {REG_INFO(      7,  And,                                TypeNameIndex::Default,            SupportedTypeIndex::Bool,              DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Or,                                 TypeNameIndex::Default,            SupportedTypeIndex::Bool,              DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Xor,                                TypeNameIndex::Default,            SupportedTypeIndex::Bool,              DmGraphSupport::Supported)},
 
     // Imaging Operators
-    {REG_INFO(      7,  Crop,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ImageScaler,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_VER(  7,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_VER(  9,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1} /*scales*/)},
-    {REG_INFO_VER( 10,  Upsample,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1} /*scales*/)},
-    {REG_INFO_VER( 10,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1} /*scales*/)},
-    {REG_INFO_VER( 11,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1, 2, 3} /*roi, scales, sizes*/, -1, QueryResize)},
+    {REG_INFO(      7,  Crop,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ImageScaler,                        TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER(  7,  Upsample,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER(  9,  Upsample,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {1} /*scales*/)},
+    {REG_INFO_VER( 10,  Upsample,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {1} /*scales*/)},
+    {REG_INFO_VER( 10,  Resize,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {1} /*scales*/)},
+    {REG_INFO_VER( 11,  Resize,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {1, 2, 3} /*roi, scales, sizes*/, QueryResize)},
 
     // Activation Functions
-    {REG_INFO(      7,  Sigmoid,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  HardSigmoid,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Tanh,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ScaledTanh,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Relu,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  LeakyRelu,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  PRelu,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  PRelu,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ThresholdedRelu,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     10,  ThresholdedRelu,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Elu,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Selu,                               typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  LogSoftmax,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  LogSoftmax,                         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Hardmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Hardmax,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Softsign,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Softplus,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  ParametricSoftplus,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Dropout,                            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Shrink,                             typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Sigmoid,                            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  HardSigmoid,                        TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Tanh,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ScaledTanh,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Relu,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  LeakyRelu,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  PRelu,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  PRelu,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ThresholdedRelu,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     10,  ThresholdedRelu,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Elu,                                TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Selu,                               TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Softmax,                            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Softmax,                            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  LogSoftmax,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  LogSoftmax,                         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Hardmax,                            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Hardmax,                            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Softsign,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Softplus,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  ParametricSoftplus,                 TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Dropout,                            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Shrink,                             TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
 
     // Uncategorized
-    {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      9,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmGraphSupport::Supported)},
-    {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,              DmGraphSupport::Supported)},
-    {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
-    {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
-    {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported)},
-    {REG_INFO_VER( 10,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported,      {1})},
-    {REG_INFO_VER( 11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,              DmGraphSupport::Supported,      {1})},
-    {REG_INFO(      9,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
-    {REG_INFO(     11,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
+    {REG_INFO(      7,  MatMul,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      9,  MatMul,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      7,  Cast,                               TypeNameIndex::Two,                SupportedTypeIndex::Cast,              DmGraphSupport::Supported)},
+    {REG_INFO(      9,  Cast,                               TypeNameIndex::Two,                SupportedTypeIndex::Cast,              DmGraphSupport::Supported)},
+    {REG_INFO(      7,  MemcpyFromHost,                     TypeNameIndex::Default,            SupportedTypeIndex::All)},
+    {REG_INFO(      7,  MemcpyToHost,                       TypeNameIndex::Default,            SupportedTypeIndex::All)},
+    {REG_INFO_VER(  7,  TopK,                               TypeNameIndex::TopK,               SupportedTypeIndex::TopK,              DmGraphSupport::Supported)},
+    {REG_INFO_VER( 10,  TopK,                               TypeNameIndex::TopK,               SupportedTypeIndex::TopK,              DmGraphSupport::Supported,      -1, {1})},
+    {REG_INFO_VER( 11,  TopK,                               TypeNameIndex::TopK,               SupportedTypeIndex::TopK,              DmGraphSupport::Supported,      -1, {1})},
+    {REG_INFO(      9,  OneHot,                             TypeNameIndex::Three,              SupportedTypeIndex::OneHot,            DmGraphSupport::Supported,      -1, {1})},
+    {REG_INFO(     11,  OneHot,                             TypeNameIndex::Three,              SupportedTypeIndex::OneHot,            DmGraphSupport::Supported,      -1, {1})},
 
     // Fused operators
-    {REG_INFO_MSDML(1,  FusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedConvTranspose,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedInstanceNormalization,         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedBatchNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedMeanVarianceNormalization,     typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedGemm,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)},
+    {REG_INFO_MSDML(1,  FusedConv,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedConvTranspose,                 TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedInstanceNormalization,         TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedBatchNormalization,            TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedMeanVarianceNormalization,     TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedGemm,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedMatMul,                        TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedAdd,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedSum,                           TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      2, {})},
 
-    {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,             DmGraphSupport::Supported)},
-    {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,    DmGraphSupport::Supported)},
-    {REG_INFO(     11,  BitShift,                           typeNameListDefault,            supportedTypeListInt8to32,          DmGraphSupport::Supported)},
-    {REG_INFO(     11,  Round,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     10,  ReverseSequence,                    typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(     11,  CumSum,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1})},
-    {REG_INFO(     11,  Range,                              typeNameListDefault,            supportedTypeListRange,             DmGraphSupport::Supported,      {0, 1, 2})},
+    {REG_INFO(     10,  IsInf,                              TypeNameIndex::Two,                SupportedTypeIndex::IsInf,             DmGraphSupport::Supported)},
+    {REG_INFO(     10,  Mod,                                TypeNameIndex::Default,            SupportedTypeIndex::NumericDefault,    DmGraphSupport::Supported)},
+    {REG_INFO(     11,  BitShift,                           TypeNameIndex::Default,            SupportedTypeIndex::Int8to32,          DmGraphSupport::Supported)},
+    {REG_INFO(     11,  Round,                              TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     10,  ReverseSequence,                    TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(     11,  CumSum,                             TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {1})},
+    {REG_INFO(     11,  Range,                              TypeNameIndex::Default,            SupportedTypeIndex::Range,             DmGraphSupport::Supported,      -1, {0, 1, 2})},
 
-    {REG_INFO(      9,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})},
-    {REG_INFO(     11,  MaxUnpool,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {2})}, // 11 is identical to 9.
+    {REG_INFO(      9,  MaxUnpool,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {2})},
+    {REG_INFO(     11,  MaxUnpool,                          TypeNameIndex::Default,            SupportedTypeIndex::Float16to32,       DmGraphSupport::Supported,      -1, {2})}, // 11 is identical to 9.
 
-    {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,       DmGraphSupport::NotSupported)},
-    {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,     DmGraphSupport::NotSupported)},
-    {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,           DmGraphSupport::NotSupported)},
-    {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,           DmGraphSupport::NotSupported)},
+    {REG_INFO(     10,  QLinearConv,                        TypeNameIndex::Four,               SupportedTypeIndex::QLinearConv,       DmGraphSupport::NotSupported)},
+    {REG_INFO(     10,  QLinearMatMul,                      TypeNameIndex::Three,              SupportedTypeIndex::QLinearMatMul,     DmGraphSupport::NotSupported)},
+    {REG_INFO(     10,  MatMulInteger,                      TypeNameIndex::Three,              SupportedTypeIndex::Integer,           DmGraphSupport::NotSupported)},
+    {REG_INFO(     10,  ConvInteger,                        TypeNameIndex::Three,              SupportedTypeIndex::Integer,           DmGraphSupport::NotSupported)},
 
 };
  
@@ -687,10 +693,18 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
     std::vector<MLOperatorEdgeTypeConstrant> typeConstraints;
     std::vector<MLOperatorEdgeDescription> edgeDescs;
 
+//    constexpr auto validate = []()
+//    {
+//        for (constexpr OperatorRegistrationInformation information : operatorRegistrationInformationTable)
+//        {
+//            static_assert(typeNameList[static_cast<int>(information.tensorTypeNamesIndex)].size() == supportedTypeList[static_cast<int>(information.supportedTensorDataTypesIndex)].size());
+//        }
+//        return true;
+//    };
+//    static_assert(validate());
+
     for (const OperatorRegistrationInformation& information : operatorRegistrationInformationTable)
     {
-        assert(information.tensorTypeNames.size() == information.supportedTensorDataTypes.size());
-            
         MLOperatorKernelDescription desc = {};
         desc.domain = information.domain;
         desc.name = information.operatorName;
@@ -703,8 +717,9 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             MLOperatorKernelOptions::None : MLOperatorKernelOptions::AllowDynamicInputShapes;
 
         desc.minimumOperatorSetVersion = information.sinceVersion;
-    
-        typeConstraints.resize(information.tensorTypeNames.size());
+
+        const auto& tensorTypeNames = typeNameList[static_cast<int>(information.tensorTypeNamesIndex)];
+        typeConstraints.resize(tensorTypeNames.size());
         desc.typeConstraints = typeConstraints.data();
         desc.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
 
@@ -715,12 +730,11 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         size_t lastEdgeDescSize = 0;
 
         // Append all supported tensor data types for each tensor type.
-        for (gsl::index i = 0, ci = information.tensorTypeNames.size(); i < ci; ++i)
+        for (gsl::index i = 0, ci = tensorTypeNames.size(); i < ci; ++i)
         {
-            typeConstraints[i].typeLabel = information.tensorTypeNames[i];
+            typeConstraints[i].typeLabel = tensorTypeNames[i];
 
-            std::vector<MLOperatorTensorDataType> supportedTypeList;
-            SupportedTensorDataTypes supportedTypes = information.supportedTensorDataTypes[i];
+            SupportedTensorDataTypes supportedTypes = supportedTypeList[static_cast<int>(information.supportedTensorDataTypesIndex)][i];
 
             if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(EdgeDesc<float>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(EdgeDesc<uint8_t>());
@@ -743,7 +757,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         // Now that the edge descriptions list won't be re-allocated, assign pointers to its memory
         // into the type constraints entries
         size_t totalTypeCount = 0;
-        for (gsl::index i = 0, ci = information.tensorTypeNames.size(); i < ci; ++i)
+        for (gsl::index i = 0, ci = tensorTypeNames.size(); i < ci; ++i)
         {
             typeConstraints[i].allowedTypes = &edgeDescs.data()[totalTypeCount];
             totalTypeCount += typeConstraints[i].allowedTypeCount;
