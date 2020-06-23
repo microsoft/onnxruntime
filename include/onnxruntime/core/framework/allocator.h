@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <map>
+#include <unordered_map>
 #include <string>
 #include <cstring>
 #include <type_traits>
@@ -14,6 +15,7 @@
 #include "core/common/status.h"
 #include "core/framework/fence.h"
 #include "core/session/onnxruntime_c_api.h"
+#include <core\framework\allocator.h>
 
 // Struct to represent a physical device.
 struct OrtDevice {
@@ -125,6 +127,8 @@ struct OrtMemoryInfo {
     return ostr.str();
   }
 };
+
+typedef std::unordered_map<OrtMemoryInfo, onnxruntime::AllocatorPtr> CustomAllocatorMap;
 
 inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
   return left.mem_type == other.mem_type &&

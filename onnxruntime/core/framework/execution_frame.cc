@@ -525,6 +525,11 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
+  std::map<OrtMemoryInfo, AllocatorPtr> custom_allocator_map; 
+  const auto& entry = run_options_.extra_options.find("CustomAllocators");
+  if (entry != run_options_.extra_options.cend()) {
+    custom_allocator_map = reinterpret_cast<std::map<OrtMemoryInfo, AllocatorPtr>>(entry->second);
+  }
   return utils::GetAllocator(session_state_, info);
 }
 

@@ -22,7 +22,7 @@ struct OrtRunOptions {
   // More per run level context can be added here, for example:
   // 1) An execution provider specific run option is required for some execution providers, 
   // each of which has its own resources shared within its platform.
-  // 2) A custom allocator for each memory info
+  // 2) A custom allocator map for each memory info, unordered_map<OrtMemoryInfo, AllocatorPtr> 
   std::unordered_map<std::string, void*> extra_options;
 
   // Set to 'true' to ensure the termination of all the outstanding Run() calls
