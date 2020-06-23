@@ -4,7 +4,7 @@
 #include "core/mlas/lib/mlasi.h"
 #include "core/util/math_cpuonly.h"
 
-//naive implementation of FindMinMax
+// vanilla implementation of FindMinMax
 static void BM_FindMinMaxPlainLoop(benchmark::State& state) {
   const size_t batch_size = static_cast<size_t>(state.range(0));
   float* data = GenerateArrayWithRandomValue<float>(batch_size, -1, 1);
@@ -21,6 +21,9 @@ static void BM_FindMinMaxPlainLoop(benchmark::State& state) {
       }
     }
   }
+
+  // To prevent to optimize out min and max
+  data[0] = min * max;
   aligned_free(data);
 }
 
