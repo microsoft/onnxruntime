@@ -10,24 +10,18 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_TRAINABLE_KERNEL_TYPED(T)                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      TrainableDropout,                                                  \
-      kOnnxDomain,                                                       \
-      9,                                                                 \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-          .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()) \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),                       \
-      Dropout<T, true>);
-
 // Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
 // opset-12.
-REGISTER_TRAINABLE_KERNEL_TYPED(MLFloat16)
-REGISTER_TRAINABLE_KERNEL_TYPED(float)
-REGISTER_TRAINABLE_KERNEL_TYPED(double)
+ONNX_OPERATOR_KERNEL_EX(
+    TrainableDropout,
+    kOnnxDomain,
+    9,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .InputMemoryType<OrtMemTypeCPUInput>(1),
+    Dropout<true>);
 
 #define REGISTER_GRADIENT_KERNEL_TYPED(OpName)                           \
   ONNX_OPERATOR_KERNEL_EX(                                               \
@@ -51,10 +45,10 @@ REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad)
 template <typename T>
 struct DropoutGradComputeImpl {
   void operator()(const int64_t N,
-                    const Tensor* dY,
-                    const bool* mask_data,
-                    const float ratio_data,
-                    Tensor* dX) const {
+                  const Tensor* dY,
+                  const bool* mask_data,
+                  const float ratio_data,
+                  Tensor* dX) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
     const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());

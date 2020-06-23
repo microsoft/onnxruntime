@@ -20,7 +20,25 @@ struct GetRatioDataImpl {
   }
 };
 
-template <typename T, bool trainable_dropout>
+template <typename T>
+struct DropoutComputeImpl {
+  void operator()(const cudaDeviceProp& prop,
+                    const int64_t N,
+                    const float ratio_data,
+                    PhiloxGenerator& generator,
+                    const Tensor* X,
+                    Tensor* Y,
+                    bool* mask_data) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+    
+    DropoutKernelImpl<CudaT>(prop, N, ratio_data, generator, X_data, Y_data, mask_data);
+  }
+};
+
+template <bool trainable_dropout>
 class Dropout final : public CudaKernel {
  public:
   Dropout(const OpKernelInfo& info) : CudaKernel(info) {
@@ -37,20 +55,16 @@ class Dropout final : public CudaKernel {
   static constexpr float default_ratio_ = 0.5f;
 };
 
-template <typename T, bool trainable_dropout>
-Status Dropout<T, trainable_dropout>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
+template <bool trainable_dropout>
+Status Dropout<trainable_dropout>::ComputeInternal(OpKernelContext* context) const {
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
   const TensorShape& shape = X->Shape();
-  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   const int64_t N = shape.Size();
 
   //Get Y_data
   auto Y = context->Output(0, shape);
-  auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   //Get mask_data
   auto mask = context->Output(1, shape);
@@ -68,8 +82,10 @@ Status Dropout<T, trainable_dropout>::ComputeInternal(OpKernelContext* context) 
   //Check for inference mode.
   if ((0 == ratio_data /*Backward compat with TrainableDropout*/) ||
       (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false))) {
+    const void* X_data = X->DataRaw();
+    void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, N * sizeof(T), cudaMemcpyDeviceToDevice));
+      CUDA_CALL_THROW(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
     }
 
     // If mask is requested, return all 1s.
@@ -88,7 +104,9 @@ Status Dropout<T, trainable_dropout>::ComputeInternal(OpKernelContext* context) 
   }();
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
-  DropoutKernelImpl(GetDeviceProp(), N, ratio_data, generator, X_data, Y_data, mask_data);
+
+  utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
+  t_disp.Invoke(GetDeviceProp(), N, ratio_data, generator, X, Y, mask_data);
 
   return Status::OK();
 }
