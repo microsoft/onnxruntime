@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # --------------------------------------------------------------
 # Copyright(C) Xilinx Inc.
 # Licensed under the MIT License.

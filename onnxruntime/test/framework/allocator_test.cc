@@ -35,7 +35,10 @@ TEST(AllocatorTest, CPUAllocatorTest) {
 // helper class to validate values in Alloc and Free calls made via IAllocator::MakeUniquePtr
 class TestAllocator : public IAllocator {
  public:
-  TestAllocator(size_t expected_size) : expected_size_{expected_size} {}
+  TestAllocator(size_t expected_size)
+      : IAllocator(OrtMemoryInfo("test", OrtDeviceAllocator)),
+        expected_size_{expected_size} {
+  }
 
   void* Alloc(size_t size) override {
     EXPECT_EQ(size, expected_size_);
@@ -52,11 +55,6 @@ class TestAllocator : public IAllocator {
     size_t* p_sizet = (size_t*)p;
     EXPECT_EQ(*p_sizet, expected_size_);
     delete p_sizet;
-  }
-
-  virtual const OrtMemoryInfo& Info() const override {
-    static OrtMemoryInfo info("test", OrtDeviceAllocator);
-    return info;
   }
 
  private:
