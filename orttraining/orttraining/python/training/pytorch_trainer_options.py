@@ -25,6 +25,8 @@ class PytorchTrainerOptions(object):
     schema = {
                 'batch' : {
                     'type' : 'dict',
+                    'required': False,
+                    'default' : {},
                     'schema' : {
                         'gradient_accumulation_steps' : {
                             'type' : 'integer',
@@ -35,6 +37,8 @@ class PytorchTrainerOptions(object):
                 },
                 'device' : {
                     'type' : 'dict',
+                    'required': False,
+                    'default' : {},
                     'schema' : {
                         'id' : {
                             'type' : 'string',
@@ -50,6 +54,8 @@ class PytorchTrainerOptions(object):
                 },
                 'distributed' : {
                     'type' : 'dict',
+                    'required': False,
+                    'default' : {},
                     'schema' : {
                         'world_rank' : {
                             'type' : 'integer',
@@ -87,6 +93,8 @@ class PytorchTrainerOptions(object):
                 },
                 'mixed_precision' : {
                     'type' : 'dict',
+                    'required': False,
+                    'default' : {},
                     'schema' : {
                         'enabled' : {
                             'type' : 'boolean',
@@ -101,6 +109,8 @@ class PytorchTrainerOptions(object):
                 },
                 'utils' : {
                     'type' : 'dict',
+                    'required': False,
+                    'default' : {},
                     'schema' : {
                         'grad_norm_clip' : {
                             'type' : 'boolean',
@@ -110,6 +120,8 @@ class PytorchTrainerOptions(object):
                 },
                 '_internal_use' : {
                     'type' : 'dict',
+                    'required': False,
+                    'default' : {},
                     'schema' : {
                         'frozen_weights' : {
                             'type' : 'list',
