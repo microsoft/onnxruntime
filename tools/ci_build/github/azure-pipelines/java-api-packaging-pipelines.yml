@@ -90,7 +90,7 @@ jobs:
         buildparameter:
 
   steps:
-    - template: templates/enable-telemetry.yml
+    - template: templates/telemetry-steps.yml
     
     - task: UsePythonVersion@0
       inputs: 

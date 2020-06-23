@@ -795,6 +795,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
   bool end_to_end_measurement_started = false;
 
+  auto all_steps_time_start = std::chrono::high_resolution_clock::now();
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
       auto training_data = training_data_loader.CurrentDataSet();
@@ -921,6 +922,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
     ++epoch;
   }
+  auto all_steps_time_end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> all_steps_duration_seconds = all_steps_time_end - all_steps_time_start;
 
   const double e2e_throughput = [&]() {
     if (end_to_end_perf_start_step >= params_.num_train_steps) return 0.0;
@@ -959,7 +962,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             << "Average Running Time Per Batch: " << avg_time_per_batch << " ms\n"
             << "Throughput: " << throughput << " Examples / Second\n"
             << "Stabilized Throughput: " << stabilized_throughput << " Examples / Second\n"
-            << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n";
+            << "EndToEnd Throughput: " << e2e_throughput << " Examples / Second\n"
+            << "Average Step Time: " << all_steps_duration_seconds.count() / (step_ - step_start)<< " Second\n"
+            << "Average Step Throughput: " << params_.batch_size * (step_ - step_start) / (all_steps_duration_seconds.count()) << " Examples / Second\n";
 
   return Status::OK();
 }
@@ -1169,7 +1174,6 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
         fetch_names,
         &fetches));
     }
-
 
     // Assume that user-specified fetches are avaliable only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and

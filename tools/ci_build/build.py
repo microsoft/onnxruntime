@@ -294,6 +294,9 @@ def parse_arguments():
         "--disable_contrib_ops", action='store_true',
         help="Disable contrib ops (reduces binary size)")
     parser.add_argument(
+        "--disable_ml_ops", action='store_true',
+        help="Disable traditional ML ops (reduces binary size)")
+    parser.add_argument(
         "--skip_onnx_tests", action='store_true', help="Explicitly disable "
         "all onnx related tests. Note: Use --skip_tests to skip all tests.")
     parser.add_argument(
@@ -605,6 +608,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.arm64 or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + (
             "ON" if args.disable_contrib_ops else "OFF"),
+        "-Donnxruntime_DISABLE_ML_OPS=" + (
+            "ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
@@ -1172,6 +1177,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
+            if not args.disable_ml_ops:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
+
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
@@ -1192,6 +1200,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess(
                     [sys.executable, 'onnxruntime_test_python_backend.py'],
                     cwd=cwd, dll_path=dll_path)
+
+                if not args.disable_ml_ops:
+                    run_subprocess(
+                        [sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
+                        cwd=cwd, dll_path=dll_path)
+
                 run_subprocess(
                     [sys.executable,
                      os.path.join(source_dir, 'onnxruntime', 'test', 'onnx',
@@ -1420,8 +1434,8 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, wheel_name_suffix,
-        use_acl, nightly_build=False, featurizers_build=False, use_ninja=False):
+        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn,
+        wheel_name_suffix, nightly_build=False, featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1465,6 +1479,8 @@ def build_python_wheel(
             args.append('--use_vitisai')
         elif use_acl:
             args.append('--use_acl')
+        elif use_armnn:
+            args.append('--use_armnn')
 
         run_subprocess(args, cwd=cwd)
 
@@ -1818,8 +1834,9 @@ def main():
                 args.use_openvino,
                 args.use_nuphar,
                 args.use_vitisai,
-                args.wheel_name_suffix,
                 args.use_acl,
+                args.use_armnn,
+                args.wheel_name_suffix,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
