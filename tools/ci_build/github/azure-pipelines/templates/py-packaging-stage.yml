@@ -280,7 +280,6 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
-           
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
