@@ -125,6 +125,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "Relu",
       "Reshape",
       "Shape",
+      "Selu",
       "Sigmoid",
       "Slice",
       "Softmax",
@@ -134,6 +135,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "Sum",
       "Tanh",
       "TopK",
+      "Erf",
       "Transpose",
       "Unsqueeze",
   };
@@ -150,12 +152,10 @@ bool IsOpSupported(std::string name, std::string device) {
     "Atanh",
     "Cos",
     "Cosh",
-    "Erf",
     "HardSigmoid",
     "ReduceLogSum",
     "ReduceProd",
     "ReduceSumSquare",
-    "Selu",
     "Sign",
     "Sinh",
     "Softsign",
@@ -169,17 +169,13 @@ bool IsOpSupported(std::string name, std::string device) {
     "Asin",
     "Asinh",
     "Atan",
-    "Erf",
     "HardSigmoid",
-    "Selu",
     "Tan",
   };
   std::set<std::string> supported_ops_vpu = {
-    "Erf",
     "ReduceLogSum",
     "ReduceProd",
     "ReduceSumSquare",
-    "Selu",
     "SinFloat",
   };
 
