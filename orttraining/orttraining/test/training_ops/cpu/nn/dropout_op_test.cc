@@ -119,6 +119,45 @@ void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
 
+}  // namespace
+
+// Dropout
+
+TEST(DropoutTest, Basic) {
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f);
+}
+
+TEST(DropoutTest, Mask) {
+  RunDropoutTest("Dropout", true, {1000}, 0.25f);
+}
+
+TEST(DropoutTest, RatioLimit) {
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, false);
+}
+
+TEST(DropoutTest, EmptyRatio) {
+  RunDropoutTest("Dropout", true, {1000});
+}
+
+TEST(TrainableDropoutTest, Basic) {
+  RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75f);
+}
+
+TEST(TrainableDropoutTest, Mask) {
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.25f);
+}
+
+TEST(TrainableDropoutTest, RatioLimit) {
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, false);
+}
+
+TEST(TrainableDropoutTest, EmptyRatio) {
+  RunDropoutTest("TrainableDropout", true, {1000});
+}
+
+// BiasDropout kernel is only implemented for CUDA
+#ifdef USE_CUDA
+namespace {
 void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                         bool training_mode = true, bool use_float16_ratio = false, bool has_residual = true) {
   OpTester t{"BiasDropout", 1, kMSDomain};
@@ -216,45 +255,8 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
 
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
-
 }  // namespace
 
-// Dropout
-
-TEST(DropoutTest, Basic) {
-  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f);
-}
-
-TEST(DropoutTest, Mask) {
-  RunDropoutTest("Dropout", true, {1000}, 0.25f);
-}
-
-TEST(DropoutTest, RatioLimit) {
-  RunDropoutTest("Dropout", true, {1000}, 0.0f, false);
-}
-
-TEST(DropoutTest, EmptyRatio) {
-  RunDropoutTest("Dropout", true, {1000});
-}
-
-TEST(TrainableDropoutTest, Basic) {
-  RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75f);
-}
-
-TEST(TrainableDropoutTest, Mask) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.25f);
-}
-
-TEST(TrainableDropoutTest, RatioLimit) {
-  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, false);
-}
-
-TEST(TrainableDropoutTest, EmptyRatio) {
-  RunDropoutTest("TrainableDropout", true, {1000});
-}
-
-// BiasDropout kernel is only implemented for CUDA 
-#ifdef USE_CUDA
 TEST(BiasDropoutTest, Basic) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }
