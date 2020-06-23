@@ -28,7 +28,7 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/session_state_initializer.h"
+#include "core/framework/finalize_session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -309,6 +309,8 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
   if (is_inited_) {
     // adding an EP is pointless as the graph as already been partitioned so no nodes will be assigned to
     // the new EP
@@ -349,6 +351,8 @@ common::Status InferenceSession::RegisterGraphTransformer(
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
+
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding a transformer now is pointless as the graph as already been transformed
@@ -837,30 +841,43 @@ common::Status InferenceSession::Initialize() {
 
   try {
     LOGS(*session_logger_, INFO) << "Initializing session.";
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
-    if (!is_model_loaded_) {
-      LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+
+    bool have_cpu_ep = false;
+
+    {
+      std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
+
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+      }
+
+      if (is_inited_) {  // already initialized
+        LOGS(*session_logger_, INFO) << "Session has already been initialized.";
+        return common::Status::OK();
+      }
+
+      have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
 
-    if (is_inited_) {  // already initialized
-      LOGS(*session_logger_, INFO) << "Session has already been initialized.";
-      return common::Status::OK();
-    }
-
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-    TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
-    session_activity_started_ = true;
-#endif
-    // Register default CPUExecutionProvider if user didn't provide it through the Register() calls
-    if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
+    // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
+    // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
+    if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
       auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
+
+    // re-acquire mutex
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
+    session_activity_started_ = true;
+#endif
 
     // now that we have all the execution providers, create the session state
     session_state_ = onnxruntime::make_unique<SessionState>(

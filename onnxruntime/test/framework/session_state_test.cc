@@ -7,7 +7,7 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/framework/session_state_initializer.h"
+#include "core/framework/finalize_session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"

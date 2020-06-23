@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/framework/session_state_initializer.h"
+#include "core/framework/finalize_session_state.h"
 
 #include <functional>
 #include <limits>

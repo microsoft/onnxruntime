@@ -5,7 +5,7 @@
 #include "../framework/test_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include <core/framework/session_state_initializer.h>
+#include <core/framework/finalize_session_state.h>
 #include "core/framework/execution_providers.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"

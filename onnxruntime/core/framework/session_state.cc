@@ -22,10 +22,9 @@ void SessionState::SetupAllocators() {
     for (const auto& allocator : provider->GetAllocators()) {
       const OrtMemoryInfo& memory_info = allocator->Info();
       if (allocators_.find(memory_info) != allocators_.end()) {
-        // EPs are ordered by priority so ignore the duplicate but log a message at ERROR level as this shouldn't
-        // happen.
-        LOGS(logger_, ERROR) << "Allocator already registered for " << allocator->Info()
-                             << ". Ignoring allocator from " << provider->Type();
+        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
+        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                            << ". Ignoring allocator from " << provider->Type();
       } else {
         // slightly weird indirection to go back to the provider to get the allocator each time it's needed
         // in order to support scenarios such as the CUDA EP's per-thread allocator.
@@ -215,8 +214,6 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-profiling::Profiler& SessionState::Profiler() const { return profiler_; }
-
 static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
   int64_t key = 0;
   for (auto shape : shapes) {
@@ -236,16 +233,16 @@ Status ResolveDimParams(const GraphViewer& graph,
     if (it == feeds.end()) {
       return Status(ONNXRUNTIME, FAIL,
                     "Graph input " + input->Name() +
-                    " is not found in the feed list, unable to resolve the value for dynamic shape.");
+                        " is not found in the feed list, unable to resolve the value for dynamic shape.");
     }
     if (it->second.NumDimensions() == 0 && !shape) {
-      // This is a scalar, which has nothing to do with symbolic shapes. 
+      // This is a scalar, which has nothing to do with symbolic shapes.
       continue;
     }
     if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions())) {
       return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
-                    "'s shape is not present or its shape doesn't match feed's shape."
-                    "Unable to resolve the value for dynamic shape");
+                                           "'s shape is not present or its shape doesn't match feed's shape."
+                                           "Unable to resolve the value for dynamic shape");
     }
     for (int k = 0, end = shape->dim_size(); k < end; ++k) {
       if (shape->dim()[k].has_dim_param()) {
