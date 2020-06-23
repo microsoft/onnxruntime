@@ -125,7 +125,7 @@ class TrainingSession : public InferenceSession {
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
-      bool partition_optimizer{};
+      ZeROConfig deepspeed_zero{};
       // Selects the reduction algorithm for Adasum.
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
       // Whether to enable gradient clipping.
