@@ -133,7 +133,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Maximum number of masked LM predictions per sequence. "
         "Must match data generation.", cxxopts::value<int>()->default_value("80"))
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
-      ("deepspeed_zero", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
+      ("deepspeed_zero_stage", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
        "Stages 0 (disabled) and 1 (optimizer state partitioning) are supported.",
        cxxopts::value<int>()->default_value("0"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
@@ -325,7 +325,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
 
-    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero"].as<int>());
+    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
