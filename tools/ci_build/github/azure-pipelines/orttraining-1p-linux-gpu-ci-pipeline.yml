@@ -7,7 +7,7 @@ stages:
       --wheel_name_suffix training
     docker_image_prefix: onnxruntime-training
     linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
-    python_version: 3.6
+    python.version: 3.6
   jobs:
   - job: Linux_py_GPU_Wheels
     timeoutInMinutes: 90
@@ -26,10 +26,10 @@ stages:
           script: |
             sudo docker build \
               --pull \
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-${{variables.python_version}} \
+              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=${{variables.python_version}} \
+              --build-arg PYTHON_VERSION=$(python.version) \
               --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
@@ -46,7 +46,7 @@ stages:
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              ${{ variables.docker_image_prefix }}-manylinux-gpu-${{variables.python_version}} \
+              ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
               $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build \
                 --config Release \
@@ -70,7 +70,7 @@ stages:
         inputs:
           scripts: |
             docker login jingywatest.azurecr.io -u jingywatest -p $(DockerPassword) \
-            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-${{variables.python_version}} jingywatest.azurecr.io/test/onnxruntime-training-1p:latest \
+            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) jingywatest.azurecr.io/test/onnxruntime-training-1p:latest \
             docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
 
       - task: CopyFiles@2
