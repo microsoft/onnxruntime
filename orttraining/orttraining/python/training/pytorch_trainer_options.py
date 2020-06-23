@@ -203,15 +203,8 @@ class PytorchTrainerOptions(object):
         # Keep a copy of original input for debug
         self._original_opts = dict(options)
 
-        # Add an empty dictionary for non specified nested dicts
-        subgroups = [k for k, v in _PYTORCH_TRAINER_OPTIONS_SCHEMA.items()
-                     if isinstance(v, dict) and 'type' in v and v['type'] == 'dict']
         self._validated_opts = dict(self._original_opts)
         if _validate:
-            for name in subgroups:
-                if name not in self._validated_opts:
-                    self._validated_opts[name] = {}
-
             # Validates user input
             validator = PytorchTrainerOptionsValidator(_PYTORCH_TRAINER_OPTIONS_SCHEMA)
             self._validated_opts = validator.validated(self._validated_opts)
@@ -270,6 +263,8 @@ def _check_is_callable(field, value, error):
 _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     'batch': {
         'type': 'dict',
+        'default_setter': lambda _: {},
+        'required' : False,
         'schema': {
             'gradient_accumulation_steps': {
                 'type': 'integer',
@@ -280,6 +275,8 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     },
     'device': {
         'type': 'dict',
+        'default_setter': lambda _: {},
+        'required' : False,
         'schema': {
             'id': {
                 'type': 'string',
@@ -295,6 +292,8 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     },
     'distributed': {
         'type': 'dict',
+        'default_setter': lambda _: {},
+        'required' : False,
         'schema': {
             'world_rank': {
                 'type': 'integer',
@@ -333,6 +332,8 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     },
     'mixed_precision': {
         'type': 'dict',
+        'default_setter': lambda _: {},
+        'required' : False,
         'schema': {
             'enabled': {
                 'type': 'boolean',
@@ -347,6 +348,8 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     },
     'utils': {
         'type': 'dict',
+        'default_setter': lambda _: {},
+        'required' : False,
         'schema': {
             'grad_norm_clip': {
                 'type': 'boolean',
@@ -356,6 +359,8 @@ _PYTORCH_TRAINER_OPTIONS_SCHEMA = {
     },
     '_internal_use': {
         'type': 'dict',
+        'default_setter': lambda _: {},
+        'required' : False,
         'schema': {
             'frozen_weights': {
                 'type': 'list',

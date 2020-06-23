@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-from onnxruntime.capi.training.optim import lr_scheduler
-from onnxruntime.capi.training.amp import loss_scaler
 from onnxruntime.capi.training import pytorch_trainer_options as pt_options
 
 
@@ -15,7 +13,7 @@ from onnxruntime.capi.training import pytorch_trainer_options as pt_options
       'utils': {},
       '_internal_use': {}})
 ])
-def testDefaultValues(test_input):
+def testPytorchTrainerOptionsDefaultValues(test_input):
     ''' Test different ways of using default values for incomplete input'''
 
     expected_values = {
@@ -53,7 +51,7 @@ def testDefaultValues(test_input):
     assert actual_values._validated_opts == expected_values
 
 
-def testInvalidMixedPrecisionEnabledSchema():
+def testPytorchTrainerOptionsInvalidMixedPrecisionEnabledSchema():
     '''Test an invalid input based on schema validation error message'''
 
     expected_msg = 'must be of boolean type'
