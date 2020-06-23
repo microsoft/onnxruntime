@@ -185,7 +185,8 @@ class ORTTransformerTrainer:
             get_lr_this_step=get_lr_this_step,
             loss_scaler=loss_scaler,
             enable_grad_norm_clip=False,
-            _opset_version=12)
+            _opset_version=12,
+            _use_deterministic_compute=True)
 
         # Train!
         logger.info("***** Running training *****")

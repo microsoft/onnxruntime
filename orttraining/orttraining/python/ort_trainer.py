@@ -375,7 +375,8 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
                                                partition_optimizer=False,
                                                enable_grad_norm_clip=True,
-                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
+                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
+                                               use_deterministic_compute=False):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -388,6 +389,7 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.partition_optimizer = partition_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
+    ort_parameters.use_deterministic_compute = use_deterministic_compute
 
     output_types = {}
     for output in model.graph.output:
@@ -527,7 +529,7 @@ class ORTTrainer():
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
-                 _enable_internal_postprocess=True, _extra_postprocess=None):
+                 _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -647,6 +649,7 @@ class ORTTrainer():
         self.opset_version_ = _opset_version
         self.state_dict_ = None
         self._enable_internal_postprocess = _enable_internal_postprocess
+        self._use_deterministic_compute = _use_deterministic_compute
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -674,7 +677,8 @@ class ORTTrainer():
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
                 partition_optimizer=self.partition_optimizer_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
+                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
+                use_deterministic_compute=self._use_deterministic_compute)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -903,38 +907,6 @@ class ORTTrainer():
                                                               self.device_,
                                                               run_options)
 
-        from torch import nn
-        from torch.nn import CrossEntropyLoss, MSELoss
-
-        def my_loss_fn(logits, labels):
-            loss_fct = CrossEntropyLoss()
-            loss_fct.to(logits.device)
-            loss = loss_fct(logits.view(-1, 2), labels.view(-1))
-            return loss
-
-        def my_loss_fn2(masked_lm_labels, next_sentence_label, prediction_scores, seq_relationship_scores):
-            loss_fct = CrossEntropyLoss()
-            loss_fct.to(masked_lm_labels.device)
-            config_vocab_size = 99
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, config_vocab_size), masked_lm_labels.view(-1))
-            next_sentence_loss = loss_fct(seq_relationship_scores.view(-1, 2), next_sentence_label.view(-1))
-            total_loss = masked_lm_loss + next_sentence_loss
-            return total_loss
-
-        torch.set_printoptions(precision=20)
-        if 'prediction_scores' in session_run_results.keys():
-            my_prediction_scores = session_run_results['prediction_scores']
-            my_seq_relationship_scores = session_run_results['seq_relationship_scores']
-            my_masked_lm_labels = input[3]
-            my_next_sentence_label = input[4]
-            my_loss = my_loss_fn2(my_masked_lm_labels, my_next_sentence_label, my_prediction_scores, my_seq_relationship_scores)
-        else:
-            my_logits = session_run_results['logits']
-            my_labels = input[3]
-            my_loss = my_loss_fn(my_logits, my_labels)
-
-        # print("train_step:   loss: ", session_run_results['loss'], "  my_loss: ", my_loss)
-
         if has_if_all_finite:
             # After session run with all_fp32_gradients_finite, we need to clear the iobinding's output state.
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
@@ -1004,21 +976,6 @@ class ORTTrainer():
                                                               output_desc,
                                                               self.device_,
                                                               run_options)
-
-        from torch import nn
-        from torch.nn import CrossEntropyLoss, MSELoss
-
-        def my_loss_fn(logits, labels):
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, 2), labels.view(-1))
-            return loss
-
-        my_logits = session_run_results['logits']
-        my_labels = input[3]
-
-        my_loss = my_loss_fn(my_logits, my_labels)
-
-        # print("eval_step:   loss: ", session_run_results['loss'], "  my_loss: ", my_loss)
 
         if len(session_run_results) == 1:
             return session_run_results[list(session_run_results.keys())[0]]
