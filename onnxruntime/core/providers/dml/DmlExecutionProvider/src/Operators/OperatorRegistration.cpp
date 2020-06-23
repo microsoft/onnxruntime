@@ -289,7 +289,8 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQLinea
 };
 
 template<typename... Args>
-constexpr auto requiredConstantCpuInputs(Args... args) {
+constexpr auto requiredConstantCpuInputs(Args... args)
+{
     std::array<const uint32_t, 4> inputs = {static_cast<uint32_t>(args)...};
     return std::make_pair(inputs, static_cast<int>(sizeof...(args)));
 }
