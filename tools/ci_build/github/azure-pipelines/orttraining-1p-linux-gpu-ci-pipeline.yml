@@ -54,7 +54,6 @@ stages:
                 --skip_submodule_sync \
                 --parallel \
                 --build_wheel \
-                --enable_onnx_tests \
                 --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
                 ${{ variables.actual_extra_build_py_parameters }}
           workingDirectory: $(Build.SourcesDirectory)
