@@ -49,7 +49,7 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
-  ZeROLevel deepspeed_zero = ZeROLevel::None;
+  onnxruntime::training::ZeROConfig deepspeed_zero{0};
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
 };
