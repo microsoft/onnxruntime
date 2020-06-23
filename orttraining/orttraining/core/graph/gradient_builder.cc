@@ -780,8 +780,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
               {IA("Scale")}));
   result.push_back(NodeDef("Mul", {grad, IA("Scale")}, {IA("Scaled_Grad")}));
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
-  result.push_back(NodeDef("ConstantOfShape", {IA("Shaped_X")}, {IA("Constant_Of_Shaped_X")}));
-  result.push_back(NodeDef("Add", {IA("Scaled_Grad"), IA("Constant_Of_Shaped_X")}, {GI(0)}));
+  result.push_back(NodeDef("Expand", {IA("Scaled_Grad"), IA("Shaped_X")}, {GI(0)}));
   return result;
 }
 
@@ -802,8 +801,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   }
 
   result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
-  result.push_back(NodeDef("ConstantOfShape", {IA("Shaped_X")}, {IA("Constant_Of_Shaped_X")}));
-  result.push_back(NodeDef("Add", {grad, IA("Constant_Of_Shaped_X")}, {GI(0)}));
+  result.push_back(NodeDef("Expand", {grad, IA("Shaped_X")}, {GI(0)}));
   return result;
 }
 
