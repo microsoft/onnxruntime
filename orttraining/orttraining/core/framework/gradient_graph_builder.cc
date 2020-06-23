@@ -187,7 +187,7 @@ Status GradientGraphBuilder::Build() {
       }
     }
 
-    GradientDef node_defs = GetGradientForOp(node, output_args_need_grad, input_args_need_grad);
+    GradientDef node_defs = GetGradientForOp(graph_, node, output_args_need_grad, input_args_need_grad);
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {

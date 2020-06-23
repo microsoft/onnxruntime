@@ -27,10 +27,11 @@ typedef std::vector<NodeDef> GradientDef;
 class GradientBuilderBase {
  public:
   GradientBuilderBase(
+      Graph* graph,
       const Node* node,
       const std::unordered_set<std::string>& gradient_inputs,
       const std::unordered_set<std::string>& gradient_outputs)
-      : node_(node), gradient_inputs_(gradient_inputs), gradient_outputs_(gradient_outputs) {
+      : graph_(graph), node_(node), gradient_inputs_(gradient_inputs), gradient_outputs_(gradient_outputs) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -56,6 +57,36 @@ class GradientBuilderBase {
 
   ArgDef I(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
+
+    const std::string& name = node_->InputDefs()[i]->Name();
+    Node* producer_node = graph_->GetMutableProducerNode(name);
+    if (producer_node && producer_node->OpType() == "Gelu") {
+      std::cout << "build gradient for node " + node_->Name() + ". producer is gelu";
+
+      auto output = producer_node->OutputDefs()[0];
+
+      auto& duplicated_output = graph_->GetOrCreateNodeArg(
+          graph_->GenerateNodeArgName(output->Name()),
+          output->TypeAsProto());
+
+      std::vector<NodeArg*> inputs;
+      inputs.push_back(producer_node->MutableInputDefs()[0]);
+
+
+      std::vector<NodeArg*> outputs;
+      outputs.push_back(&duplicated_output);
+
+      graph_->AddNode(graph_->GenerateNodeName(producer_node->Name()),
+                      producer_node->OpType(),
+                      "Recompute node of " + producer_node->Name(),
+                      inputs,
+                      outputs,
+                      &producer_node->GetAttributes(),
+                      producer_node->Domain());
+
+      return ArgDef(duplicated_output.Name(), duplicated_output.TypeAsProto());
+    }
+
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
@@ -178,6 +209,7 @@ class GradientBuilderBase {
     return unique_prefix.str();
   }
 
+  Graph* graph_;
   const Node* node_;
   std::string unique_node_prefix_;
 

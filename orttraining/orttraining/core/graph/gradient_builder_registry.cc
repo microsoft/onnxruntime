@@ -8,7 +8,8 @@
 namespace onnxruntime {
 namespace training {
 
-GradientDef GetGradientForOp(const Node* node,
+GradientDef GetGradientForOp(Graph* graph,
+                             const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
   // REVIEW(mzs): The below condition does not seem correct, it needs to be >= GRADIENT_OP_VERSION
@@ -29,6 +30,7 @@ GradientDef GetGradientForOp(const Node* node,
           "Upgrade your model to use opset" + std::to_string(GRADIENT_OP_VERSION));
           */
   auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
+                                                                            graph,
                                                                             node,
                                                                             output_args_need_grad,
                                                                             input_args_need_grad);
