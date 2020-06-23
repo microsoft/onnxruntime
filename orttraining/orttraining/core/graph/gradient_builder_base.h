@@ -60,31 +60,52 @@ class GradientBuilderBase {
 
     const std::string& name = node_->InputDefs()[i]->Name();
     Node* producer_node = graph_->GetMutableProducerNode(name);
-    if (producer_node && producer_node->OpType() == "Gelu") {
-      std::cout << "build gradient for node " + node_->Name() + ". producer is gelu";
 
-      auto output = producer_node->OutputDefs()[0];
+    if (producer_node) {
+      if (producer_node->OpType() == "Gelu") {
+        std::cout << "Recomputing " << producer_node->OpType() << " for the gradient of " + node_->Name() + "\n";
 
-      auto& duplicated_output = graph_->GetOrCreateNodeArg(
-          graph_->GenerateNodeArgName(output->Name()),
-          output->TypeAsProto());
+        const auto& output = producer_node->OutputDefs()[0];
 
-      std::vector<NodeArg*> inputs;
-      inputs.push_back(producer_node->MutableInputDefs()[0]);
+        auto& duplicated_output = graph_->GetOrCreateNodeArg(output->Name() + "_recompute",
+                                                             output->TypeAsProto());
 
+        graph_->AddNode(producer_node->Name() + "_recompute",
+                        producer_node->OpType(),
+                        "Recompute of " + producer_node->Name(),
+                        {producer_node->MutableInputDefs()[0]},
+                        {&duplicated_output},
+                        &producer_node->GetAttributes(),
+                        producer_node->Domain());
 
-      std::vector<NodeArg*> outputs;
-      outputs.push_back(&duplicated_output);
+        return ArgDef(duplicated_output.Name(), duplicated_output.TypeAsProto());
+      }
 
-      graph_->AddNode(graph_->GenerateNodeName(producer_node->Name()),
-                      producer_node->OpType(),
-                      "Recompute node of " + producer_node->Name(),
-                      inputs,
-                      outputs,
-                      &producer_node->GetAttributes(),
-                      producer_node->Domain());
+      if (node_->OpType() == "MatMul" &&
+          producer_node->OpType() == "TrainableDropout" &&
+          graph_->GetNode(producer_node->InputNodesBegin()->Index())->OpType() == "Softmax") {
 
-      return ArgDef(duplicated_output.Name(), duplicated_output.TypeAsProto());
+        std::cout << "Recomputing " << producer_node->OpType() << " for the gradient of " + node_->Name() + "\n";
+
+        const auto& output = producer_node->OutputDefs()[0];
+
+        auto& duplicated_output = graph_->GetOrCreateNodeArg(output->Name() + "_recompute",
+                                                             output->TypeAsProto());
+
+        graph_->AddNode(producer_node->Name() + "_recompute",
+                        "TrainableDropoutGrad",
+                        "Recompute of " + producer_node->Name(),
+                        {
+                            producer_node->MutableInputDefs()[0],   // X
+                            producer_node->MutableOutputDefs()[1],  // mask
+                            producer_node->MutableInputDefs()[1]    // ratio
+                        },
+                        {&duplicated_output},
+                        {},
+                        kMSDomain);
+
+        return ArgDef(duplicated_output.Name(), duplicated_output.TypeAsProto());
+      }
     }
 
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());

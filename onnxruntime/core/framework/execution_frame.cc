@@ -254,15 +254,15 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes 
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes
               auto peak_size = mem_patterns_->patterns[i].PeakSize();
               // Planning of one memory type should only happen once.
               ORT_ENFORCE(
-                static_activation_memory_sizes_in_byte_.find(location.name) ==
-                static_activation_memory_sizes_in_byte_.end(),
-                "Memory type ",
-                location.name,
-                " should only appear once.");
+                  static_activation_memory_sizes_in_byte_.find(location.name) ==
+                      static_activation_memory_sizes_in_byte_.end(),
+                  "Memory type ",
+                  location.name,
+                  " should only appear once.");
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
@@ -282,8 +282,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             }
 
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "Allocated memory for activations, size: "
-            //                                   << mem_patterns_->patterns[i].PeakSize();
+            std::cout << "Allocated memory for activations, size: "
+                      << mem_patterns_->patterns[i].PeakSize() << "\n";
           }
         }
       }
@@ -326,7 +326,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
-  
+
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
