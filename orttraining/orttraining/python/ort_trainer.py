@@ -174,7 +174,7 @@ def delete_input_with_name(input, name):
         if i.name == name:
             del input[index]
             break
-        index = index + 1
+        index += 1
 
 
 # reference:
