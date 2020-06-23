@@ -10,7 +10,7 @@ jobs:
     submodules: recursive
 
   - script: >
-      pytest -v python tools/python/test_custom_ops_pytorch_exporter.py
+      python -m pytest -v test_custom_ops_pytorch_exporter.py
     displayName: 'Test Custom Ops PyTorch Export'
 
   - template: templates/linux-ci.yml
