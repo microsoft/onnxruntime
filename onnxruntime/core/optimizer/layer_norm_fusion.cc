@@ -256,7 +256,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* bias = nullptr;
 
     // scale and bias could be multi-dims; we only support it for training at the moment
-    // because SkipLayerNorm kernel, for example, has depedency on single dim size
+    // because SkipLayerNorm kernel, for example, has dependency on single dim size
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
