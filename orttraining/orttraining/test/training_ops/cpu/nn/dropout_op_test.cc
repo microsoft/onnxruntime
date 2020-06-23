@@ -253,6 +253,8 @@ TEST(TrainableDropoutTest, EmptyRatio) {
   RunDropoutTest("TrainableDropout", true, {1000});
 }
 
+// BiasDropout kernel is only implemented for CUDA 
+#ifdef USE_CUDA
 TEST(BiasDropoutTest, Basic) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }
@@ -272,6 +274,7 @@ TEST(BiasDropoutTest, RatioLimit) {
 TEST(BiasDropoutTest, EmptyRatio) {
   RunBiasDropoutTest(true, {2, 7, 1024});
 }
+#endif
 
 namespace {
 void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
