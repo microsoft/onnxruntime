@@ -317,7 +317,7 @@ inline std::vector<std::string> ExperimentalSession::GetInputNames() const {
   for (size_t i = 0; i < node_count; i++) {
     char* tmp = GetInputName(i, allocator);
     out[i] = tmp;
-    allocator.Free(tmp); // prevent memory leak
+    allocator.Free(tmp);  // prevent memory leak
   }
   return out;
 }
@@ -329,7 +329,7 @@ inline std::vector<std::string> ExperimentalSession::GetOutputNames() const {
   for (size_t i = 0; i < node_count; i++) {
     char* tmp = GetOutputName(i, allocator);
     out[i] = tmp;
-    allocator.Free(tmp); // prevent memory leak
+    allocator.Free(tmp);  // prevent memory leak
   }
   return out;
 }
@@ -341,28 +341,28 @@ inline std::vector<std::string> ExperimentalSession::GetOverridableInitializerNa
   for (size_t i = 0; i < init_count; i++) {
     char* tmp = GetOverridableInitializerName(i, allocator);
     out[i] = tmp;
-    allocator.Free(tmp); // prevent memory leak
+    allocator.Free(tmp);  // prevent memory leak
   }
   return out;
 }
 
-inline std::vector< std::vector<int64_t> > ExperimentalSession::GetInputShapes() const {
+inline std::vector<std::vector<int64_t>> ExperimentalSession::GetInputShapes() const {
   size_t node_count = GetInputCount();
   std::vector<std::vector<int64_t>> out(node_count);
   for (size_t i = 0; i < node_count; i++) out[i] = GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
   return out;
 }
 
-inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOutputShapes() const {
+inline std::vector<std::vector<int64_t>> ExperimentalSession::GetOutputShapes() const {
   size_t node_count = GetOutputCount();
   std::vector<std::vector<int64_t>> out(node_count);
   for (size_t i = 0; i < node_count; i++) out[i] = GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
   return out;
 }
 
-inline std::vector< std::vector<int64_t> > ExperimentalSession::GetOverridableInitializerShapes() const {
+inline std::vector<std::vector<int64_t>> ExperimentalSession::GetOverridableInitializerShapes() const {
   size_t init_count = GetOverridableInitializerCount();
-  std::vector< std::vector<int64_t> > out(init_count);
+  std::vector<std::vector<int64_t>> out(init_count);
   for (size_t i = 0; i < init_count; i++) out[i] = GetOverridableInitializerTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
   return out;
 }

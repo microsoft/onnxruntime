@@ -240,10 +240,10 @@ struct Session : Base<OrtSession> {
  *  compatibility in future releases.
  */
 struct ExperimentalSession : Session {
-  ExperimentalSession(Env& env, ORTCHAR_T* model_path, SessionOptions& options) 
-    : Session(env, model_path, options) {};
+  ExperimentalSession(Env& env, ORTCHAR_T* model_path, SessionOptions& options)
+      : Session(env, model_path, options){};
   ExperimentalSession(Env& env, void* model_data, size_t model_data_length, SessionOptions& options)
-    : Session(env, model_data, model_data_length, options) {};
+      : Session(env, model_data, model_data_length, options){};
 
   // overloaded Run() with sensible defaults
   std::vector<Value> Run(const std::vector<std::string>& input_names,
@@ -262,9 +262,9 @@ struct ExperimentalSession : Session {
   std::vector<std::string> GetOverridableInitializerNames() const;
   // Note: shape dimensions may have a negative value to indicate a symbolic/unknown dimension.
   // This is typically used to denote batch size.
-  std::vector< std::vector<int64_t> > GetInputShapes() const;
-  std::vector< std::vector<int64_t> > GetOutputShapes() const;
-  std::vector< std::vector<int64_t> > GetOverridableInitializerShapes() const;
+  std::vector<std::vector<int64_t> > GetInputShapes() const;
+  std::vector<std::vector<int64_t> > GetOutputShapes() const;
+  std::vector<std::vector<int64_t> > GetOverridableInitializerShapes() const;
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
