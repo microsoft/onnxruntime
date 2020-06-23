@@ -29,44 +29,48 @@ REGISTER_TRAINABLE_KERNEL_TYPED(MLFloat16)
 REGISTER_TRAINABLE_KERNEL_TYPED(float)
 REGISTER_TRAINABLE_KERNEL_TYPED(double)
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(OpName, T)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+#define REGISTER_GRADIENT_KERNEL_TYPED(OpName)                           \
+  ONNX_OPERATOR_KERNEL_EX(                                               \
       OpName,                                                            \
       kMSDomain,                                                         \
       1,                                                                 \
-      T,                                                                 \
       kCudaExecutionProvider,                                            \
       KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())  \
           .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())     \
           .InputMemoryType<OrtMemTypeCPUInput>(2),                       \
-      DropoutGrad<T>);
+      DropoutGrad);
 
-REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, MLFloat16)
-REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, float)
-REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double)
+REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad)
 
 // Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
 // opset-12.
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, MLFloat16)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double)
+REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad)
 
 template <typename T>
-Status DropoutGrad<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+struct DropoutGradComputeImpl {
+  void operator()(const int64_t N,
+                    const Tensor* dY,
+                    const bool* mask_data,
+                    const float ratio_data,
+                    Tensor* dX) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
 
+    const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
+    CudaT* dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
+    DropoutGradientKernelImpl<CudaT>(N, dY_data, mask_data, ratio_data, dX_data);
+  }
+};
+
+Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   auto dY = context->Input<Tensor>(0);
   const TensorShape& shape = dY->Shape();
-  auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
   const int64_t N = shape.Size();
 
   auto mask = context->Input<Tensor>(1);
   ORT_ENFORCE(mask->Shape().Size() == N);
-
-  auto dX = context->Output(0, shape);
-  auto dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
+  const bool* mask_data = mask->template Data<bool>();
 
   //Get the ratio_data
   float ratio_data = default_ratio_;
@@ -76,8 +80,10 @@ Status DropoutGrad<T>::ComputeInternal(OpKernelContext* context) const {
     t_disp.Invoke(ratio, ratio_data);
   }
 
-  const bool* mask_data = mask->template Data<bool>();
-  DropoutGradientKernelImpl(N, dY_data, mask_data, ratio_data, dX_data);
+  auto dX = context->Output(0, shape);
+
+  utils::MLTypeCallDispatcher<DropoutGradComputeImpl, float, MLFloat16, double> t_disp(dY->GetElementType());
+  t_disp.Invoke(N, dY, mask_data, ratio_data, dX);
 
   return Status::OK();
 }
