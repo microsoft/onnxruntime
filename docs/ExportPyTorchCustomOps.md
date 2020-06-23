@@ -163,5 +163,11 @@ torch.onnx.export(CustomInverse(), (x,), f, custom_opsets={"com.microsoft": 5})
 Note that you can export a custom op to any version >= the opset version used at registration. 
 
 We have a set of tests for export and output validation of ONNX models with ONNX Runtime custom ops in 
-``tools/python/test_test_custom_ops_pytorch_exporter.py``. If you're adding a new custom operator, please
+``tools/test/test_test_custom_ops_pytorch_exporter.py``. If you're adding a new custom operator, please
 make sure to include tests in this file.
+
+You can run these tests using the command:
+
+```
+PYTHONPATH=<path_to_onnxruntime/tools> pytest -v test_custom_ops_pytorch_exporter.py
+```
