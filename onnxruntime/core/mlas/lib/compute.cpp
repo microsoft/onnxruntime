@@ -565,18 +565,18 @@ void
 MLASCALL
 MlasReduceMinimumMaximumF32Kernel(
     const float* Input,
-    float* min,
-    float* max,
+    float* Min,
+    float* Max,
     size_t N
     )
 {
-    *min = std::numeric_limits<float>::max();
-    *max = std::numeric_limits<float>::lowest();
+    float tmp_min = std::numeric_limits<float>::max();
+    float tmp_max = std::numeric_limits<float>::lowest();
 
     if (N >= 4) {
 
-        MLAS_FLOAT32X4 MaximumVector0 = MlasBroadcastFloat32x4(*max);
-        MLAS_FLOAT32X4 MinimumVector0 = MlasBroadcastFloat32x4(*min);
+        MLAS_FLOAT32X4 MaximumVector0 = MlasBroadcastFloat32x4(tmp_max);
+        MLAS_FLOAT32X4 MinimumVector0 = MlasBroadcastFloat32x4(tmp_min);
 
         if (N >= 16) {
 
@@ -629,18 +629,21 @@ MlasReduceMinimumMaximumF32Kernel(
             N -= 4;
         }
 
-        *min = MlasReduceMinimumFloat32x4(MinimumVector0);
-        *max = MlasReduceMaximumFloat32x4(MaximumVector0);
+        tmp_min = MlasReduceMinimumFloat32x4(MinimumVector0);
+        tmp_max = MlasReduceMaximumFloat32x4(MaximumVector0);
     }
 
     while (N > 0) {
 
-        *max = std::max(*max, *Input);
-        *min = std::min(*min, *Input);
+        tmp_max = std::max(tmp_max, *Input);
+        tmp_min = std::min(tmp_min, *Input);
 
         Input += 1;
         N -= 1;
     }
+
+    *Min = tmp_min;
+    *Max = tmp_max;
 }
 
 void

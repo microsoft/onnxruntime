@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the logic to find min and max elements with avx instructions.
+    This module implements the logic to find min and max elements with AVX instructions.
 
 --*/
 
@@ -20,18 +20,18 @@ void
 MLASCALL
 MlasReduceMinimumMaximumF32KernelAvx(
     const float* Input,
-    float* min,
-    float* max,
+    float* Min,
+    float* Max,
     size_t N
     )
 {
-    *min = std::numeric_limits<float>::max();
-    *max = std::numeric_limits<float>::lowest();
+    float tmp_min = std::numeric_limits<float>::max();
+    float tmp_max = std::numeric_limits<float>::lowest();
 
     if (N >= 8) {
 
-        __m256 MaximumVector0 = _mm256_set1_ps(*max);
-        __m256 MinimumVector0 = _mm256_set1_ps(*min);
+        __m256 MaximumVector0 = _mm256_set1_ps(tmp_max);
+        __m256 MinimumVector0 = _mm256_set1_ps(tmp_min);
 
         if (N >= 32) {
 
@@ -85,19 +85,22 @@ MlasReduceMinimumMaximumF32KernelAvx(
 
         __m128 low = _mm256_castps256_ps128(MaximumVector0);
         __m128 high = _mm256_extractf128_ps(MaximumVector0, 1);
-        *max = MlasReduceMaximumFloat32x4(MlasMaximumFloat32x4(low, high));
+        tmp_max = MlasReduceMaximumFloat32x4(MlasMaximumFloat32x4(low, high));
 
         low = _mm256_castps256_ps128(MinimumVector0);
         high = _mm256_extractf128_ps(MinimumVector0, 1);
-        *min = MlasReduceMinimumFloat32x4(MlasMinimumFloat32x4(low, high));
+        tmp_min = MlasReduceMinimumFloat32x4(MlasMinimumFloat32x4(low, high));
     }
 
     while (N > 0) {
 
-        *max = std::max(*max, *Input);
-        *min = std::min(*min, *Input);
+        tmp_max = std::max(tmp_max, *Input);
+        tmp_min = std::min(tmp_min, *Input);
 
         Input += 1;
         N -= 1;
     }
+
+    *Min = tmp_min;
+    *Max = tmp_max;
 }
