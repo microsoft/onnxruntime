@@ -431,7 +431,7 @@ TEST(DistributedRunContextTest, FailTest1) {
     DistributedRunConfig config = {63, 64, 3, 4, 16, 5};
     DistributedRunTestContext ctx(config);
   } catch (const std::exception& ex) {
-    auto ret = std::string(ex.what()).find("world size is not divisible by horizontal model parallel size");
+    auto ret = std::string(ex.what()).find("world_size(64) is not divisible by horizontal_parallel_size(5)");
     ASSERT_TRUE(ret != std::string::npos);
   }
 }
@@ -441,7 +441,7 @@ TEST(DistributedRunContextTest, FailTest2) {
     DistributedRunConfig config = {63, 64, 3, 4, 8, 4};
     DistributedRunTestContext ctx(config);
   } catch (const std::exception& ex) {
-    auto ret = std::string(ex.what()).find("total worker number != data_parallel_size * horizontal_parallel_size");
+    auto ret = std::string(ex.what()).find("data_parallel_size(8) * horizontal_parallel_size(4) * pipeline_stage_size(1) != world_size(64)");
     ASSERT_TRUE(ret != std::string::npos);
   }
 }
