@@ -257,7 +257,7 @@ TEST(BiasDropoutTest, Basic) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f);
 }
 
-TEST(BiasDropoutTest, BasicWihtoutResidual) {
+TEST(BiasDropoutTest, BasicWithoutResidual) {
   RunBiasDropoutTest(false, {10, 10, 10}, 0.75f, true, false, false);
 }
 

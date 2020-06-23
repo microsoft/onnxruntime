@@ -21,7 +21,6 @@ class DropoutGrad final : public CudaKernel {
   static constexpr float default_ratio_ = 0.5f;
 };
 
-template <typename T>
 class BiasDropout final : public CudaKernel {
  public:
   BiasDropout(const OpKernelInfo& info) : CudaKernel(info) {

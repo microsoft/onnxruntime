@@ -4,6 +4,7 @@
 #include "core/framework/random_seed.h"
 #include "orttraining/training_ops/cuda/nn/dropout.h"
 #include "core/providers/cuda/nn/dropout.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -81,34 +82,58 @@ Status DropoutGrad<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_BIAS_DROPOUT_KERNEL_TYPED(T)                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      BiasDropout,                                                       \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-          .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())     \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(4),                       \
-      BiasDropout<T>);
-
-REGISTER_BIAS_DROPOUT_KERNEL_TYPED(MLFloat16)
-REGISTER_BIAS_DROPOUT_KERNEL_TYPED(float)
+ONNX_OPERATOR_KERNEL_EX(
+    BiasDropout,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
+        .InputMemoryType<OrtMemTypeCPUInput>(3)
+        .InputMemoryType<OrtMemTypeCPUInput>(4),
+    BiasDropout);
 
 template <typename T>
-Status BiasDropout<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+struct BiasDropoutComputeImpl {
+  Status operator()(const cudaDeviceProp& prop,
+                    const int64_t N,
+                    const fast_divmod fdm_dim,
+                    const float ratio_data,
+                    PhiloxGenerator& generator,
+                    const Tensor* X,
+                    const Tensor* bias,
+                    const Tensor* residual,
+                    Tensor* Y,
+                    bool* mask_data) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
 
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
+    const CudaT* bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+
+    const CudaT* residual_data = nullptr;
+    if (residual) {
+      if (residual->Shape() != X->Shape()) {
+        return Status(common::ONNXRUNTIME, common::FAIL, "Residual input shape does not match X input shape.");
+      }
+      residual_data = reinterpret_cast<const CudaT*>(residual->template Data<T>());
+    }
+
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+
+    BiasDropoutKernelImpl<CudaT>(prop, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
+
+    return Status::OK();
+  }
+};
+
+Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
   ORT_RETURN_IF_NOT(X, "X Input is not available.");
 
   const TensorShape& x_shape = X->Shape();
-  auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   const int64_t N = x_shape.Size();
 
   //Get bias_data
@@ -122,22 +147,12 @@ Status BiasDropout<T>::ComputeInternal(OpKernelContext* context) const {
   if (dim != x_shape.GetDims().back()) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
   }
-  auto bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   //Get residual_data
   const Tensor* residual = context->Input<Tensor>(2);
-  const CudaT* residual_data = nullptr;
-  if (residual != nullptr) {
-    const TensorShape& residual_shape = residual->Shape();
-    if (residual_shape != x_shape) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Residual input shape does not match X input shape.");
-    }
-    residual_data = reinterpret_cast<const CudaT*>(residual->template Data<T>());
-  }
 
   //Get Y_data
   auto Y = context->Output(0, x_shape);
-  auto Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   //Get mask_data
   auto mask = context->Output(1, x_shape);
@@ -166,9 +181,9 @@ Status BiasDropout<T>::ComputeInternal(OpKernelContext* context) const {
 
   const fast_divmod fdm_dim(gsl::narrow_cast<int>(dim));
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
-  BiasDropoutKernelImpl(GetDeviceProp(), N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
 
-  return Status::OK();
+  utils::MLTypeCallDispatcherRet<Status, BiasDropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
+  return t_disp.Invoke(GetDeviceProp(), N, fdm_dim, ratio_data, generator, X, bias, residual, Y, mask_data);
 }
 
 }  // namespace cuda
