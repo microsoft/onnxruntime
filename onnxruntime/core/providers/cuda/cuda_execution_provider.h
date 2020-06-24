@@ -64,19 +64,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void AddDeferredReleaseCPUPtr(void* p);
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     if (count_or_bytes == 0)
       return nullptr;
 
     return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  virtual std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
@@ -91,6 +91,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
   };
+
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 

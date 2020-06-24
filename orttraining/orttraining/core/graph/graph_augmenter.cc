@@ -29,7 +29,7 @@ Status AddToExistingNodeArgs(
       ORT_RETURN_IF(
           is_duplicate_an_error,
           addition_context, " - error - attempted to add a duplicate NodeArg: ", new_nodearg_name);
-      LOGS_DEFAULT(WARNING)
+      LOGS_DEFAULT(INFO)
           << addition_context << " - skipping addition of duplicate NodeArg: " << new_nodearg_name;
       continue;
     }

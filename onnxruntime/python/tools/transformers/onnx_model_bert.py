@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from onnx import TensorProto, helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
@@ -15,6 +15,7 @@ from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
 from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_utils import FusionUtils
 
 logger = getLogger(__name__)
 
@@ -94,46 +95,18 @@ class BertOnnxModel(OnnxModel):
     def get_bert_inputs(self, include_mask=True):
         return self.bert_inputs if include_mask else self.bert_inputs[:2]
 
-    def get_bert_input_shape(self):
-        graph = self.graph()
-        bert_inputs = self.get_bert_inputs()
-        for input in graph.input:
-            if input.name in bert_inputs:
-                tensor_type = input.type.tensor_type
-                if (tensor_type.HasField("shape")):
-                    batch_size = None
-                    d = tensor_type.shape.dim[0]
-                    if (d.HasField("dim_value")):
-                        batch_size = d.dim_value
-                    elif (d.HasField("dim_param")):
-                        batch_size = str(d.dim_param)
-
-                    sequence_length = None
-                    d = tensor_type.shape.dim[1]
-                    if (d.HasField("dim_value")):
-                        sequence_length = d.dim_value
-                    elif (d.HasField("dim_param")):
-                        sequence_length = str(d.dim_param)
-                    return batch_size, sequence_length
-
-        return None, None
-
     def change_input_to_int32(self):
         original_opset_version = self.model.opset_import[0].version
         graph = self.graph()
 
-        batch_size, sequence_length = self.get_bert_input_shape()
         new_graph_inputs = []
-
         bert_inputs = self.get_bert_inputs()
+        utils = FusionUtils(self)
         for input in graph.input:
             if input.name in bert_inputs:
-                self.remove_cast_int32(input.name)
-                input_shape = [
-                    batch_size if isinstance(batch_size, int) else 1,
-                    sequence_length if isinstance(sequence_length, int) else 128
-                ]
-                int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32, input_shape)
+                utils.remove_cast_int32(input.name)
+                int32_input = helper.make_tensor_value_info(input.name, TensorProto.INT32,
+                                                            self.tensor_shape_to_list(input.type.tensor_type))
                 new_graph_inputs.append(int32_input)
             else:
                 new_graph_inputs.append(input)
@@ -145,11 +118,7 @@ class BertOnnxModel(OnnxModel):
                                       initializer=graph.initializer,
                                       value_info=graph.value_info)
 
-        self.model = helper.make_model(graph_def, producer_name='bert model optimizer')
-
-        if isinstance(batch_size, str) or isinstance(sequence_length, str):
-            self.use_dynamic_axes(batch_size if isinstance(batch_size, str) else None,
-                                  sequence_length if isinstance(sequence_length, str) else None)
+        self.model = helper.make_model(graph_def, producer_name='onnxruntime-tools')
 
         # restore opset version
         self.model.opset_import[0].version = original_opset_version
@@ -183,7 +152,7 @@ class BertOnnxModel(OnnxModel):
         for node in self.nodes():
             # Before:
             #  input_ids --> Shape --> Gather(indices=0) --> Unsqueeze ------+
-            #          |                                                     | 
+            #          |                                                     |
             #          |                                                     v
             #          +----> Shape --> Gather(indices=1) --> Unsqueeze--->  Concat --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
             # After:
@@ -292,8 +261,18 @@ class BertOnnxModel(OnnxModel):
         attention = op_count['Attention']
         gelu = op_count['Gelu'] + op_count['BiasGelu'] + op_count['FastGelu']
         layer_norm = op_count['LayerNormalization'] + op_count['SkipLayerNormalization']
-        is_optimized = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
-        logger.info(
-            f"EmbedLayer={embed}, Attention={attention}, Gelu={gelu}, LayerNormalization={layer_norm}, Successful={is_optimized}"
-        )
-        return is_optimized
+        is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
+
+        if layer_norm == 0:
+            logger.debug("Layer Normalization not fused")
+
+        if gelu == 0:
+            logger.debug("Gelu/FastGelu not fused")
+
+        if embed == 0:
+            logger.debug("Embed Layer not fused")
+
+        if attention == 0:
+            logger.debug("Attention not fused")
+
+        return is_perfect

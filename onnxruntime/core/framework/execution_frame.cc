@@ -254,8 +254,17 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
             // it's less efficient (the arena will add some overhead to coalesce individual allocations
             // back into blocks on 'free'), but better than failing completely.
             try {
-              buffer = alloc->Alloc(mem_patterns_->patterns[i].PeakSize());
-
+              // static_activation_memory_in_bytes_ is max virtual memory size the planner computes 
+              auto peak_size = mem_patterns_->patterns[i].PeakSize();
+              // Planning of one memory type should only happen once.
+              ORT_ENFORCE(
+                static_activation_memory_sizes_in_byte_.find(location.name) ==
+                static_activation_memory_sizes_in_byte_.end(),
+                "Memory type ",
+                location.name,
+                " should only appear once.");
+              static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+              buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do
@@ -315,11 +324,13 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "size overflow");
   }
 
-  auto alloc = GetAllocator(location);
-
+  // Lazily get the allocator only if needed.
+  AllocatorPtr alloc = nullptr;
+  
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
+    alloc = GetAllocator(location);
     FencePtr f = alloc->CreateFence(&session_state_);
     // it is OK to have fence been nullptr if the execution provider has no async execution,
     // and allocator::CreateFence returns nullptr
@@ -361,6 +372,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   }
 
   //no memory pattern, or the pattern is not correct.
+  if (!alloc) alloc = GetAllocator(location);
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
   {
@@ -374,6 +386,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (!utils::IsDataTypeString(element_type)) {
     TraceAllocate(ort_value_index, size);
   }
+
+  dynamic_activation_memory_sizes_in_byte_[location.name] += size;
 
   return Status::OK();
 }

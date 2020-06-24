@@ -403,7 +403,8 @@ TEST(GradientCheckerTest, GemmGrad) {
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ReduceMean"};
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceMean", kOnnxDomain, 11};
 
   // default
   {
@@ -480,7 +481,8 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
 TEST(GradientCheckerTest, ReduceSumGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ReduceSum"};
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceSum", kOnnxDomain, 11};
 
   // default
   {

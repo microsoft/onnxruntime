@@ -228,6 +228,20 @@ typedef MLAS_GEMM_FLOAT_KERNEL* PMLAS_GEMM_FLOAT_KERNEL;
 typedef MLAS_GEMM_DOUBLE_KERNEL* PMLAS_GEMM_DOUBLE_KERNEL;
 
 typedef
+size_t
+(MLASCALL MLAS_GEMV_FLOAT_KERNEL)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb,
+    bool ZeroMode
+    );
+
+typedef MLAS_GEMV_FLOAT_KERNEL* PMLAS_GEMV_FLOAT_KERNEL;
+
+typedef
 void
 (MLASCALL MLAS_SGEMM_KERNEL_M1_ROUTINE)(
     const float* A,
@@ -254,12 +268,7 @@ typedef MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* PMLAS_SGEMM_TRANSPOSE_PACKB_BL
 typedef
 void
 (MLASCALL MLAS_GEMM_U8X8_OPERATION)(
-    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    size_t M,
-    size_t N,
-    const uint8_t* A,
-    const uint8_t* B,
-    int32_t* C
+    const struct MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
     );
 
 typedef MLAS_GEMM_U8X8_OPERATION* PMLAS_GEMM_U8X8_OPERATION;
@@ -334,7 +343,7 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_FLOAT_KERNEL* PMLAS_CONV_FLOAT_KERNEL;
@@ -357,7 +366,7 @@ void
     size_t OutputCount,
     size_t OutputCountRightPad,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* PMLAS_CONV_DEPTHWISE_FLOAT_KERNEL;
@@ -376,7 +385,7 @@ void
     size_t OutputStride,
     size_t OutputCount,
     const float* Bias,
-    unsigned Flags
+    unsigned KernelFlags
     );
 
 typedef MLAS_CONV_POINTWISE_FLOAT_KERNEL* PMLAS_CONV_POINTWISE_FLOAT_KERNEL;
@@ -453,6 +462,17 @@ float
 
 typedef MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL)(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+typedef MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL;
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -478,6 +498,8 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
+#elif defined(MLAS_TARGET_ARM64)
+    MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -559,6 +581,11 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
+#endif
+
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
 #endif
 
 }
@@ -645,6 +672,7 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL ComputeSoftmaxOutputF32Kernel;
     PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
     PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
+    PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL ReduceMinimumMaximumF32Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif
@@ -1448,6 +1476,29 @@ MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
 #else
     Vector = MlasMaximumFloat32x4(Vector, MlasShuffleFloat32x4<2, 3, 2, 3>(Vector));
     Vector = MlasMaximumFloat32x4(Vector, MlasShuffleFloat32x4<1, 1, 1, 1>(Vector));
+    return MlasExtractLaneFloat32x4<0>(Vector);
+#endif
+}
+
+MLAS_FORCEINLINE
+float
+MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON64_INTRINSICS)
+    return vminvq_f32(Vector);
+#elif defined(MLAS_NEON32_INTRINSICS)
+    float32x2_t VectorLow = vget_low_f32(Vector);
+    float32x2_t VectorHigh = vget_high_f32(Vector);
+    VectorLow = vpmin_f32(VectorLow, VectorHigh);
+    VectorLow = vpmin_f32(VectorLow, VectorHigh);
+    return vget_lane_f32(VectorLow, 0);
+#elif defined(MLAS_VSX_INTRINSICS)
+    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMinimumFloat32x4(Vector, vec_splat(Vector, 1));
+    return Vector[0];
+#else
+    Vector = MlasMinimumFloat32x4(Vector, MlasShuffleFloat32x4<2, 3, 2, 3>(Vector));
+    Vector = MlasMinimumFloat32x4(Vector, MlasShuffleFloat32x4<1, 1, 1, 1>(Vector));
     return MlasExtractLaneFloat32x4<0>(Vector);
 #endif
 }

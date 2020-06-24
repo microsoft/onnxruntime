@@ -165,6 +165,26 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename AType, typename BType>
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const AType* A,
+    size_t lda,
+    AType offa,
+    const BType* B,
+    size_t ldb,
+    BType offb,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
 //
 // Convolution routines.
 //
@@ -444,4 +464,13 @@ MlasRequantizeOutput(
     size_t N,
     float Scale,
     uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
     );
