@@ -877,8 +877,8 @@ class ORTTrainer():
         #     results = [session_run_results[output_desc.name_] for output_desc in self.model_desc_.outputs_]
         
         #bugbug
-        # if 'global_gradient_norm' in session_run_results:
-        #     print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
+        if 'global_gradient_norm' in session_run_results:
+            print("#####Global norm is {}".format(session_run_results['global_gradient_norm']))
 
         return results[0] if len(results) == 1 else results
 
