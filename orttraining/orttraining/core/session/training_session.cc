@@ -274,10 +274,6 @@ Status TrainingSession::ConfigureForTraining(
         opt_graph_config, opt_node_configs,
         optimizer_config_result.output_key_to_graph_output_name));
     config_result.opt_config_result = optimizer_config_result;
-    //bugbug
-    const auto it = optimizer_config_result.output_key_to_graph_output_name.find(OptimizerOutputKey::GradientAllIsFinite);
-    std::cout<<"#######graph output: "<<it->second<<std::endl;
-
   } else {
     if (config.gradient_accumulation_steps > 1) {
       ORT_RETURN_IF_ERROR(BuildAccumulationNode(weights_to_train_));
