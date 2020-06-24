@@ -15,7 +15,12 @@ class Model {
   friend class ModelBuilder;
 
  public:
-  struct InputOutputBuffer {
+  struct InputBuffer {
+    const void* buffer{nullptr};
+    android::nn::wrapper::OperandType type;
+  };
+
+  struct OutputBuffer {
     void* buffer{nullptr};
     android::nn::wrapper::OperandType type;
   };
@@ -28,8 +33,8 @@ class Model {
     NNMemory(const NnApi* nnapi, const char* name, size_t size);
     ~NNMemory();
 
-    ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
-    uint8_t* get_data_ptr() { return data_ptr_; }
+    ANeuralNetworksMemory* GetHandle() { return nn_memory_handle_; }
+    uint8_t* GetDataPtr() { return data_ptr_; }
 
    private:
     // NnApi instance to use. Not owned by this object.
@@ -45,10 +50,10 @@ class Model {
    public:
     NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size);
     ~NNMemory() = default;
-    uint8_t* get_data_ptr() { return data_->data(); }
+    uint8_t* GetDataPtr() { return data_.data(); }
 
    private:
-    std::unique_ptr<std::vector<uint8_t>> data_;
+    std::vector<uint8_t> data_;
   };
 #endif
 
@@ -79,8 +84,8 @@ class Model {
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
-  void SetInputBuffers(const std::vector<InputOutputBuffer>& inputs);
-  void SetOutputBuffers(const std::vector<InputOutputBuffer>& outputs);
+  void SetInputBuffers(const std::vector<InputBuffer>& inputs);
+  void SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
 
   // Execute the NNAPI model
   void Predict();
@@ -112,8 +117,8 @@ class Model {
   void AddOutput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
   void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
-  void SetInputBuffer(const int32_t index, const InputOutputBuffer& input);
-  void SetOutputBuffer(const int32_t index, const InputOutputBuffer& output);
+  void SetInputBuffer(const int32_t index, const InputBuffer& input);
+  void SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
   void PrepareForExecution();
   void ResetExecution();

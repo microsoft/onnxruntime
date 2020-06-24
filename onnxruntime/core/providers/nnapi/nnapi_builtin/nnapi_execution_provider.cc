@@ -25,9 +25,14 @@ NnapiExecutionProvider::NnapiExecutionProvider()
 
   InsertAllocator(CreateAllocator(device_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                   [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
-                                                   std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_memory_info(
+      {OrtMemTypeCPUOutput,
+       [](int) {
+         return onnxruntime::make_unique<CPUAllocator>(
+             onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator,
+                                                     OrtDevice(), 0, OrtMemTypeCPUOutput));
+       },
+       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }
@@ -35,16 +40,17 @@ NnapiExecutionProvider::NnapiExecutionProvider()
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
-NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
+NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  // Handle If and Loop operators
-  if (graph.IsSubgraph()) {
+
+  // We do not support subgraph (If and Loop operators) for now
+  if (graph_view.IsSubgraph()) {
     return result;
   }
 
   // Need access to model_path_
-  for (const auto& tensor : graph.GetAllInitializedTensors()) {
+  for (const auto& tensor : graph_view.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location() &&
         tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
       LOGS_DEFAULT(WARNING) << "NNAPI: Initializers with external data"
@@ -56,15 +62,15 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // TODO, switch to use graph instead of model
   // This method is based on that of TRT EP
   // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(),
+  onnxruntime::Model model(graph_view.Name(), true, ModelMetaData(),
                            PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(),
-                           graph.DomainToVersionMap(),
+                           graph_view.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(),
                            *GetLogger());
   std::unordered_set<std::string> all_node_inputs;
   onnxruntime::Graph& graph_build = model.MainGraph();
-  for (const auto& node : graph.Nodes()) {
+  for (const auto& node : graph_view.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
@@ -78,7 +84,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
   }
   //Add initializer to graph
-  const auto& init_tensors = graph.GetAllInitializedTensors();
+  const auto& init_tensors = graph_view.GetAllInitializedTensors();
   for (const auto& tensor : init_tensors) {
     graph_build.AddInitializedTensor(*(tensor.second));
   }
@@ -91,8 +97,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   const auto supported_nodes_vector = builder.GetSupportedNodes();
 
   // Find inputs, initializers and outputs for each supported subgraph
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  const auto graph_outputs = graph.GetOutputs();
+  const std::vector<NodeIndex>& node_index = graph_view.GetNodesInTopologicalOrder();
+  const auto graph_outputs = graph_view.GetOutputs();
   int counter = 0;
   for (const auto& group : supported_nodes_vector) {
     if (group.empty())
@@ -113,7 +119,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
     for (const auto& index : group) {
       sub_graph->nodes.push_back(node_index[index]);
-      const auto& node = graph.GetNode(node_index[index]);
+      const auto& node = graph_view.GetNode(node_index[index]);
 
       for (const auto& input : node->InputDefs()) {
         const auto& it = fused_outputs.find(input);
@@ -276,7 +282,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       ORT_ENFORCE(model->GetInputs().size() <= num_inputs, "Inconsistent input sizes");
       ORT_ENFORCE(model->GetOutputs().size() == num_outputs, "Inconsistent output sizes");
 
-      std::vector<nnapi::Model::InputOutputBuffer> inputs;
+      std::vector<nnapi::Model::InputBuffer> inputs;
       inputs.reserve(model->GetInputs().size());
       for (size_t i = 0; i < model->GetInputs().size(); i++) {
         const auto& input_name = model->GetInputs()[i];
@@ -302,14 +308,14 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
                     "The actual input dimanesions should match the model input "
                     "dimensions, or model input dimension has 0 (dynamic)");
 
-        void* inputBuffer = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+        const void* inputBuffer = ort.GetTensorData<void>(input_tensor);
         inputs.push_back({inputBuffer, std::move(type)});
 
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
 
       model->SetInputBuffers(inputs);
-      std::vector<nnapi::Model::InputOutputBuffer> outputs;
+      std::vector<nnapi::Model::OutputBuffer> outputs;
       outputs.reserve(num_outputs);
       for (size_t i = 0; i < num_outputs; i++) {
         const auto output_name = model->GetOutputs()[i];

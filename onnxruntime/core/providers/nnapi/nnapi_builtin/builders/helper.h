@@ -30,34 +30,34 @@
   }
 
 template <class Map, class Key>
-inline bool Contains(Map map, Key key) {
+inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();
 }
 
-inline std::string GetErrorCause(int errorCode) {
-  switch (errorCode) {
+inline std::string GetErrorCause(int error_code) {
+  switch (error_code) {
     case ANEURALNETWORKS_NO_ERROR:
-      return "No error";
+      return "ANEURALNETWORKS_NO_ERROR";
     case ANEURALNETWORKS_OUT_OF_MEMORY:
-      return "Out of memory";
+      return "ANEURALNETWORKS_OUT_OF_MEMORY";
     case ANEURALNETWORKS_INCOMPLETE:
-      return "Incomplete";
+      return "ANEURALNETWORKS_INCOMPLETE";
     case ANEURALNETWORKS_UNEXPECTED_NULL:
-      return "Unexpected null";
+      return "ANEURALNETWORKS_UNEXPECTED_NULL";
     case ANEURALNETWORKS_BAD_DATA:
-      return "Bad data";
+      return "ANEURALNETWORKS_BAD_DATA";
     case ANEURALNETWORKS_OP_FAILED:
-      return "Op failed";
+      return "ANEURALNETWORKS_OP_FAILED";
     case ANEURALNETWORKS_BAD_STATE:
-      return "Bad state";
+      return "ANEURALNETWORKS_BAD_STATE";
     case ANEURALNETWORKS_UNMAPPABLE:
-      return "Unmappable";
+      return "ANEURALNETWORKS_UNMAPPABLE";
     case ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE:
-      return "Output Insufficient size";
+      return "ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE";
     case ANEURALNETWORKS_UNAVAILABLE_DEVICE:
-      return "Unavaliable device";
+      return "ANEURALNETWORKS_UNAVAILABLE_DEVICE";
 
     default:
-      return "Unknown error code";
+      return "Unknown error code: " + std::to_string(error_code);
   }
 }

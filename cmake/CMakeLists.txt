@@ -181,6 +181,9 @@ if(onnxruntime_ENABLE_LTO)
     endif()
 endif()
 
+if(onnxruntime_USE_NNAPI_BUILTIN AND onnxruntime_USE_NNAPI_DNNLIBRARY)
+  message(FATAL_ERROR "Please use only one of onnxruntime_USE_NNAPI_BUILTIN, onnxruntime_USE_NNAPI_DNNLIBRARY")
+endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -841,7 +844,7 @@ if (onnxruntime_USE_CUDA)
   else()
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
-  
+
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 

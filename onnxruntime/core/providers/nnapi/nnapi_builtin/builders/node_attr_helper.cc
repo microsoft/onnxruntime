@@ -15,7 +15,7 @@ using std::vector;
 NodeAttrHelper::NodeAttrHelper(const ONNX_NAMESPACE::NodeProto& proto) : node_(proto) {
 }
 
-float NodeAttrHelper::get(const std::string& key, float def_val) {
+float NodeAttrHelper::Get(const std::string& key, float def_val) {
   for (int i = 0; i < node_.attribute_size(); i++) {
     const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
     if (attr.name() == key) {
@@ -26,7 +26,7 @@ float NodeAttrHelper::get(const std::string& key, float def_val) {
   return def_val;
 }
 
-int32_t NodeAttrHelper::get(const std::string& key, int32_t def_val) {
+int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) {
   for (int i = 0; i < node_.attribute_size(); i++) {
     const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
     if (attr.name() == key) {
@@ -38,7 +38,7 @@ int32_t NodeAttrHelper::get(const std::string& key, int32_t def_val) {
   return def_val;
 }
 
-string NodeAttrHelper::get(const std::string& key, string def_val) {
+string NodeAttrHelper::Get(const std::string& key, string def_val) {
   for (int i = 0; i < node_.attribute_size(); i++) {
     const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
     if (attr.name() == key) {
@@ -49,8 +49,8 @@ string NodeAttrHelper::get(const std::string& key, string def_val) {
   return def_val;
 }
 
-vector<int32_t> NodeAttrHelper::get(const std::string& key, vector<int32_t> def_val) {
-  if (!has_attr(key)) {
+vector<int32_t> NodeAttrHelper::Get(const std::string& key, vector<int32_t> def_val) {
+  if (!HasAttr(key)) {
     return def_val;
   }
 
@@ -70,9 +70,9 @@ vector<int32_t> NodeAttrHelper::get(const std::string& key, vector<int32_t> def_
   return def_val;
 }
 
-vector<float> NodeAttrHelper::get(const std::string& key,
+vector<float> NodeAttrHelper::Get(const std::string& key,
                                   vector<float> def_val) {
-  if (!has_attr(key)) {
+  if (!HasAttr(key)) {
     return def_val;
   }
 
@@ -92,7 +92,7 @@ vector<float> NodeAttrHelper::get(const std::string& key,
   return def_val;
 }
 
-bool NodeAttrHelper::has_attr(const std::string& key) {
+bool NodeAttrHelper::HasAttr(const std::string& key) {
   for (int i = 0; i < node_.attribute_size(); i++) {
     const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
     if (attr.name() == key) {

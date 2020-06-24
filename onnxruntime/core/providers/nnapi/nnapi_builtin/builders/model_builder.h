@@ -15,8 +15,6 @@ namespace nnapi {
 
 class ModelBuilder {
  public:
-  using Index = uint32_t;
-  using IndexSeq = std::vector<Index>;
   using Shape = Shaper::Shape;
 
   ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto);
@@ -29,8 +27,9 @@ class ModelBuilder {
   int32_t GetAndroidSdkVer() const;
 
   // Add an NNAPI operation (operator)
-  void AddOperation(int op, IndexSeq input_indices, std::vector<std::string> output_names,
-                    std::vector<android::nn::wrapper::OperandType> types);
+  void AddOperation(int op, const std::vector<uint32_t>& input_indices,
+                    const std::vector<std::string>& output_names,
+                    const std::vector<android::nn::wrapper::OperandType>& types);
 
   // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const std::string& output);
@@ -48,8 +47,24 @@ class ModelBuilder {
   void AddInitializerToSkip(const std::string& tensor_name);
 
   // Register informations for a particular operand
-  void RegisterOperand(const std::string& name, Index index,
+  void RegisterOperand(const std::string& name, uint32_t index,
                        const android::nn::wrapper::OperandType& operand_type);
+
+  // Generate an unique name for intermediate result
+  std::string GetUniqueName(const std::string& base_name);
+
+  // Enable and disable using NCHW
+  void SetUseNCHW(bool use_nchw) { use_nchw_ = use_nchw; }
+  bool UseNCHW() const { return use_nchw_; }
+
+  // Relax fp32 computation to fp16
+  // It is off by default
+  void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
+
+  // Set NNAPI execution preference
+  // Default preference is PREFER_SUSTAINED_SPEED
+  void ExecutePreference(
+      android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
   // Accessors for members
   Shaper& GetShaper() { return shaper_; }
@@ -68,22 +83,6 @@ class ModelBuilder {
   GetInitializerTensors() const { return initializers_; }
 
   const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
-
-  // Generate an unique name for intermediate result
-  std::string GetUniqueName(const std::string& base_name);
-
-  // Enable and disable using NCHW
-  void SetUseNCHW(bool use_nchw) { use_nchw_ = use_nchw; }
-  bool UseNCHW() const { return use_nchw_; }
-
-  // Relax fp32 computation to fp16
-  // It is off by default
-  void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
-
-  // Set NNAPI execution preference
-  // Default preference is PREFER_SUSTAINED_SPEED
-  void ExecutePreference(
-      android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -110,8 +109,10 @@ class ModelBuilder {
 
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
 
-  IndexSeq input_index_vec_;
-  IndexSeq output_index_vec_;
+  std::vector<uint32_t> input_index_vec_;
+  std::vector<uint32_t> output_index_vec_;
+
+  std::unordered_set<std::string> unique_names_;
 
   uint32_t next_index_ = 0;
 
@@ -121,20 +122,19 @@ class ModelBuilder {
   void Prepare();
 
   void GetAllInitializers();
-  void PreprocessIntializers();
+  void PreprocessInitializers();
   void RegisterInitializers();
   void RegisterModelInputs();
   void AddOperations();
   void RegisterModelOutputs();
   void RegisterModelShaper();
 
-  void SetOperandValue(ModelBuilder::Index index,
-                       Model::NNMemory* memory,
+  void SetOperandValue(uint32_t index, Model::NNMemory* memory,
                        size_t size, size_t offset);
 
-  ModelBuilder::Index AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
-  ModelBuilder::Index AddNewOperand(const std::string& name,
-                                    const android::nn::wrapper::OperandType& operand_type);
+  uint32_t AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
+  uint32_t AddNewOperand(const std::string& name,
+                         const android::nn::wrapper::OperandType& operand_type);
 
   IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
 };

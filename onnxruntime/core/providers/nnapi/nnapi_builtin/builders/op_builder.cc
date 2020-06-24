@@ -40,7 +40,7 @@ void AddBinaryOperator(int32_t op_type,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
@@ -62,7 +62,7 @@ void AddPoolOperator(int32_t op_type,
   const auto& operand_types(model_builder.GetOperandTypes());
   bool use_nchw = model_builder.UseNCHW();
 
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
@@ -189,17 +189,20 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
       for (uint32_t h = 0; h < h_t; h++) {
         for (uint32_t w = 0; w < w_t; w++) {
           auto onnx_idx = out * in_t * h_t * w_t +
-                          in * h_t * w_t + h * w_t +
+                          in * h_t * w_t +
+                          h * w_t +
                           w;
 
           uint32_t nnapi_idx;
           if (new_layout == L_NCHW) {  // L_NCHW
             nnapi_idx = out * h_t * w_t * in_t +
-                        h * w_t * in_t + w * in_t +
+                        h * w_t * in_t +
+                        w * in_t +
                         in;
           } else {  // L_1230 for depthwise conv weight
             nnapi_idx = in * h_t * w_t * out_t +
-                        h * w_t * out_t + w * out_t +
+                        h * w_t * out_t +
+                        w * out_t +
                         out;
           }
 
@@ -338,7 +341,7 @@ void BaseOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
 
 #pragma endregion op_base
 
-#pragma region op_add
+#pragma region op_binary
 
 class BinaryOpBuilder : public BaseOpBuilder {
  private:
@@ -408,7 +411,7 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (Contains(model_builder.GetFusedActivations(), node.name())) {
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
-    ModelBuilder::IndexSeq input_indices;
+    std::vector<uint32_t> input_indices;
     input_indices.push_back(operand_indices.at(input));
     model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
   }
@@ -453,10 +456,10 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
 
   const auto& input = node.input(0);
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
-  vector<int32_t> perm = helper.get("perm", vector<int32_t>());
+  vector<int32_t> perm = helper.Get("perm", vector<int32_t>());
   auto input_dims = shaper[input].size();
   if (perm.empty()) {
     for (int32_t i = input_dims - 1; i >= 0; i--)
@@ -539,7 +542,7 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
   const auto& shape_tensor = initializers.at(node.input(1));
@@ -633,14 +636,14 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   // For reshape we are not really doing anything but
   // register a new operand with new shape
-  const auto input = node.input(0);
-  const auto output = node.output(0);
+  const auto& input = node.input(0);
+  const auto& output = node.output(0);
 
   const auto& scale_tensor = initializers.at(node.input(1));
   const auto& bias_tensor = initializers.at(node.input(2));
   const auto& mean_tensor = initializers.at(node.input(3));
   const auto& var_tensor = initializers.at(node.input(4));
-  const auto eps = helper.get("epsilon", 1e-5f);
+  const auto eps = helper.Get("epsilon", 1e-5f);
 
   const auto size = SafeInt<uint32_t>(scale_tensor.dims()[0]);
   vector<float> a, b;
@@ -715,34 +718,34 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   if (op == "AveragePool" || op == "MaxPool") {
     NodeAttrHelper helper(node);
 
-    const auto count_include_pad = helper.get("count_include_pad", 0);
+    const auto count_include_pad = helper.Get("count_include_pad", 0);
     if (count_include_pad == 1) {
       LOGS_DEFAULT(VERBOSE) << "count_include_pad == 1 is not supported";
       return false;
     }
 
-    const auto storage_order = helper.get("storage_order", 0);
+    const auto storage_order = helper.Get("storage_order", 0);
     if (storage_order == 1) {
       LOGS_DEFAULT(VERBOSE) << "storage_order == 1 is not supported";
       return false;
     }
 
-    if (helper.get("auto_pad", "NOTSET") != "NOTSET") {
+    if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
       LOGS_DEFAULT(VERBOSE) << "auto_pad is not supported";
       return false;
     }
 
-    if (helper.get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
+    if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
       LOGS_DEFAULT(VERBOSE) << "Only pooling 2d is supported";
       return false;
     }
 
-    if (helper.get("ceil_mode", 0) == 1) {
+    if (helper.Get("ceil_mode", 0) == 1) {
       LOGS_DEFAULT(VERBOSE) << "ceil_mode == 1 is not supported for pooling";
       return false;
     }
 
-    if (helper.get("dilations", std::vector<int32_t>{1, 1}) !=
+    if (helper.Get("dilations", std::vector<int32_t>{1, 1}) !=
         std::vector<int32_t>{1, 1}) {
       LOGS_DEFAULT(VERBOSE) << "Dilations of pooling is not supported";
       return false;
@@ -782,9 +785,9 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   if (op == "AveragePool" || op == "MaxPool") {
-    kernel_shape = helper.get("kernel_shape", vector<int32_t>{0, 0});
-    onnx_strides = helper.get("strides", vector<int>{1, 1});
-    onnx_pads = helper.get("pads", vector<int>{0, 0, 0, 0});
+    kernel_shape = helper.Get("kernel_shape", vector<int32_t>{0, 0});
+    onnx_strides = helper.Get("strides", vector<int>{1, 1});
+    onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
   } else {  // (op == "GlobalAveragePool" || op == "GlobalMaxPool")
     onnx_strides = vector<int32_t>{1, 1};
     onnx_pads = vector<int32_t>{0, 0, 0, 0};
@@ -831,12 +834,12 @@ bool ConvOpBuilder::IsOpSupportedImpl(
     ModelBuilder& model_builder,
     const ONNX_NAMESPACE::NodeProto& node) {
   NodeAttrHelper helper(node);
-  if (helper.get("auto_pad", "NOTSET") != "NOTSET") {
+  if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
     LOGS_DEFAULT(VERBOSE) << "SAME_LOWER auto_pad is not supported";
     return false;
   }
 
-  const auto group = helper.get("group", 1);
+  const auto group = helper.Get("group", 1);
   const auto weight_name = node.input(1);
   if (Contains(model_builder.GetInitializerTensors(), weight_name)) {
     const auto& tensor = model_builder.GetInitializerTensors().at(weight_name);
@@ -867,16 +870,16 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
-  const auto onnx_strides = helper.get("strides", vector<int>{1, 1});
+  const auto onnx_strides = helper.Get("strides", vector<int>{1, 1});
 
   // onnx pads are in the order top, left, bottom, right
   // while nnapi pads is in the order left, right, top, bottom
-  const auto onnx_pads = helper.get("pads", vector<int>{0, 0, 0, 0});
+  const auto onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
 
   // onnx dilations is in the order height, width
   // while nnapi dilations are in the order width, height
-  const auto onnx_dilations = helper.get("dilations", vector<int>{1, 1});
-  const auto group = helper.get("group", 1);
+  const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
+  const auto group = helper.Get("group", 1);
 
   const auto& input = node.input(0);
   const auto& weight = node.input(1);
@@ -886,7 +889,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& weight_tensor = initializers.at(weight);
   bool depthwiseConv2D = (weight_tensor.dims()[1] == 1);
 
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
   if (conv2d) {
@@ -985,7 +988,7 @@ bool CastOpBuilder::IsOpSupportedImpl(
     ModelBuilder& /* model_builder */,
     const ONNX_NAMESPACE::NodeProto& node) {
   NodeAttrHelper helper(node);
-  auto to = helper.get("to", 0);
+  auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
       to != ONNX_NAMESPACE::TensorProto::INT32) {
     LOGS_DEFAULT(VERBOSE) << "[Cast] Only support cast to int32 or float";
@@ -1003,7 +1006,7 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
-  auto to = helper.get("to", 0);
+  auto to = helper.Get("to", 0);
   Type type;
   switch (to) {
     case ONNX_NAMESPACE::TensorProto::FLOAT:
@@ -1017,7 +1020,7 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                 std::to_string(to));
   }
 
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   shaper.Identity(input, output);
   const OperandType output_operand_type(type, shaper[output]);
@@ -1065,8 +1068,8 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input = node.input(0);
   const auto& output = node.output(0);
   float beta = 1.f;
-  int32_t axis = helper.get("axis", 1);
-  ModelBuilder::IndexSeq input_indices;
+  int32_t axis = helper.Get("axis", 1);
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(model_builder.AddOperandFromScalar(beta));
   input_indices.push_back(model_builder.AddOperandFromScalar(axis));
@@ -1096,7 +1099,7 @@ void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
   shaper.Identity(input, output);
@@ -1137,10 +1140,10 @@ bool GemmOpBuilder::IsOpSupportedImpl(
     // 1. A*B'+C
     // 2. A*B+C and B is an initializer
     NodeAttrHelper helper(node);
-    const auto transA = helper.get("transA", 0);
-    const auto transB = helper.get("transB", 0);
-    const auto alpha = helper.get("alpha", 1.0f);
-    const auto beta = helper.get("beta", 1.0f);
+    const auto transA = helper.Get("transA", 0);
+    const auto transB = helper.Get("transB", 0);
+    const auto alpha = helper.Get("alpha", 1.0f);
+    const auto beta = helper.Get("beta", 1.0f);
 
     if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
       LOGS_DEFAULT(VERBOSE) << "Only transA == 0, alpha == 1.0 "
@@ -1173,7 +1176,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
     model_builder.AddInitializerToSkip(node.input(1));
   } else if (op == "Gemm") {
     NodeAttrHelper helper(node);
-    const auto transB = helper.get("transB", 0);
+    const auto transB = helper.Get("transB", 0);
     if (transB == 0)
       model_builder.AddInitializerToSkip(node.input(1));
   }
@@ -1190,7 +1193,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input1 = node.input(0);
   const auto& input2 = node.input(1);
   const auto& output = node.output(0);
-  const auto transB = helper.get("transB", 0);
+  const auto transB = helper.Get("transB", 0);
 
   uint32_t input_2_idx;
   if (transB == 0) {
@@ -1219,7 +1222,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     bias_idx = operand_indices.at(node.input(2));
   }
 
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
@@ -1295,7 +1298,7 @@ void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   else {
     ORT_THROW("UnaryOpBuilder, unknown op: " + op);
   }
-  ModelBuilder::IndexSeq input_indices;
+  std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
 }

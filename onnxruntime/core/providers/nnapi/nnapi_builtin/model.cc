@@ -69,19 +69,24 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
   return output_map_.at(name);
 }
 
-void Model::SetInputBuffer(const int32_t index, const InputOutputBuffer& input) {
-  if (!prepared_for_exe_) PrepareForExecution();
+void Model::SetInputBuffer(const int32_t index, const InputBuffer& input) {
+  PrepareForExecution();
+
   THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setInput(
       execution_, index, &input.type.operandType, input.buffer, input.type.GetOperandBlobByteSize()));
 }
 
-void Model::SetOutputBuffer(const int32_t index, const InputOutputBuffer& output) {
-  if (!prepared_for_exe_) PrepareForExecution();
+void Model::SetOutputBuffer(const int32_t index, const OutputBuffer& output) {
+  PrepareForExecution();
+
   THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setOutput(
       execution_, index, &output.type.operandType, output.buffer, output.type.GetOperandBlobByteSize()));
 }
 
 void Model::PrepareForExecution() {
+  if (prepared_for_exe_)
+    return;
+
   ORT_ENFORCE(nullptr != compilation_,
               "Error in PrepareForExecution, compilation_ is null");
 
@@ -102,23 +107,21 @@ void Model::ResetExecution() {
 }
 
 void Model::Predict() {
-  if (!prepared_for_exe_) PrepareForExecution();
+  PrepareForExecution();
 
   ANeuralNetworksEvent* event = nullptr;
+  THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
 
-  THROW_ON_ERROR(
-      nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
-
-  THROW_ON_ERROR(
-      nnapi_->ANeuralNetworksEvent_wait(event));
+  THROW_ON_ERROR(nnapi_->ANeuralNetworksEvent_wait(event));
 
   nnapi_->ANeuralNetworksEvent_free(event);
 
   ResetExecution();
 }
 
-void Model::SetInputBuffers(const std::vector<InputOutputBuffer>& inputs) {
-  if (!prepared_for_exe_) PrepareForExecution();
+void Model::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
+  PrepareForExecution();
+
   for (size_t i = 0; i < inputs.size(); i++) {
     SetInputBuffer(i, inputs[i]);
     shaper_for_exeuction_.UpdateShape(input_names_[i], inputs[i].type.dimensions);
@@ -127,8 +130,9 @@ void Model::SetInputBuffers(const std::vector<InputOutputBuffer>& inputs) {
   shaper_for_exeuction_.UpdateDynamicDimensions();
 }
 
-void Model::SetOutputBuffers(const std::vector<InputOutputBuffer>& outputs) {
-  if (!prepared_for_exe_) PrepareForExecution();
+void Model::SetOutputBuffers(const std::vector<OutputBuffer>& outputs) {
+  PrepareForExecution();
+
   for (size_t i = 0; i < outputs.size(); i++) {
     SetOutputBuffer(i, outputs[i]);
   }
@@ -160,7 +164,7 @@ Model::NNMemory::~NNMemory() {
 #else
 Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size) {
   if (name && size > 0) {
-    data_ = std::make_unique<std::vector<uint8_t> >(size);
+    data_.resize(size);
   }
 }
 #endif
