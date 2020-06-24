@@ -779,7 +779,10 @@ class Graph {
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
-  Status InlineFunction(Node& node);
+  Status InlineFunction(Node& node);  
+
+  /** Initialize function body for the given node */
+  void InitFunctionBodyForNode(Node& node);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..

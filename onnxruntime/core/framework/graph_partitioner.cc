@@ -193,22 +193,23 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   std::vector<Node*> nodes_need_inline;
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty()) {
+      graph.InitFunctionBodyForNode(node);
       auto node_func = node.GetFunctionBody();
       if (nullptr == node_func) {
         continue;
       }
-      nodes_need_inline.push_back(&node);
+      nodes_need_inline.push_back(&node);      
     }
-  }
+  }  
+
   for (auto* node : nodes_need_inline) {
     // If the node has a functionbody with no kernel and cannot be inlined
-    // it is a invalid function
+    // it is an invalid function
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
   }
 
-  // Resolve and rerun graph partition
+  // Rerun graph partition
   if (!nodes_need_inline.empty()) {
-    ORT_RETURN_IF_ERROR(graph.Resolve());
     ORT_RETURN_IF_ERROR(Partition(graph, export_dll, func_mgr));
   }
 
