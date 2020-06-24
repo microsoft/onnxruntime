@@ -349,6 +349,9 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_relu", action='store_true',
         help="Use the Relu operator implementation from the ArmNN EP.")
+    parser.add_argument(
+        "--build_micro_benchmarks", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
     return parser.parse_args()
 
 
@@ -640,7 +643,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF")
+            "ON" if args.use_horovod else "OFF"),
+        "-Donnxruntime_BUILD_BENCHMARKS=" + (
+            "ON" if args.build_micro_benchmarks else "OFF")
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -1186,13 +1191,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             try:
                 import onnx  # noqa
-                # gen_test_models.py used by onnx_test requires scipy.
-                import scipy  # noqa
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
                 log.warning(
-                    "onnx or scipy is not installed. "
+                    "onnx is not installed. "
                     "The ONNX tests will be skipped.")
                 onnx_test = False
 

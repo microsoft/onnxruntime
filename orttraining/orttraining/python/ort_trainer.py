@@ -721,9 +721,6 @@ class ORTTrainer():
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
 
-            if self._extra_postprocess:
-                self._extra_postprocess(self.onnx_model_)
-
         self._init_session()
 
     def train(self):
@@ -788,6 +785,10 @@ class ORTTrainer():
         # create new session based on updated onnx model
         self.state_dict_ = None
         self._init_session()
+
+        # load training state
+        session_state = {name:state_dict[name].numpy() for name in state_dict}
+        self.session.load_state(session_state, strict)
 
     def save_as_onnx(self, path):
         if not self.session:

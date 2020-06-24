@@ -32,8 +32,8 @@ REGISTER_DYNAMIC_QUANTIZE_MATMUL(uint8_t)
 
 static void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp) {
   // find input range min and max
-  float min = ConstEigenVectorMap<float>(data, num_of_elements).minCoeff();
-  float max = ConstEigenVectorMap<float>(data, num_of_elements).maxCoeff();
+  float min, max;
+  MlasFindMinMaxElement(data, &min, &max, num_of_elements);
 
   // ensure the input range includes zero
   min = std::min(min, 0.0f);
