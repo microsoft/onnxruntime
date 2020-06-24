@@ -1106,6 +1106,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
 }
 
 // Forward declarations of ml op kernels
+#ifndef DISABLE_ML_OPS
 namespace ml {
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 1, float, ArrayFeatureExtractor);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 1, double, ArrayFeatureExtractor);
@@ -1241,10 +1242,13 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 }  // namespace ml
+#endif
 
 static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(RegisterOnnxOperatorKernels(kernel_registry));
+#ifndef DISABLE_ML_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry));
+#endif
 #ifndef DISABLE_CONTRIB_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuContribKernels(kernel_registry));
 #endif
