@@ -1182,9 +1182,12 @@ class SymbolicShapeInference:
                         if node.op_type in ['Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat', 'Where', 'Sum']:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16']:
-                                # only support auto merge for MatMul for dim < rank-2 when rank > 2
-                                assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
-                                assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
+                                if None in out_shape:
+                                    idx = out_shape.index(None)
+                                    dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
+                                    # only support auto merge for MatMul for dim < rank-2 when rank > 2
+                                    assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
+                                    assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
                         elif node.op_type == 'Expand':
                             # auto merge for cases like Expand([min(batch, 1), min(seq, 512)], [batch, seq])
                             shapes = [self._get_shape(node, 0), self._get_value(node, 1)]
