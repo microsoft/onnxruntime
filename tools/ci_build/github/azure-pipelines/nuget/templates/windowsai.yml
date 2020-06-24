@@ -235,6 +235,11 @@ jobs:
       arguments: 'amd64'
       modifyEnvironment: true
 
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
   - task: PowerShell@2
     displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package'
     inputs:
