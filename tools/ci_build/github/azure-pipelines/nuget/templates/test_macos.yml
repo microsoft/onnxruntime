@@ -50,6 +50,7 @@ jobs:
     env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
         DisableContribOps: $(DisableContribOps)
+        DisableMlOps: $(DisableMlOps)
         IsReleaseBuild: $(IsReleaseBuild)
 
   - template: ../../templates/component-governance-component-detection-steps.yml
