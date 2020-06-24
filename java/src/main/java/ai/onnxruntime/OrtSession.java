@@ -307,9 +307,10 @@ public class OrtSession extends NativeObject {
         }
         requestedInputsArray[i] = key;
         inputHandles[i] = inputsReferences.handle(t.getValue());
-        // this handle will be valid from here until NativeInputReferences.close() which is
-        // automatically called
-        // in the try-with-resources finally.
+        /*
+         * this handle will be valid from here until NativeInputReferences.close() which is automatically called
+         * in the try-with-resources finally.
+         */
         i++;
       }
       OnnxValue[] outputValues =
