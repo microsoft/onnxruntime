@@ -265,7 +265,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
 #ifdef ENABLE_TRAINING
-        if (axes_values.empty() || mul_node.MutableInputDefs()[i]->Shape()->dim_size() == axes_values.size()) {
+        if (axes_values.empty() ||
+            mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
         }
 #else
@@ -281,7 +282,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
 #ifdef ENABLE_TRAINING
-        if (axes_values.empty() || last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == axes_values.size()) {
+        if (axes_values.empty() ||
+            last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           bias = last_add_node.MutableInputDefs()[i];
         }
 #else
