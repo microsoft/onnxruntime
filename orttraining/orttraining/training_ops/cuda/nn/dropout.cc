@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType<OrtMemTypeCPUInput>(1),
     Dropout<true>);
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(OpName)                           \
+#define REGISTER_GRADIENT_KERNEL(OpName)                                 \
   ONNX_OPERATOR_KERNEL_EX(                                               \
       OpName,                                                            \
       kMSDomain,                                                         \
@@ -36,23 +36,23 @@ ONNX_OPERATOR_KERNEL_EX(
           .InputMemoryType<OrtMemTypeCPUInput>(2),                       \
       DropoutGrad);
 
-REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad)
+REGISTER_GRADIENT_KERNEL(DropoutGrad)
 
 // Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
 // opset-12.
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad)
+REGISTER_GRADIENT_KERNEL(TrainableDropoutGrad)
 
 template <typename T>
 struct DropoutGradComputeImpl {
   void operator()(const int64_t N,
-                  const Tensor* dY,
+                  const Tensor& dY,
                   const bool* mask_data,
                   const float ratio_data,
-                  Tensor* dX) const {
+                  Tensor& dX) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
-    const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
-    CudaT* dX_data = reinterpret_cast<CudaT*>(dX->template MutableData<T>());
+    const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
+    CudaT* dX_data = reinterpret_cast<CudaT*>(dX.template MutableData<T>());
     DropoutGradientKernelImpl<CudaT>(N, dY_data, mask_data, ratio_data, dX_data);
   }
 };
@@ -77,7 +77,7 @@ Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   auto dX = context->Output(0, shape);
 
   utils::MLTypeCallDispatcher<DropoutGradComputeImpl, float, MLFloat16, double> t_disp(dY->GetElementType());
-  t_disp.Invoke(N, dY, mask_data, ratio_data, dX);
+  t_disp.Invoke(N, *dY, mask_data, ratio_data, *dX);
 
   return Status::OK();
 }
@@ -102,25 +102,25 @@ struct BiasDropoutComputeImpl {
                     const fast_divmod fdm_dim,
                     const float ratio_data,
                     PhiloxGenerator& generator,
-                    const Tensor* X,
-                    const Tensor* bias,
+                    const Tensor& X,
+                    const Tensor& bias,
                     const Tensor* residual,
-                    Tensor* Y,
+                    Tensor& Y,
                     bool* mask_data) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-    const CudaT* bias_data = reinterpret_cast<const CudaT*>(bias->template Data<T>());
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
+    const CudaT* bias_data = reinterpret_cast<const CudaT*>(bias.template Data<T>());
 
     const CudaT* residual_data = nullptr;
     if (residual) {
-      if (residual->Shape() != X->Shape()) {
+      if (residual->Shape() != X.Shape()) {
         return Status(common::ONNXRUNTIME, common::FAIL, "Residual input shape does not match X input shape.");
       }
       residual_data = reinterpret_cast<const CudaT*>(residual->template Data<T>());
     }
 
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
     BiasDropoutKernelImpl<CudaT>(prop, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
 
@@ -183,7 +183,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcherRet<Status, BiasDropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
-  return t_disp.Invoke(GetDeviceProp(), N, fdm_dim, ratio_data, generator, X, bias, residual, Y, mask_data);
+  return t_disp.Invoke(GetDeviceProp(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
 }
 
 }  // namespace cuda

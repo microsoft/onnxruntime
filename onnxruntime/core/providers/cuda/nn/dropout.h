@@ -23,17 +23,17 @@ struct GetRatioDataImpl {
 template <typename T>
 struct DropoutComputeImpl {
   void operator()(const cudaDeviceProp& prop,
-                    const int64_t N,
-                    const float ratio_data,
-                    PhiloxGenerator& generator,
-                    const Tensor* X,
-                    Tensor* Y,
-                    bool* mask_data) const {
+                  const int64_t N,
+                  const float ratio_data,
+                  PhiloxGenerator& generator,
+                  const Tensor& X,
+                  Tensor& Y,
+                  bool* mask_data) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-    
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
+
     DropoutKernelImpl<CudaT>(prop, N, ratio_data, generator, X_data, Y_data, mask_data);
   }
 };
@@ -106,7 +106,7 @@ Status Dropout<trainable_dropout>::ComputeInternal(OpKernelContext* context) con
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
-  t_disp.Invoke(GetDeviceProp(), N, ratio_data, generator, X, Y, mask_data);
+  t_disp.Invoke(GetDeviceProp(), N, ratio_data, generator, *X, *Y, mask_data);
 
   return Status::OK();
 }
