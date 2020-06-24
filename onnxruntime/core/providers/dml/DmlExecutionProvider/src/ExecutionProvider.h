@@ -16,10 +16,9 @@ using Base = Microsoft::WRL::RuntimeClass<
     TInterfaces...>;
 }
 
-using namespace Microsoft::WRL;
-
 namespace Dml
 {
+    using Microsoft::WRL::ComPtr;
     class PooledUploadHeap;
     class ReadbackHeap;
     class ExecutionContext;
