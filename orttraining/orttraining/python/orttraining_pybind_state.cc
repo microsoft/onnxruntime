@@ -151,7 +151,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // TODO reduction types
     if (parameters.use_adasum) {
 #ifdef USE_CUDA
-      opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
+      opt.adasum_reduction_type = training::AdasumReductionType::GpuHierarchical;
 #else
       opt.adasum_reduction_type = training::AdasumReductionType::CpuReduction;
 #endif
