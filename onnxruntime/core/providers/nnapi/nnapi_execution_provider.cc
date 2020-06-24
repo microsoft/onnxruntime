@@ -16,16 +16,22 @@ constexpr const char* NNAPI = "Nnapi";
 
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
-  DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return onnxruntime::make_unique<CPUAllocator>(
-                                                            onnxruntime::make_unique<OrtMemoryInfo>(NNAPI,
-                                                                                               OrtAllocatorType::OrtDeviceAllocator)); },
-                                              std::numeric_limits<size_t>::max()};
+  DeviceAllocatorRegistrationInfo device_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(device_info));
 
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
-                                                      std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_memory_info(
+      {OrtMemTypeCPUOutput,
+       [](int) {
+         return onnxruntime::make_unique<CPUAllocator>(
+             OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
+       },
+       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
 }

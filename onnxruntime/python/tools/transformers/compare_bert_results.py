@@ -19,7 +19,7 @@ import csv
 import timeit
 from datetime import datetime
 from onnx import ModelProto, TensorProto, numpy_helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from bert_test_data import get_bert_inputs, generate_test_data, output_test_data
 from bert_perf_test import create_session, onnxruntime_inference, setup_openmp_environ
 

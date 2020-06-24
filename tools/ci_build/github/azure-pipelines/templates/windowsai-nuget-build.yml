@@ -4,7 +4,7 @@ parameters:
   BuildForStore: 'false'
 
 steps:
-  - template: enable-telemetry.yml
+  - template: telemetry-steps.yml
 
   - task: UsePythonVersion@0
     inputs: 
@@ -38,21 +38,21 @@ steps:
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto'
       ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --enable_windows_store'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --enable_windows_store'
       ${{ if and(eq(parameters.BuildArch, 'x86'), eq(parameters.BuildForStore, 'false')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86'
       ${{ if and(eq(parameters.BuildArch, 'x86'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86 --enable_windows_store'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --x86 --enable_windows_store'
       ${{ if and(eq(parameters.BuildArch, 'arm64'), eq(parameters.BuildForStore, 'false')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64'
       ${{ if and(eq(parameters.BuildArch, 'arm64'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64 --enable_windows_store'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm64 --enable_windows_store'
       ${{ if and(eq(parameters.BuildArch, 'arm'), eq(parameters.BuildForStore, 'false')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm'
       ${{ if and(eq(parameters.BuildArch, 'arm'), eq(parameters.BuildForStore, 'true')) }}:
-        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry           --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm --enable_windows_store'
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --arm --enable_windows_store'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
