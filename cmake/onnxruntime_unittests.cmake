@@ -649,7 +649,17 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark ${BENCHMARK_DIR}/main.cc ${BENCHMARK_DIR}/modeltest.cc ${BENCHMARK_DIR}/pooling.cc ${BENCHMARK_DIR}/batchnorm.cc ${BENCHMARK_DIR}/batchnorm2.cc ${BENCHMARK_DIR}/tptest.cc ${BENCHMARK_DIR}/eigen.cc ${BENCHMARK_DIR}/gelu.cc ${BENCHMARK_DIR}/activation.cc)
+  add_executable(onnxruntime_benchmark
+    ${BENCHMARK_DIR}/main.cc
+    ${BENCHMARK_DIR}/modeltest.cc
+    ${BENCHMARK_DIR}/pooling.cc
+    ${BENCHMARK_DIR}/batchnorm.cc
+    ${BENCHMARK_DIR}/batchnorm2.cc
+    ${BENCHMARK_DIR}/tptest.cc
+    ${BENCHMARK_DIR}/eigen.cc
+    ${BENCHMARK_DIR}/gelu.cc
+    ${BENCHMARK_DIR}/activation.cc
+    ${BENCHMARK_DIR}/reduceminmax.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
