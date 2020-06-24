@@ -919,7 +919,6 @@ static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  std::cout << "GetCapability()........................" << std::endl;
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -967,27 +966,10 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::string onnx_string_buffer;
   model_proto.SerializeToString(&onnx_string_buffer);
 
-  std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
-  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-  ofs.close();
-
   // This is a list of initializers that migraphx considers as constants. 
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
-
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
-  if (!unsupported_nodes.empty())
-  {
-    std::cout << "=======================================" << std::endl;
-    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-    for (auto& idx : unsupported_nodes)
-    {
-      auto&& node = graph_viewer.GetNode(idx);
-      std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
-    }
-    std::cout << "=======================================" << std::endl;
-  }
-
   // Too many unsupported operators, fallback to run on CPU
   if (unsupported_nodes.size() >= 6)
   {
@@ -1114,7 +1096,6 @@ bool get_input_output_names(std::string& onnx_buffer,
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::cout << "Compile().............................." << std::endl;
   migraphx::onnx_options options;
   bool no_input_shape = false;
   // std::size_t fused_node_idx = 0;
@@ -1133,15 +1114,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     model_proto.SerializeToString(&onnx_string_buffer);
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
-
-    // dump onnx file
-    std::cout << "Run on MIGraphx.............................." << std::endl;
-    std::string name("ort_compile_");
-    name.append(fused_node->Name());
-    name.append(".onnx");
-    std::ofstream ofs(name, std::ios::binary);
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    ofs.close();
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
