@@ -143,11 +143,11 @@ abstract class NativeObject implements AutoCloseable {
       /*
        * REFERENCE COUNT UPDATE:
        */
-      if (referenceCount.getAndIncrement() == 0) {
+      if (referenceCount.getAndIncrement() <= 0) {
         /*
-         * The old reference count was 0 indicating closed, so an exception is thrown. However, it is necessary
-         * to call release() here prior to throwing, since the close() (which usually calls release()) will not
-         * be called upon exiting the try-with-resources due to the exception.
+         * The old reference count less than or equal to 0 indicating closed, so an exception is thrown.
+         * However, it is necessary to call release() here prior to throwing, since the close() (which usually
+         * calls release()) will not be called upon exiting the try-with-resources due to the exception.
          */
         release();
         throw new IllegalStateException(
