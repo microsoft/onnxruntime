@@ -13,6 +13,8 @@ class PytorchTrainerOptions(object):
 
     Although this class uses a dictionary for initialization, input validation
     is performed to make sure only supported parameters and values are stored.
+    When an invalid iknput is detected, a :py:obj:`ValueError` exception is raised
+    with details on it.
 
     Args:
         options (dict): contains all training options
@@ -224,7 +226,7 @@ class PytorchTrainerOptions(object):
             _PYTORCH_TRAINER_OPTIONS_SCHEMA)
         self._validated_opts = validator.validated(self._validated_opts)
         if self._validated_opts is None:
-            self._validated_opts = validator.errors
+            raise ValueError(f'Invalid options: {validator.errors}')
 
         # Convert dict in object
         for k, v in self._validated_opts.items():

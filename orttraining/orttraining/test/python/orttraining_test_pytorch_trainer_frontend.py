@@ -54,7 +54,7 @@ def testPytorchTrainerOptionsDefaultValues(test_input):
 def testPytorchTrainerOptionsInvalidMixedPrecisionEnabledSchema():
     '''Test an invalid input based on schema validation error message'''
 
-    expected_msg = 'must be of boolean type'
-    actual_values = pt_options.PytorchTrainerOptions(
-        {'mixed_precision': {'enabled': 1}})
-    assert actual_values.mixed_precision[0].enabled[0] == expected_msg
+    expected_msg = "Invalid options: {'mixed_precision': [{'enabled': ['must be of boolean type']}]}"
+    with pytest.raises(ValueError) as e:
+        pt_options.PytorchTrainerOptions({'mixed_precision': {'enabled': 1}})
+    assert str(e.value) == expected_msg
