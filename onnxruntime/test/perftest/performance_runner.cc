@@ -81,13 +81,13 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
     std::sort(sorted_time.begin(), sorted_time.end());
 
     auto output_stats = [&](std::ostream& ostream) {
-      ostream << "Min Latency is " << sorted_time[0] << "sec\n";
-      ostream << "Max Latency is " << sorted_time[total - 1] << "sec\n";
-      ostream << "P50 Latency is " << sorted_time[n50] << "sec\n";
-      ostream << "P90 Latency is " << sorted_time[n90] << "sec\n";
-      ostream << "P95 Latency is " << sorted_time[n95] << "sec\n";
-      ostream << "P99 Latency is " << sorted_time[n99] << "sec\n";
-      ostream << "P999 Latency is " << sorted_time[n999] << "sec" << std::endl;
+      ostream << "Min Latency: " << sorted_time[0] << " s\n";
+      ostream << "Max Latency: " << sorted_time[total - 1] << " s\n";
+      ostream << "P50 Latency: " << sorted_time[n50] << " s\n";
+      ostream << "P90 Latency: " << sorted_time[n90] << " s\n";
+      ostream << "P95 Latency: " << sorted_time[n95] << " s\n";
+      ostream << "P99 Latency: " << sorted_time[n99] << " s\n";
+      ostream << "P999 Latency: " << sorted_time[n999] << " s" << std::endl;
     };
 
     if (have_file) {
@@ -132,12 +132,16 @@ Status PerformanceRunner::Run() {
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
   std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
-  std::cout << "Session creation time cost:" << session_create_duration.count() << " s" << std::endl
-            << "Total inference time cost:" << performance_result_.total_time_cost << " s" << std::endl  // sum of time taken by each request
-            << "Total inference requests:" << performance_result_.time_costs.size() << std::endl
-            << "Average inference time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl
+  std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
+            << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
+            << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
+            << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
             // Time between start and end of run. Less than Total time cost when running requests in parallel.
-            << "Total inference run time:" << inference_duration.count() << " s" << std::endl;
+            << "Total inference run time: " << inference_duration.count() << " s\n"
+            << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
+            << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
+            << std::endl;
+
   return Status::OK();
 }
 

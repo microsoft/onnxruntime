@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// This module hosts 3 abstractions -
+// This module hosts 2 abstractions -
 
 // 1) EinsumEquationPreprocessor -
 // Holds logic to statically pre-process the equation string (i.e.) without input shapes being known
@@ -10,8 +10,6 @@
 // 2) EinsumComputePreprocessor -
 // Holds logic to process the data from  EinsumEquationPreprocessor using known input shapes to parse data required
 // during Einsum Compute(). For example, mapping subscript labels to a dimension value, etc.
-
-// 3) EinsumTypedComputeProcessor - The core logic of the Einsum operator. Invoked from Einsum Compute().
 
 #pragma once
 
@@ -90,7 +88,8 @@ class EinsumComputePreprocessor final {
  public:
   explicit EinsumComputePreprocessor(EinsumEquationPreprocessor& equation_preprocessor,
                                      const std::vector<const Tensor*>& inputs,
-                                     AllocatorPtr allocator);
+                                     AllocatorPtr allocator,
+                                     void* einsum_cuda_assets);
 
   // The main method that does all the pre-processing - must be invoked before other methods are called
   // to get relevant metadata
@@ -121,6 +120,11 @@ class EinsumComputePreprocessor final {
 
   // Get the number of subscript indices (subscript labels) in the einsum equation
   int64_t GetNumSubscriptIndices() const;
+
+  // Pass-in device specific functions
+  // (Pass-in CPU implementation or CUDA implementation function depending on the kernel using this class)
+  void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Diagonal& diagonal_func,
+                        const EinsumOp::DeviceHelpers::Transpose& transpose_func);
 
  private:
   // Process subscripts of each input and collect metadata along the way
@@ -190,11 +194,15 @@ class EinsumComputePreprocessor final {
 
   // Allocator to use for ad-hoc tensor buffer allocation
   AllocatorPtr allocator_;
-};
 
-// This method does the heavy-lifting compute portion of Einsum Compute()
-template <typename T>
-Status EinsumTypedComputeProcessor(OpKernelContext* context, AllocatorPtr allocator,
-                                   EinsumComputePreprocessor& einsum_compute_preprocessor);
+  // Device specific diagonal function
+  EinsumOp::DeviceHelpers::Diagonal device_diagonal_func_;
+
+  // Device specific transpose function
+  EinsumOp::DeviceHelpers::Transpose device_transpose_func_;
+
+  // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
+  void* einsum_ep_assets_;
+};
 
 }  // namespace onnxruntime

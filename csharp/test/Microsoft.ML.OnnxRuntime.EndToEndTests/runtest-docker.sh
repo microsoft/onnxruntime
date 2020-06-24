@@ -50,6 +50,7 @@ sudo --preserve-env docker run -h $HOSTNAME \
         -e "IsReleaseBuild=$ISRELEASEBUILD" \
         -e "PackageName=$PackageName" \
         -e "DisableContribOps=$DISABLECONTRIBOPS" \
+        -e "DisableMlOps=$DISABLEMLOPS" \
         -e "RunTestCsharp=$RunTestCsharp" \
         -e "RunTestNative=$RunTestNative" \
         "onnxruntime-$IMAGE" \

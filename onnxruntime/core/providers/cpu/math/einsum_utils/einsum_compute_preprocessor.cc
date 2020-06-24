@@ -1,285 +1,18 @@
-#include "einsum_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "einsum_compute_preprocessor.h"
 
 namespace onnxruntime {
 
-namespace EinsumOp {
-
-// This helps decide if we need to apply (and pay the cost) of a Transpose
-static bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation) {
-  ORT_ENFORCE(input_rank == permutation.size(), "The rank of the input must match permutation size for Transpose");
-
-  // No transpose required for scalars
-  if (input_rank == 0) {
-    return false;
-  }
-
-  // Weeds out cases where permutation is something like [0, 1, 2] for a 3D input and so on
-  bool transpose_required = false;
-  for (size_t i = 0; i < input_rank; ++i) {
-    if (permutation[i] != i) {
-      transpose_required = true;
-      break;
-    }
-  }
-
-  return transpose_required;
-}
-// We have an the result in an output "candidate". Now we have to copy the contents in its buffer
-// into the buffer of the actual output given to us by the execution frame
-// We need to do this because the buffer owned by the output tensor of the op could be user provided buffer
-static void CopyOutputCandidateIntoOpOutout(Tensor& output, const Tensor& candidate) {
-  ORT_ENFORCE(output.SizeInBytes() == candidate.SizeInBytes(),
-              "Einsum op: The candidate output does not match the actual output's shape");
-  // There are no string tensors - so safely use memcpy
-  memcpy(output.MutableDataRaw(), candidate.DataRaw(), candidate.SizeInBytes());
-}
-// Here we take a "candidate output"(candidate output is a tensor that is a permutation and / or a reshape away from the final output),
-// and after a few operations to get it to the required output structure, copy it to the op's output
-// The candidate output might contain dims that may not be part of the op's output (i.e.) the dims will have to be unsqueezed
-template <typename T>
-static void FinalizeOutput(const Tensor& candidate_output, const std::vector<int64_t>& ordered_subscript_indices_in_candidate,
-                           const std::vector<int64_t>& subscript_indices_to_output_indices,
-                           Tensor& output, const TensorShape& output_shape, const AllocatorPtr& allocator) {
-  ORT_ENFORCE(candidate_output.Shape().Size() == output_shape.Size(),
-              "Einsum op: The candidate output cannot be reshaped into the op's output");
-
-  const auto& output_dims = output_shape.GetDims();
-  const auto output_rank = output_dims.size();
-
-  const auto& candidate_output_dims = candidate_output.Shape().GetDims();
-  const auto candidate_output_rank = candidate_output_dims.size();
-
-  // This vector holds the shape of the candidate_output after removing the dims that have
-  // been reduced in the final output
-  std::vector<int64_t> candidate_output_shape_without_reduced_dims;
-  candidate_output_shape_without_reduced_dims.reserve(candidate_output_rank);  // reserve upper bound
-
-  // Identify the permutation required by the op's output
-  std::vector<size_t> output_permutation;
-  output_permutation.resize(output_rank, 0);
-  size_t output_iter = 0;
-
-  for (size_t iter = 0; iter < ordered_subscript_indices_in_candidate.size(); ++iter) {
-    auto output_index = subscript_indices_to_output_indices[ordered_subscript_indices_in_candidate[iter]];
-
-    // If output_index is -1, then this dimension does not show up in the op's output and has been reduced along the way
-    if (output_index != -1) {
-      output_permutation[output_index] = output_iter++;
-      candidate_output_shape_without_reduced_dims.push_back(candidate_output_dims[iter]);
-    } else {
-      // This dim doesn't show up in the op's output and hence we check if the dim has been reduced in the candidate output
-      ORT_ENFORCE(candidate_output_dims[iter] == 1, "Not all dimensions to be reduced have been reduced in the candidate output");
-    }
-  }
-
-  // Transpose to the required final output order
-  // (Identify no-op transposes and prevent triggering the transpose)
-  if (IsTransposeRequired(candidate_output_shape_without_reduced_dims.size(), output_permutation)) {
-    auto candidate_output_transposed = Transpose(candidate_output, candidate_output_shape_without_reduced_dims, output_permutation, allocator);
-    CopyOutputCandidateIntoOpOutout(output, *candidate_output_transposed);
-  } else {
-    // Copy the output candidate into the op's output
-    CopyOutputCandidateIntoOpOutout(output, candidate_output);
-  }
-}
-
-// Processes Einsum operands in a pair-wise fashion
-// Employs Transpose, ReduceSum, and MatMul under the hood
-// to achieve MatMul(a, b) and reduces (by summing) along specified axes
-template <typename T>
-static std::unique_ptr<Tensor> PairwiseOperandProcess(const Tensor& left,
-                                                      const TensorShape& left_shape_override,
-                                                      const Tensor& right,
-                                                      const TensorShape& right_shape_override,
-                                                      const std::vector<int64_t>& reduce_dims,
-                                                      concurrency::ThreadPool* tp,
-                                                      const AllocatorPtr& allocator,
-                                                      const EinsumComputePreprocessor& einsum_compute_preprocessor,
-                                                      bool is_final_pair, Tensor& final_output) {
-  // Use the provided dim overrides instead of the actual shapes of the operands
-  ORT_ENFORCE(left.Shape().Size() == left_shape_override.Size(), "The override dims are not compatible with given tensor's shape");
-  ORT_ENFORCE(right.Shape().Size() == right_shape_override.Size(), "The override dims are not compatible with given tensor's shape");
-
-  // Make copy as this may be overridden downstream
-  const auto& left_dims = left_shape_override.GetDims();
-  const auto& right_dims = right_shape_override.GetDims();
-
-  int64_t left_rank = static_cast<int64_t>(left_dims.size());
-  int64_t right_rank = static_cast<int64_t>(right_dims.size());
-
-  std::unique_ptr<Tensor> current_left;
-  std::unique_ptr<Tensor> current_right;
-
-  // If the following error condition is hit, it is most likely a pre-processing bug
-  ORT_ENFORCE(left_rank == right_rank, "Ranks of pair-wise operands must be equal");
-
-  // Following vectors hold:
-  // lro: dim indices that are present in left, right, and reduce_dims
-  // lo: dim indices that are present in left and reduce_dims
-  // ro: dim indices that are present in right and reduce_dims
-  std::vector<size_t> lro;
-  std::vector<size_t> lo;
-  std::vector<size_t> ro;
-
-  // Maintain sizes to create reshaped "views"
-  int64_t lro_size = 1;
-  int64_t lo_size = 1;
-  int64_t ro_size = 1;
-  int64_t reduced_size = 1;
-
-  size_t reduce_dims_iter = 0;
-  size_t reduce_dims_size = reduce_dims.size();
-
-  for (int64_t i = 0; i < left_rank; ++i) {
-    int64_t left_dim = left_dims[i];
-    int64_t right_dim = right_dims[i];
-
-    bool has_left_dim = left_dim > 1;    // non-trivial dimension (dim_value != 1)
-    bool has_right_dim = right_dim > 1;  // non-trivial dimension (dim_value != 1)
-
-    if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {  // This dimension is to be reduced after this pair-wise operation
-      ++reduce_dims_iter;
-      if (has_left_dim && has_right_dim) {  // Both inputs have non-trivial dim values along this dimension
-        // Both the left and right operands have non-trivial dimension value along this axis
-        // They must be equal
-        ORT_ENFORCE(left_dim == right_dim,
-                    "Einsum op: Input dimensions must be equal along an axis to be reduced across all inputs");
-        reduced_size *= left_dim;
-      } else if (has_left_dim) {  // if it is only in one of left and right, we can reduce right away
-        current_left = ReduceSum<T>(left, left_dims, {i}, allocator, tp);
-      } else if (has_right_dim) {
-        current_right = ReduceSum<T>(right, right_dims, {i}, allocator, tp);
-      }
-    } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
-      // Both the left and right operands have non-trivial dimension value along this axis
-      // They must be equal
-      if (has_left_dim && has_right_dim) {
-        ORT_ENFORCE(left_dim == right_dim, "Einsum op: Input shapes do not align");
-        lro.push_back(i);
-        lro_size *= left_dim;
-      } else if (has_left_dim) {
-        // The left operand has non-trivial dimension value
-        lo.push_back(i);
-        lo_size *= left_dim;
-      } else {
-        // The right operand may or may not have non-trivial dim value
-        // If it has trivial dim value (1),
-        // it will just form a trailing dimension for the right operand
-        ro.push_back(i);
-        ro_size *= right_dim;
-      }
-    }
-  }
-
-  // Permutate the left operand so that the axes order go like this: [lro, lo, reduce_dims, ro]
-  std::vector<size_t> left_permutation;
-  left_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
-  left_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
-  left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
-  left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
-  left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
-  if (IsTransposeRequired(current_left ? current_left->Shape().GetDims().size() : left_dims.size(),
-                          left_permutation)) {
-    current_left = Transpose(current_left ? *current_left : left,
-                             current_left ? current_left->Shape().GetDims() : left_dims,
-                             left_permutation, allocator);
-  }
-
-  // Permutate the right operand so that the axes order go like this: [lro, reduce_dims, ro, lo]
-  std::vector<size_t> right_permutation;
-  right_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
-  right_permutation.insert(right_permutation.end(), lro.begin(), lro.end());
-  right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
-  right_permutation.insert(right_permutation.end(), ro.begin(), ro.end());
-  right_permutation.insert(right_permutation.end(), lo.begin(), lo.end());
-  if (IsTransposeRequired(current_right ? current_right->Shape().GetDims().size() : right_dims.size(),
-                          right_permutation)) {
-    current_right = Transpose(current_right ? *current_right : right,
-                              current_right ? current_right->Shape().GetDims() : right_dims,
-                              right_permutation, allocator);
-  }
-
-  // Calculate output size
-  // Output shape will be determined by rules of MatMul:
-  // because we are multiplying two tensors of shapes [lro, lo, reduce_dims] , [lro, reduce_dims, ro]
-  // [dim_value of `lro` dims,
-  //  dim_value of `lo` dims,
-  // `1` for each of the `reduce_dims`,
-  // dim_value of `ro` dims]
-  std::vector<int64_t> output_dims;
-  output_dims.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
-  for (size_t i = 0; i < lro.size(); ++i) {
-    output_dims.push_back(left_dims[lro[i]]);
-  }
-  for (size_t i = 0; i < lo.size(); ++i) {
-    output_dims.push_back(left_dims[lo[i]]);
-  }
-
-  for (size_t i = 0; i < reduce_dims.size(); ++i) {
-    output_dims.push_back(1);  // reduced dimensions will have a value 1 in it
-  }
-
-  for (size_t i = 0; i < ro.size(); ++i) {
-    output_dims.push_back(right_dims[ro[i]]);
-  }
-
-  std::vector<int64_t> current_subscript_order;
-
-  // Calculate output permutation
-  // After the MatMul op, the because the two operands have been permutated,
-  // the output is permutated as well with respect to the original ordering of the axes.
-  // The permutated order will be the dims in: [lro, lo, reduced_dims, ro]
-  // Hence invert the permutation by a permutation that puts the axes in the same ordering
-  std::vector<size_t> output_permutation;
-  if (!is_final_pair) {  // If this is not the final pair, we need to permutate the result to match the pre-fixed order for the next iteration
-    output_permutation.resize(lro.size() + lo.size() + reduce_dims.size() + ro.size(), 0);
-    size_t iter = 0;
-    for (size_t i = 0; i < lro.size(); ++i) {
-      output_permutation[lro[i]] = iter++;
-    }
-    for (size_t i = 0; i < lo.size(); ++i) {
-      output_permutation[lo[i]] = iter++;
-    }
-    for (size_t i = 0; i < reduce_dims.size(); ++i) {
-      output_permutation[reduce_dims[i]] = iter++;
-    }
-    for (size_t i = 0; i < ro.size(); ++i) {
-      output_permutation[ro[i]] = iter++;
-    }
-  } else {
-    current_subscript_order.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
-    current_subscript_order.insert(current_subscript_order.end(), lro.begin(), lro.end());
-    current_subscript_order.insert(current_subscript_order.end(), lo.begin(), lo.end());
-    current_subscript_order.insert(current_subscript_order.end(), reduce_dims.begin(), reduce_dims.end());
-    current_subscript_order.insert(current_subscript_order.end(), ro.begin(), ro.end());
-  }
-
-  // Multiply the mutated inputs
-  auto output = MatMul<T>(current_left ? *current_left : left, {lro_size, lo_size, reduced_size},
-                          current_right ? *current_right : right, {lro_size, reduced_size, ro_size},
-                          allocator, tp);
-
-  output->Reshape(output_dims);
-
-  if (!is_final_pair) {  // This is not the final pair - so bring the axes order to what the inputs conformed to
-    if (IsTransposeRequired(output_dims.size(), output_permutation)) {
-      output = Transpose(*output, output_dims, output_permutation, allocator);
-    }
-  } else {  // This is the final pair - Transpose directly to the output ordering required and copy the contents to the op's output
-    FinalizeOutput<T>(*output, current_subscript_order,
-                      einsum_compute_preprocessor.GetMappedSubscriptIndicesToOutputindices(), final_output,
-                      einsum_compute_preprocessor.GetOutputDims(), allocator);
-  }
-
-  return output;
-}
-
-}  // namespace EinsumOp
-
 EinsumComputePreprocessor::EinsumComputePreprocessor(EinsumEquationPreprocessor& einsum_equation_preprocessor,
                                                      const std::vector<const Tensor*>& inputs,
-                                                     AllocatorPtr allocator)
-    : einsum_equation_preprocessor_(einsum_equation_preprocessor), inputs_(inputs), allocator_(allocator) {
+                                                     AllocatorPtr allocator,
+                                                     void* einsum_cuda_assets)
+    : einsum_equation_preprocessor_(einsum_equation_preprocessor),
+      inputs_(inputs),
+      allocator_(allocator),
+      einsum_ep_assets_(einsum_cuda_assets) {
   letter_to_index_.fill(-1);
 
   letter_to_count_.fill(0);
@@ -325,6 +58,12 @@ const std::vector<int64_t>& EinsumComputePreprocessor::GetMappedSubscriptIndices
 
 int64_t EinsumComputePreprocessor::GetNumSubscriptIndices() const {
   return num_subscript_indices_;
+}
+
+void EinsumComputePreprocessor::SetDeviceHelpers(const EinsumOp::DeviceHelpers::Diagonal& device_diagonal_func,
+                                                 const EinsumOp::DeviceHelpers::Transpose& device_transpose_func) {
+  device_diagonal_func_ = device_diagonal_func;
+  device_transpose_func_ = device_transpose_func;
 }
 
 Status EinsumComputePreprocessor::ProcessSubscripts() {
@@ -696,10 +435,10 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
         subscript_indices_to_input_index[subscript_index] = dim_index_in_preprocessed_input++;
         homogenized_input_dims[subscript_index] = input_dims[dim_index_in_original_input];
       } else {  // Diagonal needs to be parsed along the repeated axes
-        preprocessed = EinsumOp::Diagonal(preprocessed ? *preprocessed : *inputs_[input_iter],
-                                          subscript_indices_to_input_index[subscript_index],
-                                          dim_index_in_preprocessed_input,
-                                          allocator_);
+        preprocessed = device_diagonal_func_(preprocessed ? *preprocessed : *inputs_[input_iter],
+                                             subscript_indices_to_input_index[subscript_index],
+                                             dim_index_in_preprocessed_input,
+                                             allocator_);
       }
       ++dim_index_in_original_input;
     }
@@ -717,7 +456,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
                                       permutation)) {
       preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[input_iter],
                                          preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims(),
-                                         permutation, allocator_);
+                                         permutation, allocator_, einsum_ep_assets_, device_transpose_func_);
     }
 
     // pre-processed may be null if the input didn't have need diagonals parsed and didn't need transposing
@@ -734,113 +473,5 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
 
   return Status::OK();
 }
-
-// Templated core Einsum logic
-template <typename T>
-Status EinsumTypedComputeProcessor(OpKernelContext* context,
-                                   AllocatorPtr allocator,
-                                   EinsumComputePreprocessor& einsum_compute_preprocessor) {
-  const auto& mapped_indices_to_last_input_index = einsum_compute_preprocessor.GetMappedSubscriptIndicesToLastInputIndex();
-
-  auto& preprocessed_inputs = einsum_compute_preprocessor.GetPreprocessedInputTensors();
-
-  const auto& raw_inputs = einsum_compute_preprocessor.GetRawInputTensors();
-
-  const auto& homogenized_input_dims = einsum_compute_preprocessor.GetHomogenizedInputDims();
-
-  auto num_subscript_labels = einsum_compute_preprocessor.GetNumSubscriptIndices();
-
-  const auto& output_dims = einsum_compute_preprocessor.GetOutputDims();
-
-  auto* output = context->Output(0, output_dims);
-
-  auto num_inputs = context->InputCount();
-
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-
-  // Pre-process the first input so as to reduce any dims that only it has
-  std::unique_ptr<const Tensor> result;
-
-  {
-    std::vector<int64_t> reduced_dims;
-    std::vector<int64_t> preserved_dims;           // dims which were not reduced
-    std::vector<int64_t> preserved_shape;          // shape pertaining to only the dims that were preserved (not reduced)
-    reduced_dims.reserve(num_subscript_labels);    // num_subscript_labels is the upper bound. No harm in over-reserving.
-    preserved_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
-
-    for (int64_t i = 0; i < num_subscript_labels; ++i) {
-      if (mapped_indices_to_last_input_index[i] == 0) {
-        reduced_dims.push_back(i);
-      } else {
-        preserved_dims.push_back(i);
-      }
-    }
-
-    // Reduce the dims that are last seen in the first input alone
-    if (reduced_dims.size() != 0) {
-      result = EinsumOp::ReduceSum<T>(preprocessed_inputs[0] ? *preprocessed_inputs[0] : *raw_inputs[0],
-                                      homogenized_input_dims[0].GetDims(), reduced_dims, allocator, tp);
-    } else {
-      // Check if there is a pre-processed version of this input
-      // If so assign it to result
-      if (preprocessed_inputs[0]) {
-        result = std::move(preprocessed_inputs[0]);
-      }
-    }
-
-    // Finalize the output at this stage if num_inputs == 1
-    if (num_inputs == 1) {
-      // Finalize the output by applying any transpose required to get it to the required output ordering and move it to the op's output
-      EinsumOp::FinalizeOutput<T>(result ? *result : *raw_inputs[0],
-                                  preserved_dims,
-                                  einsum_compute_preprocessor.GetMappedSubscriptIndicesToOutputindices(),
-                                  *output, output_dims, allocator);
-
-      return Status::OK();
-    }
-  }
-
-  // Process the operands in a pair-wise fashion
-  {
-    bool is_final_pair = false;
-    // Keep processing each input pair-wise
-    for (int input = 1; input < num_inputs; ++input) {
-      std::vector<int64_t> reduced_dims;
-      reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
-      for (int64_t dim = 0; dim < num_subscript_labels; ++dim) {
-        if (mapped_indices_to_last_input_index[dim] == input) {
-          // This is the last input we are seeing this dimension (and it doesn't occur in the output), so reduce along the dimension
-          reduced_dims.push_back(dim);
-        }
-      }
-      if (input == num_inputs - 1) {
-        is_final_pair = true;
-      }
-      // Use either the preprocessed inputs (if it is available) or the corresponding raw inputs
-      result = EinsumOp::PairwiseOperandProcess<T>(result ? *result : *raw_inputs[0],
-                                                   result ? result->Shape() : homogenized_input_dims[0],
-                                                   preprocessed_inputs[input] ? *preprocessed_inputs[input] : *raw_inputs[input],
-                                                   homogenized_input_dims[input],
-                                                   reduced_dims, tp, allocator,
-                                                   einsum_compute_preprocessor, is_final_pair, *output);
-    }
-  }
-
-  return Status::OK();
-}
-
-// Explicit template instantiation
-
-// float
-template Status EinsumTypedComputeProcessor<float>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
-
-// int32_t
-template Status EinsumTypedComputeProcessor<int32_t>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
-
-// double
-template Status EinsumTypedComputeProcessor<double>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
-
-// int64_t
-template Status EinsumTypedComputeProcessor<int64_t>(OpKernelContext* context, AllocatorPtr allocator, EinsumComputePreprocessor& einsum_compute_preprocessor);
 
 }  // namespace onnxruntime
