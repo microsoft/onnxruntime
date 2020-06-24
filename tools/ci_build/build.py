@@ -260,6 +260,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument(
+        "--use_nnapi", action='store_true', help="Build with NNAPI support.")
+    parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
@@ -579,12 +581,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
-        "-Donnxruntime_USE_NNAPI_DNNLIBRARY=" + ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_NNAPI_DNNLIBRARY=" +
+        ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_NNAPI_BUILTIN=" +
+        ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
                 args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
-                args.android or (args.ios and is_macOS()) or args.use_rknpu)
+                args.android or (args.ios and is_macOS())
+                or args.use_rknpu or args.use_nnapi)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -597,7 +603,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             tensorrt_home if args.use_tensorrt else ""),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
-        "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
+        "-Donnxruntime_MIGRAPHX_HOME=" + \
+        (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for
         # ARM/ARM64 (no native compilation supported through this
         # script).
@@ -614,7 +621,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
              bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-        "-Donnxruntime_BUILD_FOR_WINDOWS_STORE=" + ("ON" if args.enable_windows_store else "OFF"),
+        "-Donnxruntime_BUILD_FOR_WINDOWS_STORE=" + \
+            ("ON" if args.enable_windows_store else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + (
             "ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
@@ -675,6 +683,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
     if args.android:
+        if args.use_dnnlibrary and args.use_nnapi:
+            raise BuildError(
+                "Only one of --use_dnnlibrary and --use_nnapi " +
+                "can be enabled"
+            )
+
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path
             + "/build/cmake/android.toolchain.cmake",
@@ -1017,9 +1031,11 @@ def setup_migraphx_vars(args):
 
     if (args.use_migraphx):
         print("migraphx_home = {}".format(args.migraphx_home))
-        migraphx_home = args.migraphx_home or os.getenv("MIGRAPHX_HOME") or None
+        migraphx_home = args.migraphx_home or os.getenv(
+            "MIGRAPHX_HOME") or None
 
-        migraphx_home_not_valid = (migraphx_home and not os.path.exists(migraphx_home))
+        migraphx_home_not_valid = (
+            migraphx_home and not os.path.exists(migraphx_home))
 
         if (migraphx_home_not_valid):
             raise BuildError("migraphx_home paths must be specified and valid.",
@@ -1053,8 +1069,10 @@ def adb_shell(*args, **kwargs):
 
 
 def run_training_python_frontend_tests(cwd):
-    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
-    run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
+    run_subprocess(
+        [sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+    run_subprocess(
+        [sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1067,14 +1085,17 @@ def run_training_python_frontend_e2e_tests(cwd):
     # 2. need to run test separately (not to mix between fp16
     #   and full precision runs. this need to be investigated).
     run_subprocess(
-        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_with_mrpc', '-v'],
+        [sys.executable, 'orttraining_run_glue.py',
+            'ORTGlueTest.test_bert_with_mrpc', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess(
-        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
+        [sys.executable, 'orttraining_run_glue.py',
+            'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
-    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
+    run_subprocess(
+        [sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
 
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
@@ -1115,7 +1136,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell(
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            if args.use_dnnlibrary:
+            if args.use_dnnlibrary or args.use_nnapi:
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
             else:
@@ -1129,7 +1150,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         if args.use_mklml:
-            dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
+            dll_path_list.append(os.path.join(
+                build_dir, config, "mklml", "src", "project_mklml", "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1517,10 +1539,12 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     if is_windows():
         suffix = '.exe'
 
-    expected_protoc_path = os.path.join(protoc_build_dir, config_dir, 'protoc' + suffix)
+    expected_protoc_path = os.path.join(
+        protoc_build_dir, config_dir, 'protoc' + suffix)
 
     if not os.path.exists(expected_protoc_path):
-        raise BuildError("Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
+        raise BuildError(
+            "Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
 
     return expected_protoc_path
 
@@ -1803,7 +1827,8 @@ def main():
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
-            nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "nodejs"))
+            nodejs_binding_dir = os.path.normpath(
+                os.path.join(source_dir, "nodejs"))
             run_nodejs_tests(nodejs_binding_dir)
 
     if args.build:
