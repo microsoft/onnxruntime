@@ -1115,7 +1115,113 @@ void RetrieveSendRecvOperators(
   }
 }
 
-TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
+  const auto model_path = ORT_TSTR("testdata/bert-tiny.onnx");
+
+  const size_t total_partition_count = 3;
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+
+  // evenly model in 3 partitions
+  TrainingSession::TrainingConfiguration::CutInfo cut0 = {
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("186"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("71", {"273"})};
+
+  TrainingSession::TrainingConfiguration::CutInfo cut1 = {
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("308"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("71", {"395"})};
+
+  pipe.cut_list.emplace_back(cut0);
+  pipe.cut_list.emplace_back(cut1);
+
+  TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mixed_precision_config{};
+  mixed_precision_config.use_fp16_initializers = true;
+
+  // 2 test variations - full precision and mixed precision
+  const std::vector<bool> test_with_fp32{true, false};
+  for (auto is_fp32 : test_with_fp32) {
+    // graph is partitioned into 4 parts.
+    for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
+#ifdef _WIN32
+      auto surfix = std::to_wstring(i);
+#else
+      auto surfix = std::to_string(i);
+#endif
+      PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+
+      auto config = MakeBasicTrainingConfig();
+
+      if (i == static_cast<int>(total_partition_count - 1)) {
+        config.loss_function_config = TrainingSession::TrainingConfiguration::LossFunctionConfiguration{};
+        config.loss_function_config.value().loss_function_info =
+            LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
+                             "total_loss",
+                             {/*prediction_masked_lm*/ "output1",
+                              /*prediction_next_sentence*/ "output2",
+                              /*masked_lm_positions*/ "masked_lm_positions",
+                              /*masked_lm_ids*/ "masked_lm_ids",
+                              /*masked_lm_weights*/ "masked_lm_weights",
+                              /*next_sentence_labels*/ "next_sentence_labels",
+                              /*mlm_loss*/ "mlm_loss",
+                              /*nsp_loss*/ "nsp_loss"});
+      }
+
+      config.immutable_weights = {
+          {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
+          {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
+          {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
+          {"Sub", {{0, 1.0f}}}};
+
+      config.pipeline_config = pipe;
+      config.distributed_config.world_rank = i;
+      config.distributed_config.world_size = total_partition_count;
+      config.distributed_config.local_rank = i;
+      config.distributed_config.local_size = total_partition_count;
+      config.distributed_config.data_parallel_size = 1;
+      config.distributed_config.horizontal_parallel_size = 1;
+      config.distributed_config.pipeline_parallel_size = total_partition_count;
+      config.model_with_training_graph_path = output_file;
+
+      if (!is_fp32) {
+        config.mixed_precision_config = mixed_precision_config;
+      }
+
+      PathString backprop_model_file;
+      Status status = BuildBackPropGraph(model_path, config, backprop_model_file);
+      ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+      // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
+      // which takes a const tensor input. Const cast for input in function body won't be saved in the output
+      // model so reload will run into error.
+      // For the purpose of testing mixed-precision, BuildBackPropGraph above will be sufficient to verify the
+      // partition logic and validate the graph.
+      if (is_fp32) {
+        std::shared_ptr<Model> model;
+        // Ensure the partitioned model load.
+        status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
+        ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+
+        // verify the first stage contains word embedding as input and the last stage doesn't
+        auto model_proto = model->ToProto();
+        const auto& graph_proto = model_proto.graph();
+
+        bool found_word_embedding = false;
+        for (auto& tensor : graph_proto.initializer()) {
+          if (tensor.name() == "bert.embeddings.word_embeddings.weight") {
+            found_word_embedding = true;
+          }
+        }
+        if (i == 0) {
+          ASSERT_TRUE(found_word_embedding) << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        } else {
+          ASSERT_FALSE(found_word_embedding) << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        }
+      }
+    }
+  }
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   auto model_uri = ORIGINAL_MODEL_PATH;
 
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
@@ -1143,6 +1249,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
       PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
 
       auto config = MakeBasicTrainingConfig();
+
       config.pipeline_config = pipe;
       config.distributed_config.world_rank = i;
       config.distributed_config.world_size = 3;
@@ -1178,7 +1285,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition) {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
-  PathString filename_base = ORT_TSTR("testdata/test_training_model_");
+ PathString filename_base = ORT_TSTR("testdata/test_training_model_");
 
   auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();

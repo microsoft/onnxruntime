@@ -178,8 +178,8 @@ bool NodeArg::HasTensorOrScalarShape() const {
   const auto type_case = type->value_case();
   switch (type_case) {
     case TypeProto::kTensorType:
-    case TypeProto::kSparseTensorType: 
-      // Standard tensor has a valid shape field while 
+    case TypeProto::kSparseTensorType:
+      // Standard tensor has a valid shape field while
       // scalar's shape is empty. Thus, we don't need to
       // check shape here.
       return true;
@@ -2307,6 +2307,11 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
   } else {
     repeated_field.erase(entry_to_remove);
   }
+}
+
+bool Graph::IsInitializerTensor(const std::string& name){
+  auto iter = name_to_initial_tensor_.find(name);
+  return iter != name_to_initial_tensor_.end();
 }
 
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
