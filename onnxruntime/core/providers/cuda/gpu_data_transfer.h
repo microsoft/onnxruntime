@@ -35,6 +35,4 @@ class GPUDataTransfer : public IDataTransfer {
   cudaStream_t streams_[kTotalCudaStreams];
 };
 
-void PrintTensor(const Tensor& tensor, const std::string& name, bool summary);
-
 }  // namespace onnxruntime
