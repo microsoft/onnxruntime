@@ -250,7 +250,7 @@ class InferenceSession {
     *        This should not be changed during execution of this function.
     * @return OK if success.
     */
-  common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+  virtual common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
                      std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
