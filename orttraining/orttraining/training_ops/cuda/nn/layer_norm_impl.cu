@@ -24,6 +24,7 @@
 
 #include "orttraining/training_ops/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "orttraining/training_ops/cuda/nn/custom_layer_norm.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -351,19 +352,35 @@ void HostApplyLayerNorm(
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
-
-  const dim3 threads(warp_size, 4, 1);
-  const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
-  int nshared =
-      threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<<<blocks, threads, nshared, 0>>>(
+  
+  bool custom_supported_dim = std::find(std::begin(SUPPORTED_REDUCTION_DIM), std::end(SUPPORTED_REDUCTION_DIM), n2) != std::end(SUPPORTED_REDUCTION_DIM);
+  if(!(std::is_same<T, double>::value) && custom_supported_dim){
+    launch_bias_residual_layer_norm<T,U>(
       output,
-      mean,
-      invvar,
       input,
-      n1, n2,
+      gamma,
+      beta,
       U(epsilon),
-      gamma, beta);
+      n1,
+      n2,
+      invvar,
+      mean);
+  }
+  else{
+    const dim3 threads(warp_size, 4, 1);
+    const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
+    int nshared =
+        threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
+    cuApplyLayerNorm<<<blocks, threads, nshared, 0>>>(
+        output,
+        mean,
+        invvar,
+        input,
+        n1, n2,
+        U(epsilon),
+        gamma, beta);
+  }
+
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
