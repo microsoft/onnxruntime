@@ -1146,11 +1146,18 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
         feeds.push_back(ratio_val);
       }
     }
-    feed_names.push_back("training_mode");
-    OrtValue mode_val;
-    // training_mode is by default false
-    TrainingUtil::CreateCpuMLScalar(run_options.training_mode, &mode_val, input_allocator_);
-    feeds.push_back(mode_val);
+    const std::string training_mode_string = "training_mode";
+    auto input_list = session.GetOverridableInitializers().second;
+    for (auto input : *input_list) {
+      if(input->Name().compare(training_mode_string) == 0) {
+        feed_names.push_back("training_mode");
+        OrtValue mode_val;
+        // training_mode is by default false
+        TrainingUtil::CreateCpuMLScalar(run_options.training_mode, &mode_val, input_allocator_);
+        feeds.push_back(mode_val);
+        break;
+      }
+    }
 
     PrepareFetchNamesAndFetches(EvaluateStep,
                                 fetch_names,
