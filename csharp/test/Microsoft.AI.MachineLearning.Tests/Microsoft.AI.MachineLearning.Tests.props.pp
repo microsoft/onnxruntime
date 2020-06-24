@@ -19,4 +19,7 @@
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
   </ItemGroup>
+
+  <Import Project="packages\microsoft.windows.cppwinrt\2.0.200615.7\build\native\Microsoft.Windows.CppWinRT.props" Condition="Exists('packages\microsoft.windows.cppwinrt\2.0.200615.7\build\native\Microsoft.Windows.CppWinRT.props')"/>
+  <Import Project="packages\microsoft.ai.machinelearning\[PackageVersion]\build\native\Microsoft.AI.MachineLearning.props" Condition="Exists('packages\microsoft.ai.machinelearning\[PackageVersion]\build\native\Microsoft.AI.MachineLearning.props')"/>
 </Project>

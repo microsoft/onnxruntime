@@ -259,12 +259,18 @@ jobs:
         $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests')
         $packages_dir = [System.IO.Path]::Combine($src_dir, 'packages')
         $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.vcxproj')
-        $input_packages_config = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.props.pp')
-        $output_packages_config = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.props')
 
-        $input_packages_config_content = Get-Content -Path $input_packages_config
-        $output_packages_config_content = $input_packages_config_content -replace '\[PackageVersion\]', $package_version
-        Set-Content -Path $output_packages_config -Value $output_packages_config_content
+        $input_props = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.props.pp')
+        $output_props = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.props')
+        $input_props_content = Get-Content -Path $input_props
+        $output_props_content = $input_props_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $output_props -Value $output_props_content
+
+        $input_targets = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.targets.pp')
+        $output_targets = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.targets')
+        $input_targets_content = Get-Content -Path $input_targets
+        $output_targets_content = $input_targets_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $output_targets -Value $output_targets_content
 
         nuget restore -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
