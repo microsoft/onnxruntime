@@ -1,7 +1,6 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -22,17 +21,14 @@ abstract class NativeObject implements AutoCloseable {
 
   private final long handle;
 
-  private final AtomicBoolean closed;
+  private volatile boolean closed;
 
   private final AtomicInteger referenceCount;
 
-  private final NativeReference reference;
-
   NativeObject(long handle) {
     this.handle = handle;
-    this.closed = new AtomicBoolean(false);
+    this.closed = false;
     this.referenceCount = new AtomicInteger(1);
-    this.reference = new DefaultNativeReference();
   }
 
   /**
@@ -51,15 +47,7 @@ abstract class NativeObject implements AutoCloseable {
    * @return true if closed
    */
   public final boolean isClosed() {
-    return closed.get();
-  }
-
-  /** Throw an exception if the resource is closed. */
-  final void ensureOpen() {
-    if (isClosed()) {
-      throw new IllegalStateException(
-          this.getClass().getSimpleName() + " has been closed already.");
-    }
+    return closed;
   }
 
   /**
@@ -80,12 +68,17 @@ abstract class NativeObject implements AutoCloseable {
   @Override
   public void close() {
     synchronized (handleLock) {
-      if (closed.getAndSet(true)) {
-        // already closed
+      if (closed) {
         return;
       }
-      if (!release()) {
-        // there are still references out there, so wait
+      /*
+       * REFERENCE COUNT UPDATE:
+       */
+      if (referenceCount.decrementAndGet() > 0) {
+        /*
+         * In this case, there are still references being used. Wait here until the last one informs us it is
+         * done.
+         */
         try {
           handleLock.wait();
         } catch (InterruptedException e) {
@@ -93,19 +86,12 @@ abstract class NativeObject implements AutoCloseable {
           throw new RuntimeException("close interrupted", e);
         }
       }
+      /*
+       * In the else case, there are no references out still being used.
+       */
       doClose(handle);
+      closed = true;
     }
-  }
-
-  /**
-   * Check the reference back in from use.
-   *
-   * @return whether the caller is the last user of this object.
-   */
-  private final boolean release() {
-    // if value is 0 then there are no references left.
-    // else there are still references out there.
-    return (referenceCount.decrementAndGet() == 0);
   }
 
   /** A managed reference to the backing native object. */
@@ -125,14 +111,12 @@ abstract class NativeObject implements AutoCloseable {
   /**
    * Get a reference to the backing native object. This method ensures the object is open. It is
    * recommended this be used with a try-with-resources to ensure the NativeReference is closed and
-   * does not leak out of scope.
+   * does not leak out of scope. The reference should not be shared between threads.
    *
    * @return a reference from which the backing native object's handle can be used.
    */
   final NativeReference reference() {
-    ensureOpen();
-    referenceCount.incrementAndGet();
-    return reference;
+    return new DefaultNativeReference();
   }
 
   /**
@@ -152,18 +136,54 @@ abstract class NativeObject implements AutoCloseable {
   /** A NativeReference implementation for non-null Java objects. */
   private final class DefaultNativeReference implements NativeReference {
 
+    private boolean referenceClosed;
+
+    public DefaultNativeReference() {
+      this.referenceClosed = false;
+      /*
+       * REFERENCE COUNT UPDATE:
+       */
+      if (referenceCount.getAndIncrement() == 0) {
+        /*
+         * The old reference count was 0 indicating closed, so an exception is thrown. However, it is necessary
+         * to call release() here prior to throwing, since the close() (which usually calls release()) will not
+         * be called upon exiting the try-with-resources due to the exception.
+         */
+        release();
+        throw new IllegalStateException(
+            NativeObject.this.getClass().getSimpleName() + " has been closed already.");
+      }
+    }
+
+    private void release() {
+      /*
+       * REFERENCE COUNT UPDATE:
+       */
+      if (referenceCount.decrementAndGet() == 0) {
+        /*
+         * This is the last usage, so inform the thread waiting in NativeObject.close() that we are done.
+         */
+        synchronized (handleLock) {
+          handleLock.notifyAll();
+        }
+      }
+    }
+
     @Override
     public long handle() {
+      if (referenceClosed) {
+        throw new IllegalStateException("Reference closed");
+      }
       return handle;
     }
 
     @Override
     public void close() {
-      if (release()) {
-        synchronized (handleLock) {
-          handleLock.notifyAll();
-        }
+      if (referenceClosed) {
+        throw new IllegalStateException("Reference closed");
       }
+      release();
+      referenceClosed = true;
     }
   }
 

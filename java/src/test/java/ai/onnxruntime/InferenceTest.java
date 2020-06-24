@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import ai.onnxruntime.NativeObject.NativeReference;
 import ai.onnxruntime.OnnxMl.TensorProto;
 import ai.onnxruntime.OnnxMl.TensorProto.DataType;
 import ai.onnxruntime.OrtSession.Result;
@@ -38,9 +39,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -78,6 +82,50 @@ public class InferenceTest {
     try (OrtEnvironment otherEnv2 = OrtEnvironment.getEnvironment()) {
       assertNotEquals(otherEnv2, env);
       assertFalse(otherEnv2.isClosed());
+    }
+  }
+
+  @Test
+  public void closeWaitTest() throws InterruptedException {
+    AtomicBoolean closed = new AtomicBoolean(false);
+    TestNativeObject object = new TestNativeObject(closed);
+    AtomicBoolean done = new AtomicBoolean(false);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
+    executor.submit(
+        () -> {
+          try (NativeReference ref = object.reference()) {
+            queue.add("notification");
+            assertEquals(1234L, ref.handle());
+            Thread.sleep(100L);
+            done.set(true);
+          } catch (InterruptedException e) {
+            // pass
+          }
+        });
+    // wait until reference is used
+    assertEquals("notification", queue.take());
+    assertFalse(done.get());
+    assertFalse(closed.get());
+    // this will wait until the reference is done
+    object.close();
+    assertTrue(done.get());
+    assertTrue(closed.get());
+    executor.shutdown();
+    executor.awaitTermination(10, TimeUnit.SECONDS);
+  }
+
+  private static class TestNativeObject extends NativeObject {
+    private final AtomicBoolean closed;
+
+    TestNativeObject(AtomicBoolean closed) {
+      super(1234L);
+      this.closed = closed;
+    }
+
+    @Override
+    void doClose(long handle) {
+      closed.set(true);
     }
   }
 
