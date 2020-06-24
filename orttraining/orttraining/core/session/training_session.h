@@ -301,11 +301,17 @@ class TrainingSession : public InferenceSession {
    * @return The list of feed names.
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
+
   /** Override Run function in InferenceSession to inject some training-specific logics **/
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
   common::Status Run(IOBinding& io_binding) override;
+
+  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
+
+  common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+                     std::vector<OrtValue>* p_fetches) override;
 
  private:
   /** Configures the loss function.
@@ -446,7 +452,7 @@ class TrainingSession : public InferenceSession {
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 
-  common::Status SetDropoutEvalFeedNames();
+  common::Status SetEvalFeedNames();
 
   NameMLValMap GetWeights() const;
 
@@ -477,8 +483,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
-
-  GradientGraphConfiguration gradient_graph_config_;
+  const std::string training_mode_string_ = "training_mode";
 };
 }  // namespace training
 }  // namespace onnxruntime
