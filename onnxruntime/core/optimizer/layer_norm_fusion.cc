@@ -84,11 +84,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       if (axes_values.size() > 1) {
         sort(axes_values.begin(), axes_values.end());
+        bool contingous = true;
         for (size_t i = 0; i < axes_values.size() - 1; i++) {
           if (axes_values[i] + 1 != axes_values[i + 1]) {
-            continue;
+            contingous = false;
+            break;
           }
         }
+        if (!contingous)
+          continue;
       }
     }
 
@@ -293,11 +297,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     // Scale and bias must have the same dimension.
+    bool same_dim = true;
     for (int i = 0; i < scale->Shape()->dim_size(); i++) {
       if (scale->Shape()->dim(i).dim_value() != bias->Shape()->dim(i).dim_value()) {
-        continue;
+        same_dim = false;
+        break;
       }
     }
+    if (!same_dim)
+      continue;
 
     const std::vector<NodeArg*> layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0], scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
