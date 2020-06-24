@@ -389,7 +389,14 @@ static bool can_eval_input_shape(const Node* node, const InitializedTensorSet& i
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  if (optype == "AveragePool") {
+  if (optype == "ArgMax" or optype == "ArgMin") {
+    const auto& attributes = node->GetAttributes();
+    // we do not support select_last_index = 1 for now
+    const auto sli_attr = attributes.find("select_last_index");
+    if (sli_attr != attributes.end() && sli_attr->second.i() != 0) {
+      return true;
+    }
+  } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
     const auto ceil_attr = attributes.find("ceil_mode");
