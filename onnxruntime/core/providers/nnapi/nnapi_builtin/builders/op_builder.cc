@@ -123,6 +123,17 @@ Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
     return shape;
   }
 
+  for (const auto& tensor : model_proto.graph().initializer()) {
+    if (tensor.name() != name)
+      continue;
+
+    Shaper::Shape shape;
+    for (auto dim : tensor.dims())
+      shape.push_back(SafeInt<uint32_t>(dim));
+
+    return shape;
+  }
+
   for (const auto& value_info : model_proto.graph().value_info()) {
     if (value_info.name() != name)
       continue;
@@ -1050,7 +1061,7 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(
     ModelBuilder& model_builder,
     const ONNX_NAMESPACE::NodeProto& node) {
   const auto input_size = GetShape(model_builder.GetOnnxModel(), node.input(0)).size();
-  if (input_size != 2 || input_size != 4) {
+  if (input_size != 2 && input_size != 4) {
     LOGS_DEFAULT(VERBOSE) << "SoftMax only support 2d/4d shape, input is "
                           << input_size << "d shape";
     return false;
@@ -1152,15 +1163,16 @@ bool GemmOpBuilder::IsOpSupportedImpl(
     }
 
     if (transB == 0 && !Contains(initializers, node.input(1))) {
-      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known if transB != 1";
+      LOGS_DEFAULT(VERBOSE) << "B of Gemm must be known if transB != 1";
       return false;
     }
 
     if (node.input_size() == 3) {
       const auto b_shape = GetShape(model_builder.GetOnnxModel(), node.input(1));
       const auto c_shape = GetShape(model_builder.GetOnnxModel(), node.input(2));
-      if (c_shape.size() != 1 || c_shape[0] != b_shape[0]) {
-        LOGS_DEFAULT(VERBOSE) << "C of MatMul must be a vector of b_shape[0]";
+      if (c_shape.size() != 1 ||
+          c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]";
         return false;
       }
     }

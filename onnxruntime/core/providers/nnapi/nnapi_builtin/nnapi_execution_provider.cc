@@ -16,12 +16,12 @@ constexpr const char* NNAPI = "Nnapi";
 
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
-  DeviceAllocatorRegistrationInfo device_info{
-      OrtMemTypeDefault,
-      [](int) { return onnxruntime::make_unique<CPUAllocator>(
-                    onnxruntime::make_unique<OrtMemoryInfo>(
-                        NNAPI, OrtAllocatorType::OrtDeviceAllocator)); },
-      std::numeric_limits<size_t>::max()};
+  DeviceAllocatorRegistrationInfo device_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(device_info));
 
@@ -29,8 +29,7 @@ NnapiExecutionProvider::NnapiExecutionProvider()
       {OrtMemTypeCPUOutput,
        [](int) {
          return onnxruntime::make_unique<CPUAllocator>(
-             onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator,
-                                                     OrtDevice(), 0, OrtMemTypeCPUOutput));
+             OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
        },
        std::numeric_limits<size_t>::max()});
 
@@ -134,37 +133,42 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       }
 
       // For output searching, there is a special case:
-      // If node's OutputEdges are more than its outputs, meaning certain output is used more than once,
+      // If certain output is used more than once,
       // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
       // to the output list
-      if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
-        for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-          const auto& node_idx = it->GetNode().Index();
-          const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
 
-          if (node_set.find(node_idx) != node_set.end()) {
-            const auto& iter = fused_inputs.find(output);
-            if (iter != fused_inputs.end()) {
-              fused_inputs.erase(iter);
-              erased.insert(output);
-            } else if (erased.find(output) == erased.end()) {
-              fused_outputs[output] = output_order++;
-            }
-          } else {
-            fused_outputs_to_add[output] = output_order++;
-          }
-        }
-      } else {
-        for (const auto& output : node->OutputDefs()) {
-          const auto& it = fused_inputs.find(output);
-          if (it != fused_inputs.end()) {
-            fused_inputs.erase(it);
+      std::unordered_set<const NodeArg*> processed_outputs;
+      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        const auto& node_idx = it->GetNode().Index();
+        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+
+        if (node_set.find(node_idx) != node_set.end()) {
+          const auto& iter = fused_inputs.find(output);
+          if (iter != fused_inputs.end()) {
+            fused_inputs.erase(iter);
             erased.insert(output);
-          }
-          // only when output is neither in input list nor erased list, add the output to output list
-          else if (erased.find(output) == erased.end()) {
+          } else if (erased.find(output) == erased.end()) {
             fused_outputs[output] = output_order++;
           }
+        } else {
+          fused_outputs_to_add[output] = output_order++;
+        }
+
+        processed_outputs.insert(output);
+      }
+
+      for (const auto& output : node->OutputDefs()) {
+        if (processed_outputs.find(output) != processed_outputs.end())
+          continue;
+
+        const auto& iter = fused_inputs.find(output);
+        if (iter != fused_inputs.end()) {
+          fused_inputs.erase(iter);
+          erased.insert(output);
+        }
+        // only when output is neither in input list nor erased list, add the output to output list
+        else if (erased.find(output) == erased.end()) {
+          fused_outputs[output] = output_order++;
         }
       }
     }
