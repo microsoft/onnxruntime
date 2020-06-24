@@ -76,26 +76,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         !IsSupportedDataType(reduce_mean_node)) {
       continue;
     }
-
-    // verify axes is contiguous if more than one elements
-    const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::vector<int64_t> axes_values;
-    if (attributes.find("axes") != attributes.end()) {
-      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-      if (axes_values.size() > 1) {
-        sort(axes_values.begin(), axes_values.end());
-        bool contingous = true;
-        for (size_t i = 0; i < axes_values.size() - 1; i++) {
-          if (axes_values[i] + 1 != axes_values[i + 1]) {
-            contingous = false;
-            break;
-          }
-        }
-        if (!contingous)
-          continue;
-      }
-    }
-
     nodes_to_remove.push_back(reduce_mean_node);
 
     // Loop through the children of current "ReduceMean" node. See if they match ["Sub"] or ["Sub", "Sub"]
@@ -255,12 +235,30 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     nodes_to_remove.push_back(last_add_node);
 
-    // Get the inputs for the new LayerNormalization node.
-    NodeArg* scale = nullptr;
-    NodeArg* bias = nullptr;
+    // verify axes is contiguous if more than one elements
+    const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
+    std::vector<int64_t> axes_values;
+    if (attributes.find("axes") != attributes.end()) {
+      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      if (axes_values.size() > 1) {
+        sort(axes_values.begin(), axes_values.end());
+        bool contingous = true;
+        for (size_t i = 0; i < axes_values.size() - 1; i++) {
+          if (axes_values[i] + 1 != axes_values[i + 1]) {
+            contingous = false;
+            break;
+          }
+        }
+        if (!contingous)
+          continue;
+      }
+    }
 
+    // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
+    NodeArg* scale = nullptr;
+    NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
