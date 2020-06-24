@@ -47,7 +47,7 @@ public final class OnnxModelMetadata {
     this.description = description == null ? "" : description;
     this.version = version;
     if (customMetadataArray != null && customMetadataArray.length > 0) {
-      this.customMetadata = new HashMap<>();
+      this.customMetadata = new HashMap<>(customMetadataArray.length);
       if (customMetadataArray.length % 2 == 1) {
         throw new IllegalStateException(
             "Asked for keys and values, but received an odd number of elements.");
@@ -105,8 +105,12 @@ public final class OnnxModelMetadata {
 
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
     OnnxModelMetadata that = (OnnxModelMetadata) o;
     return version == that.version
         && producerName.equals(that.producerName)

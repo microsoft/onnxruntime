@@ -127,9 +127,9 @@ public class OnnxMap extends NativeObject implements OnnxValue {
    */
   @Override
   public Map<Object, Object> getValue() throws OrtException {
-    HashMap<Object, Object> map = new HashMap<>();
     Object[] keys = getMapKeys();
     Object[] values = getMapValues();
+    HashMap<Object, Object> map = new HashMap<>(keys.length);
     for (int i = 0; i < keys.length; i++) {
       map.put(keys[i], values[i]);
     }

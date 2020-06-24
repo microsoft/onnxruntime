@@ -399,7 +399,7 @@ public class OrtSession extends NativeObject {
    * @return A Map from String to NodeInfo.
    */
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
-    Map<String, NodeInfo> output = new LinkedHashMap<>();
+    Map<String, NodeInfo> output = new LinkedHashMap<>(infos.length);
 
     for (NodeInfo info : infos) {
       output.put(info.getName(), info);
@@ -1099,8 +1099,8 @@ public class OrtSession extends NativeObject {
      * @param values The output values.
      */
     Result(String[] names, OnnxValue[] values) {
-      map = new LinkedHashMap<>();
-      list = new ArrayList<>();
+      map = new LinkedHashMap<>(names.length);
+      list = new ArrayList<>(names.length);
 
       if (names.length != values.length) {
         throw new IllegalArgumentException(
