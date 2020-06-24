@@ -746,120 +746,62 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
-  std::vector<Dimension> data_shape = GetShape(I(0));
   std::vector<NodeDef> result;
-
   auto attributes = SrcNodeAttributes();
-  std::vector<int64_t> axes_values(data_shape.size());
-  if (attributes.find("axes") != attributes.end()) {
-    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    for (size_t i = 0; i < axes_values.size(); i++) {
-      if (axes_values[i] < 0) {
-        axes_values[i] = data_shape.size() + axes_values[i];
-      }
-    }
-  } else {
-    std::iota(std::begin(axes_values), std::end(axes_values), 0);
-  }
-
   bool keepdims = true;
   if (attributes.find("keepdims") != attributes.end() &&
       attributes.at("keepdims").has_i()) {
     keepdims = static_cast<bool>(attributes.at("keepdims").i());
   }
 
-  ArgDef unsqueezed_Grad = GO(0);
-  if (!keepdims) {
-    unsqueezed_Grad = IA("Unqueezed_Grad");
-    result.push_back(
-        NodeDef("Unsqueeze",
-                {GO(0)},
-                {unsqueezed_Grad},
-                {MakeAttribute("axes", axes_values)}));
+  ArgDef grad = GO(0);
+  if (!keepdims && attributes.find("axes") != attributes.end()) {
+    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    grad = IA("Unqueezed_Grad");
+    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
   }
 
-  std::vector<int64_t> repeats(data_shape.size(), 1);
-  int64_t scale = 1;
-  for (int64_t axis : axes_values) {
-    if (data_shape[axis].has_dim_value()) {
-      auto dim_value = data_shape[axis].dim_value();
-      repeats[axis] = dim_value;
-      scale *= dim_value;
-    } else {
-      ORT_THROW("Error: can't infer scale for ReduceMeanGrad");
-    }
-  }
-
-  NodeDef repeats_node = ConstantValueNode(repeats, Name("repeats"));
-  ArgDef REPEATS = repeats_node.output_args[0];
-  result.push_back(repeats_node);
+  const int64_t type_float = static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  result.push_back(NodeDef("Size", {I(0)}, {IA("Scale_Denominator")}));
   result.push_back(
-      NodeDef("Tile",
-              {unsqueezed_Grad, REPEATS},
-              {IA("Tiled_Grad", IType(0))}));
-
-  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
-  ArgDef SCALE = scale_node.output_args[0];
-  result.push_back(scale_node);
+      NodeDef("Cast",
+              {IA("Scale_Denominator")},
+              {IA("Casted_Scale_Denominator")},
+              {MakeAttribute("to", type_float)}));
+  result.push_back(NodeDef("Size", {GO(0)}, {IA("Scale_Numerator")}));
   result.push_back(
-      NodeDef("Mul",
-              {IA("Tiled_Grad"), SCALE},
-              {GI(0)}));
-
+      NodeDef("Cast",
+              {IA("Scale_Numerator")},
+              {IA("Casted_Scale_Numerator")},
+              {MakeAttribute("to", type_float)}));
+  result.push_back(
+      NodeDef("Div",
+              {IA("Casted_Scale_Numerator"), IA("Casted_Scale_Denominator")},
+              {IA("Scale")}));
+  result.push_back(NodeDef("Mul", {grad, IA("Scale")}, {IA("Scaled_Grad")}));
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
+  result.push_back(NodeDef("Expand", {IA("Scaled_Grad"), IA("Shaped_X")}, {GI(0)}));
   return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
-  std::vector<Dimension> data_shape = GetShape(I(0));
   std::vector<NodeDef> result;
-
   auto attributes = SrcNodeAttributes();
-  std::vector<int64_t> axes_values(data_shape.size());
-  if (attributes.find("axes") != attributes.end()) {
-    axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    for (size_t i = 0; i < axes_values.size(); i++) {
-      if (axes_values[i] < 0) {
-        axes_values[i] = data_shape.size() + axes_values[i];
-      }
-    }
-  } else {
-    std::iota(std::begin(axes_values), std::end(axes_values), 0);
-  }
-
   bool keepdims = true;
   if (attributes.find("keepdims") != attributes.end() &&
       attributes.at("keepdims").has_i()) {
     keepdims = static_cast<bool>(attributes.at("keepdims").i());
   }
 
-  ArgDef unsqueezed_Grad = GO(0);
-  if (!keepdims) {
-    unsqueezed_Grad = IA("Unqueezed_Grad");
-    result.push_back(
-        NodeDef("Unsqueeze",
-                {GO(0)},
-                {unsqueezed_Grad},
-                {MakeAttribute("axes", axes_values)}));
+  ArgDef grad = GO(0);
+  if (!keepdims && attributes.find("axes") != attributes.end()) {
+    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+    grad = IA("Unqueezed_Grad");
+    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
   }
 
-  std::vector<int64_t> repeats(data_shape.size(), 1);
-  for (int64_t axis : axes_values) {
-    if (data_shape[axis].has_dim_value()) {
-      auto dim_value = data_shape[axis].dim_value();
-      repeats[axis] = dim_value;
-    } else {
-      ORT_THROW("Error: can't infer repeats value for ReduceSumGrad");
-    }
-  }
-
-  NodeDef repeats_node = ConstantValueNode(repeats, Name("repeats"));
-  ArgDef REPEATS = repeats_node.output_args[0];
-  result.push_back(repeats_node);
-  result.push_back(
-      NodeDef("Tile",
-              {unsqueezed_Grad, REPEATS},
-              {GI(0)}));
-
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
+  result.push_back(NodeDef("Expand", {grad, IA("Shaped_X")}, {GI(0)}));
   return result;
 }
 
