@@ -307,10 +307,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
                          model_input_type.operandType.scale,
                          model_input_type.operandType.zeroPoint);
 
-        ORT_ENFORCE(type.dimensions == model_input_type.dimensions ||
-                        model_input_type.GetOperandBlobByteSize() == 0,
-                    "The actual input dimanesions should match the model input "
-                    "dimensions, or model input dimension has 0 (dynamic)");
+        if (type.dimensions != model_input_type.dimensions && model_input_type.GetOperandBlobByteSize() != 0) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "The actual input dimanesions should match the model input "
+                        "dimensions, or model input dimension has 0 (dynamic)");
+        }
 
         const void* inputBuffer = ort.GetTensorData<void>(input_tensor);
         inputs.push_back({inputBuffer, std::move(type)});
@@ -346,8 +347,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
             break;
         }
 
-        ORT_ENFORCE(model_output_type.GetOperandBlobByteSize() != 0,
-                    "We do not support dynamic output shape for now");
+        if (model_output_type.GetOperandBlobByteSize() == 0) {
+          return Status(common::ONNXRUNTIME, common::FAIL, "We do not support dynamic output shape for now");
+        }
 
         outputs.push_back({output_buffer, std::move(model_output_type)});
       }
