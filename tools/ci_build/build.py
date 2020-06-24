@@ -1020,6 +1020,7 @@ def setup_tensorrt_vars(args):
 
     return tensorrt_home
 
+
 def setup_migraphx_vars(args):
 
     migraphx_home = None
