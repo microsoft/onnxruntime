@@ -294,6 +294,9 @@ def parse_arguments():
         "--disable_contrib_ops", action='store_true',
         help="Disable contrib ops (reduces binary size)")
     parser.add_argument(
+        "--disable_ml_ops", action='store_true',
+        help="Disable traditional ML ops (reduces binary size)")
+    parser.add_argument(
         "--skip_onnx_tests", action='store_true', help="Explicitly disable "
         "all onnx related tests. Note: Use --skip_tests to skip all tests.")
     parser.add_argument(
@@ -346,6 +349,9 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_relu", action='store_true',
         help="Use the Relu operator implementation from the ArmNN EP.")
+    parser.add_argument(
+        "--build_micro_benchmarks", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
     return parser.parse_args()
 
 
@@ -605,6 +611,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.arm64 or args.arm else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + (
             "ON" if args.disable_contrib_ops else "OFF"),
+        "-Donnxruntime_DISABLE_ML_OPS=" + (
+            "ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
@@ -635,7 +643,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF")
+            "ON" if args.use_horovod else "OFF"),
+        "-Donnxruntime_BUILD_BENCHMARKS=" + (
+            "ON" if args.build_micro_benchmarks else "OFF")
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -1172,19 +1182,20 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
+            if not args.disable_ml_ops:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
+
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
 
             try:
                 import onnx  # noqa
-                # gen_test_models.py used by onnx_test requires scipy.
-                import scipy  # noqa
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
                 log.warning(
-                    "onnx or scipy is not installed. "
+                    "onnx is not installed. "
                     "The ONNX tests will be skipped.")
                 onnx_test = False
 
@@ -1192,6 +1203,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess(
                     [sys.executable, 'onnxruntime_test_python_backend.py'],
                     cwd=cwd, dll_path=dll_path)
+
+                if not args.disable_ml_ops:
+                    run_subprocess(
+                        [sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
+                        cwd=cwd, dll_path=dll_path)
+
                 run_subprocess(
                     [sys.executable,
                      os.path.join(source_dir, 'onnxruntime', 'test', 'onnx',

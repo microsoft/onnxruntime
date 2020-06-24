@@ -118,8 +118,8 @@ struct Provider_IAllocator {
   void operator=(const Provider_IAllocator& v) = delete;
 };
 
+// This can probably be deleted
 struct Provider_IDeviceAllocator : Provider_IAllocator {
-  virtual bool AllowsArena() const = 0;
 };
 
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
@@ -412,22 +412,27 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0) = 0;
+  virtual Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
+                                                int16_t device_id = 0, bool use_arena = true) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
   virtual std::unique_ptr<ONNX_NAMESPACE::Provider_AttributeProto> AttributeProto_Create() = 0;
 
-  virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
+  virtual std::unique_ptr<Provider_OrtMemoryInfo> OrtMemoryInfo_Create(
+      const char* name_, OrtAllocatorType type_, Provider_OrtDevice* device_, int id_, OrtMemType mem_type_) = 0;
+
   virtual std::unique_ptr<Provider_KernelDefBuilder> KernelDefBuilder_Create() = 0;
 
   virtual std::shared_ptr<Provider_KernelRegistry> KernelRegistry_Create() = 0;
 
   virtual std::unique_ptr<Provider_IndexedSubGraph> IndexedSubGraph_Create() = 0;
 
-  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
-  virtual Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) = 0;
-  virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
+  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
+      std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
+
+  virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(
+      Provider_IExecutionProvider* outer, const std::string& type) = 0;
 
   MLDataType (*DataTypeImpl_GetType_Tensor)();
   MLDataType (*DataTypeImpl_GetType_float)();
@@ -436,7 +441,8 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
-  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) = 0;
+  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
+                               const char* file, const char* function, uint32_t line) = 0;
 
   virtual bool CPU_HasAVX2() = 0;
   virtual bool CPU_HasAVX512f() = 0;

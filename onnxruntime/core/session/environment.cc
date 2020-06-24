@@ -91,8 +91,14 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       dml::RegisterDmlSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
+
+#ifndef DISABLE_ML_OPS
       RegisterOnnxMLOperatorSetSchema();
+#endif
+
+#ifdef ENABLE_TRAINING
       RegisterOnnxTrainingOperatorSetSchema();
+#endif
 
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/graph/schema_registry.h>
-#include "test/providers/provider_test_utils.h" //For ASSERT_STATUS_OK
+#include "test/providers/provider_test_utils.h"  //For ASSERT_STATUS_OK
 #include "gtest/gtest.h"
 
 ONNX_NAMESPACE::OpSchema CreateTestSchema(const char* name, const char* domain, int sinceVersion) {
@@ -25,6 +25,7 @@ TEST(SchemaRegistryManager, search_memcpy_op_wrong_version) {
   ASSERT_EQ(manager.GetSchema("MemcpyToHost", 9999, ""), nullptr);
 }
 
+#ifndef DISABLE_ML_OPS
 TEST(SchemaRegistryManager, search_onnxml_op) {
   SchemaRegistryManager manager;
   ASSERT_NE(manager.GetSchema("ArrayFeatureExtractor", 1, "ai.onnx.ml"), nullptr);
@@ -34,6 +35,7 @@ TEST(SchemaRegistryManager, search_onnxml_op_wrong_opset_version) {
   SchemaRegistryManager manager;
   ASSERT_EQ(manager.GetSchema("ArrayFeatureExtractor", 99, "ai.onnx.ml"), nullptr);
 }
+#endif
 
 TEST(SchemaRegistryManager, search_custom_op_wrong_opset_version) {
   SchemaRegistryManager manager;

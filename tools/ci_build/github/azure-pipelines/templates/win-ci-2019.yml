@@ -80,7 +80,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy scipy
+       python -m pip install -q pyopenssl setuptools wheel numpy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
