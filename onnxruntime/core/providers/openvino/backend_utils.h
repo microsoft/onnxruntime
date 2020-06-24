@@ -6,6 +6,7 @@
 #include <inference_engine.hpp>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "contexts.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -22,6 +23,8 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::shared_ptr<InferenceEngine::CNNNetwork>
   CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, std::string device_id,
                    InferenceEngine::Precision precision);
+
+int GetFirstAvailableDevice(GlobalContext& global_context);
 
 InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
