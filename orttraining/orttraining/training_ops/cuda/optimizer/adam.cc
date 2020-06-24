@@ -66,8 +66,6 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
   const Tensor* gradient_norm_tensor = ctx->Input<Tensor>(8);
   const Tensor* do_update_tensor = ctx->Input<Tensor>(9);
 
-  // PrintTensor(G, "G: " + ctx->NodeName(), true);
-
   Tensor& NS = *ctx->Output(0, S.Shape());
   Tensor& NM1 = *ctx->Output(1, M1.Shape());
   Tensor& NM2 = *ctx->Output(2, M2.Shape());
@@ -147,8 +145,6 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
       W.Shape().Size());
 
   *(S_out) = *(S_in) + 1;
-
-  // PrintTensor(*NW, "NW: " + ctx->NodeName(), true);
 
   return Status::OK();
 }

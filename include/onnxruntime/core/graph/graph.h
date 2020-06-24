@@ -904,8 +904,6 @@ class Graph {
 
   virtual ~Graph();
 
-  const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 

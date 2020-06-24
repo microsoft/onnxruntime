@@ -87,16 +87,6 @@ void PrintTensor(const Tensor& tensor, const std::string& name, bool summary)
       }
       std::cout << name << ": " << std::setprecision(std::numeric_limits<float>::digits10 + 3) << sum << " sq: "<< sum_sq << std::endl;
     } else {
-      // save the data
-      std::string filename = name;
-      std::replace(filename.begin(), filename.end(), ':', '-');
-      std::replace(filename.begin(), filename.end(), ' ', '-');
-      std::replace(filename.begin(), filename.end(), '/', '-');
-
-      std::ofstream wf(std::string("/bert_ort/liqun/test_out/") + filename + ".dat", std::ios::out | std::ios::binary);
-      wf.write((char *)(&tensor_cpu[0]), tensor_cpu.size() * sizeof(float));
-      wf.close();
-
       std::cout << name << ": " << std::endl;
       const TensorShape shape{tensor.Shape()};
       if (tensor_cpu.size() <= 64 || shape.NumDimensions() == 1) {

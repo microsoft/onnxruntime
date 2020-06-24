@@ -423,13 +423,6 @@ static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& in
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
 
-      // if(ctx->NodeName() == "Add_53_Grad/ReduceSum_1") {
-      // // if(ctx->NodeName() == "Add_151_Grad/ReduceSum_1") {
-      //   PrintTensor(*X, "Reduce-X-all: " + ctx->NodeName(), false);
-      //   PrintTensor(*Y, "Reduce-Y-all: " + ctx->NodeName(), false);
-      //   PrintTensor(*X, "Reduce-X: " + ctx->NodeName(), true);
-      //   PrintTensor(*Y, "Reduce-Y: " + ctx->NodeName(), true);
-      // }
       return Status::OK();
     }
   }
@@ -598,13 +591,6 @@ static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& in
                     output_count);
   }
 
-  // if(ctx->NodeName() == "Add_53_Grad/ReduceSum_1") {
-  // if(ctx->NodeName() == "Add_151_Grad/ReduceSum_1") {
-    // PrintTensor(*X, "Reduce-X-all: " + ctx->NodeName(), false);
-    // PrintTensor(*Y, "Reduce-Y-all: " + ctx->NodeName(), false);
-    // PrintTensor(*X, "Reduce-X: " + ctx->NodeName(), true);
-    // PrintTensor(*Y, "Reduce-Y: " + ctx->NodeName(), true);
-  // }
   return Status::OK();
 }
 

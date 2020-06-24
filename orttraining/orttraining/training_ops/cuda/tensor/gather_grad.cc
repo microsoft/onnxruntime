@@ -107,13 +107,6 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
       num_weights, stride, num_inputs, param_itrs,
       *grad, *indices, *output);
 
-  // if(context->NodeName() == "Gather_30_Grad/GatherGrad_1") {
-  //   PrintTensor(*shape, "GatherGrad-shape: " + context->NodeName(), true);
-  //   PrintTensor(*indices, "GatherGrad-indices: " + context->NodeName(), true);
-  //   PrintTensor(*grad, "GatherGrad-grad: " + context->NodeName(), true);
-  //   PrintTensor(*output, "GatherGrad-output: " + context->NodeName(), true);
-  // }
-
   return status;
 }
 
