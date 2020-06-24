@@ -102,12 +102,10 @@ Status GatherGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t num_inputs = data_shape.SizeFromDimension(axis);
   const int64_t param_itrs = data_shape.SizeFromDimension(0) / num_inputs;
 
-  Status status = DispatchToGatherGradImpl(
+  return DispatchToGatherGradImpl(
       T_type, Tin_type, *this,
       num_weights, stride, num_inputs, param_itrs,
       *grad, *indices, *output);
-
-  return status;
 }
 
 }  // namespace cuda

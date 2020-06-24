@@ -138,7 +138,6 @@ class ORTGlueTest(unittest.TestCase):
             cache_dir=model_args.cache_dir,
         )
 
-        # config.num_hidden_layers = 1
         model = AutoModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
