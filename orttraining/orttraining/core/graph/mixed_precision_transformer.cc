@@ -66,22 +66,22 @@ bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::s
   }
 }
 
-static const std::string Loss_Scale_Input = "loss_scale";
+static const std::string loss_scale_input = "loss_scale";
 
-static const std::unordered_set<std::string> Loss_Subgraph_Entry_Nodes = {
+static const std::unordered_set<std::string> loss_subgraph_entry_nodes = {
     "SparseSoftmaxCrossEntropy",
     "SoftmaxCrossEntropyLoss"};
 
-static const std::unordered_set<std::string> Loss_Subgraph_Exit_Nodes = {
+static const std::unordered_set<std::string> loss_subgraph_exit_nodes = {
     "SparseSoftmaxCrossEntropyGrad",
     "SoftmaxCrossEntropyLossGrad"};
 
 static bool IsLossSubgraphEntryNode(const Node* node) {
-  return Loss_Subgraph_Entry_Nodes.find(node->OpType()) != Loss_Subgraph_Entry_Nodes.cend();
+  return loss_subgraph_entry_nodes.find(node->OpType()) != loss_subgraph_entry_nodes.cend();
 }
 
 static bool IsLossSubgraphExitNode(const Node* node) {
-  return Loss_Subgraph_Exit_Nodes.find(node->OpType()) != Loss_Subgraph_Exit_Nodes.cend();
+  return loss_subgraph_exit_nodes.find(node->OpType()) != loss_subgraph_exit_nodes.cend();
 }
 
 // Separate the consumer nodes of `arg` into two groups: FP32 vs FP16
@@ -256,7 +256,7 @@ struct LossSubgraph {
 
     // Get the nodes related to loss scale. It's a Mul node and it's grad nodes.
     // We initialize loss subgraph only when there is loss scale as input.
-    std::vector<Node*> loss_scale_consumers = graph.GetMutableConsumerNodes(Loss_Scale_Input);
+    std::vector<Node*> loss_scale_consumers = graph.GetMutableConsumerNodes(loss_scale_input);
     if (loss_scale_consumers.size() == 0) {
       return;
     }
@@ -314,7 +314,7 @@ struct LossSubgraph {
     for (Node* node : nodes_) {
       int index = 0;
       for (NodeArg* input : node->MutableInputDefs()) {
-        if (input->Name() != Loss_Scale_Input &&  // loss_scale input will keep FP32, no need to handle here.
+        if (input->Name() != loss_scale_input &&  // loss_scale input will keep FP32, no need to handle here.
             input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           // If its producer is from outside, it's one of the inputs of this subgraph.
           Node* producer_node = graph.GetMutableProducerNode(input->Name());
@@ -606,7 +606,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   // If all consumers are from loss graph, don't convert it, and remove it from To-32 loss graph inputs.
   for (const NodeArg* input : graph.GetInputs()) {
     // Input loss_scale will always keep as FP32.
-    if (input->Name() != Loss_Scale_Input &&
+    if (input->Name() != loss_scale_input &&
         input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       // If all consumers are from loss subgraph, no need to convert.
       if (!loss_subgraph.ContainsAllConsumers(graph, input->Name())) {
