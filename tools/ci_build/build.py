@@ -1191,13 +1191,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             try:
                 import onnx  # noqa
-                # gen_test_models.py used by onnx_test requires scipy.
-                import scipy  # noqa
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
                 log.warning(
-                    "onnx or scipy is not installed. "
+                    "onnx is not installed. "
                     "The ONNX tests will be skipped.")
                 onnx_test = False
 
