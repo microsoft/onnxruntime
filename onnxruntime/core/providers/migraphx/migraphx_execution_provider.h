@@ -53,7 +53,6 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
 private:
-  std::size_t max_allowed_unsupported_operators_ = 6;
   bool fp16_enable_ = false;
   int device_id_;
   migraphx::target t_; 
