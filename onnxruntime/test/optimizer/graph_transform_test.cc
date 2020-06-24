@@ -2062,6 +2062,8 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+#ifdef ENABLE_TRAINING
   ASSERT_TRUE(op_to_count["Div"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Sub"] == 0);
@@ -2070,6 +2072,10 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["Cast"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+#else
+  ASSERT_TRUE(op_to_count["Cast"] == 1);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+#endif
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithInvalidAxesFusionTest) {
