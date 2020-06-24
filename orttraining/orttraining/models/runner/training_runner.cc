@@ -659,8 +659,10 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 #else
     ORT_UNUSED_PARAMETER(step);
 #endif
+    RunOptions run_options;
+    run_options.training_mode = true;
     status = session_.Run(
-      RunOptions(),
+      run_options,
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
@@ -747,6 +749,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 #endif
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
+    run_options.training_mode = true;
     auto status = session_.Run(
       run_options,
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -1090,7 +1093,7 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader) {
   return Status::OK();
 }
 
-Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loader) {
+Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_loader) {
   if (params_.skip_evaluation) {
     printf("Skipping evaluation...\n");
     return Status::OK();
@@ -1134,6 +1137,20 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
                              batch_idx,
                              feed_names,
                              feeds);
+    if (!session.GetDropoutEvalFeeds().empty()) {
+      float eval_ratio = 0.0f;
+      for (auto& dropout_ratio : session.GetDropoutEvalFeeds()) {
+        feed_names.push_back(dropout_ratio);
+        OrtValue ratio_val;
+        TrainingUtil::CreateCpuMLScalar(eval_ratio, &ratio_val, input_allocator_);
+        feeds.push_back(ratio_val);
+      }
+    }
+    feed_names.push_back("training_mode");
+    OrtValue mode_val;
+    // training_mode is by default false
+    TrainingUtil::CreateCpuMLScalar(run_options.training_mode, &mode_val, input_allocator_);
+    feeds.push_back(mode_val);
 
     PrepareFetchNamesAndFetches(EvaluateStep,
                                 fetch_names,

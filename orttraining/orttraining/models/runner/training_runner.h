@@ -206,7 +206,7 @@ class TrainingRunner {
                         size_t& gradient_accumulation_step_count);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
     const MapStringToString& mapped_dimensions);
-  Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
+  Status Evaluate(TrainingSession& session, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);
   Status LoadCheckpoint(const PathString& checkpoint_path);
