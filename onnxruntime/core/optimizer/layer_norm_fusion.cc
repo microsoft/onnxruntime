@@ -268,7 +268,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         if (axes_values.empty() || mul_node.MutableInputDefs()[i]->Shape()->dim_size() == axes_values.size()) {
           scale = mul_node.MutableInputDefs()[i];
         }
-#elif
+#else
         // Scale must be 1d.
         if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
           scale = mul_node.MutableInputDefs()[i];
@@ -284,7 +284,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         if (axes_values.empty() || last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == axes_values.size()) {
           bias = last_add_node.MutableInputDefs()[i];
         }
-#elif
+#else
         // Bias must be 1d.
         if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
           bias = last_add_node.MutableInputDefs()[i];
