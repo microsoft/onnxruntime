@@ -137,6 +137,7 @@ Return Value:
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
@@ -181,6 +182,7 @@ Return Value:
             this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelAvx;
             this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
+            this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
 
             //
             // Check if the processor supports AVX2/FMA3 features.

@@ -209,6 +209,88 @@ class Test_PostPasses(unittest.TestCase):
         assert model_info[0].name == expand_nodes[0].output[0]
         assert model_info[0].type == onnx_model.graph.input[0].type
 
+    def test_extra_postpass(self):
+        def postpass_replace_first_add_with_sub(model):
+            # this post pass replaces the first Add node with Sub in the model.
+            # Previous graph
+            #   (subgraph 1)        (subgraph 2)
+            #        |                   |
+            #        |                   |
+            #        |________   ________|
+            #                 | |
+            #                 Add
+            #                  |
+            #             (subgraph 3)
+            #
+            # Post graph
+            #   (subgraph 1)        (subgraph 2)
+            #        |                   |
+            #        |                   |
+            #        |________   ________|
+            #                 | |
+            #                 Sub
+            #                  |
+            #             (subgraph 3)
+            add_nodes = [n for n in model.graph.node if n.op_type == 'Add']
+            add_nodes[0].op_type = "Sub"
+
+        class MultiAdd(nn.Module):
+            def __init__(self, target):
+                super(MultiAdd, self).__init__()
+                self.loss = nn.CrossEntropyLoss()
+                self.target = target
+                self.linear = torch.nn.Linear(2, 2, bias=False)
+
+            def forward(self, x, x1):
+                output = x + x1
+                output = output + x
+                output = output + x1
+                output = self.linear(output)
+                loss = self.loss(output, self.target)
+                return loss, output
+
+        device = torch.device("cpu")
+        target = torch.ones(5, 2, dtype=torch.int64).to(device)
+        model = MultiAdd(target).to(device)
+
+        x = torch.randn(5, 5, 2, dtype=torch.float32).to(device)
+        x1 = torch.randn(5, 5, 2, dtype=torch.float32).to(device)
+
+        input0_desc = IODescription('x', [5, 5, 2], "float32")
+        input1_desc = IODescription('x1', [5, 5, 2], "float32")
+        output0_desc = IODescription('output0', [], "float32")
+        output1_desc = IODescription('output1', [5, 5, 2], "float32")
+        model_desc = ModelDescription([input0_desc, input1_desc], [output0_desc, output1_desc])
+
+        learning_rate = torch.tensor([1.0000000e+00]).to(device)
+        input_args = [x, x1, learning_rate]
+
+        onnx_model = self.get_onnx_model(model, model_desc, input_args, device,
+                _extra_postprocess=postpass_replace_first_add_with_sub)
+
+        # check that extra postpass is called, and called only once.
+        add_nodes = self.find_nodes(onnx_model, "Add")
+        sub_nodes = self.find_nodes(onnx_model, "Sub")
+        assert len(add_nodes) == 2
+        assert len(sub_nodes) == 1
+
+
+        unprocessed_onnx_model = self.get_onnx_model(model, model_desc, input_args, device,
+                _extra_postprocess=None, _enable_internal_postprocess=False)
+        # check that the model is unchanged.
+        add_nodes = self.find_nodes(unprocessed_onnx_model, "Add")
+        sub_nodes = self.find_nodes(unprocessed_onnx_model, "Sub")
+        assert len(add_nodes) == 3
+        assert len(sub_nodes) == 0
+
+        processed_onnx_model = self.get_onnx_model(unprocessed_onnx_model, model_desc, input_args, device,
+                _extra_postprocess=postpass_replace_first_add_with_sub)
+        # check that extra postpass is called, and called only once.
+        add_nodes = self.find_nodes(processed_onnx_model, "Add")
+        sub_nodes = self.find_nodes(processed_onnx_model, "Sub")
+        assert len(add_nodes) == 2
+        assert len(sub_nodes) == 1
+
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)
