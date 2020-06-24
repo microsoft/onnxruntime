@@ -11,6 +11,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
+#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
@@ -58,6 +59,25 @@ Node* GetNodeByName(Graph& graph, std::string node_name) {
   return nullptr;
 }
 
+TEST_F(GraphTransformationTests, NonZeroShapeSetter) {
+  auto model_uri = MODEL_FOLDER "nonzero_shape_setter.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("NonZeroShapeSetter1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NonZeroShapeSetter>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  auto nonzero_shape = GetNodeByName(graph, "nonzero")->OutputDefs()[0]->Shape();
+  ASSERT_TRUE(nonzero_shape->dim_size() == 2);
+  ASSERT_TRUE(nonzero_shape->dim(0).dim_value() == 2);
+  ASSERT_TRUE(nonzero_shape->dim(1).dim_param() == "nonzero_nonzero_count");
+}
 
 // MegatronF/G is defined only for training, and in msdomain.
 #ifndef DISABLE_CONTRIB_OPS
