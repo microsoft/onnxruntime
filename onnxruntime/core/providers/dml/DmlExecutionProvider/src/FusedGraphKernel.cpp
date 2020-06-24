@@ -108,7 +108,8 @@ namespace Dml
 
             GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                 kernelInfo,
-                m_inputsConstant,
+                m_inputsConstant.data(),
+                m_inputsConstant.size(),
                 transferredInitializerMap,
                 graph,
                 fusedNodeInputDefs,
