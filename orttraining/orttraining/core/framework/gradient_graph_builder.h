@@ -26,7 +26,9 @@ namespace training {
 // typedef std::unordered_set<const Node*> NodeUnorderedSet;
 struct node_compare {
     bool operator() (const Node* lhs, const Node* rhs) const {
-        return lhs->Name() < rhs->Name();
+      if (lhs->Name() == rhs->Name())
+        return lhs < rhs;
+      return lhs->Name() < rhs->Name();
     }
 };
 typedef std::set<const Node*, node_compare> NodeSet;
