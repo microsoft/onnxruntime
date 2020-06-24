@@ -228,6 +228,59 @@ jobs:
       PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
       VerifyNugetSigning: 'true'
 
+  - task: BatchScript@1
+    displayName: 'Setup VS2019 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+      arguments: 'amd64'
+      modifyEnvironment: true
+
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+
+        $packages = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*)
+        $merged_nuget_package = $packages[0]
+        $merged_nuget_package_name = $merged_nuget_package.Name
+        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg")
+        $package_version = $matches['version']
+
+        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;
+        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;
+        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests')
+        $packages_dir = [System.IO.Path]::Combine($src_dir, 'packages')
+        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.vcxproj')
+        $input_packages_config = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.props.pp')
+        $output_packages_config = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.props')
+
+        $input_packages_config_content = Get-Content -Path $input_packages_config
+        $output_packages_config_content = $input_packages_config_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $output_packages_config -Value $output_packages_config_content
+
+        nuget restore -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
+      workingDirectory: $(Build.ArtifactStagingDirectory)\merged
+
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Build'
+    inputs:
+      targetType: 'inline'
+      script: |
+        msbuild /p:Platform=x86 Microsoft.AI.MachineLearning.Tests.vcxproj
+        msbuild /p:Platform=x64 Microsoft.AI.MachineLearning.Tests.vcxproj
+      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
+
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Run Tests'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Debug\Microsoft.AI.MachineLearning.Tests.exe
+        x64\Debug\Microsoft.AI.MachineLearning.Tests.exe
+      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
