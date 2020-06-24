@@ -17,7 +17,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          sudo docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --build_java --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          sudo docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --build_java --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Run build and test'
 
@@ -50,7 +50,7 @@ jobs:
         javac --version
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_java --build_shared_lib --use_openmp --config RelWithDebInfo
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_java --build_shared_lib --config RelWithDebInfo
 
       displayName: 'Build and Test MacOS'
     - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
@@ -90,7 +90,7 @@ jobs:
         buildparameter:
 
   steps:
-    - template: templates/enable-telemetry.yml
+    - template: templates/telemetry-steps.yml
     
     - task: UsePythonVersion@0
       inputs: 
@@ -106,7 +106,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy scipy
+       python -m pip install -q pyopenssl setuptools wheel numpy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules' 
 
@@ -125,7 +125,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_wcos --build_java  --update --cmake_generator "Visual Studio 16 2019" --enable_lto --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_wcos --build_java  --update --cmake_generator "Visual Studio 16 2019" --enable_lto --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -146,7 +146,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_java --build_shared_lib --enable_wcos --build_java --test --cmake_generator "Visual Studio 16 2019" --enable_lto --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_java --build_shared_lib --enable_wcos --build_java --test --cmake_generator "Visual Studio 16 2019" --enable_lto --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/java-api-artifacts-package-and-publish-steps-windows.yml

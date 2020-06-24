@@ -46,8 +46,6 @@ struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
   void* Alloc(size_t size) override { return p_->Alloc(size); }
   void Free(void* p) override { return p_->Free(p); }
 
-  bool AllowsArena() const override { return p_->AllowsArena(); }
-
   std::unique_ptr<IDeviceAllocator> p_;
 };
 
@@ -460,25 +458,26 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Provider_IndexedSubGraph_Impl>();
   }
 
-  Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0) override {
+  Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
+                                        OrtDevice::DeviceId device_id = 0,
+                                        bool use_arena = true) override {
     DeviceAllocatorRegistrationInfo info_real{
-        info.mem_type, [&info](int value) { return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_); },
+        info.mem_type, [&info](int value) {
+          return std::move(static_cast<Provider_IDeviceAllocator_Impl*>(&*info.factory(value))->p_);
+        },
         info.max_mem};
 
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id));
+    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::CreateAllocator(info_real, device_id, use_arena));
   }
 
-  std::unique_ptr<Provider_IDeviceAllocator>
-  CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) override {
-    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CPUAllocator>(std::move(static_cast<Provider_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
+  std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(
+      std::unique_ptr<Provider_OrtMemoryInfo> memory_info) override {
+    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(
+        onnxruntime::make_unique<CPUAllocator>(*static_cast<Provider_OrtMemoryInfo_Impl*>(memory_info.get())->info_));
   };
 
-  Provider_AllocatorPtr
-  CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) override {
-    return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::make_unique<DummyArena>(std::move(static_cast<Provider_IDeviceAllocator_Impl*>(resource_allocator.get())->p_)));
-  };
-
-  std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) override {
+  std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(
+      Provider_IExecutionProvider* outer, const std::string& type) override {
     return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
   };
 

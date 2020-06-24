@@ -15,7 +15,9 @@ static void BM_CreateThreadPool(benchmark::State& state) {
     ThreadPool tp(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), ORT_TSTR(""), 48, true);
   }
 }
-BENCHMARK(BM_CreateThreadPool)->UseRealTime()->Unit(benchmark::TimeUnit::kMillisecond);
+BENCHMARK(BM_CreateThreadPool)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMillisecond);
 
 //On Xeon W-2123 CPU, it takes about 2ns for each iteration
 #ifdef _WIN32
@@ -46,7 +48,37 @@ static void BM_ThreadPoolParallelFor(benchmark::State& state) {
     tp->ParallelFor(len, cost, SimpleForLoop);
   }
 }
-BENCHMARK(BM_ThreadPoolParallelFor)->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Args({100, 1})->Args({100, 10})->Args({100, 100})->Args({100, 200})->Args({100, 400})->Args({1000, 1})->Args({1000, 10})->Args({1000, 100})->Args({1000, 200})->Args({1000, 400})->Args({10000, 1})->Args({10000, 10})->Args({10000, 100})->Args({10000, 200})->Args({10000, 400})->Args({15000, 1})->Args({15000, 10})->Args({15000, 100})->Args({15000, 200})->Args({15000, 400})->Args({20000, 1})->Args({20000, 10})->Args({20000, 100})->Args({20000, 200})->Args({20000, 400})->Args({40000, 200})->Args({80000, 200})->Args({160000, 200});
+BENCHMARK(BM_ThreadPoolParallelFor)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Args({100, 1})
+    ->Args({100, 10})
+    ->Args({100, 100})
+    ->Args({100, 200})
+    ->Args({100, 400})
+    ->Args({1000, 1})
+    ->Args({1000, 10})
+    ->Args({1000, 100})
+    ->Args({1000, 200})
+    ->Args({1000, 400})
+    ->Args({10000, 1})
+    ->Args({10000, 10})
+    ->Args({10000, 100})
+    ->Args({10000, 200})
+    ->Args({10000, 400})
+    ->Args({15000, 1})
+    ->Args({15000, 10})
+    ->Args({15000, 100})
+    ->Args({15000, 200})
+    ->Args({15000, 400})
+    ->Args({20000, 1})
+    ->Args({20000, 10})
+    ->Args({20000, 100})
+    ->Args({20000, 200})
+    ->Args({20000, 400})
+    ->Args({40000, 200})
+    ->Args({80000, 200})
+    ->Args({160000, 200});
 
 static void BM_SimpleForLoop(benchmark::State& state) {
   const size_t len = state.range(0);
@@ -54,7 +86,9 @@ static void BM_SimpleForLoop(benchmark::State& state) {
     SimpleForLoop(0, len);
   }
 }
-BENCHMARK(BM_SimpleForLoop)->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100);
+BENCHMARK(BM_SimpleForLoop)
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100);
 
 static void TestPartitionWork(std::ptrdiff_t ThreadId, std::ptrdiff_t ThreadCount, std::ptrdiff_t TotalWork,
                               std::ptrdiff_t* WorkIndex, std::ptrdiff_t* WorkRemaining) {
@@ -91,7 +125,16 @@ static void BM_SimpleScheduleWait(benchmark::State& state) {
     barrier.Wait();
   }
 }
-BENCHMARK(BM_SimpleScheduleWait)->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000)->Arg(80000)->Arg(160000);
+BENCHMARK(BM_SimpleScheduleWait)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000)
+    ->Arg(80000)
+    ->Arg(160000);
 
 #ifdef _WIN32
 struct Param {
@@ -127,5 +170,16 @@ static void BM_SimpleScheduleWaitWindowsTP(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_SimpleScheduleWaitWindowsTP)->UseRealTime()->Unit(benchmark::TimeUnit::kNanosecond)->Arg(100)->Arg(1000)->Arg(10000)->Arg(20000)->Arg(40000)->Arg(80000)->Arg(160000)->Arg(320000)->Arg(640000);
+BENCHMARK(BM_SimpleScheduleWaitWindowsTP)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(20000)
+    ->Arg(40000)
+    ->Arg(80000)
+    ->Arg(160000)
+    ->Arg(320000)
+    ->Arg(640000);
 #endif
