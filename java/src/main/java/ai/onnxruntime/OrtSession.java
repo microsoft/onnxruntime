@@ -492,9 +492,6 @@ public class OrtSession extends NativeObject {
    */
   public static class SessionOptions extends NativeObject {
 
-    static final OrtSession.SessionOptions DEFAULT_SESSION_OPTIONS =
-        new OrtSession.SessionOptions();
-
     /**
      * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum
      * in the C API.

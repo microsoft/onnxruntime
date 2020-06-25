@@ -114,7 +114,9 @@ public class OrtEnvironment extends NativeObject {
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
   public OrtSession createSession(String modelPath) throws OrtException {
-    return createSession(modelPath, OrtSession.SessionOptions.DEFAULT_SESSION_OPTIONS);
+    try (OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions()) {
+      return createSession(modelPath, sessionOptions);
+    }
   }
 
   /**
@@ -166,7 +168,9 @@ public class OrtEnvironment extends NativeObject {
    * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
    */
   public OrtSession createSession(byte[] modelArray) throws OrtException {
-    return createSession(modelArray, OrtSession.SessionOptions.DEFAULT_SESSION_OPTIONS);
+    try (OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions()) {
+      return createSession(modelArray, sessionOptions);
+    }
   }
 
   /**
