@@ -108,8 +108,7 @@ __global__ void BiasDropoutKernel(
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
-        int index, offset;
-        fdm_dim.divmod(li, index, offset);
+        int offset = fdm_dim.mod(li);
         T bias = bias_data[offset];
 
         mask_data[li] = (&rand.x)[i] < p;
