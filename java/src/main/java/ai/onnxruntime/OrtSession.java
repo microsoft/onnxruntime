@@ -433,7 +433,7 @@ public class OrtSession extends NativeObject {
       throws OrtException;
 
   /**
-   * The native run call. runOptionsReference can be zero (i.e. the null pointer), but all other
+   * The native run call. runOptionsHandle can be zero (i.e. the null pointer), but all other
    * handles must be valid pointers.
    *
    * @param apiHandle The pointer to the api.
@@ -445,7 +445,7 @@ public class OrtSession extends NativeObject {
    * @param numInputs The number of inputs.
    * @param outputNamesArray The requested output names.
    * @param numOutputs The number of requested outputs.
-   * @param runOptionsReference The (possibly null) pointer to the run options.
+   * @param runOptionsHandle The (possibly null) pointer to the run options.
    * @return The OnnxValues produced by this run.
    * @throws OrtException If the native call failed in some way.
    */
@@ -459,7 +459,7 @@ public class OrtSession extends NativeObject {
       long numInputs,
       String[] outputNamesArray,
       long numOutputs,
-      long runOptionsReference)
+      long runOptionsHandle)
       throws OrtException;
 
   private native String endProfiling(long apiHandle, long nativeHandle, long allocatorHandle)
