@@ -68,14 +68,14 @@ class ONNXExporterTest(unittest.TestCase):
             # export the model to ONNX
             f = io.BytesIO()
             torch.onnx.export(model, input_copy, f,
-                               opset_version=self.opset_version,
-                               example_outputs=output,
-                               do_constant_folding=do_constant_folding,
-                               keep_initializers_as_inputs=self.keep_initializers_as_inputs,
-                               dynamic_axes=dynamic_axes,
-                               input_names=input_names, output_names=output_names,
-                               fixed_batch_size=fixed_batch_size,
-                               custom_opsets=custom_opsets)
+                              opset_version=self.opset_version,
+                              example_outputs=output,
+                              do_constant_folding=do_constant_folding,
+                              keep_initializers_as_inputs=self.keep_initializers_as_inputs,
+                              dynamic_axes=dynamic_axes,
+                              input_names=input_names, output_names=output_names,
+                              fixed_batch_size=fixed_batch_size,
+                              custom_opsets=custom_opsets)
 
             # compute onnxruntime output prediction
             ort_sess = onnxruntime.InferenceSession(f.getvalue())
@@ -115,42 +115,42 @@ TestONNXRuntime_opset10 = type(str("TestONNXRuntime_opset10"),
 
 # opset 11 tests
 ONNXExporterTest_opset11 = type(str("TestONNXRuntime_opset11"),
-                               (unittest.TestCase,),
-                               dict(ONNXExporterTest.__dict__, opset_version=11))
+                                (unittest.TestCase,),
+                                dict(ONNXExporterTest.__dict__, opset_version=11))
 
 # opset 12 tests
 ONNXExporterTest_opset12 = type(str("TestONNXRuntime_opset12"),
-                               (unittest.TestCase,),
-                               dict(ONNXExporterTest.__dict__, opset_version=12))
+                                (unittest.TestCase,),
+                                dict(ONNXExporterTest.__dict__, opset_version=12))
 
 # opset 9 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset9_IRv4 = type(str("TestONNXRuntime_opset9_IRv4"),
-                                   (unittest.TestCase,),
-                                   dict(ONNXExporterTest.__dict__,
-                                        keep_initializers_as_inputs=False))
+                                    (unittest.TestCase,),
+                                    dict(ONNXExporterTest.__dict__,
+                                         keep_initializers_as_inputs=False))
 
 # opset 10 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset10_IRv4 = type(str("TestONNXRuntime_opset10_IRv4"),
-                                    (unittest.TestCase,),
-                                    dict(ONNXExporterTest.__dict__, opset_version=10,
-                                         keep_initializers_as_inputs=False))
+                                     (unittest.TestCase,),
+                                     dict(ONNXExporterTest.__dict__, opset_version=10,
+                                          keep_initializers_as_inputs=False))
 
 
 # opset 11 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset11_IRv4 = type(str("TestONNXRuntime_opset11_IRv4"),
-                                    (unittest.TestCase,),
-                                    dict(ONNXExporterTest.__dict__, opset_version=11,
-                                         keep_initializers_as_inputs=False))
+                                     (unittest.TestCase,),
+                                     dict(ONNXExporterTest.__dict__, opset_version=11,
+                                          keep_initializers_as_inputs=False))
 
 # opset 12 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset12_IRv4 = type(str("TestONNXRuntime_opset12_IRv4"),
-                                    (unittest.TestCase,),
-                                    dict(ONNXExporterTest.__dict__, opset_version=12,
-                                         keep_initializers_as_inputs=False))
+                                     (unittest.TestCase,),
+                                     dict(ONNXExporterTest.__dict__, opset_version=12,
+                                          keep_initializers_as_inputs=False))
 
 if __name__ == '__main__':
     unittest.main()
