@@ -147,20 +147,25 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           converted_to_constant = false;
           break;
         }
+      }
 
-        // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
-        auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
-        const Tensor& out_tensor = ort_value.Get<Tensor>();
-        ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
+      if (converted_to_constant) {
+        for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
+          OrtValue& ort_value = fetches[fetch_idx];
+          // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
+          auto* constant_arg_out = node->MutableOutputDefs()[fetch_idx];
+          const Tensor& out_tensor = ort_value.Get<Tensor>();
+          ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(out_tensor, constant_arg_out->Name());
 
-        ONNX_NAMESPACE::TensorShapeProto result_shape;
-        for (auto& dim : out_tensor.Shape().GetDims()) {
-          result_shape.add_dim()->set_dim_value(dim);
+          ONNX_NAMESPACE::TensorShapeProto result_shape;
+          for (auto& dim : out_tensor.Shape().GetDims()) {
+              result_shape.add_dim()->set_dim_value(dim);
+          }
+
+          constant_arg_out->SetShape(result_shape);
+          graph.AddInitializedTensor(out_tensorproto);
         }
-
-        constant_arg_out->SetShape(result_shape);
-        graph.AddInitializedTensor(out_tensorproto);
-      }      
+      }
     }
 
     if (converted_to_constant) {

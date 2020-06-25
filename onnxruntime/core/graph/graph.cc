@@ -433,7 +433,14 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-const Function* Node::GetFunctionBody() const noexcept {
+const Function* Node::GetFunctionBody() noexcept {
+  if (nullptr != func_body_) {
+    return func_body_;
+  }
+
+  // Initialize function body
+  graph_->InitFunctionBodyForNode(*this);
+
   return func_body_;
 }
 
@@ -1314,7 +1321,6 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
-
   ReverseDFSFrom(from, enter, leave, comp, {});
 }
 
@@ -2021,7 +2027,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
                                                                                            *model_function_proto,
                                                                                            logger_));
       node.SetFunctionBody(*function_container_.back());
-    }    
+    }
 
     if (!node.Op()) {
       try {
@@ -2085,10 +2091,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 }
 
 void Graph::InitFunctionBodyForNode(Node& node) {
-  if (nullptr != node.GetFunctionBody()) {
-    return;
-  }
-  
   if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
     onnx::FunctionProto onnx_function_proto;    
     if (node.op_->HasContextDependentFunction()) {

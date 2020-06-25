@@ -101,8 +101,9 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
 
-  /** Gets the function body if the #NodeType is fused, or nullptr if not. */
-  const Function* GetFunctionBody() const noexcept;
+  /** Gets the function body if the #NodeType is fused, or nullptr if not. 
+  @remarks Initialization of function body is deferred till the first time it is used. */
+  const Function* GetFunctionBody() noexcept;
 
   /** Gets the node description. */
   const std::string& Description() const noexcept;
@@ -779,7 +780,7 @@ class Graph {
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
-  Status InlineFunction(Node& node);  
+  Status InlineFunction(Node& node); 
 
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);
