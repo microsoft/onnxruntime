@@ -321,7 +321,9 @@ public class OrtSession extends NativeObject {
               allocator,
               requestedInputsArray,
               inputHandles,
+              inputHandles.length,
               requestedOutputsArray,
+              requestedOutputsArray.length,
               runOptionsReference.handle());
       return new Result(requestedOutputsArray, outputValues);
     }
@@ -440,7 +442,9 @@ public class OrtSession extends NativeObject {
    * @param allocatorObject The allocator to use within the OnnxValue implementations.
    * @param inputNamesArray The input names.
    * @param inputs The input tensors.
+   * @param numInputs The number of inputs.
    * @param outputNamesArray The requested output names.
+   * @param numOutputs The number of requested outputs.
    * @param runOptionsReference The (possibly null) pointer to the run options.
    * @return The OnnxValues produced by this run.
    * @throws OrtException If the native call failed in some way.
@@ -452,7 +456,9 @@ public class OrtSession extends NativeObject {
       OrtAllocator allocatorObject,
       String[] inputNamesArray,
       long[] inputs,
+      long numInputs,
       String[] outputNamesArray,
+      long numOutputs,
       long runOptionsReference)
       throws OrtException;
 
