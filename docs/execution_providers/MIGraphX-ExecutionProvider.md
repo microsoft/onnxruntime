@@ -21,12 +21,17 @@ InferenceSession session_object{so,env};
 session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::MIGraphXExecutionProvider>());
 status = session_object.Load(model_file_name);
 ```
+You can check [here](https://github.com/scxiao/ort_test/tree/master/char_rnn) for a specific c/c++ program.
+
 The C API details are [here](../C_API.md#c-api).
 
 ### Python
 When using the Python wheel from the ONNX Runtime build with MIGraphX execution provider, it will be automatically
 prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution
 provider. Python APIs details are [here](../python/api_summary.rst#api-summary).
+
+You can check [here](https://github.com/scxiao/ort_test/tree/master/python/run_onnx) for a python script to run an
+model on either the CPU or MIGraphX Execution Provider.
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../ONNX_Runtime_Perf_Tuning.md)
