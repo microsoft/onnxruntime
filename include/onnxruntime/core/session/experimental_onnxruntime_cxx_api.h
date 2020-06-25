@@ -3,23 +3,27 @@
 
 // Summary: The experimental Ort C++ API is a wrapper around the Ort C++ API.
 //
-// The experimental C++ API further simplifies usage and provides support for modern C++ syntax/features
-// at the cost of some overhead (for example, using std::string over char *).
+// This C++ API further simplifies usage and provides support for modern C++ syntax/features
+// at the cost of some overhead (i.e. using std::string over char *).
 //
-// Where possible, certain default values are defined by the session unless otherwise specified by the API caller.
+// Experimental components are designed as drop-in replacements of the regular API, requiring
+// minimal code modifications to use.
 //
-// NOTE: Experimental API components are subject to change and provide no guarantee of backwards compatibility in future releases.
+// Example:  Ort::Session -> Ort::Experimental::Session
+//
+// NOTE: Experimental API components are subject to change based on feedback and provide no
+// guarantee of backwards compatibility in future releases.
 
 #pragma once
 #include "onnxruntime_cxx_api.h"
 
-namespace Ort {
+namespace Ort::Experimental {
 
-struct ExperimentalSession : Session {
-  ExperimentalSession(Env& env, ORTCHAR_T* model_path, SessionOptions& options)
-      : Session(env, model_path, options){};
-  ExperimentalSession(Env& env, void* model_data, size_t model_data_length, SessionOptions& options)
-      : Session(env, model_data, model_data_length, options){};
+struct Session : Ort::Session {
+  Session(Env& env, ORTCHAR_T* model_path, SessionOptions& options)
+      : Ort::Session(env, model_path, options){};
+  Session(Env& env, void* model_data, size_t model_data_length, SessionOptions& options)
+      : Ort::Session(env, model_data, model_data_length, options){};
 
   // overloaded Run() with sensible defaults
   std::vector<Value> Run(const std::vector<std::string>& input_names,
@@ -38,10 +42,11 @@ struct ExperimentalSession : Session {
   std::vector<std::string> GetOverridableInitializerNames() const;
 
   // NOTE: shape dimensions may have a negative value to indicate a symbolic/unknown dimension.
-  // This is typically used to denote batch size.
   std::vector<std::vector<int64_t> > GetInputShapes() const;
   std::vector<std::vector<int64_t> > GetOutputShapes() const;
   std::vector<std::vector<int64_t> > GetOverridableInitializerShapes() const;
 };
 
-}  // namespace Ort
+}  // namespace Ort::Experimental
+
+#include "experimental_onnxruntime_cxx_inline.h"
