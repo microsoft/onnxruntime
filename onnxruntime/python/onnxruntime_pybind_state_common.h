@@ -7,9 +7,10 @@
 #include "core/framework/session_options.h"
 
 #include "core/session/environment.h"
-#include "core/session/inference_session.h"
 
 namespace onnxruntime {
+class InferenceSession;
+
 namespace python {
 
 using namespace onnxruntime;
