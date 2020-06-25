@@ -618,4 +618,13 @@ inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   return *this;
 }
 
+inline std::vector<std::string> GetAvailableProviders() {
+  int len;
+  char **providers;
+  const OrtApi& api = GetApi();
+  ThrowOnError(api.GetAvailableProviders(&providers, &len));
+  std::vector<std::string> available_providers(providers, providers + len);
+  ThrowOnError(api.ReleaseAvailableProviders(providers, len));
+  return available_providers;
+}
 }  // namespace Ort
