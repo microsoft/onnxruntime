@@ -208,8 +208,9 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
   }
 
-  // Rerun graph partition
+  // Resolve and rerun graph partition
   if (!nodes_need_inline.empty()) {
+    ORT_RETURN_IF_ERROR(graph.Resolve());
     ORT_RETURN_IF_ERROR(Partition(graph, export_dll, func_mgr));
   }
 
