@@ -71,7 +71,7 @@ class ORTGlueTest(unittest.TestCase):
         expected_acc = 0.8578431372549019
         expected_f1 = 0.9003436426116839
         expected_acc_and_f1 = 0.8790933899332929
-        expected_loss = 0.4130827588777916
+        expected_loss = 0.415903969430456
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
         assert_allclose(results['acc'], expected_acc)
@@ -80,10 +80,10 @@ class ORTGlueTest(unittest.TestCase):
         assert_allclose(results['loss'], expected_loss)
 
     def test_bert_fp16_with_mrpc(self):
-        expected_acc = 0.8651960784313726
-        expected_f1 = 0.9046793760831888
-        expected_acc_and_f1 = 0.8849377272572807
-        expected_loss = 0.3523099435602917
+        expected_acc = 0.8529411764705882
+        expected_f1 = 0.8951048951048952
+        expected_acc_and_f1 = 0.8740230357877417
+        expected_loss = 0.36075809042827756
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
         assert_allclose(results['acc'], expected_acc)

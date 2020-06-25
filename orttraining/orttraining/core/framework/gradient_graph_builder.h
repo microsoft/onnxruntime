@@ -23,15 +23,7 @@
 namespace onnxruntime {
 namespace training {
 
-// typedef std::unordered_set<const Node*> NodeUnorderedSet;
-struct node_compare {
-    bool operator() (const Node* lhs, const Node* rhs) const {
-      if (lhs->Name() == rhs->Name())
-        return lhs < rhs;
-      return lhs->Name() < rhs->Name();
-    }
-};
-typedef std::set<const Node*, node_compare> NodeSet;
+typedef std::set<const Node*, NodeCompare> NodeSet;
 
 static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
