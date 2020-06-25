@@ -28,7 +28,7 @@ public class OnnxSequence extends NativeObject implements OnnxValue {
    * <p>Called from native code.
    *
    * @param nativeHandle The reference to the native sequence object.
-   * @param allocator The allocator used to when extracting data from this object.
+   * @param allocator The allocator used when extracting data from this object.
    * @param info The sequence type information.
    */
   OnnxSequence(long nativeHandle, OrtAllocator allocator, SequenceInfo info) {

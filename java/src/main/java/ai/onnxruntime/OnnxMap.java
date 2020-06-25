@@ -94,7 +94,7 @@ public class OnnxMap extends NativeObject implements OnnxValue {
    * <p>Called from native code.
    *
    * @param nativeHandle The reference to the native map object.
-   * @param allocator The allocator used to when extracting data from this object.
+   * @param allocator The allocator used when extracting data from this object.
    * @param info The type information.
    */
   OnnxMap(long nativeHandle, OrtAllocator allocator, MapInfo info) {
