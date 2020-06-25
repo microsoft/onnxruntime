@@ -201,8 +201,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast_node, "Cast", {9}) ||
           cast_node.GetExecutionProviderType() != cast_node.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, cast_node, 1) ||
-          !IsSupportedDataType(cast_node) ||
-          cast_node.GetInputEdgesCount() == 0) {
+          !IsSupportedDataType(cast_node)) {
         continue;
       }
       nodes_to_remove.push_back(cast_node);
@@ -296,7 +295,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    // Scale and bias must have the same dimension.
+    // Scale and bias must have the same shape.
     bool same_dim = true;
     for (int i = 0; i < scale->Shape()->dim_size(); i++) {
       if (scale->Shape()->dim(i).dim_value() != bias->Shape()->dim(i).dim_value()) {
