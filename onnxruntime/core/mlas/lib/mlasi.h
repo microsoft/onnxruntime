@@ -753,6 +753,9 @@ MlasPartitionWork(
 #ifndef vmaxvq_f32
 #define vmaxvq_f32(src) neon_fmaxv(src)
 #endif
+#ifndef vminvq_f32
+#define vminvq_f32(src) neon_fminv(src)
+#endif
 #endif
 
 //
