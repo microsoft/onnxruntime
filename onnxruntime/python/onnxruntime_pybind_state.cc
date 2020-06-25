@@ -402,7 +402,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
-      "Return list of Execution Providers that this version of Onnxruntime can support.");
+      "Return list of Execution Providers that this version of Onnxruntime can support. "
+      "The order of elements represents the default priority order of Execution Providers"
+      " from highest to lowest.");
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
       "Return list of available Execution Providers available in this installed version of Onnxruntime.");
