@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
 #include <pybind11/iostream.h>
 #include <pybind11/pybind11.h>
@@ -36,5 +37,6 @@ struct DecRefFn {
 
 template <class T>
 using UniqueDecRefPtr = std::unique_ptr<T, DecRefFn<T>>;
+
 }  // namespace python
 }  // namespace onnxruntime
