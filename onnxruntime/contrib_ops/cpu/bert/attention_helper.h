@@ -68,7 +68,7 @@ void PrepareMask(const int32_t* mask_index,
                  int past_sequence_length) {
   const int all_sequence_length = past_sequence_length + sequence_length;
   T* p_mask = mask_data;
-  if (is_unidirectional) {  
+  if (is_unidirectional) {
     // unidirectional mask has shape SxS*
     for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
       for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
@@ -97,7 +97,7 @@ void PrepareMask(const int32_t* mask_index,
 
 // Concatenate a past state chunk S'xH with input state chunk SxH into present state chunk S*xH
 // Returns a pointer to the start of present state chunk.
-template<typename T>
+template <typename T>
 T* ConcatStateChunk(const T* past, const T* chunk, T* present, size_t past_chunk_length, size_t present_chunk_length, std::ptrdiff_t i) {
   T* start = present + i * present_chunk_length;
 
@@ -218,7 +218,6 @@ void ComputeVxAttentionScore(T* output,                 // buffer for the result
 
   ThreadPool::TryParallelFor(tp, batch_size * num_heads, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t i = begin; i != end; ++i) {
-      
       const T* v = V + input_chunk_length * i;
       if (nullptr != present) {
         // concatenate past_V and V: (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH

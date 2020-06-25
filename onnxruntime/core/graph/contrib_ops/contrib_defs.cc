@@ -406,11 +406,23 @@ mask_index shall not be provided.)DOC";
           "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
           "T2",
           OpSchema::Optional)
+      .Input(
+          8,
+          "past",
+          "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
+          "T3",
+          OpSchema::Optional)
       .Output(
           0,
           "output",
           "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
           "T3")
+      .Output(
+          1,
+          "present",
+          "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)",
+          "T3",
+          OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
