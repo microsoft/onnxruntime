@@ -23,6 +23,8 @@ def my_inverse(g, self):
 register_custom_op_symbolic('::inverse', my_inverse, 1)
 
 ```
+```<namespace>``` is a part of the torch operator name. For standard torch operators, namespace can be omitted.
+
 ```com.microsoft``` should be used as the custom opset domain for ONNX Runtime ops. You can choose the custom opset 
 version during op registration.
 
