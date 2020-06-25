@@ -775,6 +775,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
+      // Downcast is safe, since only control flow nodes have subgraphs (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
       auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           control_flow_kernel.SetupSubgraphExecutionInfo(session_state, name, *subgraph_session_state));
