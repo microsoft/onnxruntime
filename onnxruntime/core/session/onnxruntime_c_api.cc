@@ -158,6 +158,8 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
+    if (shape[i] < 0)
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
     elem_count *= static_cast<size_t>(shape[i]);
     shapes[i] = shape[i];
   }
@@ -1376,16 +1378,16 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
-                    _In_ int *providers_length) {
+ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
+                    _In_ int* providers_length) {
   API_IMPL_BEGIN
   const size_t MAX_LEN = 30;
-  int available_count = (int)(sizeof(providers_available) / sizeof(char *));
-  char **out = (char **)malloc(available_count * sizeof(char *));
-  if(out) {
-    for(int i = 0; i < available_count; i++) {
-      out[i] = (char *)malloc((MAX_LEN + 1) * sizeof(char));
-      if(out[i]) {
+  int available_count = (int)(sizeof(providers_available) / sizeof(char*));
+  char** out = (char**)malloc(available_count * sizeof(char*));
+  if (out) {
+    for (int i = 0; i < available_count; i++) {
+      out[i] = (char*)malloc((MAX_LEN + 1) * sizeof(char));
+      if (out[i]) {
 #ifdef _MSC_VER
         strncpy_s(out[i], MAX_LEN, providers_available[i], MAX_LEN);
 #else
@@ -1401,12 +1403,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char ***out_ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char **ptr,
+ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
-  if(ptr) {
-    for(int i = 0; i < providers_length; i++) {
-      if(ptr[i]) {
+  if (ptr) {
+    for (int i = 0; i < providers_length; i++) {
+      if (ptr[i]) {
         free(ptr[i]);
       }
     }
