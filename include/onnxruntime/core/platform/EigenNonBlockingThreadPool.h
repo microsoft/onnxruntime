@@ -9,6 +9,8 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
+#include <type_traits>
+
 #pragma once
 #include "onnxruntime_config.h"
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
@@ -539,9 +541,9 @@ void GetGoodWorkerHints(int n, std::vector<unsigned>& good_hints, std::vector<un
 }
 
 void RunInParallel(std::function<void()> fn, unsigned n) override {
-  PerThread* pt = GetPerThread();
+  PerThread* my_pt = GetPerThread();
   assert(n>=1);
-  if (n == 1 || pt->in_parallel) {
+  if (n == 1 || my_pt->in_parallel) {
     fn();
   } else {
     // We build a list of <thread,idx> pairs for each of the queues that accepts a work
@@ -550,14 +552,15 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
     std::vector<std::pair<int, unsigned>> pending_items;
     Barrier b(n);
 
-    pt->in_parallel = true;
-    if (!pt->tag.Get()) {
-      pt->tag = Tag::GetNext();
+    my_pt->in_parallel = true;
+    if (!my_pt->tag.Get()) {
+      my_pt->tag = Tag::GetNext();
     }
 
     // Push up to n-1 copies of the work item into the queues
-    std::vector<unsigned>& good_hints = pt->good_hints;
-    std::vector<unsigned>& alt_hints = pt->alt_hints;
+    ThreadData& my_td = thread_data_[my_pt->thread_id];
+    std::vector<unsigned>& good_hints = my_td.good_hints;
+    std::vector<unsigned>& alt_hints = my_td.alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (unsigned i = 0; i < n - 1; i++) {
       Task t = env_.CreateTask([&b, &fn]() {
@@ -572,13 +575,13 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
         if (alt_i < alt_hints.size()) {
           q_idx = alt_hints[alt_i];
         } else {
-          q_idx = Rand(&pt->rand) % num_threads_;
+          q_idx = Rand(&my_pt->rand) % num_threads_;
         }
       }
       ThreadData& td = thread_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
-      t = q.PushBackWithTag(std::move(t), pt->tag, w_idx);
+      t = q.PushBackWithTag(std::move(t), my_pt->tag, w_idx);
       if (t.f) {
         // The queue rejected the work.  Account for the missing capacity for work
         // on the synchronization barrier.  The semantics for RunInParallel are that
@@ -601,7 +604,7 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
     int notifications_needed = 1;
     for (auto& item : pending_items) {
       Queue& q = thread_data_[item.first].queue;
-      if (q.RevokeWithTag(pt->tag, item.second)) {
+      if (q.RevokeWithTag(my_pt->tag, item.second)) {
         notifications_needed++;
       }
     }
@@ -609,7 +612,7 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
 
     // Synchronize with any work items that are still running
     b.Wait();
-    pt->in_parallel = false;
+    my_pt->in_parallel = false;
   }
 }
 
@@ -674,6 +677,11 @@ int CurrentThreadId() const EIGEN_FINAL {
   typedef typename Environment::EnvThread Thread;
   struct ThreadData;
 
+  // PerThread objects are allocated in thread-local storage and allocated
+  // on the thread's first call to GetPerThread.  The object should
+  // remain trivially-destructable, with other state placed in the
+  // ThreadData objects that are allocated and cleaned-up explicitly.
+
   struct PerThread {
     constexpr PerThread() : pool(nullptr) {
     }
@@ -682,9 +690,9 @@ int CurrentThreadId() const EIGEN_FINAL {
     int thread_id{-1};                 // Worker thread index in pool.
     Tag tag{};                         // Work item tag used to identify this thread.
     bool in_parallel{false};           // Inside a parallel section (hence tag not unique if we re-use)
-    std::vector<unsigned> good_hints;  // Vector used to pass hints of workers to use
-    std::vector<unsigned> alt_hints;   // Vector used to pass hints of workers to use if not sufficient good hints
   };
+
+  static_assert(std::is_trivially_destructible<PerThread>::value, "Per-thread state should be trivially destructible");
 
   struct ThreadData {
     constexpr ThreadData() : thread(), queue() {
@@ -771,6 +779,9 @@ int CurrentThreadId() const EIGEN_FINAL {
       }
       status = ThreadStatus::Spinning;
     }
+
+    std::vector<unsigned> good_hints;  // Vector used to pass hints of workers to use
+    std::vector<unsigned> alt_hints;   // Vector used to pass hints of workers to use if not sufficient good hints
 
   private:
     std::atomic<ThreadStatus> status{ThreadStatus::Spinning};
