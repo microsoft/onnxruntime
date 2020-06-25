@@ -34,13 +34,6 @@ using MapInt64ToInt64 = std::map<int64_t, int64_t>;
 using MapInt64ToFloat = std::map<int64_t, float>;
 using MapInt64ToDouble = std::map<int64_t, double>;
 
-//unordered maps
-using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
-
-//data types for execution provider options
-using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;  
-using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;  
-
 //vectors/sequences
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;

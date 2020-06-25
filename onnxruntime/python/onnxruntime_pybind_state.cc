@@ -335,34 +335,42 @@ const std::vector<std::string>& GetAvailableProviders() {
 /*
  * Validate a string that is positive integer or zero.
  *
- * (-1234, 43.21, +43.21 ..... are not valid) 
+ * (-1234, 43.21, +43.21 ... are not valid,
+ *  1234, +4321, 12 ... are valid) 
  */
-bool IsPositiveInteger(const std::string & s)
-{
-   if(s.empty() || ((!isdigit(s[0])) && (s[0] != '+'))) { 
-       return false;
+bool IsPositiveInteger(const std::string & s) {
+
+  if (s.length() == 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < s.length(); i++) {
+    if (i == 0 && s[i] == '+' && s.length() > 1) {
+      continue;
     }
 
-   char * p;
-   std::strtol(s.c_str(), &p, 10);
+    if (!isdigit(s[i])) {
+      return false; 
+    }      
+  }
 
-   return (*p == 0);
+  return true;
 }
 
-bool IsCudaDeviceIdValid(int id) {
+bool IsCudaDeviceIdValid(InferenceSession* sess, int id) {
     
     int num_devices = 0;
     CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
 
     if (0 == num_devices)
     {
-        LOGS_DEFAULT(WARNING) << "your system does not have a CUDA capable device.";
+        LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a CUDA capable device.";
         return false;
     }
 
     if (id < 0 || id >= num_devices)
     {
-        LOGS_DEFAULT(WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+        LOGS(*(sess->GetLogger()), WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
         return false;
     }
 
@@ -370,7 +378,7 @@ bool IsCudaDeviceIdValid(int id) {
 }
 
 
-void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::unordered_map<std::string, std::string> options_map) {
+void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProviderOptions& options, std::unordered_map<std::string, std::string> options_map) {
     std::unordered_map<std::string, std::string>::iterator it;
 
     it = options_map.find("device_id");
@@ -383,18 +391,18 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::u
             throw std::runtime_error("Please provide device id with integer.");
         }
 
-        if (!IsCudaDeviceIdValid(device_id)) {
+        if (!IsCudaDeviceIdValid(sess, device_id)) {
             throw std::runtime_error("Please provide available device id.");
         }
         options.device_id = device_id; 
-        LOGS_DEFAULT(INFO) << "cuda device id is set to " << device_id;
+        LOGS(*(sess->GetLogger()), INFO) << "cuda device id is set to " << device_id;
     }
 
     it = options_map.find("cuda_mem_limit");
     if (it != options_map.end()) {
 
         // The reason to check whether the string is positive integer upfront is that
-        // when calling stoul(), if the minus sign was part of the input sequence, 
+        // when calling stoull(), if the minus sign was part of the input sequence, 
         // the numeric value calculated from the sequence of digits is negated.
         // In other words, it will cause wraparound. 
         // So, we rule out negative integer string beforehand. 
@@ -404,18 +412,17 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::u
 
         size_t size;
         try {
-          size = std::stoul(it->second, nullptr, 0);
+          size = std::stoull(it->second, nullptr, 0);
         }
         catch (const std::invalid_argument& ia) {
             throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
         }
-
-        if (size > std::numeric_limits<size_t>::max()) {
+        catch (const std::out_of_range& oor) {
             throw std::runtime_error("Please provide cuda memory limitation size within the range.");
         }
         
         options.cuda_mem_limit = size; 
-        LOGS_DEFAULT(INFO) << "cuda memory limitation is set to " << size;
+        LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;
     }
 
     it = options_map.find("arena_extend_strategy");
@@ -433,7 +440,7 @@ void UpdateCudaProviderOptions(onnxruntime::CudaProviderOptions& options, std::u
         }
         
         options.arena_extend_strategy = strategy; 
-        LOGS_DEFAULT(INFO) << "cuda arean extend strategy is set to " << it->second;
+        LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
     }
 }
 #endif
@@ -509,7 +516,7 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        UpdateCudaProviderOptions(cuda_provider_options, it->second); 
+        UpdateCudaProviderOptions(sess, cuda_provider_options, it->second); 
       }
 
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,

@@ -345,6 +345,11 @@ class InferenceSession {
     */
   std::string EndProfiling();
 
+  /*
+   * Get InferenceSession logger.
+   */
+  const logging::Logger* GetLogger() const { return session_logger_; };
+
  protected:
   /**
     * Load an ONNX model.

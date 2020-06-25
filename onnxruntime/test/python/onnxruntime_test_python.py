@@ -78,6 +78,11 @@ class TestInferenceSession(unittest.TestCase):
                 options = sess.get_provider_options()
                 self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
 
+                option['cuda_mem_limit'] = 18446744073709551615 # 2^64-1 
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(18446744073709551615))
+
                 option['cuda_mem_limit'] = -1024 
                 with self.assertRaises(RuntimeError):
                     sess.set_providers(['CUDAExecutionProvider'], [option])

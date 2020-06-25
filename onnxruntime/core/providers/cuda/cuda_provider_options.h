@@ -7,6 +7,9 @@ namespace onnxruntime {
 
 /**
   * Configuration information for a cuda provider.
+  *
+  * Note: This struct is currently for internal use for Python API,
+  *       not for C/C++/C#...APIs. 
   */
 struct CudaProviderOptions {
 
