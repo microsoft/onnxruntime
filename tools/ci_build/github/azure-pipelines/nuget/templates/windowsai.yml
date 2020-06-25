@@ -286,8 +286,8 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        Debug\Microsoft.AI.MachineLearning.Tests.exe
-        x64\Debug\Microsoft.AI.MachineLearning.Tests.exe
+        .\Debug\Microsoft.AI.MachineLearning.Tests.exe
+        .\x64\Debug\Microsoft.AI.MachineLearning.Tests.exe
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
 
   - task: PublishPipelineArtifact@0
