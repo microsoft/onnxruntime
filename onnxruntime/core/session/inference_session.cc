@@ -775,7 +775,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
-      auto& control_flow_kernel = dynamic_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
+      auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           control_flow_kernel.SetupSubgraphExecutionInfo(session_state, name, *subgraph_session_state));
 
@@ -1032,10 +1032,14 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
   if (actual == expected) {
     return Status::OK();
   }
+#ifdef ORT_NO_RTTI
+  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
+#else
   auto actual_name = std::string(typeid(*actual).name());
   auto expected_name = std::string(typeid(*expected).name());
   return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                 "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
+#endif
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,

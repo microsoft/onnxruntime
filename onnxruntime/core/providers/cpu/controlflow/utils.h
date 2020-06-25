@@ -9,6 +9,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 class Graph;
@@ -31,8 +32,9 @@ OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
 namespace controlflow {
 
 /** Interface for control flow kernels    */
-class IControlFlowKernel {
+class IControlFlowKernel : public OpKernel {
  public:
+  explicit IControlFlowKernel(const OpKernelInfo& info) : OpKernel(info) {}
   /** Setup information that is re-used each time to execute the subgraph.
   @param session_state SessionState for graph containing the control flow node
   @param attribute_name Control flow node's attribute name that contained the subgraph 
