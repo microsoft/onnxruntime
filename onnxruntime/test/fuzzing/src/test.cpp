@@ -264,8 +264,6 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt)
 
 int main(int argc, char* argv[]) 
 {
-  //unittestBetaDistribution();
-  //unittestGenerateRandomData();
   runtimeOpt opt{};
   try
   {
