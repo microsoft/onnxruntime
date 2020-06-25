@@ -314,7 +314,7 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
-        default='Visual Studio 15 2017',
+        default='Visual Studio 15 2017' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
     parser.add_argument(
@@ -349,6 +349,9 @@ def parse_arguments():
     parser.add_argument(
         "--armnn_relu", action='store_true',
         help="Use the Relu operator implementation from the ArmNN EP.")
+    parser.add_argument(
+        "--build_micro_benchmarks", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
     return parser.parse_args()
 
 
@@ -640,7 +643,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF")
+            "ON" if args.use_horovod else "OFF"),
+        "-Donnxruntime_BUILD_BENCHMARKS=" + (
+            "ON" if args.build_micro_benchmarks else "OFF")
     ]
 
     if mpi_home and os.path.exists(mpi_home):
@@ -687,8 +692,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
 
-    if is_macOS() and args.use_xcode:
-        cmake_args += ["-GXcode"]
+    if is_macOS():
+        if args.use_xcode:
+            cmake_args += ['-G', 'Xcode']
+        elif args.cmake_generator is not None:
+            cmake_args += ['-G', args.cmake_generator]
 
     if args.ios:
         if is_macOS():
@@ -1186,13 +1194,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             try:
                 import onnx  # noqa
-                # gen_test_models.py used by onnx_test requires scipy.
-                import scipy  # noqa
                 onnx_test = True
             except ImportError as error:
                 log.exception(error)
                 log.warning(
-                    "onnx or scipy is not installed. "
+                    "onnx is not installed. "
                     "The ONNX tests will be skipped.")
                 onnx_test = False
 
@@ -1510,8 +1516,11 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         if not is_ninja:
             cmd_args += ['-T', 'host=x64']
         cmd_args += ['-G', args.cmake_generator]
-    elif is_macOS() and args.use_xcode:
-        cmd_args += ['-G', 'Xcode']
+    elif is_macOS():
+        if args.use_xcode:
+            cmd_args += ['-G', 'Xcode']
+        elif args.cmake_generator is not None:
+            cmd_args += ['-G', args.cmake_generator]
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step

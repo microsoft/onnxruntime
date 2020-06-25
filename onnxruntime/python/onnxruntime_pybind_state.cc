@@ -313,37 +313,7 @@ const std::vector<std::string>& GetAllProviders() {
 
 const std::vector<std::string>& GetAvailableProviders() {
   auto InitializeProviders = []() {
-    std::vector<std::string> available_providers = {kCpuExecutionProvider};
-#ifdef USE_TENSORRT
-    available_providers.push_back(kTensorrtExecutionProvider);
-#endif
-#ifdef USE_MIGRAPHX
-    available_providers.push_back(kMIGraphXExecutionProvider);
-#endif
-#ifdef USE_CUDA
-    available_providers.push_back(kCudaExecutionProvider);
-#endif
-#ifdef USE_DNNL
-    available_providers.push_back(kDnnlExecutionProvider);
-#endif
-#ifdef USE_NGRAPH
-    available_providers.push_back(kNGraphExecutionProvider);
-#endif
-#ifdef USE_OPENVINO
-    available_providers.push_back(kOpenVINOExecutionProvider);
-#endif
-#ifdef USE_NUPHAR
-    available_providers.push_back(kNupharExecutionProvider);
-#endif
-#ifdef USE_VITISAI
-    available_providers.push_back(kVitisAIExecutionProvider);
-#endif
-#ifdef USE_ACL
-    available_providers.push_back(kAclExecutionProvider);
-#endif
-#ifdef USE_ARMNN
-    available_providers.push_back(kArmNNExecutionProvider);
-#endif
+    std::vector<std::string> available_providers(std::begin(providers_available), std::end(providers_available));
     return available_providers;
   };
   static std::vector<std::string> available_providers = InitializeProviders();

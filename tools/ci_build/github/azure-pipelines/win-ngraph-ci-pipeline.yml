@@ -14,7 +14,7 @@ jobs:
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_pybind --use_openmp --use_ngraph --use_full_protobuf --build_shared_lib --update'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_pybind --use_ngraph --use_full_protobuf --build_shared_lib --update'
         workingDirectory: "$(Build.BinariesDirectory)"
     - task: VSBuild@1
       displayName: 'Build Debug'
@@ -46,7 +46,7 @@ jobs:
       displayName: 'Test Release'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_pybind --use_openmp --use_ngraph --use_full_protobuf --build_shared_lib  --enable_onnx_tests --test'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_pybind --use_ngraph --use_full_protobuf --build_shared_lib  --enable_onnx_tests --test'
         workingFolder: "$(Build.BinariesDirectory)"
 
     - template: templates/component-governance-component-detection-steps.yml

@@ -56,6 +56,10 @@ const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
 inline const OrtApi& GetApi() { return Global<void>::api_; }
 
+// This is a C++ wrapper for GetAvailableProviders() C API and returns
+// a vector of strings representing the available execution providers.
+std::vector<std::string> GetAvailableProviders();
+
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.
 #define ORT_DEFINE_RELEASE(NAME) \

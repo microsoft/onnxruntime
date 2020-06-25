@@ -44,7 +44,7 @@ __global__ void ExpandKernel2D(
   output_data[id] = input_data[dim0 * input_view_stride0 + dim1 * input_view_stride1];
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void ExpandKernel(
     const int rank,
     const int N,
@@ -52,14 +52,41 @@ __global__ void ExpandKernel(
     T* output_data,
     const TArray<fast_divmod> output_strides,
     const TArray<int64_t> input_strides) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  T value[NumElementsPerThread];
 
-  int dim, r = id, input_index = 0;
-  for (int i = 0; i < rank; ++i) {
-    output_strides[i].divmod(r, dim, r);
-    input_index += dim * input_strides[i];
+  CUDA_LONG id = start;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+      CUDA_LONG index = 0;
+      CUDA_LONG offset = id;
+#pragma unroll
+      for (auto dim = 0; dim < output_strides.GetCapacity(); dim++) {
+        if (dim >= rank) {
+          break;
+        }
+
+        int q, r;
+        output_strides[dim].divmod(offset, q, r);
+        index += static_cast<int>(input_strides[dim]) * q;
+        offset = r;
+      }
+
+      value[i] = input_data[index];
+      id += NumThreadsPerBlock;
+    }
   }
-  output_data[id] = input_data[input_index];
+
+  id = start;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output_data[id] = value[i];
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
 Status ExpandByFill(const size_t element_size, const int N, const void* input_data, void* output_data) {
@@ -130,11 +157,12 @@ Status ExpandImpl(
                     static_cast<int>(input_strides[1]));
   }
 
-  int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(N_output, GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(N_output, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
 
 #define EXPAND_ON(TYPE)                                                                                  \
   case sizeof(TYPE):                                                                                     \
-    ExpandKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                     \
+    ExpandKernel<TYPE, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>                       \
+                <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                     \
         rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
         output_strides, input_strides);                                                                  \
     break
