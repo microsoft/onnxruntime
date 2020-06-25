@@ -30,7 +30,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     [np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol) for out, ort_out in zip(outputs, ort_outs)]
 
 
-# These set of tests verify ONNX model export and compare onnxruntime outputs ro pytorch.
+# These set of tests verify ONNX model export and compare onnxruntime outputs to pytorch.
 # To register custom ops and run the tests, you should set PYTHONPATH as:
 # PYTHONPATH=<path_to_onnxruntime/tools> pytest -v test_custom_ops_pytorch_exporter.py
 class ONNXExporterTest(unittest.TestCase):
