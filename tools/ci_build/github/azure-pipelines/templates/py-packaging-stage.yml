@@ -89,7 +89,7 @@ stages:
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
               --build-arg PYTHON_VERSION=$(python.version) \
-              -f Dockerfile.manylinux1 .
+              -f Dockerfile.manylinux2010_cpu .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
       - task: CmdLine@2
         inputs:
@@ -228,7 +228,7 @@ stages:
         setVcvars: true
         BuildConfig: 'Release'
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-      timeoutInMinutes: 60
+      timeoutInMinutes: 120
       workspace:
         clean: all
 
@@ -338,7 +338,7 @@ stages:
       workspace:
         clean: all
       pool: 'Win-GPU-2019'
-      timeoutInMinutes:  60
+      timeoutInMinutes:  120
       variables:
         CUDA_VERSION: '10.1'
         buildArch: x64
