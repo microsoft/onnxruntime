@@ -236,14 +236,18 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // verify axes is contiguous if more than one elements
     const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::vector<int64_t> axes_values;
+    std::vector<int64_t> axes_values, normalized_axes;
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       if (axes_values.size() > 1) {
-        sort(axes_values.begin(), axes_values.end());
+        const int input_dim_size = reduce_mean_node.MutableInputDefs()[0]->Shape()->dim_size();
+        for (int64_t r : axes_values) {
+          normalized_axes.push_back((r + input_dim_size) % input_dim_size);
+        }
+        sort(normalized_axes.begin(), normalized_axes.end());
         bool contingous = true;
-        for (size_t i = 0; i < axes_values.size() - 1; i++) {
-          if (axes_values[i] + 1 != axes_values[i + 1]) {
+        for (size_t i = 0; i < normalized_axes.size() - 1; i++) {
+          if (normalized_axes[i] + 1 != normalized_axes[i + 1]) {
             contingous = false;
             break;
           }
