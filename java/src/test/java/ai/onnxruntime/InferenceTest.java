@@ -350,17 +350,32 @@ public class InferenceTest {
       requestedOutputs.clear();
 
       /*
-       * The native library does all the computations, rather than the requested subset. Leaving these tests
-       * commented out until it's fixed. // Request single output ab, supply required inputs
-       * inputMap.put("a:0",a); inputMap.put("b:0",b); requestedOutputs.add("ab:0"); try (Result r =
-       * session.run(inputMap,requestedOutputs)) { assertEquals(1,r.size()); float abVal =
-       * unwrapFunc.apply(r,"ab:0"); assertEquals(6.0f,abVal,1e-10); } inputMap.clear(); requestedOutputs.clear();
-       *
-       * // Request single output bc, supply required inputs inputMap.put("b:0",b); inputMap.put("c:0",c);
-       * requestedOutputs.add("bc:0"); try (Result r = session.run(inputMap,requestedOutputs)) {
-       * assertEquals(1,r.size()); float bcVal = unwrapFunc.apply(r,"bc:0"); assertEquals(15.0f,bcVal,1e-10); }
-       * inputMap.clear(); requestedOutputs.clear();
+       * The native library does all the computations, rather than the requested subset. Leaving the two following
+       * test cases commented out until it's fixed.
        */
+
+      // Request single output ab, supply required inputs
+      // inputMap.put("a:0", a);
+      // inputMap.put("b:0", b);
+      // requestedOutputs.add("ab:0");
+      // try (Result r = session.run(inputMap, requestedOutputs)) {
+      // assertEquals(1, r.size());
+      // float abVal = unwrapFunc.apply(r, "ab:0");
+      // assertEquals(6.0f, abVal, 1e-10);
+      // }
+      // inputMap.clear();
+      // requestedOutputs.clear();
+
+      // Request single output bc, supply required inputs inputMap.put("b:0",b);
+      // inputMap.put("c:0",c);
+      // requestedOutputs.add("bc:0");
+      // try (Result r = session.run(inputMap, requestedOutputs)) {
+      // assertEquals(1, r.size());
+      // float bcVal = unwrapFunc.apply(r, "bc:0");
+      // assertEquals(15.0f, bcVal, 1e-10);
+      // }
+      // inputMap.clear();
+      // requestedOutputs.clear();
 
       // Request output but don't supply the inputs
       inputMap.put("c:0", c);
