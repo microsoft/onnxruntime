@@ -266,13 +266,10 @@ jobs:
         $output_props_content = $input_props_content -replace '\[PackageVersion\]', $package_version
         Set-Content -Path $output_props -Value $output_props_content
 
-        $input_targets = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.targets.pp')
-        $output_targets = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.targets')
-        $input_targets_content = Get-Content -Path $input_targets
-        $output_targets_content = $input_targets_content -replace '\[PackageVersion\]', $package_version
-        Set-Content -Path $output_targets -Value $output_targets_content
-
         nuget restore -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
+
+        $project_assets_json = [System.IO.Path]::Combine($src_dir, 'obj', 'project.assets.json')
+        Remove-Item -Force $project_assets_json
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
   - task: PowerShell@2

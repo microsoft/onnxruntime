@@ -18,14 +18,27 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <PropertyGroup>
+    <EnableNuGetPackageRestore>true</EnableNuGetPackageRestore>
+  </PropertyGroup>
+
   <Import Project="Microsoft.AI.MachineLearning.Tests.props" />
+  
+  <PropertyGroup>
+    <CppWinRTPackage>true</CppWinRTPackage>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AI.MachineLearning" Version="$(WindowsAIVersion)" targetframework="native" />
+    <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.200615.7" targetframework="native" />
+  </ItemGroup>
+
   <ItemGroup>
     <ClCompile Include="main.cpp">
       <FileType>Document</FileType>
       <DeploymentContent>true</DeploymentContent>
     </ClCompile>
   </ItemGroup>
-  
   <ItemGroup>
     <None Include="..\..\testdata\squeezenet.onnx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -38,8 +51,6 @@
       <Visible>true</Visible>
     </None>
   </ItemGroup>
-
-
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <ProjectGuid>{3BB97C0D-DEC9-4828-A821-78147AE5A488}</ProjectGuid>
@@ -94,13 +105,13 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-  <Import Project="Microsoft.AI.MachineLearning.Tests.targets" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

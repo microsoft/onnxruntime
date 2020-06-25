@@ -43,6 +43,4 @@ int main() {
   auto binding = LearningModelBinding(session);
   binding.Bind(L"data_0", frame);
   auto results = session.Evaluate(binding, L"");
-  auto output = results.Outputs().First().Current().as<winrt::Microsoft::AI::MachineLearning::ITensor>();
-
 }
