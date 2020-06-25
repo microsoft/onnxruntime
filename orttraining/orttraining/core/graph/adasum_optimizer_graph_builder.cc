@@ -231,7 +231,7 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
         "adasum_all_deltas_finite"));
     std::cout<<"########delta finite output's name is : "<<adasum_global_grad_finite_argdef.name<<std::endl;
     std::cout<<"########finite output's name is : "<<optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite]<<std::endl;
-    //[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
+    optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
   // //Add weight update.
   std::vector<ArgDef> output_weight_args;
