@@ -909,15 +909,21 @@ public class OrtSession extends NativeObject {
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
-    /*
-     * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
-     * functions to enable them in the session: OrtSessionOptionsAppendExecutionProvider_CPU
-     * OrtSessionOptionsAppendExecutionProvider_CUDA OrtSessionOptionsAppendExecutionProvider_<remaining
-     * providers...> The order they care called indicates the preference order as well. In other words call this
-     * method on your most preferred execution provider first followed by the less preferred ones. If none are
-     * called Ort will use its internal CPU execution provider.
+    /**
+     * To use additional providers, you must build ORT with the extra providers enabled. Then call
+     * one of these functions to enable them in the session:
      *
-     * If a backend is unavailable then it throws an OrtException
+     * <ul>
+     *   <li>OrtSessionOptionsAppendExecutionProvider_CPU
+     *   <li>OrtSessionOptionsAppendExecutionProvider_CUDA
+     *   <li>OrtSessionOptionsAppendExecutionProvider_(remaining providers...)
+     * </ul>
+     *
+     * The order they care called indicates the preference order as well. In other words call this
+     * method on your most preferred execution provider first followed by the less preferred ones.
+     * If none are called Ort will use its internal CPU execution provider.
+     *
+     * <p>If a backend is unavailable then it throws an OrtException
      */
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
