@@ -67,7 +67,7 @@ def create_ort_trainer(gradient_accumulation_steps,
                         allreduce_post_accumulation,
                         use_simple_model_desc=True,
                         loss_scaler=None,
-                        partition_optimizer=False):
+                        deepspeed_zero_stage=0):
     model_desc = bert_model_description()
     simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
@@ -84,7 +84,7 @@ def create_ort_trainer(gradient_accumulation_steps,
                        loss_scaler=loss_scaler,
                        use_mixed_precision=use_mixed_precision,
                        allreduce_post_accumulation=allreduce_post_accumulation,
-                       partition_optimizer = partition_optimizer)
+                       deepspeed_zero_stage = deepspeed_zero_stage)
 
     return model, model_desc, device
 
@@ -287,9 +287,9 @@ class MNISTWrapper():
         return model, model_desc
 
     def get_trainer(self, model, model_desc, device, onnx_opset_ver=12, frozen_weights=[],
-                    internal_loss_fn=False, get_lr_this_step=None):
+                    internal_loss_fn=False, get_lr_this_step=None, optimizer="SGDOptimizer"):
         loss_fn = MNISTWrapper.my_loss if not internal_loss_fn else None
-        return ORTTrainer(model, loss_fn, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
+        return ORTTrainer(model, loss_fn, model_desc, optimizer, None, IODescription('Learning_Rate', [1, ],
                                 torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights,
                                 get_lr_this_step=get_lr_this_step)
 
@@ -605,6 +605,54 @@ class TestOrtTrainer(unittest.TestCase):
 
         ckpt_loss, _ = trainer.eval_step(data, target)
         assert loss == ckpt_loss
+
+        loaded_state_dict = trainer.state_dict()
+        assert state_dict.keys() == loaded_state_dict.keys()
+
+    def testMNISTTrainingCheckpoint(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device,
+            optimizer='LambOptimizer', frozen_weights=['fc1.weight'])
+
+        learningRate = 0.02
+        epoch = 0
+
+        # do 5 train step
+        for i in range(5):
+            data, target = next(iter(train_loader))
+            data, target = data.to(device), target.to(device)
+            data = data.reshape(data.shape[0], -1)
+
+            loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        # do one eval step
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.eval_step(data, target)
+
+        # save checkpoint, load model and compare
+        state_dict = trainer.state_dict()
+
+        new_model, _ = mnist.get_model()
+        trainer = mnist.get_trainer(new_model, model_desc, device,
+            optimizer='LambOptimizer', frozen_weights=['fc1.weight'])
+        trainer.load_state_dict(state_dict)
+
+        ckpt_loss, _ = trainer.eval_step(data, target)
+        assert loss == ckpt_loss
+
+        loaded_state_dict = trainer.state_dict()
+        assert state_dict.keys() == loaded_state_dict.keys()
+        for key in state_dict:
+            assert np.array_equal(state_dict[key], loaded_state_dict[key])
 
     def testBertTrainingBasic(self):
         expected_losses = [

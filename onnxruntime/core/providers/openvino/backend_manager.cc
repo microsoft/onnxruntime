@@ -253,6 +253,13 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, subgraph_context_.device_id);
 
+    if(subgraph_context_.device_id == "MYRIAD"){
+      for(size_t i = 0; i < subgraph_context_.input_indexes.size(); i++){
+        if(tensor_shapes[i].size() != 4)
+          subgraph_context_.set_vpu_config = true;
+      }
+    }
+
     std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {

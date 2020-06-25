@@ -103,11 +103,13 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
    Retrieve your docker image in one of the following ways.
 
-    -  To build your docker image, download the OpenVINO **online installer** package for version **2020.2** for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
+    -  To build your docker image, download the OpenVINO **online installer** package for version **2020.3** for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 19MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
        docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```
     - Pull the official image from DockerHub.
+
+  *Although 2020.3 LTS is the recommended OpenVINO version, [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is also additionally supported.*
 
 
 2. DEVICE: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.

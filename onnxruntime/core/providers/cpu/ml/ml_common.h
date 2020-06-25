@@ -431,22 +431,17 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         // for smaller batches it takes more threads to counter some of the overhead.
         switch (batch_size) {
           case 1:
-            use_mlas = false;  // could choose either
+            use_mlas = false;  // mlas is mildly slower
             break;
           case 2:
-            use_mlas = num_scores >= 48 * 1024;
-            break;
-          case 3:
             use_mlas = num_scores >= 32 * 1024;
             break;
+          case 3:
           case 4:
-          case 5:
-          case 6:
-          case 7:
             use_mlas = num_scores >= 16 * 1024;
             break;
           default:
-            // 8 or more mlas is always faster
+            // toss up if num_scores is low (<200), but the more scores to process the larger the win by mlas
             break;
         }
 
