@@ -97,7 +97,7 @@ Status SetupOptimizerParams(
           ? static_cast<int64_t>(hvd::ReduceOp::SUM)
           : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
 #endif
-  opt_graph_config.partition_optimizer = optimizer_config.partition_optimizer;
+  opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 
@@ -782,7 +782,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 }
 
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
-  bool allow_missing = opt_graph_config_.partition_optimizer;
+  bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
   return session_state_->GetInitializedTensors(GetStateTensorNames(), allow_missing, state_tensors);
 }
 
