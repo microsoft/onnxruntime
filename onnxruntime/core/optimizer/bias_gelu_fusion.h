@@ -8,8 +8,8 @@
 namespace onnxruntime {
 
 /**
-@Class GeluFusion
-Fuse Add + Gelu to GeluFusion
+@Class BiasGeluFusion
+Fuse Add + Gelu to BiasGelu or FastGelu
 */
 class BiasGeluFusion : public GraphTransformer {
  public:
