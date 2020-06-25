@@ -405,7 +405,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       : env_(env),
         num_threads_(num_threads),
         allow_spinning_(allow_spinning),
-        thread_data_(num_threads),
+        worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
         done_(false),
@@ -429,9 +429,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     num_hint_words_ = static_cast<int>((num_threads_ + bits_per_hint_word_ - 1) / bits_per_hint_word_);
     good_worker_hints_ = onnxruntime::make_unique<std::atomic<uint64_t>[]>(num_hint_words_);
 
-    thread_data_.resize(num_threads_);
+    worker_data_.resize(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
-      thread_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+      worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
     }
   }
 
@@ -446,13 +446,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     } else {
       // Since we were cancelled, there might be entries in the queues.
       // Empty them to prevent their destructor from asserting.
-      for (size_t i = 0; i < thread_data_.size(); i++) {
-        thread_data_[i].queue.Flush();
+      for (size_t i = 0; i < worker_data_.size(); i++) {
+        worker_data_[i].queue.Flush();
       }
     }
     // Join threads explicitly (by destroying) to avoid destruction order within
     // this class.
-    for (size_t i = 0; i < thread_data_.size(); ++i) thread_data_[i].thread.reset();
+    for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
   }
 
   void Schedule(std::function<void()> fn) override {
@@ -460,13 +460,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     PerThread* pt = GetPerThread();
     if (pt->pool == this) {
       // Worker thread of this pool, push onto the thread's queue.
-      Queue& q = thread_data_[pt->thread_id].queue;
+      Queue& q = worker_data_[pt->thread_id].queue;
       t = q.PushFront(std::move(t));
     } else {
       // A free-standing thread (or worker of another pool), push onto a random
       // queue.
       int q_idx = Rand(&pt->rand) % num_threads_;
-      ThreadData &td = thread_data_[q_idx];
+      WorkerData &td = worker_data_[q_idx];
       Queue& q = td.queue;
       t = q.PushBack(std::move(t));
       if (t.f) {
@@ -558,9 +558,7 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
     }
 
     // Push up to n-1 copies of the work item into the queues
-    ThreadData& my_td = thread_data_[my_pt->thread_id];
-    std::vector<unsigned>& good_hints = my_td.good_hints;
-    std::vector<unsigned>& alt_hints = my_td.alt_hints;
+    std::vector<unsigned> good_hints, alt_hints;
     GetGoodWorkerHints(n - 1, good_hints, alt_hints);
     for (unsigned i = 0; i < n - 1; i++) {
       Task t = env_.CreateTask([&b, &fn]() {
@@ -578,7 +576,7 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
           q_idx = Rand(&my_pt->rand) % num_threads_;
         }
       }
-      ThreadData& td = thread_data_[q_idx];
+      WorkerData& td = worker_data_[q_idx];
       Queue& q = td.queue;
       unsigned w_idx;
       t = q.PushBackWithTag(std::move(t), my_pt->tag, w_idx);
@@ -603,7 +601,7 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
     // revoke from the work queues
     int notifications_needed = 1;
     for (auto& item : pending_items) {
-      Queue& q = thread_data_[item.first].queue;
+      Queue& q = worker_data_[item.first].queue;
       if (q.RevokeWithTag(my_pt->tag, item.second)) {
         notifications_needed++;
       }
@@ -619,13 +617,13 @@ void RunInParallel(std::function<void()> fn, unsigned n) override {
 void Cancel() override {
   cancelled_ = true;
   // If done_ is true, which means this object is being destructing.
-  // Therefore thread_data_[i].thread could be NULL.
+  // Therefore worker_data_[i].thread could be NULL.
   if (!done_) {
     done_ = true;
     // Let each thread know it's been cancelled.
-    for (size_t i = 0; i < thread_data_.size(); i++) {
-      assert(thread_data_[i].thread != nullptr);
-      thread_data_[i].thread->OnCancel();
+    for (size_t i = 0; i < worker_data_.size(); i++) {
+      assert(worker_data_[i].thread != nullptr);
+      worker_data_[i].thread->OnCancel();
     }
   }
 
@@ -675,12 +673,19 @@ int CurrentThreadId() const EIGEN_FINAL {
   }
 
   typedef typename Environment::EnvThread Thread;
-  struct ThreadData;
+  struct WorkerData;
 
   // PerThread objects are allocated in thread-local storage and allocated
   // on the thread's first call to GetPerThread.  The object should
   // remain trivially-destructable, with other state placed in the
-  // ThreadData objects that are allocated and cleaned-up explicitly.
+  // WorkerData objects that are allocated and cleaned-up explicitly.
+  //
+  // PerThread objects are allocated for all threads that submit work to
+  // the thread pool, in addition to threads within the pool.
+  //
+  // In contrast, the WorkerData objects are allocated only for the
+  // threads in the pool, and their lifetime is managed along with the
+  // pool.
 
   struct PerThread {
     constexpr PerThread() : pool(nullptr) {
@@ -694,8 +699,8 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   static_assert(std::is_trivially_destructible<PerThread>::value, "Per-thread state should be trivially destructible");
 
-  struct ThreadData {
-    constexpr ThreadData() : thread(), queue() {
+  struct WorkerData {
+    constexpr WorkerData() : thread(), queue() {
     }
     std::unique_ptr<Thread> thread;
     Queue queue;
@@ -780,9 +785,6 @@ int CurrentThreadId() const EIGEN_FINAL {
       status = ThreadStatus::Spinning;
     }
 
-    std::vector<unsigned> good_hints;  // Vector used to pass hints of workers to use
-    std::vector<unsigned> alt_hints;   // Vector used to pass hints of workers to use if not sufficient good hints
-
   private:
     std::atomic<ThreadStatus> status{ThreadStatus::Spinning};
     OrtMutex mutex;
@@ -792,7 +794,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   Environment& env_;
   const int num_threads_;
   const bool allow_spinning_;
-  Eigen::MaxSizeVector<ThreadData> thread_data_;
+  Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
@@ -815,7 +817,7 @@ int CurrentThreadId() const EIGEN_FINAL {
   // items in the work queues.
 
   void WakeAllWorkersForExit() {
-    for (auto &td: thread_data_) {
+    for (auto &td: worker_data_) {
       td.EnsureAwake();
     }
   }
@@ -823,14 +825,14 @@ int CurrentThreadId() const EIGEN_FINAL {
   // Main worker thread loop.
   void WorkerLoop(int thread_id) {
     PerThread* pt = GetPerThread();
-    ThreadData& td = thread_data_[thread_id];
+    WorkerData& td = worker_data_[thread_id];
     Queue& q = td.queue;
     bool should_exit = false;
     pt->pool = this;
     pt->rand = GlobalThreadIdHash();
     pt->thread_id = thread_id;
 
-    assert(td.GetStatus() == ThreadData::ThreadStatus::Spinning);
+    assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
     SetGoodWorkerHint(thread_id, true /* Is good */);
 
     const int log2_spin = 20;
@@ -868,7 +870,7 @@ int CurrentThreadId() const EIGEN_FINAL {
                     if (victim != -1) {
                       should_block = false;
                       if (!cancelled_) {
-                        t = thread_data_[victim].queue.PopBack();
+                        t = worker_data_[victim].queue.PopBack();
                       }
                     }
                     // Number of blocked threads is used as termination condition.
@@ -943,8 +945,8 @@ int CurrentThreadId() const EIGEN_FINAL {
       for (unsigned i = 0; i < size; i++) {
         assert(victim < size);
         if (round == 1 ||
-            thread_data_[victim].GetStatus() == ThreadData::ThreadStatus::Active) {
-          Task t = thread_data_[victim].queue.PopBack();
+            worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
+          Task t = worker_data_[victim].queue.PopBack();
           if (t.f) {
             return t;
           }
@@ -968,12 +970,12 @@ int CurrentThreadId() const EIGEN_FINAL {
 
   int NonEmptyQueueIndex() {
     PerThread* pt = GetPerThread();
-    const unsigned size = static_cast<unsigned>(thread_data_.size());
+    const unsigned size = static_cast<unsigned>(worker_data_.size());
     unsigned r = Rand(&pt->rand);
     unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
     unsigned victim = r % size;
     for (unsigned i = 0; i < size; i++) {
-      if (!thread_data_[victim].queue.Empty()) {
+      if (!worker_data_[victim].queue.Empty()) {
         return victim;
       }
       victim += inc;
