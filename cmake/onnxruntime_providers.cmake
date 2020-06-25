@@ -6,6 +6,10 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
+if(onnxruntime_DISABLE_ML_OPS)
+  list(FILTER onnxruntime_providers_srcs EXCLUDE REGEX ".*/ml/.*")
+endif()
+
 file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
@@ -144,6 +148,7 @@ if(HAS_DEPRECATED_COPY)
 endif()
 
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${RE2_INCLUDE_DIR})
+
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -153,6 +158,9 @@ if (onnxruntime_ENABLE_TRAINING)
 
   if (onnxruntime_USE_HOROVOD)
     target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
+  endif()
+  if (onnxruntime_USE_NCCL OR onnxruntime_USE_HOROVOD) 
+    target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
   endif()
 endif()
 

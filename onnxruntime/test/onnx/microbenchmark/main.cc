@@ -33,7 +33,9 @@ static void BM_CPUAllocator(benchmark::State& state) {
     cpu_allocator->Free(p);
   }
 }
-BENCHMARK(BM_CPUAllocator)->Arg(4)->Arg(sizeof(Tensor));
+BENCHMARK(BM_CPUAllocator)
+    ->Arg(4)
+    ->Arg(sizeof(Tensor));
 
 static void BM_ResolveGraph(benchmark::State& state) {
   std::shared_ptr<onnxruntime::Model> model_copy;
@@ -70,7 +72,6 @@ BENCHMARK(BM_ResolveGraph);
       abort();                                               \
     }                                                        \
   } while (0);
-
 
 int main(int argc, char** argv) {
   ::benchmark::Initialize(&argc, argv);

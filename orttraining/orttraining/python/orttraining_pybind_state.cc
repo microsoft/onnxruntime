@@ -49,7 +49,7 @@ struct TrainingParameters {
   int gradient_accumulation_steps = 1;
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
-  bool partition_optimizer = false;
+  int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
 };
@@ -141,7 +141,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     // eventually we will have one all reduce kernel and let opt to have
     // an allreduce_post_accumulation option and remove the use_nccl option.
     opt.use_nccl = parameters.allreduce_post_accumulation;
-    opt.partition_optimizer = parameters.partition_optimizer;
+    opt.deepspeed_zero = onnxruntime::training::ZeROConfig(parameters.deepspeed_zero_stage);
     // TODO: The norm clipping value is 1.0f which is the default used in most frameworks.
     // Need to have another option to support more values in the future.
     opt.enable_grad_norm_clip = parameters.enable_grad_norm_clip;
@@ -180,7 +180,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
-      .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
+      .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs);
 

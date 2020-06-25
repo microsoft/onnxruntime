@@ -217,6 +217,30 @@ GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_
   return output_tensors;
 }
 
+int GetFirstAvailableDevice(GlobalContext& global_context){
+
+  int i = 0;
+  //Get the first available VAD-M device and set the device to busy
+  while(i < 8){
+    bool device = global_context.deviceAvailableList[i];
+    if(device){
+      global_context.deviceAvailableList[i] = false;
+      break;
+    }
+    i++;
+  }
+  //If all of the devices are busy, assign the first device and
+  //make all remaining devices free
+  if(i == 8){
+    i = 0;
+    global_context.deviceAvailableList[i] = false;
+    for(int j = 1; j < 8; j++){
+      global_context.deviceAvailableList[j] = true;
+    }
+  }
+  return i;
+}
+
 }  // namespace backend_utils
 }  // namespace openvino_ep
 }  // namespace onnxruntime

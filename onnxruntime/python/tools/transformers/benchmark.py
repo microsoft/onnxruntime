@@ -32,6 +32,8 @@
             python benchmark.py -e torchscript -g
         Run TorchScript on GPU for all models with fp16:
             python benchmark.py -e torchscript -g --fp16
+
+    It is recommended to use run_benchmark.sh to launch benchmark.
 """
 
 import argparse
@@ -62,8 +64,7 @@ MODELS = {
     #"openai-gpt": (["input_ids"], 11, False, "gpt2"),  # no past state inputs
 
     # Models uses Einsum, which need opset version 12 and PyTorch 1.5.0 or above.
-    # Currently OnnxRuntime lacks cuda op for Einsum. GPU inference will be very slow.
-    #"albert-base-v2": (["input_ids"], 12, False, "bert"),
+    "albert-base-v2": (["input_ids"], 12, False, "bert"),
     #"xlnet-base-cased": (["input_ids"], 12, False, "bert"),
 
     # Model>2GB. Need use_external_data_format=True to export it.
@@ -237,7 +238,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
                         fp16, overwrite):
     if overwrite or not os.path.exists(optimized_model_path):
         from optimizer import optimize_model
-        from BertOnnxModel import BertOptimizationOptions
+        from onnx_model_bert import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
         if fp16:
             optimization_options.enable_gelu_approximation = True
@@ -629,13 +630,13 @@ def parse_arguments():
                         "--cache_dir",
                         required=False,
                         type=str,
-                        default="./cache_models",
+                        default=os.path.join('.', 'cache_models'),
                         help="Directory to cache pre-trained models")
 
     parser.add_argument("--onnx_dir",
                         required=False,
                         type=str,
-                        default="./onnx_models",
+                        default=os.path.join('.', 'onnx_models'),
                         help="Directory to store onnx models")
 
     parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="Run on cuda device")
