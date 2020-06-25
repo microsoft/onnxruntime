@@ -33,22 +33,41 @@ class _OptimizerConfig(object):
         assert isinstance(name, str), "'name' must be a string"
         assert name in ['AdamOptimizer', 'LambOptimizer', 'SGDOptimizer'], \
             "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
-        assert isinstance(hyper_parameters, dict), "'hyper_parameters' must be a dict"
+        assert isinstance(hyper_parameters,
+                          dict), "'hyper_parameters' must be a dict"
         assert 'lr' in hyper_parameters, "'hyper_parameters' must contain a {'lr' : positive number} entry"
-        assert isinstance(hyper_parameters['lr'], float) and hyper_parameters['lr'] >= 0, "lr must be a positive number"
+        assert (isinstance(hyper_parameters['lr'], float) or
+                isinstance(hyper_parameters['lr'], int)) and hyper_parameters['lr'] >= 0, "lr must be a positive number"
         assert isinstance(param_groups, list), "'param_groups' must be a list"
         for group in param_groups:
             assert isinstance(group, dict) and len(group) > 1 and 'params' in group, \
                 ("Each dict inside 'param_groups' must contain a {'params' : [model parameter names]} entry"
-                 "and additional entries for custom hyper parameter values")
-            for k, v in group.items():
+                 " and additional entries for custom hyper parameter values")
+            for k, _ in group.items():
                 if k != 'params':
                     assert k in hyper_parameters, f"'param_groups' has 'k' hyper parameter not present at 'hyper_parameters'"
 
         self.name = name
         self.lr = hyper_parameters['lr']
         self.hyper_parameters = hyper_parameters
-        self.param_groups = param_groups
+        self.param_groups = []
+
+        # TODO: monitor this for perf issues
+        # Maybe we don't have to do this to populate TrainingParameters,
+        # but it does make code easier to maintain
+        for param_group in param_groups:
+            self._add_param_group(param_group)
+
+    def _add_param_group(self, param_group):
+        r"""Add a parameter group to the :py:class:`_OptimizerConfig` s `param_groups`."""
+        assert isinstance(param_group, dict), "param group must be a dict"
+
+        # Each parameter group must have all hyper parameters set
+        for name, value in self.hyper_parameters.items():
+            if name not in param_group:
+                param_group.setdefault(name, value)
+
+        self.param_groups.append(param_group)
 
 
 class SGD(_OptimizerConfig):
@@ -66,9 +85,11 @@ class SGD(_OptimizerConfig):
     """
 
     def __init__(self, param_groups=[], lr=0.001):
-        super().__init__(name='SGDOptimizer', hyper_parameters={'lr':lr}, param_groups=param_groups)
-        assert isinstance(param_groups, list) and len(param_groups) == 0, "'param_groups' must be an empty list"
-
+        super().__init__(name='SGDOptimizer',
+                         hyper_parameters={'lr': lr},
+                         param_groups=param_groups)
+        assert isinstance(param_groups, list) and len(
+            param_groups) == 0, "'param_groups' must be an empty list"
 
 
 class Adam(_OptimizerConfig):
@@ -96,18 +117,23 @@ class Adam(_OptimizerConfig):
         assert beta >= 0, "'beta' must be a positive number"
         assert lambda_coef >= 0, "'lambda_coef' must be a positive number"
         assert epsilon >= 0, "'epsilon' must be a positive number"
-        assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
-        assert isinstance(weight_decay_mode, bool), "'weight_decay_mode' must be a boolean"
-        assert isinstance(param_groups, list) and len(param_groups) == 0, "'param_groups' must be an empty list"
+        assert isinstance(do_bias_correction,
+                          bool), "'do_bias_correction' must be a boolean"
+        assert isinstance(weight_decay_mode,
+                          bool), "'weight_decay_mode' must be a boolean"
+        assert isinstance(param_groups, list) and len(
+            param_groups) == 0, "'param_groups' must be an empty list"
 
-        hyper_parameters = {'lr':lr,
-                            'alpha' : alpha,
-                            'beta' : beta,
-                            'lambda_coef' : lambda_coef,
-                            'epsilon' : epsilon,
-                            'do_bias_correction' : do_bias_correction,
-                            'weight_decay_mode' : weight_decay_mode}
-        super().__init__(name='AdamOptimizer', hyper_parameters=hyper_parameters, param_groups=param_groups)
+        hyper_parameters = {'lr': lr,
+                            'alpha': alpha,
+                            'beta': beta,
+                            'lambda_coef': lambda_coef,
+                            'epsilon': epsilon,
+                            'do_bias_correction': do_bias_correction,
+                            'weight_decay_mode': weight_decay_mode}
+        super().__init__(name='AdamOptimizer',
+                         hyper_parameters=hyper_parameters,
+                         param_groups=param_groups)
         self.alpha = alpha
         self.beta = beta
         self.lambda_coef = lambda_coef
@@ -139,21 +165,27 @@ class Lamb(_OptimizerConfig):
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
         assert lambda_coef >= 0, "'lambda_coef' must be a positive number"
-        assert isinstance(ratio_min, float), "'ratio_min' must be a valid float"
-        assert isinstance(ratio_max, float), "'ratio_max' must be a valid float"
+        assert isinstance(
+            ratio_min, float), "'ratio_min' must be a valid float"
+        assert isinstance(
+            ratio_max, float), "'ratio_max' must be a valid float"
         assert epsilon >= 0, "'epsilon' must be a positive number"
-        assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
-        assert isinstance(param_groups, list) and len(param_groups) == 0, "'param_groups' must be an empty list"
+        assert isinstance(do_bias_correction,
+                          bool), "'do_bias_correction' must be a boolean"
+        assert isinstance(param_groups, list) and len(
+            param_groups) == 0, "'param_groups' must be an empty list"
 
-        hyper_parameters = {'lr':lr,
-                            'alpha' : alpha,
-                            'beta' : beta,
-                            'lambda_coef' : lambda_coef,
-                            'ratio_min' : ratio_min,
-                            'ratio_max' : ratio_max,
-                            'epsilon' : epsilon,
-                            'do_bias_correction' : do_bias_correction}
-        super().__init__(name='LambOptimizer', hyper_parameters=hyper_parameters, param_groups=param_groups)
+        hyper_parameters = {'lr': lr,
+                            'alpha': alpha,
+                            'beta': beta,
+                            'lambda_coef': lambda_coef,
+                            'ratio_min': ratio_min,
+                            'ratio_max': ratio_max,
+                            'epsilon': epsilon,
+                            'do_bias_correction': do_bias_correction}
+        super().__init__(name='LambOptimizer',
+                         hyper_parameters=hyper_parameters,
+                         param_groups=param_groups)
         self.alpha = alpha
         self.beta = beta
         self.lambda_coef = lambda_coef

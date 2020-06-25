@@ -4,15 +4,20 @@ from numpy.testing import assert_allclose
 from onnxruntime.capi.training import optim
 
 
-@pytest.mark.parametrize("optim_name", [
-    ('AdamOptimizer'),
-    ('LambOptimizer'),
-    ('SGDOptimizer')
+@pytest.mark.parametrize("optim_name,lr,alpha,default_alpha", [
+    ('AdamOptimizer', .1, .2, None),
+    ('LambOptimizer', .2, .3, None),
+    ('SGDOptimizer', .3, .4, None),
+    ('SGDOptimizer', .3, .4, .5)
 ])
-def testOptimizerConfigs(optim_name):
+def testOptimizerConfig(optim_name, lr, alpha, default_alpha):
     '''Test initialization of _OptimizerConfig'''
-    hyper_parameters = {'lr': 0.001, 'alpha': 0.9}
-    param_groups = [{'params': ['fc1.weight', 'fc2.weight'], 'alpha':.0}]
+    hyper_parameters = {'lr': lr, 'alpha': alpha}
+    param_groups = [{'params': ['fc1.weight', 'fc2.weight']}]
+    if default_alpha is not None:
+        param_groups[0].update({'alpha': default_alpha})
+    else:
+        param_groups[0].update({'alpha': alpha})
     cfg = optim.config._OptimizerConfig(
         name=optim_name, hyper_parameters=hyper_parameters, param_groups=param_groups)
 
@@ -20,6 +25,15 @@ def testOptimizerConfigs(optim_name):
     rtol = 1e-03
     assert_allclose(hyper_parameters['lr'],
                     cfg.lr, rtol=rtol, err_msg="lr mismatch")
+
+    # 1:1 mapping between hyper_parameters and param_groups's hyper parameters
+    for group in param_groups:
+        for k, _ in group.items():
+            if k != 'params':
+                assert k in cfg.hyper_parameters, "hyper parameter {k} not present in one of the parameter groups"
+    for k, _ in cfg.hyper_parameters.items():
+        for group in cfg.param_groups:
+            assert k in group, "hyper parameter {k} not present in one of the parameter groups"
 
 
 @pytest.mark.parametrize("optim_name,hyper_parameters,param_groups", [
