@@ -116,6 +116,8 @@ def parse_arguments():
         help="""When running the Test phase, run onnx_test_running against
         available test data directories.""")
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe.")
+    parser.add_argument(
+        "--fuzz_testing", action='store_true', help="Enable Fuzz testing of the onnxruntime.")
 
     # generate documentaiton
     parser.add_argument(
@@ -763,6 +765,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if path_to_protoc_exe:
         cmake_args += [
             "-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
+			
+    if args.fuzz_testing:
+        if not (args.build_shared_lib 
+				and is_windows() 
+				and args.cmake_generator == 'Visual Studio 16 2019'
+				and args.use_full_protobuf):
+            raise BuildError("Fuzz test has only be tested with build shared libs option using MSVC on windows")
+        cmake_args += [
+            "-Donnxruntime_BUILD_UNIT_TESTS=ON", 
+			"-Donnxruntime_FUZZ_TEST=ON",
+			"-Donnxruntime_USE_FULL_PROTOBUF=ON"]
+	
 
     if args.gen_doc:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]

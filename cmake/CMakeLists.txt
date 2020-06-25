@@ -116,10 +116,9 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
-if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB)
+if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
   # Fuzz test library dependency, protobuf-mutator,
   # needs the onnx message to be compiled using "non-lite protobuf version"
-  set(onnxruntime_USE_FULL_PROTOBUF ON)
   set(onnxruntime_FUZZ_ENABLED ON)
 endif()
 
