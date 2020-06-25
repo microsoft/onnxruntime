@@ -121,8 +121,8 @@ class Adam(_OptimizerConfig):
                           bool), "'do_bias_correction' must be a boolean"
         assert isinstance(weight_decay_mode,
                           bool), "'weight_decay_mode' must be a boolean"
-        assert isinstance(param_groups, list) and len(
-            param_groups) == 0, "'param_groups' must be an empty list"
+        for group in param_groups:
+            assert 'lr' not in group, "'lr' is not supported inside param_groups"
 
         hyper_parameters = {'lr': lr,
                             'alpha': alpha,
@@ -172,8 +172,8 @@ class Lamb(_OptimizerConfig):
         assert epsilon >= 0, "'epsilon' must be a positive number"
         assert isinstance(do_bias_correction,
                           bool), "'do_bias_correction' must be a boolean"
-        assert isinstance(param_groups, list) and len(
-            param_groups) == 0, "'param_groups' must be an empty list"
+        for group in param_groups:
+            assert 'lr' not in group, "'lr' is not supported inside param_groups"
 
         hyper_parameters = {'lr': lr,
                             'alpha': alpha,

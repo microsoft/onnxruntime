@@ -50,7 +50,7 @@ def testOptimizerConfig(optim_name, lr, alpha, default_alpha):
     # missing 'alpha' at 'hyper_parameters'
     ('AdamOptimizer', {'lr': 0.005}, [{'params': 'param1', 'alpha': 1}]),
 ])
-def testOptimizerConfigsInvalidInputs(optim_name, hyper_parameters, param_groups):
+def testOptimizerConfigInvalidInputs(optim_name, hyper_parameters, param_groups):
     '''Test invalid initialization of _OptimizerConfig'''
 
     with pytest.raises(AssertionError):
@@ -68,6 +68,13 @@ def testSGD():
 
     cfg = optim.config.SGD(lr=0.002)
     assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
+
+    # SGD does not support param_groups
+    with pytest.raises(AssertionError) as e:
+        param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
+        optim.config.SGD(param_groups=param_groups, lr=0.002)
+        assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
+    assert str(e.value) == "'param_groups' must be an empty list"
 
 
 def testAdam():
@@ -100,3 +107,38 @@ def testLamb():
     assert cfg.ratio_max == float('inf'), "ratio_max mismatch"
     assert_allclose(1e-6, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
     assert cfg.do_bias_correction == True, "lambda_coef mismatch"
+
+
+@pytest.mark.parametrize("optim_name", [
+    ('Adam'),
+    ('Lamb')
+])
+def testParamGroups(optim_name):
+    rtol = 1e-5
+    param_groups = [{'params': ['layer1.weight'], 'alpha': 0.1}]
+    if optim_name == 'Adam':
+        cfg = optim.config.Adam(param_groups=param_groups, alpha=0.2)
+    elif optim_name == 'Lamb':
+        cfg = optim.config.Lamb(param_groups=param_groups, alpha=0.2)
+    else:
+        raise ValueError('invalid input')
+    assert len(cfg.param_groups) == 1, "param_groups should have length 1"
+    assert_allclose(cfg.param_groups[0]['alpha'], 0.1,
+                    rtol=rtol, err_msg="invalid lr on param_groups[0]")
+
+
+@pytest.mark.parametrize("optim_name", [
+    ('Adam'),
+    ('Lamb')
+])
+def testInvalidParamGroups(optim_name):
+    # lr is not supported within param_groups
+    with pytest.raises(AssertionError) as e:
+        param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
+        if optim_name == 'Adam':
+            optim.config.Adam(param_groups=param_groups, lr=0.2)
+        elif optim_name == 'Lamb':
+            optim.config.Lamb(param_groups=param_groups, lr=0.2)
+        else:
+            raise ValueError('invalid input')
+    assert str(e.value) == "'lr' is not supported inside param_groups"
