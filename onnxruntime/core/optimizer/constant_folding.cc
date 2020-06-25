@@ -159,7 +159,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           for (auto& dim : out_tensor.Shape().GetDims()) {
-             result_shape.add_dim()->set_dim_value(dim);
+            result_shape.add_dim()->set_dim_value(dim);
           }
 
           constant_arg_out->SetShape(result_shape);
