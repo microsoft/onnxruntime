@@ -70,6 +70,7 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
+      std::cout<<"#######Not doing update."<<std::endl;
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(left_addee_buffer, accumulation_output));
       return Status::OK();
     }

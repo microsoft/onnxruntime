@@ -112,6 +112,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
         ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, *NW));
       }
       if (NG != nullptr) {
+        std::cout<<"#####Not updating Adam, copying gradients."<<std::endl;
         ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(G, *NG));
       }
       if (W_FP16 != nullptr && NW_FP16 != nullptr) {

@@ -31,6 +31,8 @@ Status AdasumOptimizerGraphBuilder::AddWeightUpdateNodes(const NodeArgNameGenera
                                                          std::vector<ArgDef>& output_weight_argdefs) {
   output_weight_argdefs.clear();
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+    //bugbug
+    std::cout<<"######weight name is: "<<weight_argdefs[i].name<<std::endl;
     output_weight_argdefs.push_back(BuildWeightUpdateNode(nodearg_name_generator,
                                                           gradient_argdefs[i],
                                                           weight_argdefs[i],

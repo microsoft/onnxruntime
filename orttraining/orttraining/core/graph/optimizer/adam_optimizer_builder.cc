@@ -137,11 +137,8 @@ Status AdamOptimizerBuilder::Build(
 
       if (gradient_norm_finite_argdef) {
         input_args.push_back(*gradient_norm_finite_argdef);
-        //bugbug
-        std::cout<<"gradient_norm_finite_argdef is not null."<<std::endl;
       } else {
         input_args.push_back(ArgDef());
-        std::cout<<"gradient_norm_finite_argdef is null."<<std::endl;
       }
 
       graph_defs.AddNodeDefs({NodeDef(OpDefinition(),
