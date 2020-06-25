@@ -304,10 +304,10 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider,
-                                                   kAclExecutionProvider, kArmNNExecutionProvider};
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
+                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
+                                                   kAclExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
