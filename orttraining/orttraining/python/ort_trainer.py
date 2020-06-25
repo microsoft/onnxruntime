@@ -865,8 +865,7 @@ class ORTTrainer():
             # because all_fp32_gradients_finite is still in the feed.
             self.train_io_binding.clear_binding_outputs()
 
-            print("########ort_trainer, all_finite's name: {}".format(self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-1].name_))
-            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-1].name_]
+            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-3].name_]
             if self.loss_scaler_ is not None:
                 self.loss_scaler_.update_loss_scale(all_finite)
             if all_finite:
