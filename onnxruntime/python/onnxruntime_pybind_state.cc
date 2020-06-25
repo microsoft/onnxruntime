@@ -302,7 +302,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
-// ordered by default priority. highest to lowest.
+// ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
