@@ -73,6 +73,13 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(int index, const TensorShap
   return status;
 }
 
+bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/) const {
+  // By default, there is not information about inferred shape, so this default
+  // implementation always returns false. The derived class of IExecutionFrame
+  // can override this function to provide, for example, activations' shape information. 
+  return false;
+}
+
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtMemoryInfo& info) const {
   return GetAllocatorImpl(info);
 }
@@ -235,7 +242,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs);
+      std::cout << "[ExecutionFrame] GetMemoryPatternGroup" << std::endl;
+      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = onnxruntime::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -621,6 +629,29 @@ Status ExecutionFrame::GeneratePatterns(MemoryPatternGroup* out) const {
   }
 
   return planner_->GeneratePatterns(out);
+}
+
+
+bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
+  // NodeArg index to OrtValue index.
+  int ort_value_idx = GetNodeIdxToMLValueIdx(index);
+
+  // Check if index is valid.
+  if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    return false;
+  }
+  
+  // Search for inferred shape.
+  auto it = inferred_shapes_.find(ort_value_idx);
+
+  // Check if the shape is inferred sucessfully.
+  if (it == inferred_shapes_.end()) {
+    return false;
+  }
+
+  // Return found shape.
+  shape = it->second;
+  return true;
 }
 
 }  // namespace onnxruntime

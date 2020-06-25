@@ -187,7 +187,8 @@ class SessionState {
   */
   const MemoryPatternGroup* GetMemoryPatternGroup(
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
-      const std::vector<int>& feed_mlvalue_idxs) const;
+      const std::vector<int>& feed_mlvalue_idxs,
+      std::unordered_map<int, TensorShape>& inferred_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes.
@@ -278,7 +279,8 @@ class SessionState {
   Status GeneratePatternGroupCache(
       const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
       const std::vector<int>& feed_mlvalue_idxs,
-      MemoryPatternGroup* output) const;
+      MemoryPatternGroup* output,
+      std::unordered_map<int, TensorShape>& inferred_shapes) const;
 #endif
 
   // cache of the constructed kernels to avoid spending construction time per executor
@@ -346,6 +348,7 @@ class SessionState {
 
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   mutable std::map<int64_t, std::unique_ptr<MemoryPatternGroup>> mem_patterns_;
+  mutable std::map<int64_t, std::unordered_map<int, TensorShape>> shape_patterns_;
 
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
