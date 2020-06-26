@@ -1,3 +1,4 @@
+#include <stdio>
 #include "winrt/microsoft.ai.machinelearning.h"
 #include "winrt/windows.storage.h"
 #include "winrt/windows.foundation.h"
@@ -5,7 +6,6 @@
 #include "winrt/Windows.Graphics.h"
 #include "winrt/Windows.Graphics.Imaging.h"
 #include "winrt/Windows.Media.h"
-
 #include <windows.h>
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
@@ -32,15 +32,25 @@ std::wstring GetModulePath() {
 }
 
 int main() {
+  printf("Load squeezenet.onnx.\n");
   auto model = LearningModel::LoadFromFilePath(L"squeezenet.onnx");
+  printf("Load kitten_224.png as StorageFile.\n");
   auto name = GetModulePath() + L"kitten_224.png";
   auto image = StorageFile::GetFileFromPathAsync(name).get();
+  printf("Load StorageFile into Stream.\n");
   auto stream = image.OpenAsync(FileAccessMode::Read).get();
+  printf("Create SoftwareBitmap from decoded Stream.\n");
   auto softwareBitmap = BitmapDecoder::CreateAsync(stream).get().GetSoftwareBitmapAsync().get();
+  printf("Create VideoFrame.\n");
   auto frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-
+  printf("Create LearningModelSession.\n");
   auto session = LearningModelSession(model);
+  printf("Create LearningModelBinding.\n");
   auto binding = LearningModelBinding(session);
+  printf("Bind data_0.\n");
   binding.Bind(L"data_0", frame);
+  printf("Evaluate.\n");
   auto results = session.Evaluate(binding, L"");
+  printf("Success!\n");
+  return 0;
 }
