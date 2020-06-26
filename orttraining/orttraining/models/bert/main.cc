@@ -722,7 +722,7 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
-    auto rank_in_data_parallel_group = params_for_phase.mpi_context.world_rank / params_for_phase.horizontal_parallel_size;
+    auto rank_in_data_parallel_group = params_for_phase.mpi_context.world_rank / (params_for_phase.horizontal_parallel_size*params_for_phase.pipeline_parallel_size);
     auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                      params_for_phase.train_data_dir,
                                                                      max_num_files_preload,

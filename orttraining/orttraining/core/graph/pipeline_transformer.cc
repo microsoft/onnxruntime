@@ -1034,7 +1034,7 @@ Status FindAllConnectedNodes(Graph& graph,
           if (producer_node == nullptr) {
             // got nullptr as producer node. This could be because the input is a constant op which will be optimized
             // away. Print out this information and continue.
-            LOGS_DEFAULT(WARNING) << "Cannot find producer node for node_arg: " << node_arg.Name() << ". Skipping this node.";
+            // LOGS_DEFAULT(WARNING) << "Cannot find producer node for node_arg: " << node_arg.Name() << ". Skipping this node.";
           } else {
             connected_nodes.push_back(producer_node);
           }

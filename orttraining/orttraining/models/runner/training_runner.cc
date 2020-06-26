@@ -21,6 +21,7 @@
 #include "orttraining/models/runner/training_util.h"
 #include "single_include/nlohmann/json.hpp"
 #include "test/perftest/utils.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 using json = nlohmann::json;
 
@@ -111,7 +112,10 @@ Status TrainingRunner::Initialize() {
   }
 
   // always configure the loss function
-  if (params_.pipeline_parallel_size == 1 || params_.mpi_context.world_rank == params_.mpi_context.world_size - 1) {
+  auto pipeline_stage_id = GetPipelineStageId(params_.mpi_context.world_rank,
+                           params_.horizontal_parallel_size,
+                           params_.data_parallel_size);
+  if (params_.pipeline_parallel_size == 1 || (pipeline_stage_id +1) == params_.pipeline_parallel_size) {
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 
@@ -640,6 +644,15 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   // Wait for the previous work to finish its job.
   // Its resource cannot be overrided when it's still working.
   pipeline_worker_pool_.Join(worker_id);
+  if (pipeline_worker_pool_.exceptions[worker_id]) {
+    try {
+      std::rethrow_exception(pipeline_worker_pool_.exceptions[worker_id]);
+    } catch (const std::exception& e) {
+      std::cerr << "Error in worker thread: " << e.what() << '\n';
+    }
+  }
+
+  ORT_THROW_IF_ERROR(pipeline_worker_pool_.execution_statuses[worker_id]);
 
   // Copy thread-used variable to thread-specific buffer to maintain their life.
   pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
@@ -648,8 +661,11 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
   Status status = Status::OK();
+  // std::vector<std::exception_ptr> exceptions(params_.pipeline_parallel_size, nullptr);
+  // exceptions.reserve(params_.pipeline_parallel_size);
   pipeline_worker_pool_.workers[worker_id] = std::thread([&](
       const size_t worker_id, const size_t step) {
+        try{
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -665,16 +681,38 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches));
+    // ORT_THROW_IF_ERROR(status);
+    pipeline_worker_pool_.execution_statuses[worker_id] = status;
+        }
+        catch(std::exception &e){
+pipeline_worker_pool_.exceptions[worker_id] = (std::current_exception());
+        }
   }, worker_id, step_);
+
+  // If the updating thread fails, we return with its error status.
 
   // Wait all workers to finish this round of pipeline parallelism.
   // The last batch in a pipeline collects gradient and update the model.
   // We must join here because main thread needs to access thread-produced
   // fetches and those fetches must be ready.
   pipeline_worker_pool_.JoinAll();
+  for(auto& status : pipeline_worker_pool_.execution_statuses){
+    ORT_THROW_IF_ERROR(status);
+  }
 
-  // If the updating thread fails, we return with its error status.
-  ORT_THROW_IF_ERROR(status);
+  for(auto& exception : pipeline_worker_pool_.exceptions){
+    if(exception){
+      try
+        {
+            std::rethrow_exception(exception);
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "Error in worker thread: " << e.what() << '\n';
+        }
+    }
+  }
+
 
   // Copy back from thread-specific buffer to main thread's memory.
   fetches = pipeline_worker_pool_.worker_states[worker_id].fetches;
@@ -691,6 +729,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
   // Assume that only the last pipeline stage can see loss, predicted value, and so on.
   // Thus, the error function should only be called when we are at the last stage.
+  std::cout<<" ** training_runner "<<pipeline_context_.pipeline_stage_id<<" "<<params_.pipeline_parallel_size<<std::endl;
   const bool session_can_see_loss = params_.pipeline_parallel_size == 1 ||
                                     pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
   if (session_can_see_loss &&
@@ -736,6 +775,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   // Async launch of a session.
   pipeline_worker_pool_.workers[worker_id] = std::thread([&](
       const size_t worker_id, const size_t step) {
+        try{
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -753,7 +793,12 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
       pipeline_worker_pool_.worker_states[worker_id].feeds,
       pipeline_worker_pool_.worker_states[worker_id].fetch_names,
       &(pipeline_worker_pool_.worker_states[worker_id].fetches));
-    ORT_THROW_IF_ERROR(status);
+    // ORT_THROW_IF_ERROR(status);
+    pipeline_worker_pool_.execution_statuses[worker_id] = status;
+        }
+        catch(std::exception &e){
+pipeline_worker_pool_.exceptions[worker_id] = (std::current_exception());
+        }
   }, worker_id, step_);
 
   // Add one after process one batch.

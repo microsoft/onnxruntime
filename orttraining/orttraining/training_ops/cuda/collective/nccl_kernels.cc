@@ -11,6 +11,7 @@ NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
+  std::cout<<"** NcclAllReduce::ComputeInternal before."<<std::endl;
   ncclComm_t comm = nccl_->Comm(group_type_);
 
   for (int i = 0; i < context->InputCount(); i++) {
@@ -25,7 +26,7 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
     ncclDataType_t dtype = GetNcclDataType(onnx_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
   }
-
+  std::cout<<"** NcclAllReduce::ComputeInternal end."<<std::endl;
   return Status::OK();
 }
 
@@ -34,6 +35,7 @@ NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
 
 Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
+  std::cout<<"** NcclAllGather::ComputeInternal before."<<std::endl;
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
   const int size = nccl_->Size(group_type_);
@@ -111,7 +113,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, tensor_bytes, cudaMemcpyDeviceToDevice));
       }
     }
-
+    std::cout<<"** NcclAllGather::ComputeInternal end."<<std::endl;
     offset += tensor_bytes;
   }
 
@@ -123,6 +125,8 @@ NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info
 
 Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
+
+  std::cout<<"** NcclReduceScatter::ComputeInternal before."<<std::endl;
   ncclComm_t comm = nccl_->Comm(group_type_);
   const int rank = nccl_->Rank(group_type_);
   const int size = nccl_->Size(group_type_);
@@ -200,7 +204,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
 
     offset += tensor_bytes;
   }
-
+  std::cout<<"** NcclReduceScatter::ComputeInternal end."<<std::endl;
   return Status::OK();
 }
 

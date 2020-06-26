@@ -3,9 +3,15 @@
 
 #include "distributed_run_context.h"
 #include "core/common/common.h"
-
+#include <iostream>
 namespace onnxruntime {
 namespace training {
+
+int32_t GetPipelineStageId(const int32_t world_rank,
+                           const int32_t horizontal_parallel_size,
+                           const int32_t data_parallel_size){
+  return world_rank % (horizontal_parallel_size * data_parallel_size);
+}
 
 DistributedRunContext::DistributedRunContext(int32_t world_rank,
                                              int32_t world_size,
@@ -47,17 +53,41 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   params_.data_parallel_size = data_parallel_size;
   params_.horizontal_parallel_size = horizontal_parallel_size;
   params_.pipeline_stage_size = pipeline_stage_size;
-  groups_.resize(2);
+  groups_.resize(static_cast<size_t>(WorkerGroupType::WorkerGroupTypeCount));
 
-  // Initialize Data Parallel Group
-  const int32_t data_group_id = world_rank % horizontal_parallel_size;
-  const int32_t rank_in_owning_data_group = world_rank / horizontal_parallel_size;
+  const int32_t slice_index = world_rank / (data_parallel_size * horizontal_parallel_size);
+
+// Initialize Data Parallel Group
+  const int32_t data_group_id = (world_rank / (data_parallel_size * horizontal_parallel_size)) * horizontal_parallel_size + world_rank % horizontal_parallel_size;
+  const int32_t rank_in_owning_data_group = (world_rank % (data_parallel_size * horizontal_parallel_size)) / horizontal_parallel_size;
   std::vector<int32_t> data_group_ranks;
-  for (auto r = 0; r < data_parallel_size; r++) {
-    data_group_ranks.push_back(data_group_id + horizontal_parallel_size * r);
+
+  // for (auto r = 0; r < data_parallel_size; r++) {
+  //   data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
+  // }
+  if (data_group_id == 1 && data_parallel_size > 1){
+    data_group_ranks.push_back(2);
+    data_group_ranks.push_back(3);
+  }
+  else{
+    for (auto r = 0; r < data_parallel_size; r++) {
+      data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
+    }
   }
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
                                             WorkerGroupType::DataParallel, rank_in_owning_data_group};
+
+  std::cout<<"** world rank["<<world_rank<<"] DP: data_parallel_size: "<<data_parallel_size<<" "
+  <<data_group_ranks[0]<<" "<<data_group_ranks[1]<<" data_group_id: "<<data_group_id<<" "<<rank_in_owning_data_group<<std::endl;
+  // // Initialize Data Parallel Group
+  // const int32_t data_group_id = world_rank_with_offset % (horizontal_parallel_size);
+  // const int32_t rank_in_owning_data_group = world_rank_with_offset / (horizontal_parallel_size);
+  // std::vector<int32_t> data_group_ranks;
+  // for (auto r = 0; r < data_parallel_size; r++) {
+  //   data_group_ranks.push_back(data_group_id + horizontal_parallel_size * r);
+  // }
+  // groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
+  //                                           WorkerGroupType::DataParallel, rank_in_owning_data_group};
 
   // Horizontal Model Parallel Group
   const int32_t hori_group_id = world_rank / horizontal_parallel_size;
@@ -68,6 +98,37 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   }
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
                                                   WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
+
+  std::cout<<"** world rank["<<world_rank<<"] HP: horizontal_parallel_size: "<<horizontal_parallel_size<<" "
+  <<hori_group_ranks[0]<<" "<<hori_group_ranks[1]<<" data_group_id: "<<hori_group_id<<" "<<rank_in_owning_hori_group<<std::endl;
+  // // Horizontal Model Parallel Group
+  // const int32_t hori_group_id = world_rank_with_offset / horizontal_parallel_size;
+  // const int32_t rank_in_owning_hori_group = world_rank_with_offset % horizontal_parallel_size;
+  // std::vector<int32_t> hori_group_ranks;
+  // for (auto r = 0; r < horizontal_parallel_size; r++) {
+  //   hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
+  // }
+  // groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
+  //                                                 WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
+
+  // Pipeline Model Parallel Group
+  const int32_t pipeline_group_id = world_rank % (horizontal_parallel_size * data_parallel_size);
+  const int32_t rank_in_owning_pipeline_group = world_rank / (horizontal_parallel_size * data_parallel_size);
+  std::vector<int32_t> pipeline_group_ranks;
+  for (auto r = 0; r < pipeline_stage_size; r++) {
+    pipeline_group_ranks.push_back(pipeline_group_id + horizontal_parallel_size * data_parallel_size * r);
+  }
+  groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipeline_group_id,
+                                                  WorkerGroupType::ModelParallel, rank_in_owning_pipeline_group};
+
+  std::cout<<"** world rank["<<world_rank<<"] HP: pipeline_stage_size: "<<pipeline_stage_size<<" "
+  <<pipeline_group_ranks[0]<<" "<<pipeline_group_ranks[1]<<" data_group_id: "<<pipeline_group_id<<" "<<rank_in_owning_pipeline_group<<std::endl;
+
+
+  // const int32_t slice_index = world_rank / (horizontal_parallel_size * data_parallel_size);
+  // const int32_t offset = (slice_index * horizontal_parallel_size * data_parallel_size);
+  // auto world_rank_with_offset = world_rank - offset;
+
 }
 
 }  // namespace training

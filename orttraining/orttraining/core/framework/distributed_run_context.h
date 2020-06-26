@@ -9,6 +9,8 @@ namespace training {
 enum WorkerGroupType {
   DataParallel = 0,
   HorizontalParallel = 1,
+  ModelParallel = 2,
+  WorkerGroupTypeCount = 3,
 };
 
 struct WorkerGroup {
@@ -33,6 +35,10 @@ struct DistributedRunConfig {
   int32_t horizontal_parallel_size{1};
   int32_t pipeline_stage_size{1};
 };
+
+int32_t GetPipelineStageId(const int32_t world_rank,
+                           const int32_t horizontal_parallel_size,
+                           const int32_t data_parallel_size);
 
 // Context managing global distribute run config, also responsible for splitting workers into groups
 // using passed-in's parallel sizes.
@@ -66,6 +72,15 @@ class DistributedRunContext {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).rank_in_group;
   }
 
+  static int32_t GroupId(WorkerGroupType group_type) {
+    return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).group_id;
+  }
+
+  static bool IsPipelineLastStage(){
+    auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).group_id;
+    auto pipeline_stage_size = DistributedRunContext::GetInstance().GetRunConfig().pipeline_stage_size;
+    return (id + 1) == pipeline_stage_size;
+  }
   // Get total rank of specified group.
   static int32_t GroupSize(WorkerGroupType group_type) {
     return static_cast<int32_t>(DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks.size());

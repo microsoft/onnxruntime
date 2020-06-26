@@ -100,12 +100,14 @@ struct PipelineWorkerState {
 
 struct PipelineWorkerPool {
   PipelineWorkerPool() = default;
-  PipelineWorkerPool(size_t num_workers) : workers(num_workers), worker_states(num_workers){};
+  PipelineWorkerPool(size_t num_workers) : workers(num_workers), worker_states(num_workers), execution_statuses(num_workers), exceptions(num_workers, nullptr){};
   void Join(size_t worker_id);
   void JoinAll();
 
   std::vector<std::thread> workers;
   std::vector<PipelineWorkerState> worker_states;
+  std::vector<Status> execution_statuses;
+  std::vector<std::exception_ptr> exceptions;
 };
 
 struct PipelineContext {
