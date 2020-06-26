@@ -3,7 +3,6 @@
 
 #include "matmul_integer_extension.h"
 
-#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -31,17 +30,17 @@ REGISTER_MATMUL_INTEGER_EXTENSION(uint8_t)
 
 template <typename T1, typename T2>
 Status MatMulIntegerExtension<T1, T2>::Compute(OpKernelContext* ctx) const {
-  auto a = ctx->Input<Tensor>(0);
-  auto b = ctx->Input<Tensor>(1);
+  const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);
 
-  auto* a_scale_tensor = ctx->Input<Tensor>(2);
+  const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),
               "MatmulInteger : input A scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
 
   float a_scale = *a_scale_tensor->template Data<float>();
 
-  auto* b_scale_tensor = ctx->Input<Tensor>(3);
+  const Tensor* b_scale_tensor = ctx->Input<Tensor>(3);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
               "MatmulInteger : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
 
@@ -51,7 +50,7 @@ Status MatMulIntegerExtension<T1, T2>::Compute(OpKernelContext* ctx) const {
 
   // validate zero points
   T1 a_zp = 0;
-  auto* a_zp_tensor = ctx->Input<Tensor>(4);
+  const Tensor* a_zp_tensor = ctx->Input<Tensor>(4);
   if (a_zp_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zp_tensor),
                 "MatmulInteger : input A zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
@@ -59,7 +58,7 @@ Status MatMulIntegerExtension<T1, T2>::Compute(OpKernelContext* ctx) const {
   }
 
   T2 b_zp = 0;
-  auto* b_zp_tensor = ctx->Input<Tensor>(5);
+  const Tensor* b_zp_tensor = ctx->Input<Tensor>(5);
   if (b_zp_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zp_tensor),
                 "MatmulInteger : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
