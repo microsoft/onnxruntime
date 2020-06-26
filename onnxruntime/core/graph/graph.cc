@@ -439,7 +439,7 @@ const Function* Node::GetFunctionBody() noexcept {
   }
 
   // Initialize function body
-  graph_->InitFunctionBodyForNode(*this);
+  graph_->InitFunctionBodyForNode(*(const_cast<onnxruntime::Node*>(this)));
 
   return func_body_;
 }
@@ -2091,8 +2091,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 }
 
 void Graph::InitFunctionBodyForNode(Node& node) {
+  if (node.GetFunctionBody() != nullptr) {
+      return;
+  }
+
   if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-    onnx::FunctionProto onnx_function_proto;    
+    onnx::FunctionProto onnx_function_proto;
     if (node.op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       node.ToProto(node_proto);
