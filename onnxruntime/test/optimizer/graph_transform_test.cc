@@ -2064,12 +2064,6 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
 #ifdef ENABLE_TRAINING
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Sub"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
-  ASSERT_TRUE(op_to_count["Pow"] == 0);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["Cast"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
 #else
@@ -2078,64 +2072,6 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
 #endif
 }
 
-TEST_F(GraphTransformationTests, LayerNormWithValidAxesFusionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // reset the axes attributes
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  Node& reduce_mean_node = *graph.GetNode(node_topology_list[0]);
-  reduce_mean_node.ClearAttribute("axes");
-
-  ONNX_NAMESPACE::AttributeProto axes;
-  axes.set_name("axes");
-  axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  // equivalent to [1,2] 
-  axes.add_ints(-1);
-  axes.add_ints(1);
-  reduce_mean_node.AddAttribute("axes", axes);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Cast"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
-}
-
-TEST_F(GraphTransformationTests, LayerNormWithInvalidAxesFusionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // reset the axes attributes
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  Node& reduce_mean_node = *graph.GetNode(node_topology_list[0]);
-  reduce_mean_node.ClearAttribute("axes");
-
-  ONNX_NAMESPACE::AttributeProto axes;
-  axes.set_name("axes");
-  axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  axes.add_ints(-3);
-  axes.add_ints(-1);
-  reduce_mean_node.AddAttribute("axes", axes);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Cast"] == 1);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
-}
 TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm_sub_dup.onnx";
   std::shared_ptr<Model> p_model;

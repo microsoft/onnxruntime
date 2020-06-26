@@ -234,27 +234,11 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     nodes_to_remove.push_back(last_add_node);
 
-    // verify axes is contiguous if more than one elements
+    // get axes atributes
     const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::vector<int64_t> axes_values, normalized_axes;
+    std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-      if (axes_values.size() > 1) {
-        const int input_dim_size = reduce_mean_node.MutableInputDefs()[0]->Shape()->dim_size();
-        for (int64_t r : axes_values) {
-          normalized_axes.push_back((r + input_dim_size) % input_dim_size);
-        }
-        sort(normalized_axes.begin(), normalized_axes.end());
-        bool contingous = true;
-        for (size_t i = 0; i < normalized_axes.size() - 1; i++) {
-          if (normalized_axes[i] + 1 != normalized_axes[i + 1]) {
-            contingous = false;
-            break;
-          }
-        }
-        if (!contingous)
-          continue;
-      }
     }
 
     // Get the inputs for the new LayerNormalization node.
