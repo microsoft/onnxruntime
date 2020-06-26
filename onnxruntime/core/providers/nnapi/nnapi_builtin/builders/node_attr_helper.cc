@@ -38,7 +38,7 @@ int32_t NodeAttrHelper::Get(const std::string& key, int32_t def_val) {
   return def_val;
 }
 
-string NodeAttrHelper::Get(const std::string& key, string def_val) {
+string NodeAttrHelper::Get(const std::string& key, const string& def_val) {
   for (int i = 0; i < node_.attribute_size(); i++) {
     const ONNX_NAMESPACE::AttributeProto& attr = node_.attribute(i);
     if (attr.name() == key) {
@@ -49,7 +49,7 @@ string NodeAttrHelper::Get(const std::string& key, string def_val) {
   return def_val;
 }
 
-vector<int32_t> NodeAttrHelper::Get(const std::string& key, vector<int32_t> def_val) {
+vector<int32_t> NodeAttrHelper::Get(const std::string& key, const vector<int32_t>& def_val) {
   if (!HasAttr(key)) {
     return def_val;
   }
@@ -71,7 +71,7 @@ vector<int32_t> NodeAttrHelper::Get(const std::string& key, vector<int32_t> def_
 }
 
 vector<float> NodeAttrHelper::Get(const std::string& key,
-                                  vector<float> def_val) {
+                                  const vector<float>& def_val) {
   if (!HasAttr(key)) {
     return def_val;
   }

@@ -43,11 +43,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // We do not support subgraph (If and Loop operators) for now
-  if (graph_view.IsSubgraph()) {
-    return result;
-  }
-
   // Need access to model_path_
   for (const auto& tensor : graph_view.GetAllInitializedTensors()) {
     if (tensor.second->has_data_location() &&
@@ -118,10 +113,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     for (const auto& index : group) {
       sub_graph->nodes.push_back(node_index[index]);
-      const auto& node = graph_view.GetNode(node_index[index]);
+      const auto node = graph_view.GetNode(node_index[index]);
 
       for (const auto& input : node->InputDefs()) {
-        const auto& it = fused_outputs.find(input);
+        const auto it = fused_outputs.find(input);
         if (it != fused_outputs.end()) {
           fused_outputs.erase(it);
           erased.insert(input);
@@ -139,11 +134,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
       std::unordered_set<const NodeArg*> processed_outputs;
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-        const auto& node_idx = it->GetNode().Index();
-        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        const auto node_idx = it->GetNode().Index();
+        const auto output = node->OutputDefs()[it->GetSrcArgIndex()];
 
         if (node_set.find(node_idx) != node_set.end()) {
-          const auto& iter = fused_inputs.find(output);
+          const auto iter = fused_inputs.find(output);
           if (iter != fused_inputs.end()) {
             fused_inputs.erase(iter);
             erased.insert(output);
@@ -161,13 +156,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         if (processed_outputs.find(output) != processed_outputs.end())
           continue;
 
-        const auto& iter = fused_inputs.find(output);
+        const auto iter = fused_inputs.find(output);
         if (iter != fused_inputs.end()) {
           fused_inputs.erase(iter);
           erased.insert(output);
         }
         // only when output is neither in input list nor erased list, add the output to output list
-        else if (erased.find(output) == erased.end()) {
+        else if (erased.find(output) == erased.end() && output->Exists()) {
           fused_outputs[output] = output_order++;
         }
       }
@@ -280,6 +275,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
+
+      // TODO[VSO:798241], need to have exclusive access to the model within the scope of this compute_func
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
       const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
