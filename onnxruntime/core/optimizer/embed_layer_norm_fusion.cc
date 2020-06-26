@@ -152,8 +152,7 @@ static bool MatchInputToConcatSubgraph(
   }
 
   if (!optimizer_utils::CheckOutputEdges(graph, edges[0]->GetNode(), 1) ||
-      (expected_gather_node_1_index != -1 &&
-       !optimizer_utils::CheckOutputEdges(graph, edges[1]->GetNode(), 2)) ||
+      !optimizer_utils::CheckOutputEdges(graph, edges[1]->GetNode(), 2) ||
       !optimizer_utils::CheckOutputEdges(graph, edges[2]->GetNode(), 1)) {
     DEBUG_LOG("Output edge count not expected for nodes in path 2 of position shape.");
     return false;
@@ -187,13 +186,13 @@ static bool MatchInputToConcatSubgraph(
 /** Match subgraph like the following:
  * 
  *    Shape -> ^Gather (indice=0)^ -> ^Unsqueeze^
- *      /                                  |            -----------------------
+ *      /                                  |           +-----------------------+
  *     /                                   v           |                       |
  * [input_ids]                          ^Concat^ -> *Reshape* -> *Equal* -> *Where* -> Expand -> Gather
  *     \                                   |                                            |   ("position")
  *    Shape -> ^Gather (indice=1)^ -> ^Unsqueeze^                                       |
  *                |                                                                     |
- *                --------------- # one of the below subgraph patterns # ----------------
+ *                +-------------- # one of the below subgraph patterns # ---------------+
  *       # Unsqueeze -> ConstantOfShape -> NonZero -> Transpose -> Squeeze -> Cast -> Unsqueeze #
  *       #                                      or                                              #
  *       #        Cast (to=7) (optional) -> Range (start=0, delta=1) -> Unsqueeze               #
