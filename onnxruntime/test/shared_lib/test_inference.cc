@@ -411,6 +411,45 @@ TEST(CApiTest, create_tensor) {
   tensor.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
 }
 
+TEST(CApiTest, fill_string_tensor) {
+  const char* s[] = {"abc", "kmp"};
+  int64_t expected_len = 2;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  for (size_t i = 0; i < expected_len; i++) {
+    
+      tensor.FillStringTensorElement(s[i], i);
+  }
+
+  auto shape_info = tensor.GetTensorTypeAndShapeInfo();
+
+  int64_t len = shape_info.GetElementCount();
+  ASSERT_EQ(len, expected_len);
+}
+
+TEST(CApiTest, get_string_tensor_element) {
+  const char* s[] = {"abc", "kmp"};
+  int64_t expected_len = 2;
+  int64_t element_index = 0;
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+
+  Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  tensor.FillStringTensor(s, expected_len);
+    
+  auto expected_str = s[element_index];
+  size_t expected_strlen = expected_str.size();
+
+  std::string result(expected_string_len, '\0');
+  tensor.GetStringTensorElement((void*)result.data(), expected_strlen, element_index);
+  ASSERT_STREQ((char*)result, expected_str);
+
+  auto strlen= tensor.GetStringTensorElementLength(element_index);
+  ASSERT_EQ(expected_strlen, strlen);
+}
+
 TEST(CApiTest, create_tensor_with_data) {
   float values[] = {3.0f, 1.0f, 2.f, 0.f};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
@@ -441,9 +480,8 @@ TEST(CApiTest, override_initializer) {
   std::string f2_data{"f2_string"};
   // Place a string into Tensor OrtValue and assign to the
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-  // No C++ Api to either create a string Tensor or to fill one with string, so we use C
   const char* const input_char_string[] = {f2_data.c_str()};
-  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+ f2_input_tensor.FillStringTensor(input_char_string, 1U));
 
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);

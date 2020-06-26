@@ -540,13 +540,27 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensor, _Inout_ OrtValue* value, _In_ con
   TENSOR_READWRITE_API_BEGIN
   auto* dst = tensor->MutableData<std::string>();
   auto len = static_cast<size_t>(tensor->Shape().Size());
-  if (s_len < len) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array is too short");
+  if (s_len != len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array doesn't equal tensor size");
   }
   for (size_t i = 0; i != len; ++i) {
     //allocate and copy
     dst[i] = s[i];
   }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index) {
+  TENSOR_READWRITE_API_BEGIN
+  auto* dst = tensor->MutableData<std::string>();
+  auto len = static_cast<size_t>(tensor->Shape().Size());
+  if (index >= len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
+  }
+
+  dst[index] = s;
+
   return nullptr;
   API_IMPL_END
 }
@@ -561,6 +575,18 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorDataLength, _In_ const OrtValue* val
       ret += src[i].size();
     }
     *out = ret;
+  } else
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "shape is invalid");
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* value, _Out_ size_t* out, size_t index) {
+  TENSOR_READ_API_BEGIN
+  const auto* src = tensor.Data<std::string>();
+  auto len = tensor.Shape().Size();
+  if (index < len) {
+    *out = src[index].size();
   } else
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "shape is invalid");
   return nullptr;
@@ -586,12 +612,35 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
   }
   size_t f = 0;
   char* p = static_cast<char*>(s);
-  for (size_t i = 0; i != offsets_len; ++i, ++offsets) {
+  for (size_t i = 0; i != len; ++i, ++offsets) {
     memcpy(p, input[i].data(), input[i].size());
     p += input[i].size();
     *offsets = f;
     f += input[i].size();
   }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
+                    size_t s_len, size_t index) {
+  TENSOR_READ_API_BEGIN
+  const auto* input = tensor.Data<std::string>();
+  auto len = static_cast<size_t>(tensor.Shape().Size());
+
+  if (index >= len) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
+  }
+
+  {
+    size_t ret = input[index].size();
+    if (s_len < ret) {
+      return OrtApis::CreateStatus(ORT_FAIL, "space is not enough");
+    }
+  }
+
+memcpy(s, input[index].data(), input[index].size());
+
   return nullptr;
   API_IMPL_END
 }
@@ -1614,6 +1663,9 @@ static constexpr OrtApi ort_api_1_to_4 = {
     // Version 4 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,
     &OrtApis::ReleaseAvailableProviders,
+    &OrtApis::GetStringTensorElementLength,
+    &OrtApis::GetStringTensorElement,
+    &OrtApis::FillStringTensorElement,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
