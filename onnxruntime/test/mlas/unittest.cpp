@@ -2369,15 +2369,15 @@ private:
     MatrixGuardBuffer<float> BufferInput;
 
     void
-        Test(
-            size_t N,
-            float MinimumValue,
-            float MaximumValue
-            )
+    Test(
+        size_t N,
+        float MinimumValue,
+        float MaximumValue
+        )
     {
         float* Input = BufferInput.GetBuffer(N);
 
-        std::default_random_engine generator(static_cast< unsigned >(N));
+        std::default_random_engine generator(static_cast<unsigned>(N));
         std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
 
         for (size_t n = 0; n < N; n++) {
@@ -2406,9 +2406,9 @@ private:
 
 public:
     void
-        ExecuteShort(
-            void
-            ) override
+    ExecuteShort(
+        void
+        ) override
     {
         for (size_t n = 1; n < 128; n++) {
             Test(n, -10.f, 10.f);
