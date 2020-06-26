@@ -174,11 +174,12 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
   const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
+  const int mask_index_length = mask_index != nullptr ? static_cast<int>(mask_index->Shape().Size()) : (int)0;
 
   int past_sequence_length = 0;
   const T* past_data = nullptr;
   T* present_data = nullptr;
-  ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, static_cast<T*>(mask_data),
+  ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, mask_index_length, static_cast<T*>(mask_data),
                            batch_size, sequence_length, past_sequence_length, head_size, num_heads_, is_unidirectional_,
                            past_data, present_data, tp);
 

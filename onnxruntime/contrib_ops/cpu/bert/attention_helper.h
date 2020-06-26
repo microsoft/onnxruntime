@@ -61,37 +61,54 @@ inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPoo
 
 template <typename T>
 void PrepareMask(const int32_t* mask_index,
+                 int mask_index_length,
                  T* mask_data,
                  bool is_unidirectional,
                  int batch_size,
                  int sequence_length,
                  int past_sequence_length) {
   const int all_sequence_length = past_sequence_length + sequence_length;
+  
+  // mask_data has been filled with 0, and its shape is BxSxS*
   T* p_mask = mask_data;
-  if (is_unidirectional) {  
-    // unidirectional mask has shape SxS*
-    for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
-      for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-        p_mask[s_i * all_sequence_length + m_i] = static_cast<T>(-10000.0);
-      }
-    }
-    return;
-  }
 
-  ORT_ENFORCE(mask_index, "mask index should not be null.");
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // TODO: mask_index can be used in softmax to save some calculation.
-    // Convert mask_index to mask (-10000 means out of range, which will be 0 after softmax): B => BxS*
-    int valid_length = mask_index[b_i];
-    for (int m_i = valid_length; m_i < all_sequence_length; m_i++) {
-      p_mask[m_i] = static_cast<T>(-10000.0);
+
+    // Convert mask_index to mask (-10000 means no attention, which will be 0 after softmax)
+    if (nullptr != mask_index) {
+      // mask_index is 1D: (B) or (2B) => (Bx)S*
+
+      // Apply mask for right-side padding
+      int end_position = mask_index[b_i];
+      for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
+        p_mask[m_i] = static_cast<T>(-10000.0);
+      }
+
+      // Apply mask for left-side padding
+      if (mask_index_length == 2 * batch_size) {
+        int start_position = std::min(mask_index[b_i + batch_size], all_sequence_length);
+        for (int m_i = 0; m_i < start_position; m_i++) {
+          p_mask[m_i] = static_cast<T>(-10000.0);
+        }
+      }
     }
 
-    // Broadcast mask from BxS* to BxSxS*
+    // Broadcast mask from (Bx)S* to (Bx)SxS*
     for (int s_i = 1; s_i < sequence_length; s_i++) {
       memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
     }
-    p_mask += sequence_length * sequence_length;
+
+    // Apply unidirectional mask.
+    if (is_unidirectional) {
+      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+        for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
+          p_mask[s_i * all_sequence_length + m_i] = static_cast<T>(-10000.0);
+        }
+      }
+    }
+
+    p_mask += sequence_length * all_sequence_length;
   }
 }
 
@@ -121,6 +138,7 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
                            const T* Q,                 // Q data. Its size is BxNxSxH
                            const T* K,                 // k data. Its size is BxNxSxH
                            const int32_t* mask_index,  // mask index. nullptr if no mask or its size is B
+                           int mask_index_length,      // Mask index length
                            T* mask_data,               // buffer for mask data. Its size is: SxS* if is_unidirectional; BxSxS* if mask_index; null otherwise
                            int batch_size,             // batch size of self-attention
                            int sequence_length,        // sequence length of self-attention
@@ -138,7 +156,7 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
 
   {
     if (mask_data != nullptr) {
-      PrepareMask(mask_index, mask_data, is_unidirectional, batch_size, sequence_length, past_sequence_length);
+      PrepareMask(mask_index, mask_index_length, mask_data, is_unidirectional, batch_size, sequence_length, past_sequence_length);
     } else {  // no any mask
       memset(attention_probs, 0, batch_size * num_heads * sequence_length * all_sequence_length * sizeof(T));
     }
@@ -153,9 +171,9 @@ void ComputeAttentionProbs(T* attention_probs,         // output buffer for the 
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const std::ptrdiff_t batch_index = i / num_heads;
 
-        // broadcast mask data: SxS* or (Bx)SxS* -> (BxNx)SxS*
+        // broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
         if (mask_data != nullptr) {
-          const T* broadcast_data_src = is_unidirectional ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
+          const T* broadcast_data_src = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
           T* broadcast_data_dest = reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i;
           memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * all_sequence_length * sizeof(T));
         }

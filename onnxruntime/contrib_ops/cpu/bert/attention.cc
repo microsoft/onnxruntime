@@ -78,24 +78,21 @@ Status AttentionBase::CheckInputs(const Tensor* input,
   }
 
   if (mask_index != nullptr) {  // mask_index is optional
-    // unidirectional (like GPT2) does not need mask input. Here we do not allowed the input for unidirectional.
-    if (is_unidirectional_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 (mask_index) is not allowed for unidirectional");
-    }
-
     const auto& mask_dims = mask_index->Shape().GetDims();
     if (mask_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 3 is expected to have 1 dimension, got ",
                              mask_dims.size());
     }
-    if (static_cast<int>(mask_dims[0]) != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 and 0 shall have same length at dimension 0");
+
+    const int elements = static_cast<int>(mask_dims[0]);
+    if (elements != batch_size && elements != 2 * batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 3 dimension 0 shall have length of batch_size or 2 * batch_size");
     }
   }
 
   if (past != nullptr) {  // past is optional
     if (!is_unidirectional_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 4 (past) is only allowed for unidirectional");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 4 (past) is only allowed for unidirectional");
     }
 
     const auto& past_dims = past->Shape().GetDims();
@@ -235,7 +232,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                         qkv_dest + qkv_offset,          // C
                                         head_size,                      // ldc
                                         nullptr                         // use single-thread
-                                        );
+        );
       }
     });
   }
@@ -248,25 +245,20 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   auto attention_probs = allocator->Alloc(attention_probs_bytes);
   BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
-  size_t mask_data_bytes = 0;
-  if (mask_index != nullptr) {
-    mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * all_sequence_length * element_size;
-  } else if (is_unidirectional_) {
-    mask_data_bytes = SafeInt<size_t>(sequence_length) * all_sequence_length * element_size;
-  }
-
   void* mask_data = nullptr;
-  if (mask_data_bytes > 0) {
+  if (mask_index != nullptr || (is_unidirectional_ && sequence_length > 1)) {
+    size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * all_sequence_length * element_size;
     mask_data = allocator->Alloc(mask_data_bytes);
     memset(mask_data, 0, mask_data_bytes);
   }
   BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
   const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
+  const int mask_index_length = mask_index != nullptr ? static_cast<int>(mask_index->Shape().Size()) : (int)0;
   const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
   T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
-  ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, static_cast<T*>(mask_data),
+  ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, mask_index_length, static_cast<T*>(mask_data),
                            batch_size, sequence_length, past_sequence_length, head_size, num_heads_, is_unidirectional_,
                            past_data, present_data, tp);
 
