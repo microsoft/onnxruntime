@@ -22,6 +22,8 @@ def parse_arguments():
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
+    parser.add_argument("--linux_build", required=False, default=None, type=str, 
+                        help="specify the libonnxruntime.so lib values")
 
     return parser.parse_args()
 
@@ -180,6 +182,12 @@ def generate_files(list, args):
                                        'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') +
                           '" target="build\\native\\include" />')
 
+    #if includes_openvino:
+    files_list.append('<file src=' + '"' +
+                      os.path.join(args.sources_path,
+                      'include\\onnxruntime\\core\\providers\\openvino\\openvino_provider_factory.h') +
+                      '" target="build\\native\\include" />')    
+
     if includes_directml:
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
@@ -213,6 +221,11 @@ def generate_files(list, args):
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
     # Process runtimes
+    # Process linux 
+    if (args.linux_build != 'None'):
+        files_list.append('<file src=' + '"' + os.path.join(args.sources_path, args.linux_build) +
+                      '" target="runtimes\\linux-' + args.target_architecture + '\\native" />')
+
     # Process onnxruntime import lib, dll, and pdb
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
                       '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
