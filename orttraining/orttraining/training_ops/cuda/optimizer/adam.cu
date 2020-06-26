@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
+//bugbug
+//#include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/adam.h"
@@ -36,9 +37,6 @@ __global__ void _AdamOptimizer_mode0(
 
   // Gradient scaling/clipping.
   const T4 g = T4(grads[id]) / actual_scale;
-  if (!_IsFiniteScalar(T_GRAD(g))) {
-     printf("#######IN ADAM, g is not finite!!!!!!");
-  }
   // A shared constant.
   const T4 one = T4(1.0f);
 
@@ -71,7 +69,7 @@ __global__ void _AdamOptimizer_mode0(
     moment_2_out[id] = m2o;
   }
   else {
-
+    printf("###### IN ADAM, delta not finite\n");
     // Return weight as is.
     if (weights_out) {
       weights_out[id] = weights[id];
