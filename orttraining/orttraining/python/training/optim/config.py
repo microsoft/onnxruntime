@@ -49,6 +49,7 @@ class _OptimizerConfig(object):
 
         self.name = name
         self.lr = hyper_parameters['lr']
+        self.base_lrs = [hyper_parameters['lr']]
         self.hyper_parameters = hyper_parameters
         self.param_groups = []
 
