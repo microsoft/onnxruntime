@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "OnnxPrediction.h"
 
 // Uses the onnxruntime to load the model

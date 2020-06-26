@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #ifndef __BETADISTRIBUTION_H__
 #define __BETADISTRIBUTION_H__
 #include <random>

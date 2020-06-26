@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "src/mutator.h"
 #include "testlog.h"
 #include "OnnxPrediction.h"

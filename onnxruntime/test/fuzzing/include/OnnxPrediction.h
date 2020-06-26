@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #ifndef __ONNX_PREDICTION_H__
 #define __ONNX_PREDICTION_H__
 #include <iostream>
