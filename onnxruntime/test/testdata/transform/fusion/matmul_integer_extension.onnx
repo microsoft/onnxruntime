@@ -1,0 +1,43 @@
+:–
+Q
+inputa_quantizeda_scalea_zpDynamicQuantizeLinear"DynamicQuantizeLinear
+a
+a_quantized
+b_quantized_1
+a_zp
+b_zp_1matmul_output_int32_1MatMulInteger_1"MatMulInteger
+4
+a_scale
+	b_scale_1multiplier_1mul_right_1"Mul
+G
+matmul_output_int32_1matmul_output_float_1cast_1"Cast*	
+to 
+B
+matmul_output_float_1
+multiplier_1output_1mul_bottom_1"Mul
+a
+a_quantized
+b_quantized_2
+a_zp
+b_zp_2matmul_output_int32_2MatMulInteger_2"MatMulInteger
+4
+a_scale
+	b_scale_2multiplier_2mul_right_2"Mul
+G
+matmul_output_int32_2matmul_output_float_2cast_2"Cast*	
+to 
+B
+matmul_output_float_2
+multiplier_2output_2mul_bottom_2"MulDynamicQuantizeLinear_fusion**Bb_quantized_1**Bb_quantized_2**€Bb_zp_1**€Bb_zp_2*"ffæ?B	b_scale_1*"ffæ?B	b_scale_2Z
+input
+
+
+b
+output_1
+
+
+b
+output_2
+
+
+B

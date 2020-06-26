@@ -79,8 +79,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
     // Check Nodes' Edges count and Nodes' outputs are not in Graph output
     if (!optimizer_utils::CheckOutputEdges(graph, cast_node, 1) ||
         !optimizer_utils::CheckOutputEdges(graph, matmulinteger_node, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, mul_node_right, 1) ||
-        !optimizer_utils::CheckOutputEdges(graph, dql_node_left, 3)) {
+        !optimizer_utils::CheckOutputEdges(graph, mul_node_right, 1)) {
       continue;
     }
 
@@ -94,30 +93,65 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
       continue;
     }
 
-    std::vector<NodeArg*> input_defs{dql_node_left.MutableInputDefs()[0],
-                                     matmulinteger_node.MutableInputDefs()[1],
-                                     mul_node_right.MutableInputDefs()[1]};
+    Node* fused_node = nullptr;
 
-    if (matmulinteger_node.InputDefs().size() == 4) {
-      const NodeArg& matmulinteger_B_zp = *(matmulinteger_node.InputDefs()[3]);
-      if (!graph_utils::IsConstantInitializer(graph, matmulinteger_B_zp.Name(), true)) {
-        continue;
+    // DynamicQuantizeLinear outputs are only used by one MatMulInteger,
+    // thus it can fused into DynamicQuantizeMatMul
+    if (optimizer_utils::CheckOutputEdges(graph, dql_node_left, 3)) {
+      std::vector<NodeArg*> input_defs{dql_node_left.MutableInputDefs()[0],
+                                       matmulinteger_node.MutableInputDefs()[1],
+                                       mul_node_right.MutableInputDefs()[1]};
+
+      if (matmulinteger_node.InputDefs().size() == 4) {
+        const NodeArg& matmulinteger_B_zp = *(matmulinteger_node.InputDefs()[3]);
+        if (!graph_utils::IsConstantInitializer(graph, matmulinteger_B_zp.Name(), true)) {
+          continue;
+        }
+        input_defs.push_back(matmulinteger_node.MutableInputDefs()[3]);
       }
-      input_defs.push_back(matmulinteger_node.MutableInputDefs()[3]);
+
+      fused_node = &graph.AddNode(graph.GenerateNodeName("DynamicQuantizeMatMul"),
+                                  "DynamicQuantizeMatMul",
+                                  "fused DynamicQuantizeMatMul",
+                                  input_defs,
+                                  mul_node.MutableOutputDefs(),
+                                  nullptr,
+                                  kMSDomain);
+
+      nodes_to_remove.push_back(dql_node_left);
+    } else {
+      std::vector<NodeArg*> input_defs{matmulinteger_node.MutableInputDefs()[0],
+                                       matmulinteger_node.MutableInputDefs()[1],
+                                       mul_node_right.MutableInputDefs()[0],
+                                       mul_node_right.MutableInputDefs()[1]};
+
+      if (matmulinteger_node.InputDefs().size() >= 3) {
+        // Add zero point of A
+        input_defs.push_back(matmulinteger_node.MutableInputDefs()[2]);
+
+        // Add zero point of B
+        if (matmulinteger_node.InputDefs().size() == 4) {
+          const NodeArg& matmulinteger_B_zp = *(matmulinteger_node.InputDefs()[3]);
+          if (!graph_utils::IsConstantInitializer(graph, matmulinteger_B_zp.Name(), true)) {
+            continue;
+          }
+          input_defs.push_back(matmulinteger_node.MutableInputDefs()[3]);
+        }
+      }
+
+      fused_node = &graph.AddNode(graph.GenerateNodeName("MatMulIntegerExtension"),
+                                  "MatMulIntegerExtension",
+                                  "fused MatMulInteger with Scale",
+                                  input_defs,
+                                  mul_node.MutableOutputDefs(),
+                                  nullptr,
+                                  kMSDomain);
     }
 
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName("DynamicQuantizeMatMul"),
-                                     "DynamicQuantizeMatMul",
-                                     "fused DynamicQuantizeMatMul",
-                                     input_defs,
-                                     mul_node.MutableOutputDefs(),
-                                     nullptr,
-                                     kMSDomain);
-
     // Assign provider to this new node. Provider should be same as the provider for old node.
-    fused_node.SetExecutionProviderType(mul_node.GetExecutionProviderType());
+    ORT_ENFORCE(nullptr != fused_node);
+    fused_node->SetExecutionProviderType(mul_node.GetExecutionProviderType());
 
-    nodes_to_remove.push_back(dql_node_left);
     nodes_to_remove.push_back(matmulinteger_node);
     nodes_to_remove.push_back(cast_node);
     nodes_to_remove.push_back(mul_node_right);

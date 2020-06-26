@@ -2472,6 +2472,25 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
   EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
 }
 
+TEST_F(GraphTransformationTests, MatMulIntegerExtensionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/matmul_integer_extension.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["DynamicQuantizeLinear"], 1);
+  EXPECT_EQ(op_to_count["MatMulInteger"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+  EXPECT_EQ(op_to_count["MatMulIntegerExtension"], 2);
+}
+
 #endif
 
 }  // namespace test
