@@ -412,7 +412,11 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
 
         size_t size;
         try {
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
           size = std::stoull(it->second, nullptr, 0);
+#else
+          size = std::stoul(it->second, nullptr, 0);
+#endif
         }
         catch (const std::invalid_argument& ia) {
             throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
