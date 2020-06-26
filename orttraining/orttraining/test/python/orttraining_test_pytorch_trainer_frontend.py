@@ -40,7 +40,7 @@ def testOptimizerConfig(optim_name, lr, alpha, default_alpha):
     ('AdamOptimizer', {'lr': -1}, []),  # invalid lr
     ('FooOptimizer', {'lr': 0.001}, []),  # invalid name
     ('SGDOptimizer', [], []),  # invalid type(hyper_parameters)
-    (optim.config.Adam, {'lr': 0.003}, []),  # invalid type(name)
+    (optim.AdamConfig, {'lr': 0.003}, []),  # invalid type(name)
     ('AdamOptimizer', {'lr': None}, []),  # missing 'lr' hyper parameter
     ('SGDOptimizer', {'lr': 0.004}, {}),  # invalid type(param_groups)
     # invalid type(param_groups[i])
@@ -58,28 +58,28 @@ def testOptimizerConfigInvalidInputs(optim_name, hyper_parameters, param_groups)
             name=optim_name, hyper_parameters=hyper_parameters, param_groups=param_groups)
 
 
-def testSGD():
+def testSGDConfig():
     '''Test initialization of SGD'''
-    cfg = optim.config.SGD()
+    cfg = optim.SGDConfig()
     assert cfg.name == 'SGDOptimizer'
 
     rtol = 1e-05
     assert_allclose(0.001, cfg.lr, rtol=rtol, err_msg="lr mismatch")
 
-    cfg = optim.config.SGD(lr=0.002)
+    cfg = optim.SGDConfig(lr=0.002)
     assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
 
     # SGD does not support param_groups
     with pytest.raises(AssertionError) as e:
         param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
-        optim.config.SGD(param_groups=param_groups, lr=0.002)
+        optim.SGDConfig(param_groups=param_groups, lr=0.002)
         assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
     assert str(e.value) == "'param_groups' must be an empty list"
 
 
-def testAdam():
+def testAdamConfig():
     '''Test initialization of Adam'''
-    cfg = optim.config.Adam()
+    cfg = optim.AdamConfig()
     assert cfg.name == 'AdamOptimizer'
 
     rtol = 1e-05
@@ -93,9 +93,9 @@ def testAdam():
     assert cfg.weight_decay_mode == True, "weight_decay_mode mismatch"
 
 
-def testLamb():
+def testLambConfig():
     '''Test initialization of Lamb'''
-    cfg = optim.config.Lamb()
+    cfg = optim.LambConfig()
     assert cfg.name == 'LambOptimizer'
     rtol = 1e-05
     assert_allclose(0.001, cfg.lr, rtol=rtol, err_msg="lr mismatch")
@@ -117,9 +117,9 @@ def testParamGroups(optim_name):
     rtol = 1e-5
     param_groups = [{'params': ['layer1.weight'], 'alpha': 0.1}]
     if optim_name == 'Adam':
-        cfg = optim.config.Adam(param_groups=param_groups, alpha=0.2)
+        cfg = optim.AdamConfig(param_groups=param_groups, alpha=0.2)
     elif optim_name == 'Lamb':
-        cfg = optim.config.Lamb(param_groups=param_groups, alpha=0.2)
+        cfg = optim.LambConfig(param_groups=param_groups, alpha=0.2)
     else:
         raise ValueError('invalid input')
     assert len(cfg.param_groups) == 1, "param_groups should have length 1"
@@ -136,9 +136,9 @@ def testInvalidParamGroups(optim_name):
     with pytest.raises(AssertionError) as e:
         param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
         if optim_name == 'Adam':
-            optim.config.Adam(param_groups=param_groups, lr=0.2)
+            optim.AdamConfig(param_groups=param_groups, lr=0.2)
         elif optim_name == 'Lamb':
-            optim.config.Lamb(param_groups=param_groups, lr=0.2)
+            optim.LambConfig(param_groups=param_groups, lr=0.2)
         else:
             raise ValueError('invalid input')
     assert str(e.value) == "'lr' is not supported inside param_groups"

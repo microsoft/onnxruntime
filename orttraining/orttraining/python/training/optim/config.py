@@ -70,7 +70,7 @@ class _OptimizerConfig(object):
         self.param_groups.append(param_group)
 
 
-class SGD(_OptimizerConfig):
+class SGDConfig(_OptimizerConfig):
     r"""SGD optimizer configuration
 
     NOTE: Current implementation does not support :py:attr:`param_groups`, and must be
@@ -92,7 +92,7 @@ class SGD(_OptimizerConfig):
             param_groups) == 0, "'param_groups' must be an empty list"
 
 
-class Adam(_OptimizerConfig):
+class AdamConfig(_OptimizerConfig):
     r"""Adam optimizer configuration
 
     Args:
@@ -142,7 +142,7 @@ class Adam(_OptimizerConfig):
         self.weight_decay_mode = weight_decay_mode
 
 
-class Lamb(_OptimizerConfig):
+class LambConfig(_OptimizerConfig):
     r"""Lamb optimizer configuration
 
     Args:

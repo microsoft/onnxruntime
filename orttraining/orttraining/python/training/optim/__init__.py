@@ -1,1 +1,1 @@
-from . import config
+from .config import AdamConfig, LambConfig, SGDConfig
