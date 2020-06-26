@@ -10,6 +10,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
+#include "core/platform/env.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "migraphx_inc.h"
@@ -108,6 +109,15 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   t_ = migraphx::target(info.target_device.c_str());
+
+  // Get environment variables
+  const Env& env_instance = Env::Default();
+
+  // whether fp16 is enable
+  const std::string fp16_enable_env = env_instance.GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
+  if (!fp16_enable_env.empty()) {
+    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+  }
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -197,32 +207,65 @@ static bool can_eval_concat(const Node* concat, const InitializedTensorSet& init
 {
   if (concat == nullptr) return true;
   const auto concat_args = concat->InputDefs();
-  if (concat_args.size() != 3)
-  {
-    return false;
-  }
 
-  auto arg_0 = concat_args[0];
-  bool b_found = (initializers.find(arg_0->Name()) != initializers.end());
-  auto arg_2 = concat_args[2];
-  b_found &= (initializers.find(arg_2->Name()) != initializers.end());
-  if (b_found)
+  // scenario 1
+  if (concat_args.size() == 1)
   {
-    std::vector<graph_utils::EdgeEndToMatch> parent_path{
-        {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
-        {0, 0, "Gather", {1, 11}, kOnnxDomain},
-        {0, 0, "Shape", {1}, kOnnxDomain}};
+    std::vector<graph_utils::EdgeEndToMatch> parent_path_1{
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Mul", {1, 6, 7}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}
+    };
     std::vector<const Node::EdgeEnd*> edges;
-    b_found = graph_utils::FindPath(*concat, true, parent_path, edges, logger);
+    bool b_found = graph_utils::FindPath(*concat, true, parent_path_1, edges, logger);
     if (b_found)
     {
-      const Node& gather = edges[1]->GetNode();
-      const auto* arg_index = gather.InputDefs()[1];
-      if (initializers.find(arg_index->Name()) != initializers.end())
+      const Node& mul = edges[1]->GetNode();
+      const auto* arg_1 = mul.InputDefs()[1];
+      bool const_flag = (initializers.find(arg_1->Name()) != initializers.end());
+      if (const_flag)
       {
-        return true;
+        const Node& gather = edges[2]->GetNode();
+        const auto* arg_index = gather.InputDefs()[1];
+        if (initializers.find(arg_index->Name()) != initializers.end())
+        {
+          return true;
+        }
       }
     }
+  }
+  else if (concat_args.size() >= 2)
+  {
+    int arg_size = static_cast<int>(concat_args.size());
+    for (int i = 0; i < arg_size; ++i)
+    {
+      auto arg = concat_args[i];
+      // is not an initializer
+      if (initializers.find(arg->Name()) == initializers.end())
+      {
+        // then check whether can do constant folding for it
+        std::vector<graph_utils::EdgeEndToMatch> parent_path{
+            {0, i, "Unsqueeze", {1, 11}, kOnnxDomain},
+            {0, 0, "Gather", {1, 11}, kOnnxDomain},
+            {0, 0, "Shape", {1}, kOnnxDomain}};
+        std::vector<const Node::EdgeEnd*> edges;
+        bool b_found = graph_utils::FindPath(*concat, true, parent_path, edges, logger);
+        if (!b_found)
+        {
+          return false;
+        }
+
+        const Node& gather = edges[1]->GetNode();
+        const auto* arg_index = gather.InputDefs()[1];
+        if (initializers.find(arg_index->Name()) == initializers.end())
+        {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   return false;
@@ -256,6 +299,7 @@ static bool can_eval_cast(const Node* cast, const InitializedTensorSet& initiali
         const_flag &= (initializers.find(slice_args[i]->Name()) != initializers.end());
       }
     }
+
     if (const_flag)
     {
       return true;
@@ -345,102 +389,20 @@ static bool can_eval_input_shape(const Node* node, const InitializedTensorSet& i
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& optype = node->OpType();
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
-  if (optype == "AveragePool") {
+  if (optype == "ArgMax" or optype == "ArgMin") {
+    const auto& attributes = node->GetAttributes();
+    // we do not support select_last_index = 1 for now
+    const auto sli_attr = attributes.find("select_last_index");
+    if (sli_attr != attributes.end() && sli_attr->second.i() != 0) {
+      return true;
+    }
+  } else if (optype == "AveragePool") {
     // ceil_mode attribute is not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
     const auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
-    }
-
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4)
-    {
-      return true;
-    }
-
-    // migraphx does not support count_include_pad to be 1
-    const auto cip_attr = attributes.find("count_include_pad");
-    if (cip_attr != attributes.end() && cip_attr->second.i() != 0)
-    {
-      return true;
-    }
-
-    const auto ap_attr = attributes.find("auto_pad");
-    if (ap_attr != attributes.end())
-    {
-      // explicit pad should be symmetric in migraphx
-      auto s_pad = ap_attr->second.s();
-      auto pads_attr = attributes.find("pads");
-      if (s_pad == "NOTSET")
-      {
-        if (pads_attr != attributes.end())
-        {
-          auto pads = pads_attr->second.ints();
-          if (pads.size() != 4)
-          {
-            return true;
-          }
-
-          if ((pads[0] != pads[2]) || (pads[1] != pads[3]))
-          {
-            return true;
-          }
-        }
-      }
-      // either SAME_UPPER or SAME_LOWER
-      else if (s_pad.find("SAME") != std::string::npos)
-      {
-        // pads cannot exist when auto_pad is same_upper or same_lower
-        if (pads_attr != attributes.end())
-        {
-          return true;
-        }
-
-        // compute the padding size to see whether they are symmetric
-        std::vector<int> strides = {1, 1};
-        auto stride_attr = attributes.find("strides");
-        if (stride_attr != attributes.end())
-        {
-          auto attr_strides = stride_attr->second.ints();
-          strides.clear();
-          std::copy(attr_strides.begin(), attr_strides.end(), std::back_inserter(strides));
-        }
-
-        std::vector<int> kernel_lens = {1, 1};
-        auto kernel_attr = attributes.find("kernel_shape");
-        if (kernel_attr != attributes.end())
-        {
-          auto attr_k = kernel_attr->second.ints();
-          std::copy(attr_k.begin(), attr_k.end(), kernel_lens.begin());
-        }
-
-        auto tensor_dims = input_shape->dim();
-        std::vector<int> in_lens;
-        std::transform(tensor_dims.begin(),
-                       tensor_dims.end(),
-                       std::back_inserter(in_lens),
-                       [&](auto&& d) -> std::size_t {
-                           if(d.has_dim_value())
-                           {
-                               return d.dim_value();
-                           }
-                           return 1;
-                       });
-
-        std::vector<int> out_lens(2);
-        out_lens[0]  = (in_lens[2] + strides[0] - 1) / strides[0];
-        out_lens[1]  = (in_lens[3] + strides[1] - 1) / strides[1];
-        std::vector<int> explicit_pads(2);
-        explicit_pads[0] = (out_lens[0] - 1) * strides[0] + kernel_lens[0] - in_lens[2];
-        explicit_pads[1] = (out_lens[1] - 1) * strides[1] + kernel_lens[1] - in_lens[3];
-        if ((explicit_pads[0] & 1) != 0 or (explicit_pads[1] & 1) != 0)
-        {
-          return true;
-        }
-      }
     }
   } else if (optype == "BatchNormalization") {
     // input can only have 4 dims
@@ -475,7 +437,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return false;
     }
     const Node* shape_node = graph_utils::GetInputNode(*node, 0);
-    if (shape_node and shape_node->OpType() == "Concat")
+    if (shape_node and shape_node->OpType() == "Shape")
+    {
+      return false;
+    }
+    else if (shape_node and shape_node->OpType() == "Concat")
     {
       if (can_eval_concat(shape_node, initializers, logger))
       {
@@ -517,6 +483,26 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // MIGraphX only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
     return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
+  } else if (optype == "Pow") {
+    // we do not have a implementation to support different types of 
+    // the input data
+    const auto args = node->InputDefs();
+    const auto& input1_type = args[0]->TypeAsProto();
+    if (input1_type == nullptr)
+    {
+      return true;
+    }
+    auto data_type1 = input1_type->tensor_type().elem_type();
+    const auto& input2_type = args[1]->TypeAsProto();
+    if (input2_type == nullptr)
+    {
+      return true;
+    }
+    auto data_type2 = input2_type->tensor_type().elem_type();
+    if (data_type1 != data_type2)
+    {
+      return true;
+    }
   } else if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
     if (node->OutputDefs().size() > 1) {
@@ -548,9 +534,15 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     }
 
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4)
+    // do not support int8 and uint8 type
+    const auto& input_type = node->InputDefs()[0]->TypeAsProto();
+    if (input_type == nullptr)
+    {
+      return true;
+    }
+    auto data_type = input_type->tensor_type().elem_type();
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 or
+        data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
     {
       return true;
     }
@@ -631,6 +623,15 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       {
         return false;
       }
+
+      const Node* shape_node = graph_utils::GetInputNode(*node, 0);
+      if (shape_node and shape_node->OpType() == "Concat")
+      {
+        if (can_eval_concat(shape_node, initializers, logger))
+        {
+          return false;
+        }
+      }
     }
     return true;
   } else if (optype == "Slice") {
@@ -665,6 +666,33 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         if (starts.Get(i) > ends.Get(i)) {
           return true;
         }
+      }
+    }
+  }
+  else if (optype == "Split")
+  {
+    // cannot process input dim of 0 size
+    const auto arg_s = node->InputDefs()[0]->Shape();
+    if (arg_s != nullptr)
+    {
+      auto tensor_dims = arg_s->dim();
+      std::vector<std::size_t> dims;
+      std::transform(tensor_dims.begin(),
+                      tensor_dims.end(),
+                      std::back_inserter(dims),
+                      [&](auto&& d) -> std::size_t {
+                          if(d.has_dim_value())
+                          {
+                            return d.dim_value();
+                          }
+                          else
+                          {
+                            return 0;
+                          }
+                      });
+      if (dims == std::vector<std::size_t>{0})
+      {
+        return true;
       }
     }
   }
@@ -745,10 +773,11 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
       "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
       "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", 
-      "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "Gemm", "GlobalAveragePool", 
-      "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", 
-      "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "OneHot", "Pad", "Pow", "PRelu", 
-      "RNN","Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
+      "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "Gemm", 
+      "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN", 
+      "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "Neg", 
+      "OneHot", "Pad", "Pow", "PRelu",
+      "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
       "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
       "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze"};
@@ -890,7 +919,6 @@ static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -942,7 +970,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
-
   // Too many unsupported operators, fallback to run on CPU
   if (unsupported_nodes.size() >= 6)
   {
@@ -1086,7 +1113,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
     std::vector<std::string> input_names, output_names;
-    no_input_shape |= get_input_output_names(onnx_string_buffer, input_names, output_names);
+    no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -1095,6 +1122,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     if (!no_input_shape)
     {
       prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
+      if (fp16_enable_)
+      {
+        migraphx::quantize_fp16(prog);
+      }
       prog.compile(t_);
 
       auto prog_output_shapes = prog.get_output_shapes();
@@ -1116,7 +1147,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       std::unique_ptr<MIGraphXFuncState> p = onnxruntime::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name], 
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_, 
-            map_no_input_shape_[context->node_name]};
+            map_no_input_shape_[context->node_name], fp16_enable_};
       *state = p.release();
       return 0;
     };
@@ -1135,6 +1166,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       std::string& onnx_string = mgx_state->onnx_string;
       migraphx::onnx_options& cmp_options = mgx_state->options;
       bool &no_input_shape = mgx_state->no_input_shape;
+      bool fp16_enable = mgx_state->fp16_enable;
 
       // mean no program at all, so need to get the input shape info
       // from input data
@@ -1196,6 +1228,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       if (!input_shape_match)
       {
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
+        if (fp16_enable)
+        {
+          migraphx::quantize_fp16(prog);
+        }
+
         prog.compile(t);
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();
