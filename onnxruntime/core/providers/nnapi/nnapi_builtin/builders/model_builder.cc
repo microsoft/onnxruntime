@@ -62,7 +62,7 @@ bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
 
 std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   std::vector<std::vector<int>> supported_node_vecs;
-  int32_t android_sdk_ver = nnapi_ ? nnapi_->android_sdk_version : 0;
+  int32_t android_sdk_ver = GetAndroidSdkVer();
 #ifdef __ANDROID__
   if (android_sdk_ver < 27) {
     LOGS_DEFAULT(VERBOSE) << "Android API level "
@@ -190,7 +190,7 @@ void ModelBuilder::RegisterInitializers() {
     OperandType operand_type(type, shape);
     shaper_.AddShape(name, operand_type.dimensions);
 
-    auto index = AddNewOperand(name, operand_type);
+    auto index = AddNewOperand(name, operand_type, false /* is_nhwc */);
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
@@ -264,7 +264,7 @@ void ModelBuilder::RegisterModelInputs() {
     OperandType operand_type(type, shape);
     shaper_.AddShape(input_name, operand_type.dimensions);
 
-    auto index = AddNewOperand(input_name, operand_type);
+    auto index = AddNewOperand(input_name, operand_type, false /* is_nhwc */);
 
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
@@ -297,11 +297,12 @@ void ModelBuilder::RegisterModelShaper() {
 }
 
 uint32_t ModelBuilder::AddNewOperand(const std::string& name,
-                                     const android::nn::wrapper::OperandType& operand_type) {
+                                     const OperandType& operand_type,
+                                     bool is_nhwc) {
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
       nnapi_model_->model_, &operand_type.operandType));
   auto idx = next_index_++;
-  RegisterOperand(name, idx, operand_type);
+  RegisterOperand(name, idx, operand_type, is_nhwc);
   return idx;
 }
 
@@ -311,12 +312,14 @@ uint32_t ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type) {
   return next_index_++;
 }
 
-void ModelBuilder::RegisterOperand(const std::string& name,
-                                   uint32_t index,
-                                   const OperandType& operand_type) {
+void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
+                                   const OperandType& operand_type, bool is_nhwc) {
   operand_indices_[name] = index;
   operand_types_.insert({name, operand_type});
   operands_.insert(name);
+
+  if (is_nhwc)
+    RegisterNHWCOperand(name);
 }
 
 void ModelBuilder::SetOperandValue(uint32_t index,
@@ -341,7 +344,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
-  auto index = AddNewOperand(name, operand_type);
+  auto index = AddNewOperand(name, operand_type, false /* is_nhwc */);
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -376,10 +379,11 @@ void ModelBuilder::AddOperations() {
 
 void ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                 const std::vector<std::string>& output_names,
-                                const std::vector<android::nn::wrapper::OperandType>& types) {
+                                const std::vector<OperandType>& types,
+                                const std::vector<bool>& is_nhwc_vec) {
   std::vector<uint32_t> output_indices;
   for (size_t i = 0; i < types.size(); i++) {
-    output_indices.push_back(AddNewOperand(output_names[i], types[i]));
+    output_indices.push_back(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i]));
   }
 
   THROW_ON_ERROR_WITH_NOTE(
@@ -400,7 +404,8 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
           &output_index_vec_[0]),
       "on identifyInputsAndOutputs");
 
-  if (use_fp16_) {
+  // relax fp32tofp16 is only available on API 28+
+  if (use_fp16_ && GetAndroidSdkVer() > 27) {
     THROW_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),

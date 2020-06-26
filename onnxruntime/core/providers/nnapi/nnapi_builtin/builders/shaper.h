@@ -47,9 +47,9 @@ class Shaper {
           const std::string& input2_name,
           const std::string& output_name);
 
-  void Concat(const std::vector<std::string>& inputs,
+  void Concat(const std::vector<std::string>& input_names,
               const int32_t axis,
-              const std::string& output);
+              const std::string& output_name);
 
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape

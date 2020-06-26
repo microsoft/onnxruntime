@@ -29,7 +29,8 @@ class ModelBuilder {
   // Add an NNAPI operation (operator)
   void AddOperation(int op, const std::vector<uint32_t>& input_indices,
                     const std::vector<std::string>& output_names,
-                    const std::vector<android::nn::wrapper::OperandType>& types);
+                    const std::vector<android::nn::wrapper::OperandType>& types,
+                    const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const std::string& output);
@@ -48,7 +49,8 @@ class ModelBuilder {
 
   // Register informations for a particular operand
   void RegisterOperand(const std::string& name, uint32_t index,
-                       const android::nn::wrapper::OperandType& operand_type);
+                       const android::nn::wrapper::OperandType& operand_type,
+                       bool is_nhwc);
 
   // Generate an unique name for intermediate result
   std::string GetUniqueName(const std::string& base_name);
@@ -153,7 +155,8 @@ class ModelBuilder {
 
   uint32_t AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type);
   uint32_t AddNewOperand(const std::string& name,
-                         const android::nn::wrapper::OperandType& operand_type);
+                         const android::nn::wrapper::OperandType& operand_type,
+                         bool is_nhwc);
 
   IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
 };

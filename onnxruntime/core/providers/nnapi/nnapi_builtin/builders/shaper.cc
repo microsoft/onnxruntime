@@ -345,12 +345,12 @@ void Shaper::FC(const std::string& input1_name, const std::string& input2_name,
   }
 }
 
-void Shaper::Concat(const std::vector<std::string>& inputs,
+void Shaper::Concat(const std::vector<std::string>& input_names,
                     const int32_t axis,
-                    const std::string& output) {
+                    const std::string& output_name) {
   std::vector<Shape> dimens;
-  for (const auto& input : inputs) {
-    auto& dimen = shape_map_.at(input);
+  for (const auto& input_name : input_names) {
+    auto& dimen = shape_map_.at(input_name);
     if (!dimens.empty()) {
       for (size_t i = 0; i < dimens[0].size(); i++) {
         if ((int32_t)i == axis)
@@ -360,14 +360,22 @@ void Shaper::Concat(const std::vector<std::string>& inputs,
       }
     }
 
-    dimens.push_back(shape_map_.at(input));
+    dimens.push_back(shape_map_.at(input_name));
   }
 
   auto output_dimen = dimens[0];
   for (size_t i = 1; i < dimens.size(); i++) {
     output_dimen[axis] += dimens[i][axis];
   }
-  shape_map_[output] = output_dimen;
+
+  shape_map_[output_name] = output_dimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_names, axis, output_name](Shaper& shaper) {
+          shaper.Concat(input_names, axis, output_name);
+        });
+  }
 }
 
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
