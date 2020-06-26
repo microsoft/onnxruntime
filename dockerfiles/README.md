@@ -97,7 +97,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## OpenVINO
 *Public Preview*
 
-**Ubuntu 16.04, Python Bindings**
+**Ubuntu 18.04, Python Bindings**
 
 1. Build the onnxruntime image for one of the accelerators supported below.
 
