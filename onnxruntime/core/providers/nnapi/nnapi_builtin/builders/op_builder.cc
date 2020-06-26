@@ -898,7 +898,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   bool conv2d = (group == 1);
   const auto& weight_tensor = initializers.at(weight);
-  bool depthwiseConv2D = (weight_tensor.dims()[1] == 1);
+  bool depthwise_conv2d = (weight_tensor.dims()[1] == 1);
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -906,7 +906,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (conv2d) {
     input_indices.push_back(AddInitializerInNewLayout(
         model_builder, weight, L_NCHW));
-  } else {  // depthwiseConv2D
+  } else {  // depthwise_conv2d
     input_indices.push_back(AddInitializerInNewLayout(
         model_builder, weight, L_1230));
   }
@@ -946,7 +946,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
-  if (!conv2d && depthwiseConv2D) {
+  if (!conv2d && depthwise_conv2d) {
     int32_t depthwiseMultiplier = shaper[weight][3] / group;
     input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
   }
@@ -964,7 +964,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                 onnx_pads, onnx_strides, onnx_dilations,
                 use_nchw,
                 output);
-  } else {  // depthwiseConv2D
+  } else {  // depthwise_conv2d
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
     shaper.DepthwiseConv(input, weight,
                          onnx_pads, onnx_strides, onnx_dilations,

@@ -6,7 +6,7 @@
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/isink.h"
-#include "core/common/logging/sinks/android_log_sink.h"
+#include "core/platform/android/logging/android_log_sink.h"
 
 namespace onnxruntime {
 namespace logging {
