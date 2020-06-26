@@ -24,7 +24,7 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 
-#include "orttraining/training_ops/cuda/nn/custom_layer_norm.cuh"
+#include "custom_layer_norm.cuh"
 #include "layer_norm_impl.h"
 
 namespace onnxruntime {
@@ -359,7 +359,7 @@ void HostApplyLayerNorm(
   
   bool custom_supported_dim = std::find(std::begin(SUPPORTED_REDUCTION_DIM), std::end(SUPPORTED_REDUCTION_DIM), n2) != std::end(SUPPORTED_REDUCTION_DIM);
   if(!(std::is_same<T, double>::value) && custom_supported_dim){
-    launch_bias_residual_layer_norm<T,U>(
+    launch_custom_layer_norm<T,U>(
       output,
       input,
       gamma,

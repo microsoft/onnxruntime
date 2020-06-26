@@ -1,32 +1,60 @@
+/**
+* Copyright (c) 2016-present, Facebook, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+//
+// Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
+// NVIDIA/apex is licensed under the
+// BSD 3 - Clause "New" or "Revised" License
+//
+
+/* Modifications Copyright (c) Microsoft. */
+
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "orttraining/training_ops/cuda/nn/custom_layer_norm.cuh"
+#include <cooperative_groups.h>
+#include "custom_layer_norm.cuh"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
 
 namespace cg = cooperative_groups;
-
+using namespace onnxruntime::cuda;
 /*
-Fused bias add, residual (elementwise) add, and normalization layer.
-Unlike the GELU, which doesn't require template parameters, this layer does since it
-does rely fairly heavily on unrolling loops. Currently, I exclude bounds checks and
-assume that the number of elements is a multiple of a power of 2. Default behavior
-for our purposes uses 256 threads for floats, and 128 threads for __half. This restriction
-is a result of using the shift parameter to perform the minimum number of register file
-shuffles necessary, which requires the number of threads in the secondary reduction to
-be 1, 2, 4, 8, 16, or 32. The number of threads here corresponds to the number of complete
-warps in the threadblock.
+Custom kernel for Layer Normalization, adapted from https://github.com/microsoft/DeepSpeed.
+This layer requires template parameters since it relies fairly heavily on unrolling loops.
+The kernel is invoked when the n2:the number of elements is a multiple of a power of 2. 
+Default behavior for our purposes uses 256 threads for floats, and 128 threads for __half. 
+This restriction is a result of using the shift parameter to perform the minimum number of 
+register file shuffles necessary, which requires the number of threads in the secondary 
+reduction to be 1, 2, 4, 8, 16, or 32. The number of threads here corresponds to the number 
+of complete warps in the threadblock.
 For FP16, this kernel does not promote to FP32 in order to utilize the 2x throughput for
 __half2 instructions, and avoid the conversion overhead (1/8 of __hal2 arithmetic).
 For specific launch constraints, see the launch functions.
 */
 
 template <int row_stride, int iterations>
-__global__ void fused_bias_residual_layer_norm(float* vals,
-                                               const float* residual,
-                                               const float* gamma,
-                                               const float* beta,
-                                               float epsilon,
-                                               float* invvars = nullptr,
-                                               float* means = nullptr)
-{
+__global__ void custom_layer_norm(float* vals,
+                                    const float* residual,
+                                    const float* gamma,
+                                    const float* beta,
+                                    float epsilon,
+                                    float* invvars = nullptr,
+                                    float* means = nullptr)
+    {
     constexpr int iteration_stride = row_stride / iterations;
 
     cg::thread_block b = cg::this_thread_block();
@@ -46,19 +74,25 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
         sum += vals_arr[i];
     }
 
-    for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
-
+    for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
+        sum += WARP_SHFL_DOWN(sum, stride); 
+    }
+    
     if (g.thread_rank() == 0) shr[gid] = sum;
 
     b.sync();
 
     if (g.thread_rank() < (iteration_stride >> 5)) sum = shr[g.thread_rank()];
 
+#if __CUDA_ARCH__ < 700
     b.sync();
+#endif
 
-    for (int i = 1; i < (iteration_stride >> 5); i *= 2) { sum += g.shfl_down(sum, i); }
+    for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+        sum += WARP_SHFL_DOWN(sum, stride); 
+    }
 
-    sum = g.shfl(sum, 0);
+    sum = WARP_SHFL(sum, 0);
     float mean = sum / row_stride;
     if (g.thread_rank() == 0) means[row] = mean;
     float inv_variance, variance = 0.f;
@@ -66,7 +100,9 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
         variance += (vals_arr[i] - mean) * (vals_arr[i] - mean);
     }
 
-    for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
+    for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
+        variance += WARP_SHFL_DOWN(variance, stride); 
+    }
 
     if (g.thread_rank() == 0) shr[gid] = variance;
 
@@ -76,8 +112,10 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
 
     b.sync();
 
-    for (int i = 1; i < (iteration_stride >> 5); i *= 2) { variance += g.shfl_down(variance, i); }
-    variance = g.shfl(variance, 0);
+    for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+        variance += WARP_SHFL_DOWN(variance, stride); 
+    }
+    variance = WARP_SHFL(variance, 0);
     variance /= row_stride;
     variance += epsilon;
     inv_variance = rsqrtf(variance);
@@ -92,13 +130,13 @@ __global__ void fused_bias_residual_layer_norm(float* vals,
 }
 
 template <int row_stride, int iterations>
-__global__ void fused_bias_residual_layer_norm(__half* vals,
-                                               const __half* residual,
-                                               const __half* gamma,
-                                               const __half* beta,
-                                               float epsilon,
-                                               float* invvars = nullptr,
-                                               float* means = nullptr)
+__global__ void custom_layer_norm(__half* vals,
+                                    const __half* residual,
+                                    const __half* gamma,
+                                    const __half* beta,
+                                    float epsilon,
+                                    float* invvars = nullptr,
+                                    float* means = nullptr)
 {
 #if __CUDA_ARCH__ >= 700
     constexpr int iteration_stride = row_stride / iterations;
@@ -125,7 +163,9 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
         sum += vals_f[i].y;
     }
 
-    for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
+    for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
+        sum += WARP_SHFL_DOWN(sum, stride); 
+    }
 
     if (g.thread_rank() == 0) shr[gid] = sum;
 
@@ -135,8 +175,10 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
 
     b.sync();
 
-    for (int i = 1; i < (iteration_stride >> 5); i *= 2) { sum += g.shfl_down(sum, i); }
-    sum = g.shfl(sum, 0);
+    for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+        sum += WARP_SHFL_DOWN(sum, stride); 
+    }
+    sum = WARP_SHFL(sum, 0);
     float mean = sum / (row_stride * 2);
 
     float inv_variance, variance = 0.f;
@@ -145,7 +187,9 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
         variance += (vals_f[i].y - mean) * (vals_f[i].y - mean);
     }
 
-    for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
+    for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
+        variance += WARP_SHFL_DOWN(variance, stride); 
+    }
 
     if (g.thread_rank() == 0) shr[gid] = variance;
 
@@ -155,8 +199,10 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
 
     b.sync();
 
-    for (int i = 1; i < (iteration_stride >> 5); i *= 2) { variance += g.shfl_down(variance, i); }
-    variance = g.shfl(variance, 0);
+    for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+        variance += WARP_SHFL_DOWN(variance, stride); 
+    }
+    variance = WARP_SHFL(variance, 0);
     variance /= (row_stride * 2);
     variance += epsilon;
     inv_variance = rsqrt(variance);
@@ -182,7 +228,7 @@ __global__ void fused_bias_residual_layer_norm(__half* vals,
 }
 
 template <typename T, typename U>
-void launch_bias_residual_layer_norm(T* vals,
+void launch_custom_layer_norm(T* vals,
                                      const T* residual,
                                      const T* gamma,
                                      const T* beta,
@@ -193,7 +239,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      U* means);
 
 template <>
-void launch_bias_residual_layer_norm<float, float>(float* vals,
+void launch_custom_layer_norm<float, float>(float* vals,
                                             const float* residual,
                                             const float* gamma,
                                             const float* beta,
@@ -211,29 +257,29 @@ void launch_bias_residual_layer_norm<float, float>(float* vals,
 
     // There are some limitations to call below functions, now just enumerate the situations.
     if (n2 == 768)
-        fused_bias_residual_layer_norm<768, 3><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<768, 3><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 512)
-        fused_bias_residual_layer_norm<512, 2><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<512, 2><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 1024)
-        fused_bias_residual_layer_norm<1024, 4><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<1024, 4><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 1536)
-        fused_bias_residual_layer_norm<1536, 6><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<1536, 6><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 2048)
-        fused_bias_residual_layer_norm<2048, 8><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<2048, 8><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 2560)
-        fused_bias_residual_layer_norm<2560, 10><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<2560, 10><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else
         throw std::runtime_error("Unsupport hidden_dim.");
 }
 
 template <>
-void launch_bias_residual_layer_norm<__half, float>(__half* vals,
+void launch_custom_layer_norm<__half, float>(__half* vals,
                                              const __half* residual,
                                              const __half* gamma,
                                              const __half* beta,
@@ -250,24 +296,27 @@ void launch_bias_residual_layer_norm<__half, float>(__half* vals,
 
     // There are some limitations to call below functions, now just enumerate the situations.
     if (n2 == 768)
-        fused_bias_residual_layer_norm<384, 3><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<384, 3><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 512)
-        fused_bias_residual_layer_norm<256, 2><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<256, 2><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 1024)
-        fused_bias_residual_layer_norm<512, 4><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<512, 4><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 1536)
-        fused_bias_residual_layer_norm<768, 6><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<768, 6><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 2048)
-        fused_bias_residual_layer_norm<1024, 8><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<1024, 8><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else if (n2 == 2560)
-        fused_bias_residual_layer_norm<1280, 10><<<grid_dim, block_dim, 0, 0>>>(
+        custom_layer_norm<1280, 10><<<grid_dim, block_dim, 0, 0>>>(
             vals, residual, gamma, beta, epsilon, invvars, means);
     else
         throw std::runtime_error("Unsupport hidden_dim.");
 }
 
+}  //namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
