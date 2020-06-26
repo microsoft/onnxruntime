@@ -84,6 +84,18 @@ class ModelBuilder {
 
   const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
 
+  void RegisterNHWCOperand(const std::string& name);
+  bool IsOperandNHWC(const std::string& name);
+
+  // Get the operand transposed to nchw/nhwc from given nhwc/nchw operand, if it exists
+  bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
+  bool GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name);
+
+  void SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
+                               const std::string& nchw_name);
+  void SetNCHWToNHWCOperandMap(const std::string& nchw_name,
+                               const std::string& nhwc_name);
+
  private:
   const NnApi* nnapi_{nullptr};
   ONNX_NAMESPACE::ModelProto& model_proto_;
@@ -91,7 +103,7 @@ class ModelBuilder {
 
   uint32_t name_token_{0};
 
-  bool use_nchw_{true};
+  bool use_nchw_{false};
   bool use_fp16_{false};
   android::nn::wrapper::ExecutePreference exe_pref_{
       android::nn::wrapper::ExecutePreference::PREFER_FAST_SINGLE_ANSWER};
@@ -108,6 +120,13 @@ class ModelBuilder {
   std::unordered_set<std::string> skipped_initializers_;
 
   std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> op_builders_;
+
+  // Operands in nhwc
+  std::unordered_set<std::string> nhwc_operands_;
+
+  // Maps between nhwc and nchw, and vice versa
+  std::unordered_map<std::string, std::string> nhwc_to_nchw_map_;
+  std::unordered_map<std::string, std::string> nchw_to_nhwc_map_;
 
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;

@@ -30,6 +30,79 @@ const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
              : tensor.float_data().data();
 }
 
+void AddTransposeOperator(ModelBuilder& model_builder,
+                          const std::string& input,
+                          const std::string& perm_name,
+                          vector<int32_t> perm,
+                          const std::string& output) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));  // input
+
+  ModelBuilder::Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
+  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
+  uint32_t perm_idx = model_builder.AddOperandFromPersistMemoryBuffer(
+      perm_name, perm.data(), perm_operand_type);
+
+  input_indices.push_back(perm_idx);  // permutation
+  shaper.Transpose(input, perm, output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output}, {output_operand_type});
+}
+
+void TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
+                                 const std::string& input,
+                                 const std::string& output,
+                                 bool nchw_to_nhwc) {
+  ORT_ENFORCE(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
+  auto& shaper(model_builder.GetShaper());
+  ORT_ENFORCE(
+      4 == shaper[input].size(),
+      "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: " +
+          std::to_string(shaper[input].size()));
+
+  std::string perm_name;
+  vector<int32_t> perm;
+  if (nchw_to_nhwc) {
+    perm_name = model_builder.GetUniqueName(input + "nchw_to_nhwc_perm");
+    perm = {0, 2, 3, 1};
+  } else {  // nhwc_to_nchw
+    perm_name = model_builder.GetUniqueName(input + "nhwc_to_nchw_perm");
+    perm = {0, 3, 1, 2};
+  }
+
+  AddTransposeOperator(model_builder, input, perm_name, perm, output);
+
+  if (nchw_to_nhwc) {
+    model_builder.RegisterNHWCOperand(output);
+    model_builder.SetNCHWToNHWCOperandMap(input, output);
+  } else {  // nhwc_to_nchw
+    model_builder.SetNHWCToNCHWOperandMap(input, output);
+  }
+
+  LOGS_DEFAULT(VERBOSE) << "Operand [" << input << "] with shape "
+                        << Shape2String(shaper[input])
+                        << " is transposed "
+                        << (nchw_to_nhwc ? "nchw_to_nhwc" : "nhwc_to_nchw")
+                        << " to [" << output << "] with shape "
+                        << Shape2String(shaper[output]);
+}
+
+void TransposeNHWCToNCHW(ModelBuilder& model_builder,
+                         const std::string& input,
+                         const std::string& output) {
+  TransposeBetweenNCHWAndNHWC(model_builder, input, output, false /* nchw_to_nhwc */);
+}
+
+void TransposeNCHWToNHWC(ModelBuilder& model_builder,
+                         const std::string& input,
+                         const std::string& output) {
+  TransposeBetweenNCHWAndNHWC(model_builder, input, output, true /* nchw_to_nhwc */);
+}
+
 void AddBinaryOperator(int32_t op_type,
                        ModelBuilder& model_builder,
                        const std::string& input1,
@@ -389,12 +462,37 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   else {
     ORT_THROW("UnaryOpBuilder, unknown op: " + op);
   }
-  const auto& input1 = node.input(0);
-  const auto& input2 = node.input(1);
+  std::string input1 = node.input(0);
+  std::string input2 = node.input(1);
+  bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
+  bool input2_is_nhwc = model_builder.IsOperandNHWC(input2);
+  bool output_is_nhwc = false;
+
+  if (input1_is_nhwc == input2_is_nhwc) {
+    output_is_nhwc = input1_is_nhwc;
+  } else if (input1_is_nhwc) {
+    // need transpsoe input1 back to nchw
+    const auto& nhwc_input = node.input(0);
+    if (!model_builder.GetNCHWOperand(nhwc_input, input1)) {
+      input1 = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(model_builder, nhwc_input, input1);
+    }
+  } else {  // input2_is_nhwc
+    // need transpsoe input2 back to nchw
+    const auto& nhwc_input = node.input(1);
+    if (!model_builder.GetNCHWOperand(nhwc_input, input2)) {
+      input2 = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(model_builder, nhwc_input, input2);
+    }
+  }
+
   const auto& output = node.output(0);
   int32_t fuse_code = model_builder.FindActivation(output);
   AddBinaryOperator(op_code, model_builder,
                     input1, input2, fuse_code, output);
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion
@@ -415,6 +513,7 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
@@ -426,6 +525,9 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     input_indices.push_back(operand_indices.at(input));
     model_builder.AddOperation(ANEURALNETWORKS_RELU, input_indices, {output}, {output_operand_type});
   }
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion op_relu
@@ -462,14 +564,21 @@ bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
 void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const ONNX_NAMESPACE::NodeProto& node) {
   auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
+
+  auto input = node.input(0);
+  // TODO, optimize this into a single perm array below
+  // no need to transpose twice
+  if (model_builder.IsOperandNHWC(input)) {
+    // We want to transpose nhwc operand back to nchw before transpose
+    const auto& nhwc_input = node.input(0);
+    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
+      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+    }
+  }
+
+  const auto& output = node.output(0);
   NodeAttrHelper helper(node);
-
-  const auto& input = node.input(0);
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
   vector<int32_t> perm = helper.Get("perm", vector<int32_t>());
   auto input_dims = shaper[input].size();
   if (perm.empty()) {
@@ -477,16 +586,8 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       perm.push_back(i);
   }
 
-  ModelBuilder::Shape perm_dimen = {SafeInt<uint32_t>(input_dims)};
   std::string perm_name = model_builder.GetUniqueName(node.name() + input + "perm");
-  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  uint32_t perm_idx = model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type);
-  input_indices.push_back(perm_idx);
-
-  const auto& output = node.output(0);
-  shaper.Transpose(input, perm, output);
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output}, {output_operand_type});
+  AddTransposeOperator(model_builder, input, perm_name, perm, output);
 }
 
 #pragma endregion op_transpose
@@ -551,7 +652,17 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  const auto& input = node.input(0);
+  auto input = node.input(0);
+
+  if (model_builder.IsOperandNHWC(input)) {
+    // We want to transpose nhwc operand back to nchw before reshape
+    const auto& nhwc_input = node.input(0);
+    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
+      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+    }
+  }
+
   const auto& output = node.output(0);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
@@ -676,10 +787,13 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   const auto tensor_b_name = model_builder.GetUniqueName(node.name() + input + "_imm_b");
   const auto tensor_imm_product_name = model_builder.GetUniqueName(node.name() + input + "_imm_mul");
   ModelBuilder::Shape tensor_a_dimen;
-  if (model_builder.UseNCHW())
-    tensor_a_dimen = {size, 1, 1};  // {C, H, W}
-  else
+
+  bool input_is_nhwc = model_builder.IsOperandNHWC(input);
+  bool output_is_nhwc = input_is_nhwc;
+  if (input_is_nhwc)
     tensor_a_dimen = {size};
+  else                              // input is nchw
+    tensor_a_dimen = {size, 1, 1};  // {C, H, W}
 
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
@@ -702,6 +816,9 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
                     tensor_imm_product_name, tensor_b_name,
                     fuse_code,
                     output);
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion op_batchnormalization
@@ -782,17 +899,36 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
 void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                           const ONNX_NAMESPACE::NodeProto& node) {
   auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
   NodeAttrHelper helper(node);
 
-  const auto& input = node.input(0);
+  auto input = node.input(0);
+  bool use_nchw = model_builder.UseNCHW();
+  bool input_is_nhwc = model_builder.IsOperandNHWC(input);
+  bool output_is_nhwc = false;
+  if (use_nchw) {
+    ORT_ENFORCE(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
+  } else {
+    output_is_nhwc = true;
+    if (!input_is_nhwc) {
+      const auto& nchw_input = node.input(0);
+      if (!model_builder.GetNHWCOperand(nchw_input, input)) {
+        input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
+        TransposeNCHWToNHWC(model_builder, nchw_input, input);
+      }
+    }
+  }
+
   const auto& output = node.output(0);
   const auto& op = node.op_type();
 
-  int32_t operationType;
+  int32_t op_type;
   if (op == "AveragePool" || op == "GlobalAveragePool")
-    operationType = ANEURALNETWORKS_AVERAGE_POOL_2D;
+    op_type = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op == "MaxPool" || op == "GlobalMaxPool")
-    operationType = ANEURALNETWORKS_MAX_POOL_2D;
+    op_type = ANEURALNETWORKS_MAX_POOL_2D;
 
   vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   if (op == "AveragePool" || op == "MaxPool") {
@@ -811,12 +947,28 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   }
 
   int32_t fuse_code = model_builder.FindActivation(output);
-  AddPoolOperator(operationType,
-                  model_builder,
-                  input,
-                  onnx_pads, onnx_strides, kernel_shape,
-                  fuse_code,
-                  output);
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[1]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[0]));
+  input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+  input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+
+  shaper.Pool(input,
+              onnx_pads, onnx_strides, kernel_shape,
+              use_nchw,
+              output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type});
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion op_pool
@@ -877,7 +1029,6 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
-  bool use_nchw = model_builder.UseNCHW();
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -892,7 +1043,23 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
   const auto group = helper.Get("group", 1);
 
-  const auto& input = node.input(0);
+  auto input = node.input(0);
+  bool use_nchw = model_builder.UseNCHW();
+  bool input_is_nhwc = model_builder.IsOperandNHWC(input);
+  bool output_is_nhwc = false;
+  if (use_nchw) {
+    ORT_ENFORCE(!input_is_nhwc, "model_builder.UseNCHW() but input is NHWC");
+  } else {
+    output_is_nhwc = true;
+    if (!input_is_nhwc) {
+      const auto& nchw_input = node.input(0);
+      if (!model_builder.GetNHWCOperand(nchw_input, input)) {
+        input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
+        TransposeNCHWToNHWC(model_builder, nchw_input, input);
+      }
+    }
+  }
+
   const auto& weight = node.input(1);
   const auto& output = node.output(0);
 
@@ -927,13 +1094,13 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     const auto& weight_type = operand_types.at(weight).type;
     if (weight_type == Type::TENSOR_FLOAT32) {
-      float buffer[bias_dimen[0]];
-      for (uint32_t i = 0; i < bias_dimen[0]; i++) {
+      vector<float> buffer(bias_dimen[0]);
+      for (uint32_t i = 0; i < buffer.size(); i++) {
         buffer[i] = 0.f;
       }
       OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
       bias_idx_val = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, &buffer[0], operandType);
+          bias, buffer.data(), operandType);
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
@@ -974,6 +1141,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   model_builder.AddOperation(operationCode, input_indices, {output}, {output_operand_type});
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion op_conv
@@ -1017,6 +1187,8 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
   auto to = helper.Get("to", 0);
   Type type;
   switch (to) {
@@ -1036,6 +1208,9 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   shaper.Identity(input, output);
   const OperandType output_operand_type(type, shaper[output]);
   model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output}, {output_operand_type});
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion
@@ -1076,7 +1251,16 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& operand_types(model_builder.GetOperandTypes());
   NodeAttrHelper helper(node);
 
-  const auto& input = node.input(0);
+  auto input = node.input(0);
+  if (model_builder.IsOperandNHWC(input)) {
+    // We want to transpose nhwc operand back to nchw before softmax
+    const auto& nhwc_input = node.input(0);
+    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
+      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+    }
+  }
+
   const auto& output = node.output(0);
   float beta = 1.f;
   int32_t axis = helper.Get("axis", 1);
@@ -1110,12 +1294,16 @@ void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion
@@ -1140,6 +1328,16 @@ bool GemmOpBuilder::IsOpSupportedImpl(
     const ONNX_NAMESPACE::NodeProto& node) {
   const auto& op = node.op_type();
   const auto& initializers(model_builder.GetInitializerTensors());
+
+  if (GetShape(model_builder.GetOnnxModel(), node.input(0)).size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "A must be 2D";
+    return false;
+  }
+
+  if (GetShape(model_builder.GetOnnxModel(), node.input(0)).size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "B must be 2D";
+    return false;
+  }
 
   if (op == "MatMul") {  // Only support A*B B is an initializer
     if (!Contains(initializers, node.input(1))) {
@@ -1172,7 +1370,10 @@ bool GemmOpBuilder::IsOpSupportedImpl(
       const auto c_shape = GetShape(model_builder.GetOnnxModel(), node.input(2));
       if (c_shape.size() != 1 ||
           c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
-        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]";
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]"
+                              << " b_shape: " << Shape2String(b_shape)
+                              << " c_shape: " << Shape2String(c_shape);
+
         return false;
       }
     }
@@ -1285,6 +1486,8 @@ void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& input = node.input(0);
   const auto& output = node.output(0);
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
@@ -1313,6 +1516,102 @@ void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
+}
+
+#pragma endregion
+
+#pragma region op_concat
+
+class ConcatOpBuilder : public BaseOpBuilder {
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const ONNX_NAMESPACE::NodeProto& node) override;
+
+  void AddToModelBuilderImpl(ModelBuilder& model_builder,
+                             const ONNX_NAMESPACE::NodeProto& node) override;
+};
+
+bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                        const ONNX_NAMESPACE::NodeProto& node) {
+  if (GetShape(model_builder.GetOnnxModel(), node.input(0)).size() > 4) {
+    LOGS_DEFAULT(VERBOSE) << "Concat supports at most 4D shape";
+    return false;
+  }
+
+  return true;
+}
+
+void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
+                                            const ONNX_NAMESPACE::NodeProto& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  NodeAttrHelper helper(node);
+
+  std::vector<uint32_t> input_indices;
+  const auto& input0 = node.input(0);
+  bool all_input_have_same_layout = true;
+  bool output_is_nhwc = false;
+
+  // First we want to see if all the input are smae layout
+  for (int i = 0; i < node.input_size() - 1; i++) {
+    all_input_have_same_layout =
+        all_input_have_same_layout &&
+        model_builder.IsOperandNHWC(node.input(i)) == model_builder.IsOperandNHWC(node.input(i + 1));
+  }
+
+  std::vector<std::string> inputs;
+  inputs.reserve(node.input_size());
+  if (all_input_have_same_layout) {
+    // if all the inputs are of same layout, output will be the same layout
+    if (model_builder.IsOperandNHWC(input0)) {
+      output_is_nhwc = true;
+    }
+
+    for (const auto& input : node.input()) {
+      input_indices.push_back(operand_indices.at(input));
+      inputs.push_back(input);
+    }
+  } else {
+    // if all the inputs are not same layout,
+    // will need transpos those nhwc tensors back to nchw
+    for (auto input : node.input()) {
+      if (model_builder.IsOperandNHWC(input)) {
+        std::string nhwc_input = input;
+        input = model_builder.GetUniqueName(input + "_nhwc_to_nchw");
+        TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+      }
+      input_indices.push_back(operand_indices.at(input));
+      inputs.push_back(input);
+    }
+  }
+
+  int32_t axis = helper.Get("axis", 1);
+  int rank = shaper[input0].size();
+  if (axis < 0) {  // NNAPI does not support negative axis
+    axis = rank + axis;
+  }
+
+  if (output_is_nhwc) {
+    ORT_ENFORCE(rank == 4, "nhwc is only on 4d shape, input " + input0 +
+                               " has rank: " + std::to_string(rank));
+    // we are using nhwc here, need to transpose axis from nchw to nhwc
+    const uint32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
+    axis = axis_nchw_to_nhwc[axis];
+  }
+  input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+
+  const auto& output = node.output(0);
+  shaper.Concat(inputs, axis, output);
+  const OperandType output_operand_type(operand_types.at(input0).type, shaper[output]);
+  model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION,
+                             input_indices, {output}, {output_operand_type});
+
+  if (output_is_nhwc)
+    model_builder.RegisterNHWCOperand(output);
 }
 
 #pragma endregion
@@ -1367,6 +1666,8 @@ CreateOpBuilders() {
     op_map.emplace("Sqrt", unary_op_builder);
     op_map.emplace("Tanh", unary_op_builder);
   }
+
+  op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
 
   return op_map;
 }

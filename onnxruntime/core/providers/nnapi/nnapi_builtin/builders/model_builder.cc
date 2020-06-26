@@ -279,8 +279,15 @@ void ModelBuilder::RegisterModelOutputs() {
       ORT_THROW("The output of graph is not registered" + output_name);
     }
 
-    output_index_vec_.push_back(operand_indices_[output_name]);
-    nnapi_model_->AddOutput(output_name, operand_types_.at(output_name));
+    std::string nnapi_output_name = output_name;
+    if (IsOperandNHWC(output_name)) {
+      // We need to transpose the output still in nhwc back to nchw
+      nnapi_output_name = GetUniqueName(output_name + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(*this, output_name, nnapi_output_name);
+    }
+
+    output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
+    nnapi_model_->AddOutput(output_name, nnapi_output_name, operand_types_.at(nnapi_output_name));
   }
 }
 
@@ -473,6 +480,42 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   } while (Contains(unique_names_, unique_name));
 
   return unique_name;
+}
+
+void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
+  nhwc_operands_.insert(name);
+}
+
+bool ModelBuilder::IsOperandNHWC(const std::string& name) {
+  return Contains(nhwc_operands_, name);
+}
+
+bool ModelBuilder::GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name) {
+  if (Contains(nhwc_to_nchw_map_, nhwc_name)) {
+    nchw_name = nhwc_to_nchw_map_[nhwc_name];
+    return true;
+  }
+  return false;
+}
+
+bool ModelBuilder::GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name) {
+  if (Contains(nchw_to_nhwc_map_, nchw_name)) {
+    nhwc_name = nchw_to_nhwc_map_[nchw_name];
+    return true;
+  }
+  return false;
+}
+
+void ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
+                                           const std::string& nchw_name) {
+  ORT_ENFORCE(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
+  nhwc_to_nchw_map_[nhwc_name] = nchw_name;
+}
+
+void ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
+                                           const std::string& nhwc_name) {
+  ORT_ENFORCE(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
+  nchw_to_nhwc_map_[nchw_name] = nhwc_name;
 }
 
 }  // namespace nnapi

@@ -4,12 +4,13 @@
 #pragma once
 
 #include "builders/shaper.h"
+#include "core/platform/ort_mutex.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
-#define USENNAPISHAREDMEM 1
+#define USENNAPISHAREDMEM 0
 
 class Model {
   friend class ModelBuilder;
@@ -90,6 +91,9 @@ class Model {
   // Execute the NNAPI model
   void Predict();
 
+  // Mutex for exclusive lock to this model object
+  OrtMutex& GetMutex() { return mutex_; }
+
  private:
   const NnApi* nnapi_{nullptr};
   bool prepared_for_exe_ = false;
@@ -112,9 +116,19 @@ class Model {
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
 
+  // We may transpose the nnapi output to nchw with a different name
+  // This is map is to lookup the nnapi output from the onnx output
+  std::unordered_map<std::string, std::string> onnx_to_nnapi_output_map_;
+
+  OrtMutex mutex_;
+
   Model();
   void AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
-  void AddOutput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
+
+  void AddOutput(const std::string& onnx_output_name,
+                 const std::string& nnapi_output_name,
+                 const android::nn::wrapper::OperandType& operand_type);
+
   void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
   void SetInputBuffer(const int32_t index, const InputBuffer& input);
