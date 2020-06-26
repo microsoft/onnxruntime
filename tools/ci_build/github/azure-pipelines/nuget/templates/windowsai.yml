@@ -297,7 +297,7 @@ jobs:
         $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;
         $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;
         $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')
-        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.CSharp.Tests')
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.CSharp')
         $packages_dir = [System.IO.Path]::Combine($src_dir, 'packages')
         $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.CSharp.csproj')
 
