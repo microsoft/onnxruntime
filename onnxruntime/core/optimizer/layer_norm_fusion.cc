@@ -234,7 +234,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     nodes_to_remove.push_back(last_add_node);
 
-    // get axes atributes
+    // get axes attributes
     const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
