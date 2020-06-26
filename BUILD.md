@@ -22,6 +22,7 @@
     * [ArmNN](#ArmNN)
     * [Rockchip RKNPU](#RKNPU)
     * [Xilinx Vitis-AI](#Vitis-AI)
+    * [AMD MIGraphX](#AMD-MIGraphX)
   * Options
     * [OpenMP](#OpenMP)
     * [OpenBLAS](#OpenBLAS)
@@ -207,6 +208,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
+---
 
 #### Jetson TX1/TX2/Nano (ARM64 Builds)
 
@@ -988,6 +990,28 @@ e.g. using the paths from our example
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
 If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+---
+
+### AMD MIGraphX
+
+See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
+
+#### Prerequisites
+* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html) 
+   * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
+* Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
+   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
+
+#### Build Instructions
+
+##### Linux
+
+```
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
+```
+
+Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 ***
 
