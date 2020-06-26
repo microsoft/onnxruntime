@@ -93,16 +93,19 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
       s_.y_dims = y_dims;
 
-      // Bail out early if one of the dimensions is zero.
+      if (w_dims_changed)
+        ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+
+      // Special case when there is a dim value of 0 in the shape.
+      // Return only after we have cached the following for subsequent runs :
+      // 1) `w_dims` in the `filter_desc`
+      // 2) `y_dims` in s_.y_dims
       if (p.Y->Shape().Size() == 0) {
         return Status::OK();
       }
 
       ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims, CudnnTensor::GetDataType<CudaT>()));
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
-
-      if (w_dims_changed)
-        ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
