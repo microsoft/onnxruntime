@@ -5,7 +5,9 @@
 
 #include "attention_base.h"
 #include "attention_helper.h"
+
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -40,7 +42,7 @@ class AttentionCPUBase : public AttentionBase {
 
     // Compute the attention score. It does 2 things:
     //         I. attention_probs(B, N, S, S*) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S*, H -> B, N, H, S*) +
-    //                                         1 x mask_data(B, N, S, S*)
+    //                                           1 x mask_data(B, N, S, S*)
     //         II.attention_probs(B, N, S, S*) = Softmax(attention_probs)
     size_t attention_probs_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * sizeof(T);
     auto attention_probs = allocator->Alloc(attention_probs_bytes);
@@ -69,7 +71,7 @@ class AttentionCPUBase : public AttentionBase {
                              batch_size, sequence_length, past_sequence_length, head_size,
                              past_data, present_data, tp);
 
-    // STEP.3: compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
+    // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
     auto out_tmp_data =
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));

@@ -206,7 +206,8 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 //  1. Create one with the op name
 //  2. Call AddAttribute with any attributes
 //  3. Call AddInput for all the inputs
-//  4. Call AddOutput with all expected outputs
+//  4. Call AddOutput with all expected outputs,
+//     Or call AddReferenceOutputs to compute reference outputs with the model
 //  5. Call Run
 // Not all tensor types and output types are added, if a new input type is used, add it to the TypeToDataType list
 // above for new output types, add a new specialization for Check<> See current usage for an example, should be self
@@ -378,6 +379,7 @@ class OpTester {
                                 optional<float>(), optional<float>()));
   }
 
+  // Generate the reference outputs with the model file
   void AddReferenceOutputs(const std::string& model_path);
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
