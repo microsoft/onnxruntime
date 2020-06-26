@@ -2363,6 +2363,59 @@ public:
     }
 };
 
+class MlasFindMinMaxElementsTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<float> BufferInput;
+
+    void
+    Test(
+        size_t N,
+        float MinimumValue,
+        float MaximumValue
+        )
+    {
+        float* Input = BufferInput.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
+
+        for (size_t n = 0; n < N; n++) {
+            Input[n] = distribution(generator);
+        }
+
+        auto min_max_pair = std::minmax_element(Input, Input + N);
+        float min_ref = *min_max_pair.first;
+        float max_ref = *min_max_pair.second;
+
+        float min, max;
+        MlasFindMinMaxElement(Input, &min, &max, N);
+
+        constexpr float epsilon = 1e-6f;
+
+        float diff_min = std::fabs(min - min_ref);
+        if (diff_min > epsilon) {
+            printf("minimum difference: %.8f %.8f\n", min, min_ref);
+        }
+
+        float diff_max = std::fabs(max - max_ref);
+        if (diff_max > epsilon) {
+            printf("maximum difference: %.8f %.8f\n", max, max_ref);
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override
+    {
+        for (size_t n = 1; n < 128; n++) {
+            Test(n, -10.f, 10.f);
+        }
+    }
+};
+
 void
 RunThreadedTests(
     void
@@ -2443,6 +2496,9 @@ main(
 
     printf("Transcendental tests.\n");
     onnxruntime::make_unique<MlasComputeExpTest>()->ExecuteShort();
+
+    printf("MinMaxElements tests.\n");
+    onnxruntime::make_unique<MlasFindMinMaxElementsTest>()->ExecuteShort();
 
     printf("ReorderOutput tests.\n");
     if (MlasNchwcGetBlockSize() > 1) {

@@ -54,35 +54,42 @@ class GradientBuilderBase {
  protected:
   virtual GradientDef GetGradientDefsImpl() const = 0;
 
+  // i-th input of forward op
   ArgDef I(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
+  // i-th output of forward op
   ArgDef O(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 
+  // gradient of i-th input of forward op
   ArgDef GI(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
   }
 
+  // gradient of i-th output of forward op
   ArgDef GO(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
     return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->OutputDefs()[i]->TypeAsProto());
   }
 
+  // intermediate argument
   ArgDef IA(const std::string& argSuffix, const TypeProto* type_proto = nullptr) const {
     return ArgDef(Name(argSuffix), type_proto);
   }
 
+  // type of i-th input of forward op
   const TypeProto* IType(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return node_->InputDefs()[i]->TypeAsProto();
   }
 
+  // type of i-th output of forward op
   const TypeProto* OType(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
     return node_->OutputDefs()[i]->TypeAsProto();
