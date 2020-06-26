@@ -858,7 +858,7 @@ struct OrtApi {
      * \param s A null terminated.
      * \param index index of string tensor element to fill 
      */
-  ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* const* s, size_t index);
+  ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 };
 
 /*

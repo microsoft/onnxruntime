@@ -444,7 +444,7 @@ TEST(CApiTest, get_string_tensor_element) {
 
   std::string result(expected_string_len, '\0');
   tensor.GetStringTensorElement((void*)result.data(), expected_strlen, element_index);
-  ASSERT_STREQ((char*)result, expected_str);
+  ASSERT_STREQ(result.c_str(), expected_str);
 
   auto strlen= tensor.GetStringTensorElementLength(element_index);
   ASSERT_EQ(expected_strlen, strlen);
