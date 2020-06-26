@@ -1,4 +1,4 @@
-#include <stdio>
+#include <stdio.h>
 #include "winrt/microsoft.ai.machinelearning.h"
 #include "winrt/windows.storage.h"
 #include "winrt/windows.foundation.h"
