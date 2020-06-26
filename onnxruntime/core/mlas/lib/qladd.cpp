@@ -93,16 +93,14 @@ MlasQLinearAddKernelRawHelper(
 
 #if ! defined(_MSC_VER)
 
-#define vld1q_s8_ex(pD, align) vld1q_s8((int8_t*)__builtin_assume_aligned(pD, align))
-#define vst1_s8_ex(pD, D, align) vst1_s8((int8_t*)__builtin_assume_aligned(pD, align), D)
-#define vst1q_s8_ex(pD, D, align) vst1q_s8((int8_t*)__builtin_assume_aligned(pD, align), D)
-#define vld1q_u8_ex(pD, align) vld1q_u8((uint8_t*)__builtin_assume_aligned(pD, align))
-#define vst1_u8_ex(pD, D, align) vst1_u8((uint8_t*)__builtin_assume_aligned(pD, align), D)
-#define vst1q_u8_ex(pD, D, align) vst1q_u8((uint8_t*)__builtin_assume_aligned(pD, align), D)
-#define vst1_lane_s8_ex(pD, D, lane, align) vst1_lane_s8((int8_t*)__builtin_assume_aligned(pD, align), D, lane)
-#define vst1_lane_u8_ex(pD, D, lane, align) vst1_lane_u8((uint8_t*)__builtin_assume_aligned(pD, align), D, lane)
-#define vst1_lane_u32_ex(pD, D, lane, align) vst1_lane_u32((uint32_t*)__builtin_assume_aligned(pD, align), D, lane)
-#define vst1_lane_u16_ex(pD, D, lane, align) vst1_lane_u16((uint16_t*)__builtin_assume_aligned(pD, align), D, lane)
+#define vld1q_s8_ex(pD, align) vld1q_s8((int8_t*)__builtin_assume_aligned(pD, ((align)/8)))
+#define vst1_s8_ex(pD, D, align) vst1_s8((int8_t*)__builtin_assume_aligned(pD, ((align)/8)), D)
+#define vst1q_s8_ex(pD, D, align) vst1q_s8((int8_t*)__builtin_assume_aligned(pD, ((align)/8)), D)
+#define vld1q_u8_ex(pD, align) vld1q_u8((uint8_t*)__builtin_assume_aligned(pD, ((align)/8)))
+#define vst1_u8_ex(pD, D, align) vst1_u8((uint8_t*)__builtin_assume_aligned(pD, ((align)/8)), D)
+#define vst1q_u8_ex(pD, D, align) vst1q_u8((uint8_t*)__builtin_assume_aligned(pD, ((align)/8)), D)
+#define vst1_lane_u32_ex(pD, D, lane, align) vst1_lane_u32((uint32_t*)__builtin_assume_aligned(pD, ((align)/8)), D, lane)
+#define vst1_lane_u16_ex(pD, D, lane, align) vst1_lane_u16((uint16_t*)__builtin_assume_aligned(pD, ((align)/8)), D, lane)
 
 #endif
 
@@ -129,12 +127,12 @@ public:
     static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_u8(a); }
     static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a) { return vreinterpret_u16_u8(a); }
 
-    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_u8_ex(ptr, 1); }
-    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_u8_ex(ptr, a, 1); }
-    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_u8_ex(ptr, a, 1); }
+    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_u8_ex(ptr, 8); }
+    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_u8_ex(ptr, a, 8); }
+    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_u8_ex(ptr, a, 8); }
 
     template <int n>
-    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_u8_ex(ptr, a, n, 1); }
+    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_u8(ptr, a, n); }
 
     template <int n>
     static MLAS_FORCEINLINE i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi) { return vextq_u8(lo, hi, n); }
@@ -174,12 +172,12 @@ public:
     static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_s8(a); }
     static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a) { return vreinterpret_u16_s8(a); }
 
-    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_s8_ex(ptr, 1); }
-    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_s8_ex(ptr, a, 1); }
-    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_s8_ex(ptr, a, 1); }
+    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_s8_ex(ptr, 8); }
+    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_s8_ex(ptr, a, 8); }
+    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_s8_ex(ptr, a, 8); }
 
     template <int n>
-    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_s8_ex(ptr, a, n, 1); }
+    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_s8(ptr, a, n); }
 
     template <int n>
     static MLAS_FORCEINLINE i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi) { return vextq_s8(lo, hi, n); }
@@ -441,12 +439,12 @@ MlasQLinearAddKernelHelper(
             i8x8 = SUI::vget_high_i8(vc);
         }
         if (n & 4) {
-            vst1_lane_u32_ex((uint32_t*)OutputC, SUI::vreinterpret_u32_i8(i8x8), 0, 1);
+            vst1_lane_u32_ex((uint32_t*)OutputC, SUI::vreinterpret_u32_i8(i8x8), 0, 8);
             OutputC += 4;
             i8x8 = SUI::template vext_i8<4>(i8x8, i8x8);
         }
         if (n & 2) {
-            vst1_lane_u16_ex((uint16_t*)OutputC, SUI::vreinterpret_u16_i8(i8x8), 0, 1);
+            vst1_lane_u16_ex((uint16_t*)OutputC, SUI::vreinterpret_u16_i8(i8x8), 0, 8);
             OutputC += 2;
             i8x8 = SUI::template vext_i8<2>(i8x8, i8x8);
         }
