@@ -241,7 +241,7 @@ jobs:
       versionSpec: 4.9.4
 
   - task: PowerShell@2
-    displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package'
+    displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package (CppWinRT)'
     inputs:
       targetType: 'inline'
       script: |
@@ -273,7 +273,7 @@ jobs:
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
   - task: PowerShell@2
-    displayName: 'NuGet Tests: Build'
+    displayName: 'NuGet Tests: Build Tests (CppWinRT)'
     inputs:
       targetType: 'inline'
       script: |
@@ -281,18 +281,63 @@ jobs:
         msbuild /p:Platform=x64 Microsoft.AI.MachineLearning.Tests.vcxproj
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
 
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package (C#)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"
+
+        $packages = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*)
+        $merged_nuget_package = $packages[0]
+        $merged_nuget_package_name = $merged_nuget_package.Name
+        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg")
+        $package_version = $matches['version']
+
+        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;
+        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;
+        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.CSharp.Tests')
+        $packages_dir = [System.IO.Path]::Combine($src_dir, 'packages')
+        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.CSharp.csproj')
+
+        $input_config = [System.IO.Path]::Combine($src_dir, 'package.config.pp')
+        $output_config = [System.IO.Path]::Combine($src_dir, 'package.config')
+        $input_config_content = Get-Content -Path $input_config
+        $output_config_content = $input_config_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $output_config -Value $output_config_content
+
+        nuget restore -PackagesDirectory $packages_dir -Source https://api.nuget.org/v3/index.json -Source $merged_nuget_path $csproj
+      workingDirectory: $(Build.ArtifactStagingDirectory)\merged
+
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Build Tests (C#)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x86
+        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x64
+      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.CSharp
 
   - script: |
      @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
-     pushd Debug
+     pushd Microsoft.AI.MachineLearning.Tests\Debug
      Microsoft.AI.MachineLearning.Tests.exe
      popd
      @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x64)"
-     pushd x64\Debug
+     pushd Microsoft.AI.MachineLearning.Tests\x64\Debug
      Microsoft.AI.MachineLearning.Tests.exe
      popd
+     @echo "Run Microsoft.AI.MachineLearning CSharp Tests (x86)"
+     pushd Microsoft.AI.MachineLearning.Tests.CSharp\bin\x86\Debug
+     Microsoft.AI.MachineLearning.Tests.CSharp.exe
+     popd
+     @echo "Run Microsoft.AI.MachineLearning CSharp Tests (x64)"
+     pushd Microsoft.AI.MachineLearning.Tests.CSharp\bin\x64\Debug
+     Microsoft.AI.MachineLearning.Tests.CSharp.exe
+     popd
      @echo "Done!"
-    workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests'
+    workingDirectory: '$(Build.SourcesDirectory)\csharp\test'
     displayName: 'NuGet Tests: Run Tests'
 
   - task: PublishPipelineArtifact@0
