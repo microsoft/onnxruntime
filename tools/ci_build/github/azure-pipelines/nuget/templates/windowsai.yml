@@ -301,8 +301,8 @@ jobs:
         $packages_dir = [System.IO.Path]::Combine($src_dir, 'packages')
         $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.CSharp.csproj')
 
-        $input_config = [System.IO.Path]::Combine($src_dir, 'package.config.pp')
-        $output_config = [System.IO.Path]::Combine($src_dir, 'package.config')
+        $input_config = [System.IO.Path]::Combine($src_dir, 'packages.config.pp')
+        $output_config = [System.IO.Path]::Combine($src_dir, 'packages.config')
         $input_config_content = Get-Content -Path $input_config
         $output_config_content = $input_config_content -replace '\[PackageVersion\]', $package_version
         Set-Content -Path $output_config -Value $output_config_content
