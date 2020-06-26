@@ -285,8 +285,9 @@ jobs:
   - script: |
      @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
      Debug\Microsoft.AI.MachineLearning.Tests.exe
-     @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
+     @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x64)"
      x64\Debug\Microsoft.AI.MachineLearning.Tests.exe
+     @echo "Done!"
     workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests'
     displayName: 'NuGet Tests: Run Tests'
 
