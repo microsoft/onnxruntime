@@ -147,7 +147,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
 }
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
 template <typename T>

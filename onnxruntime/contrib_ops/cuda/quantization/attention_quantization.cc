@@ -47,7 +47,8 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* weight_scale_tensor,
                                           const Tensor* mask_index,
                                           const Tensor* i_zp_tensor,
-                                          const Tensor* w_zp_tensor) const {
+                                          const Tensor* w_zp_tensor,
+                                          const Tensor* past_tensor) const {
   // Input and output shapes:
   //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights           : (hidden_size, 3 * hidden_size)
@@ -59,7 +60,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, nullptr));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, past_tensor));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
