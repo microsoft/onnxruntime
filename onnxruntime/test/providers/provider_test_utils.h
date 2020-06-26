@@ -210,7 +210,8 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 //  1. Create one with the op name
 //  2. Call AddAttribute with any attributes
 //  3. Call AddInput for all the inputs
-//  4. Call AddOutput with all expected outputs
+//  4. Call AddOutput with all expected outputs,
+//     Or call AddReferenceOutputs to compute reference outputs with the model
 //  5. Call Run
 // Not all tensor types and output types are added, if a new input type is used, add it to the TypeToDataType list
 // above for new output types, add a new specialization for Check<> See current usage for an example, should be self
@@ -382,6 +383,9 @@ class OpTester {
                                 optional<float>(), optional<float>()));
   }
 
+  // Generate the reference outputs with the model file
+  void AddReferenceOutputs(const std::string& model_path);
+
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
     custom_session_registries_.push_back(registry);
@@ -483,6 +487,8 @@ class OpTester {
   void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names);
 
+  void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
+
   template <class SessionType>
   std::vector<MLValue> ExecuteModel(Model& model,
                                     SessionType& session_object,
@@ -545,7 +551,7 @@ class OpTester {
         const static std::unordered_set<std::string> reserved_symbolic{"batch", "seq"};
 
         for (size_t i = 0; i < dim_params_data.size(); ++i) {
-          if (reserved_symbolic.find(dim_params_data[i])!= reserved_symbolic.end()) {
+          if (reserved_symbolic.find(dim_params_data[i]) != reserved_symbolic.end()) {
             new_shape.add_dim()->set_dim_param(dim_params_data[i]);
           } else {
             ASSERT_TRUE(std::stoi(dim_params_data[i]) == dims[i]);
