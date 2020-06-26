@@ -85,12 +85,13 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("GatherND", GetGatherNDGradient)
   REGISTER_GRADIENT_BUILDER("GatherElements", GetGatherElementsGradient)
   REGISTER_GRADIENT_BUILDER("Gelu", GetGeluGradient)
+  REGISTER_GRADIENT_BUILDER("BiasGelu", GetBiasGeluGradient);
+  REGISTER_GRADIENT_BUILDER("FastGelu", GetFastGeluGradient);
   REGISTER_GRADIENT_BUILDER("LayerNormalization", GetLayerNormalizationGradient);
   REGISTER_GRADIENT_BUILDER("BatchNormalization", GetBatchNormalizationGradient);
   REGISTER_GRADIENT_BUILDER("MegatronF", GetMegatronFGradient);
   REGISTER_GRADIENT_BUILDER("MegatronG", GetMegatronGGradient);
   REGISTER_GRADIENT_BUILDER("Slice", GetSliceGradient);
-  REGISTER_GRADIENT_BUILDER("FastGelu", GetFastGeluGradient);
   REGISTER_GRADIENT_BUILDER("Where", GetWhereGradient);
   REGISTER_GRADIENT_BUILDER("Send", GetSendGradient);
   REGISTER_GRADIENT_BUILDER("Recv", GetRecvGradient);

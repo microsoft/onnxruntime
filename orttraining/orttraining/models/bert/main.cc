@@ -163,6 +163,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
+        cxxopts::value<bool>()->default_value("true"))
+      ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
         cxxopts::value<bool>()->default_value("true"));
   options
     .add_options("ORT configuration")
@@ -446,6 +448,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       utils::SetRandomSeed(seed);
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
+
+    params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
