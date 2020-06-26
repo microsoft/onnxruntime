@@ -281,14 +281,14 @@ jobs:
         msbuild /p:Platform=x64 Microsoft.AI.MachineLearning.Tests.vcxproj
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
 
-  - task: PowerShell@2
+
+  - script: |
+     @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
+     Debug\Microsoft.AI.MachineLearning.Tests.exe
+     @echo "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
+     x64\Debug\Microsoft.AI.MachineLearning.Tests.exe
+    workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests'
     displayName: 'NuGet Tests: Run Tests'
-    inputs:
-      targetType: 'inline'
-      script: |
-        .\Debug\Microsoft.AI.MachineLearning.Tests.exe
-        .\x64\Debug\Microsoft.AI.MachineLearning.Tests.exe
-      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
