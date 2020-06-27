@@ -357,6 +357,13 @@ class InferenceSession {
    * Get InferenceSession logger.
    */
   const logging::Logger* GetLogger() const { return session_logger_; };
+  /**
+    * Search registered execution providers for an allocator that has characteristics
+    * specified within mem_info
+    * @param mem_info is a pointer to OrtMemoryInfo that contains requires specs
+    * @return a ptr to the allocator or nullptr if not available
+  */
+  AllocatorPtr GetAllocator(const OrtMemoryInfo* mem_info) const;
 
  protected:
   /**

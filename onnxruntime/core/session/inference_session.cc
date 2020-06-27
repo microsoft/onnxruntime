@@ -1397,6 +1397,10 @@ std::string InferenceSession::EndProfiling() {
   return std::string();
 }
 
+AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo* mem_info) const {
+  return execution_providers_.GetAllocator(*mem_info);
+}
+
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
   // TODO add other post load processing here

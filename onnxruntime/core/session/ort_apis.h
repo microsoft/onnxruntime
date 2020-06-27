@@ -205,4 +205,8 @@ ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length);
 ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,
                     _In_ int providers_length);
+
+ORT_API_STATUS_IMPL(CreateDeviceAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+                   _Outptr_ OrtAllocator** out);
+ORT_API(void, ReleaseDeviceAllocator, _Frees_ptr_opt_ OrtAllocator* allocator);
 }  // namespace OrtApis
