@@ -315,8 +315,8 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
-        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=AnyCpu /t:Configuration=Debug
-        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x64 /t:Configuration=Debug
+        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=AnyCpu
+        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x64
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.CSharp
 
   - script: |
