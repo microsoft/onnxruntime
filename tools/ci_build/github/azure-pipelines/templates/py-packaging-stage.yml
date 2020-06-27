@@ -89,7 +89,7 @@ stages:
               --build-arg BUILD_USER=onnxruntimedev \
               --build-arg BUILD_UID=$(id -u) \
               --build-arg PYTHON_VERSION=$(python.version) \
-              -f Dockerfile.manylinux1 .
+              -f Dockerfile.manylinux2010_cpu .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
       - task: CmdLine@2
         inputs:
@@ -107,7 +107,6 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
@@ -229,7 +228,7 @@ stages:
         setVcvars: true
         BuildConfig: 'Release'
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-      timeoutInMinutes: 60
+      timeoutInMinutes: 120
       workspace:
         clean: all
 
@@ -280,7 +279,6 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
-            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -340,7 +338,7 @@ stages:
       workspace:
         clean: all
       pool: 'Win-GPU-2019'
-      timeoutInMinutes:  60
+      timeoutInMinutes:  120
       variables:
         CUDA_VERSION: '10.1'
         buildArch: x64
@@ -486,7 +484,7 @@ stages:
       - script: |
           sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp ${{ parameters.build_py_parameters }}
+          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2

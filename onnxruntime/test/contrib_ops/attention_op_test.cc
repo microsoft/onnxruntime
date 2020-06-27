@@ -659,5 +659,34 @@ TEST(AttentionTest, AttentionPastStateBatch2) {
                    use_past_state, past_sequence_length, head_size, &past_data, &present_data);
 }
 
+TEST(AttentionTest, AttentionPastState_dynamic) {
+  // create rand inputs
+  RandomValueGenerator random{};
+
+  std::vector<int64_t> input_dims{2, 5, 768};
+  std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.3f);
+
+  std::vector<int64_t> weight_dims{768, 2304};
+  std::vector<float> weight_data = random.Gaussian<float>(weight_dims, 0.0f, 0.3f);
+
+  std::vector<int64_t> bias_dims{2304};
+  std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.3f);
+
+  std::vector<int64_t> past_dims{2, 2, 12, 15, 64};
+  std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
+
+  OpTester test("Attention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 12);
+  test.AddAttribute<int64_t>("unidirectional", 1);
+  test.AddInput<float>("input", input_dims, input_data);
+  test.AddInput<float>("weight", weight_dims, weight_data);
+  test.AddInput<float>("bias", bias_dims, bias_data);
+  test.AddMissingOptionalInput<int32_t>();
+  test.AddInput<float>("past", past_dims, past_data);
+
+  test.AddReferenceOutputs("testdata/attention_past_state.onnx");
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

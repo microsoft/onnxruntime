@@ -185,11 +185,11 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 template <typename T>
-void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr) {
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -242,18 +242,18 @@ static const char* GetDeviceName(const OrtDevice& device) {
 }
 
 template <>
-void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj);
+    GetPyObjFromTensor(rtensor, obj, nullptr);
     py_list.append(obj);
   }
   pyobjs.push_back(py_list);
 }
 
-void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
@@ -290,7 +290,7 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
   GetPyObjFromTensor(rtensor, obj);
@@ -302,12 +302,12 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
-// ordered by default priority. highest to lowest.
+// ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider,
-                                                   kAclExecutionProvider, kArmNNExecutionProvider};
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
+                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
+                                                   kAclExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
@@ -402,7 +402,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
-      "Return list of Execution Providers that this version of Onnxruntime can support.");
+      "Return list of Execution Providers that this version of Onnxruntime can support. "
+      "The order of elements represents the default priority order of Execution Providers"
+      " from highest to lowest.");
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
       "Return list of available Execution Providers available in this installed version of Onnxruntime.");
@@ -631,6 +633,42 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
       .def(py::init<InferenceSession*>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
+        OrtValue mlvalue;
+
+        InferenceSession* sess = io_binding->GetInferenceSession();
+        auto px = sess->GetModelInputs();
+        if (!px.first.IsOK() || !px.second) {
+          throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+        }
+
+        //Check if input is sequence of tensors 
+        onnx::TypeProto type_proto;
+        const auto& def_list = *px.second;
+        auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
+                                   [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
+        if (ret_it == std::end(def_list)) {
+          throw std::runtime_error("Failed to find input with name: " + name + " in the model input def list");
+        }
+        const auto* temp = (*ret_it)->TypeAsProto();
+        if (!temp) {
+          throw std::runtime_error("Corresponding type_proto is null");
+        } else {
+        type_proto = *temp;
+        }
+        if (type_proto.has_sequence_type()) {
+          throw std::runtime_error("Cannot bind input to sequence of tensors");
+        }
+
+        if (PyDict_Check(arr_on_cpu.ptr())) {
+          throw std::runtime_error("Cannot bind input to dictionary type of values");
+        }
+
+        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &mlvalue);
+        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
@@ -639,12 +677,12 @@ void addObjectMethods(py::module& m, Environment& env) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
-
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
+
         mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -661,17 +699,37 @@ void addObjectMethods(py::module& m, Environment& env) {
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
-                     DataTypeImpl::GetType<Tensor>(),
-                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                       DataTypeImpl::GetType<Tensor>(),
+                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+        
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
-          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+      })
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name) -> void {
+        OrtValue mlvalue;
+        auto status = io_binding->Get()->BindOutput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
       .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearInputs();
       })
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
+      })
+      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
+        const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
+        std::vector<py::object> rfetch;
+        rfetch.reserve(outputs.size());
+        for (const auto& _ : outputs) {
+          if (_.IsTensor()) {
+            AddTensorAsPyObj(_, rfetch);
+          } else {
+            AddNonTensorAsPyObj(_, rfetch);
+          }
+        }
+        return rfetch;
       });
 
   py::class_<SessionOptions>

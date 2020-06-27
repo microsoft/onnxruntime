@@ -705,5 +705,70 @@ TEST(QAttentionTest, QAttentionUnidirectional_CUDA) {
                     true /*is_unidirectional*/);
 }
 
+template <typename InputT, typename WeightT>
+void TestQuantizedAttentionPastState(int64_t batch,
+                                     int64_t seq_len,
+                                     int64_t past_seq_len,
+                                     int64_t hidden_size,
+                                     int64_t head_number,
+                                     int64_t head_size,
+                                     const std::string& reference_model) {
+  // create rand inputs
+  RandomValueGenerator random{};
+
+  constexpr InputT input_min = std::numeric_limits<InputT>::min();
+  constexpr InputT input_max = std::numeric_limits<InputT>::max();
+  constexpr int32_t input_range = input_max - input_min;
+
+  InputT input_mean = (input_min + input_max) / 2 + 1;
+  std::vector<InputT> input_zero_point{input_mean};
+
+  std::vector<int64_t> input_dims{batch, seq_len, hidden_size};
+  std::vector<InputT> input_data = random.Gaussian<InputT>(input_dims, input_mean, static_cast<InputT>(input_range / 6), input_min, input_max);
+
+  constexpr WeightT weight_min = std::numeric_limits<WeightT>::min();
+  constexpr WeightT weight_max = std::numeric_limits<WeightT>::max();
+  constexpr int32_t weight_range = weight_max - weight_min;
+
+  WeightT weight_mean = (weight_min + weight_max) / 2 + 1;
+  std::vector<WeightT> weight_zero_point{weight_mean};
+
+  std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
+  std::vector<WeightT> weight_data = random.Gaussian<WeightT>(weight_dims, weight_mean, static_cast<WeightT>(weight_range / 6), weight_min, weight_max);
+
+  std::vector<int64_t> bias_dims{3 * hidden_size};
+  std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.3f);
+
+  std::vector<float> input_scale{0.005f};
+  std::vector<float> weight_scale{0.005f};
+
+  std::vector<int64_t> past_dims{2, batch, head_number, past_seq_len, head_size};
+  std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
+
+  OpTester test("QAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", head_number);
+  test.AddAttribute<int64_t>("unidirectional", 1);
+  test.AddInput<InputT>("input", input_dims, input_data);
+  test.AddInput<WeightT>("weight", weight_dims, weight_data);
+  test.AddInput<float>("bias", bias_dims, bias_data);
+  test.AddInput<float>("input_scale", {1}, input_scale);
+  test.AddInput<float>("weight_scale", {1}, weight_scale);
+  test.AddMissingOptionalInput<int32_t>();
+  test.AddInput<InputT>("input_zero_point", {1}, input_zero_point);
+  test.AddInput<WeightT>("weight_zero_point", {1}, weight_zero_point);
+  test.AddInput<float>("past", past_dims, past_data);
+
+  test.AddReferenceOutputs(reference_model);
+  test.Run();
+}
+
+TEST(QAttentionTest, QAttentionPastState_u8u8) {
+  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64, "testdata/attention_past_state.u8u8.onnx");
+}
+
+TEST(QAttentionTest, QAttentionPastState_u8s8) {
+  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64, "testdata/attention_past_state.u8s8.onnx");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

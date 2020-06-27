@@ -19,6 +19,21 @@ enum AdasumReductionType {
   GpuHierarchical,
 };
 
+// Configuration for the DeepSpeed ZeRO technique.  Currently only the stage
+// setting is supported, and only with stages 0 (disabled) and 1 (optimizer
+// state partitioning).
+
+struct ZeROConfig {
+  // Default configuration
+  ZeROConfig() {
+  }
+
+  ZeROConfig(int s) : stage(s) {
+  }
+
+  int stage{0};
+};
+
 // configuration per optimizer node
 struct OptimizerNodeConfig {
   std::string name{};
@@ -41,7 +56,7 @@ struct OptimizerGraphConfig {
   bool use_mixed_precision{false};
   bool allreduce_in_fp16{false};
   bool use_nccl{false};
-  bool partition_optimizer{false};
+  ZeROConfig deepspeed_zero{0};
   int gradient_accumulation_steps{1};
   int64_t horovod_reduce_op{1};
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied

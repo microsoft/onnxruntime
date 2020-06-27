@@ -82,7 +82,7 @@ Status MergeGraph(Graph& graph, Graph& graph_to_merge, int rank, std::vector<Nod
 Status MergeGraphsOnAllWorkers(std::vector<Graph*>& graphs, Graph& combine_graph) {
   auto total_rank = graphs.size();
   std::vector<std::vector<Node*>> megatronGs(total_rank, std::vector<Node*>());
-  for (auto i = 0; i < total_rank; i++) {
+  for (auto i = 0u; i < total_rank; i++) {
     auto merge_ret = horizontal_parallel_test_utils::MergeGraph(combine_graph, *graphs[i], i, megatronGs[i]);
     ORT_ENFORCE(merge_ret.IsOK());
     ORT_ENFORCE(megatronGs[i].size() == megatronGs[0].size());
@@ -90,14 +90,14 @@ Status MergeGraphsOnAllWorkers(std::vector<Graph*>& graphs, Graph& combine_graph
 
   std::vector<onnxruntime::NodeIndex> nodes_to_remove;
   // Merge megatron g at the same index for different ranks
-  for (auto g_index = 0; g_index < megatronGs[0].size(); g_index++) {
+  for (auto g_index = 0u; g_index < megatronGs[0].size(); g_index++) {
     // Merge the "g_index"th MegatronG on each rank into one Sum node.
     std::vector<NodeArg*> input_defs{};
     auto type_info = *megatronGs[0][g_index]->MutableOutputDefs()[0]->TypeAsProto();
     auto& input_arg = combine_graph.GetOrCreateNodeArg("sum_" + std::to_string(g_index), &type_info);
     std::vector<NodeArg*> output_defs{&input_arg};
 
-    for (auto rank_index = 0; rank_index < total_rank; rank_index++) {
+    for (auto rank_index = 0u; rank_index < total_rank; rank_index++) {
       input_defs.push_back(megatronGs[rank_index][g_index]->MutableInputDefs()[0]);
     }
     auto& sum_node = combine_graph.AddNode(combine_graph.GenerateNodeName("Sum_For_MegatronG"),
@@ -107,7 +107,7 @@ Status MergeGraphsOnAllWorkers(std::vector<Graph*>& graphs, Graph& combine_graph
                                            output_defs);
     sum_node.SetExecutionProviderType(megatronGs[0][g_index]->GetExecutionProviderType());
 
-    for (auto rank_index = 0; rank_index < total_rank; rank_index++) {
+    for (auto rank_index = 0u; rank_index < total_rank; rank_index++) {
       graph_utils::ReplaceDownstreamNodeInput(combine_graph, *megatronGs[rank_index][g_index], 0, sum_node, 0);
       nodes_to_remove.push_back(megatronGs[rank_index][g_index]->Index());
     }
@@ -134,7 +134,7 @@ void VerifyOutputs(const std::vector<float>& expected, const std::vector<float>&
                    bool use_threshold_compare, float atol, float rtol, float threshold) {
   auto size = expected.size();
   ORT_ENFORCE(size == actual.size());
-  for (auto i = 0; i < size; ++i) {
+  for (auto i = 0u; i < size; ++i) {
     const auto expected_value = expected[i], actual_value = actual[i];
     if (std::isnan(expected_value)) {
       ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i << "; expected is NaN, actual is not NaN";
