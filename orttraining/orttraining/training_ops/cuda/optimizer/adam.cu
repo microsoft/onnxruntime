@@ -55,6 +55,9 @@ __global__ void _AdamOptimizer_mode0(
   const T4 delta = -T4(*eta) * update;
 
   if (grads_out) {
+    if (id == 0) {
+      printf("###### IN ADAM, test print\n");
+    }
     grads_out[id] = T_GRAD(delta);
   }
 
