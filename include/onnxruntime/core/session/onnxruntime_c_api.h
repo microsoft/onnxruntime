@@ -837,6 +837,7 @@ struct OrtApi {
   ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
                   _In_ int providers_length);
 
+<<<<<<< HEAD
   /**
      * \param value A tensor created from OrtCreateTensor... function.
      * \param index index of string tensor element, length of element at index will be returned.
@@ -857,6 +858,10 @@ struct OrtApi {
      * \param index index of string tensor element to fill 
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
+  ORT_API2_STATUS(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+                      _Outptr_ OrtAllocator** out);
+
+  ORT_CLASS_RELEASE(Allocator);
 };
 
 /*

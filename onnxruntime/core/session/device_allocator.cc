@@ -45,7 +45,7 @@ struct OrtAllocatorForDevice : public OrtAllocator {
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
   }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateDeviceAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   auto allocator_ptr = session->GetAllocator(mem_info);
@@ -57,6 +57,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateDeviceAllocator, const OrtSession* sess, cons
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseDeviceAllocator, _Frees_ptr_opt_ OrtAllocator* allocator) {
+ORT_API(void, OrtApis::ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator) {
   delete reinterpret_cast<OrtAllocatorForDevice*>(allocator);
 }
