@@ -79,7 +79,6 @@ Status AttentionBase::CheckInputs(const Tensor* input,
 
   if (mask_index != nullptr) {  // mask_index is optional
 
-
     const auto& mask_dims = mask_index->Shape().GetDims();
     if (mask_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 dimension, got ",
@@ -165,8 +164,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int head_size = hidden_size / num_heads_;
 
   Tensor* output = context->Output(0, shape);
-
-
 
   constexpr size_t element_size = sizeof(T);
 

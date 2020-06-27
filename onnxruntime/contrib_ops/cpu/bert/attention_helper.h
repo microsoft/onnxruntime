@@ -68,7 +68,7 @@ void PrepareMask(const int32_t* mask_index,
                  int sequence_length,
                  int past_sequence_length) {
   const int all_sequence_length = past_sequence_length + sequence_length;
-  
+
   // mask_data has been filled with 0, and its shape is BxSxS*
   T* p_mask = mask_data;
 
