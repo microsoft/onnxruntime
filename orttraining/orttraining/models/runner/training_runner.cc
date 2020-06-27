@@ -663,7 +663,6 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     ORT_UNUSED_PARAMETER(step);
 #endif
     RunOptions run_options;
-    run_options.training_mode = true;
     status = session_.Run(
       run_options,
       pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -752,7 +751,6 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 #endif
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
-    run_options.training_mode = true;
     auto status = session_.Run(
         run_options,
         pipeline_worker_pool_.worker_states[worker_id].feed_names,
@@ -1156,8 +1154,7 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
       if(input->Name().compare(training_mode_string) == 0) {
         feed_names.push_back("training_mode");
         OrtValue mode_val;
-        // training_mode is by default false
-        TrainingUtil::CreateCpuMLScalar(run_options.training_mode, &mode_val, input_allocator_);
+        TrainingUtil::CreateCpuMLScalar(false, &mode_val, input_allocator_);
         feeds.push_back(mode_val);
         break;
       }
@@ -1182,6 +1179,7 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
       pipeline_worker_pool_.workers[worker_id] = std::thread([&]() {
         RunOptions run_options;
         run_options.only_execute_path_to_fetches = true;
+        run_options.training_mode = false;
         status = session.Run(
             run_options,
             feed_names,

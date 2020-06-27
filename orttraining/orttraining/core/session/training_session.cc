@@ -866,20 +866,6 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   return InferenceSession::Run(run_options, io_binding);
 }
 
-common::Status TrainingSession::Run(IOBinding& io_binding) {
-  RunOptions run_options;
-  // Set training_mode to true in training session by default.
-  run_options.training_mode = true;
-  return Run(run_options, io_binding);
-}
-
-common::Status TrainingSession::Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                                     std::vector<OrtValue>* p_fetches) {
-  RunOptions run_options;
-  run_options.training_mode = true;
-  return Run(run_options, feeds, output_names, p_fetches);
-}
-
 static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
     // TODO remove this once ONNX TrainableDropout is completely deprecated.
     "TrainableDropout",
