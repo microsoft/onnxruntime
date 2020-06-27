@@ -40,10 +40,6 @@ void HIPAllocator::Free(void* p) {
   hipFree(p);  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-const OrtMemoryInfo& HIPAllocator::Info() const {
-  return info_;
-}
-
 FencePtr HIPAllocator::CreateFence(const SessionState* session_state) {
  return std::make_shared<HIPFence>(GetGPUDataTransfer(session_state));
 }
@@ -58,10 +54,6 @@ void* HIPPinnedAllocator::Alloc(size_t size) {
 
 void HIPPinnedAllocator::Free(void* p) {
   hipHostFree(p);
-}
-
-const OrtMemoryInfo& HIPPinnedAllocator::Info() const {
-  return info_;
 }
 
 FencePtr HIPPinnedAllocator::CreateFence(const SessionState* session_state) {

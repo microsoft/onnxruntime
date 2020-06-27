@@ -1361,8 +1361,9 @@ class ONNXQuantizer:
         inputs.extend(quantized_input_names)
         inputs.extend([node.input[2]])
         inputs.extend(scale_names)
-        inputs.extend([node.input[3]])
+        inputs.extend([node.input[3] if len(node.input) > 3 else ""])
         inputs.extend(zero_point_names)
+        inputs.extend([node.input[4] if len(node.input) > 4 else ""])
 
         kwargs = {}
         for attribute in node.attribute:

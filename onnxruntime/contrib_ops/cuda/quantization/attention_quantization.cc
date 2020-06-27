@@ -47,7 +47,8 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* weight_scale_tensor,
                                           const Tensor* mask_index,
                                           const Tensor* i_zp_tensor,
-                                          const Tensor* w_zp_tensor) const {
+                                          const Tensor* w_zp_tensor,
+                                          const Tensor* past_tensor) const {
   // Input and output shapes:
   //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
   //   Input 1 - weights           : (hidden_size, 3 * hidden_size)
@@ -59,7 +60,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   //   Input 7 - weight_zero_point : scalar
   //   Output                      : (batch_size, sequence_length, hidden_size)
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, nullptr));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, past_tensor));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -88,15 +89,17 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
 template <typename T>
 Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   // Input and output shapes:
-  //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
-  //   Input 1 - weights           : (hidden_size, 3 * hidden_size)
-  //   Input 2 - bias              : (3 * hidden_size)
-  //   Input 3 - input_scale       : scalar
-  //   Input 4 - weight_scale      : scalar
-  //   Input 5 - mask_index        : (batch_size)
-  //   Input 6 - input_zero_point  : scalar
-  //   Input 7 - weight_zero_point : scalar
-  //   Output                      : (batch_size, sequence_length, hidden_size)
+  //   Input 0  - input             : (batch_size, sequence_length, hidden_size)
+  //   Input 1  - weights           : (hidden_size, 3 * hidden_size)
+  //   Input 2  - bias              : (3 * hidden_size)
+  //   Input 3  - input_scale       : scalar
+  //   Input 4  - weight_scale      : scalar
+  //   Input 5  - mask_index        : (batch_size)
+  //   Input 6  - input_zero_point  : scalar
+  //   Input 7  - weight_zero_point : scalar
+  //   Input 8  - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
+  //   Output 0 - output            : (batch_size, sequence_length, hidden_size)
+  //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
   //   ORT_RETURN_IF_ERROR(CheckInputs(context));
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
@@ -106,6 +109,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(5);
   const Tensor* i_zp_tensor = context->Input<Tensor>(6);
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
+  const Tensor* past_tensor = context->Input<Tensor>(8);
 
   ORT_RETURN_IF_ERROR(CheckInputs(input,
                                   weights,
@@ -114,7 +118,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                   weight_scale_tensor,
                                   mask_index,
                                   i_zp_tensor,
-                                  w_zp_tensor));
+                                  w_zp_tensor,
+                                  past_tensor));
 
   const auto& shape = input->Shape();
   int batch_size = static_cast<int>(shape[0]);
@@ -160,9 +165,9 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
       m,
       n);
 
-  const int past_sequence_length = 0;
-  const T* past_data = nullptr;
-  T* present_data = nullptr;
+  int past_sequence_length = 0;
+  Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
+
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchAttentionKernel(
@@ -178,9 +183,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           is_unidirectional_,
           past_sequence_length,
-          past_data,
-          present_data
-      )) {
+          nullptr == past_tensor ? nullptr : past_tensor->template Data<T>(),
+          nullptr == present_tensor ? nullptr : present_tensor->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

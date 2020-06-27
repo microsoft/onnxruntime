@@ -7,7 +7,10 @@
 #include "core/framework/session_options.h"
 
 #include "core/session/environment.h"
+
 namespace onnxruntime {
+class InferenceSession;
+
 namespace python {
 
 using namespace onnxruntime;
@@ -45,6 +48,8 @@ class SessionObjectInitializer {
 };
 
 Environment& get_env();
+
+void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types);
 
 }
 }

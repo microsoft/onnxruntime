@@ -213,24 +213,24 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
         const size_t step_output_index = 0;
         auto input_type = ctx.getInputType(step_input_index);
         if (input_type != nullptr) {
-            propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
-            if (hasInputShape(ctx, step_input_index)){
-                propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
-            }
+          propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
+          if (hasInputShape(ctx, step_input_index)) {
+            propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
+          }
         }
 
         // Handle other tensors including new weight, new gradient (update direction),
         // new momentums.
         for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
-            const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.
-            const size_t output_index = 1 + i; // The first output has been processed above.
-            input_type = ctx.getInputType(input_index);
-            if (input_type != nullptr) {
-                propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
-                if (hasInputShape(ctx, input_index)) {
-                    propagateShapeFromInputToOutput(ctx, input_index, output_index);
-                }
+          const size_t input_index = 5 + i;   // The first 5 inputs don't affect output shape.
+          const size_t output_index = 1 + i;  // The first output has been processed above.
+          input_type = ctx.getInputType(input_index);
+          if (input_type != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+            if (hasInputShape(ctx, input_index)) {
+              propagateShapeFromInputToOutput(ctx, input_index, output_index);
             }
+          }
         }
       });
 
@@ -1730,6 +1730,38 @@ Return true if all elements are true and false otherwise.
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGeluGrad_dX)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Computes dX for BiasGeluGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Input(2, "B", "The bias tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasFastGeluGrad_dX)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Computes dX for FastGeluGrad with bias")
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Input(2, "B", "The bias tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(RecordEvent)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1775,7 +1807,7 @@ Return true if all elements are true and false otherwise.
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
           auto typeProto = ctx.getInputType(i + 1);
           if (!hasShape(*typeProto)) {
-              continue;
+            continue;
           }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
@@ -1828,7 +1860,7 @@ Return true if all elements are true and false otherwise.
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
           auto typeProto = ctx.getInputType(i + 1);
           if (!hasShape(*typeProto)) {
-              continue;
+            continue;
           }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
