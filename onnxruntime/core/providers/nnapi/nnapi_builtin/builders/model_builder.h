@@ -17,6 +17,15 @@ class ModelBuilder {
  public:
   using Shape = Shaper::Shape;
 
+  enum class TargetDeviceOption : int8_t {
+    ALL_DEVICES,  // use all avaliable target devices
+    /* TODO support this option
+    SINGLE_DEVICE,  // use a single target device, must be given
+     */
+    CPU_DISABLED,  // use all avaliable target devices except CPU
+    CPU_ONLY,      // use CPU only
+  };
+
   ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto);
   ~ModelBuilder() = default;
 
@@ -135,6 +144,9 @@ class ModelBuilder {
 
   std::unordered_set<std::string> unique_names_;
 
+  TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
+  std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+
   uint32_t next_index_ = 0;
 
   bool IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
@@ -142,6 +154,7 @@ class ModelBuilder {
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();
 
+  void GetTargetDevices();
   void GetAllInitializers();
   void PreprocessInitializers();
   void RegisterInitializers();

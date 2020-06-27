@@ -126,6 +126,7 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 void ModelBuilder::Prepare() {
   nnapi_model_ = std::unique_ptr<Model>(new Model());
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
+  GetTargetDevices();
   PreprocessInitializers();
   RegisterInitializers();
   RegisterModelInputs();
@@ -142,6 +143,37 @@ static size_t GetPaddedByteSize(size_t size) {
   //   return size;
   // This does exactly the same as the logic above
   return (size + kDefaultByteAlignmentForNNAPI - 1) & ~(kDefaultByteAlignmentForNNAPI - 1);
+}
+
+void ModelBuilder::GetTargetDevices() {
+  // GetTargetDevices is only supported on API 29+
+  if (GetAndroidSdkVer() < 29)
+    return;
+
+  if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
+    return;
+
+  const std::string nnapi_cpu("nnapi-reference");
+  uint32_t num_devices = 0;
+  THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDeviceCount(&num_devices),
+                           "Getting list of available devices");
+
+  for (uint32_t i = 0; i < num_devices; i++) {
+    ANeuralNetworksDevice* device = nullptr;
+    const char* device_name = nullptr;
+    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDevice(i, &device),
+                             "Getting list of available devices");
+
+    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
+                             "Getting list of available devices");
+
+    bool device_is_cpu = nnapi_cpu == device_name;
+    if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
+        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
+      nnapi_target_devices_.push_back(device);
+      LOGS_DEFAULT(VERBOSE) << "Target device [" << device_name << "] added";
+    }
+  }
 }
 
 void ModelBuilder::GetAllInitializers() {
@@ -416,9 +448,17 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
       nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
       "on model finish");
 
-  THROW_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
-      "on create");
+  if (!nnapi_target_devices_.empty()) {
+    THROW_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksCompilation_createForDevices(
+            nnapi_model_->model_, nnapi_target_devices_.data(),
+            nnapi_target_devices_.size(), &nnapi_model_->compilation_),
+        "on createForDevices");
+  } else {
+    THROW_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
+        "on create");
+  }
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_setPreference(
