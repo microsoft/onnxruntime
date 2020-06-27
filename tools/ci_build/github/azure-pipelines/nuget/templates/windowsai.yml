@@ -315,6 +315,8 @@ jobs:
     inputs:
       targetType: 'inline'
       script: |
+        Test-Path -Path "packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets"
+
         msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=AnyCpu
         msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x64
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.CSharp
