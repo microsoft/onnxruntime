@@ -290,7 +290,12 @@ jobs:
         $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')
         $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.CSharp')
         $packages_dir = [System.IO.Path]::Combine($src_dir, 'packages')
+
+        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.CSharp.csproj.pp')
         $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.CSharp.csproj')
+        $input_csproj_content = Get-Content -Path $input_csproj
+        $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version
+        Set-Content -Path $csproj -Value $csproj_content
 
         $input_config = [System.IO.Path]::Combine($src_dir, 'packages.config.pp')
         $output_config = [System.IO.Path]::Combine($src_dir, 'packages.config')
