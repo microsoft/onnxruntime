@@ -36,7 +36,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include "experimental_onnxruntime_cxx_api.h"
+#include <experimental_onnxruntime_cxx_api.h>
 
 // pretty prints a shape dimension vector
 std::string print_shape(const std::vector<int64_t>& v) {
