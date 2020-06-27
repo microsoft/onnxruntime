@@ -553,8 +553,10 @@ struct SessionIOBinding {
   SessionIOBinding(InferenceSession* session);
 
   IOBinding* Get();
+  InferenceSession* GetInferenceSession();
 
  private:
+  InferenceSession* sess_;
   std::unique_ptr<IOBinding> binding_;
 };
 

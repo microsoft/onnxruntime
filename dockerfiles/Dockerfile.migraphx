@@ -10,14 +10,18 @@ FROM ubuntu:16.04
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 ENV DEBIAN_FRONTEND noninteractive
+ENV MIGRAPHX_DISABLE_FAST_GELU=1
+
+RUN apt-get clean && apt-get update && apt-get install -y locales
+RUN locale-gen en_US.UTF-8
+RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
-ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
 # Install rocm
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
   curl -sL http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add - && \
-  sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main > /etc/apt/sources.list.d/rocm.list'
+  sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.3/ xenial main > /etc/apt/sources.list.d/rocm.list'
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash build-essential cmake libpython3.5-dev python3-pip miopen-hip rocblas half
