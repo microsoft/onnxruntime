@@ -110,7 +110,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 ## OpenVINO
 *Public Preview*
 
-**Ubuntu 16.04, Python Bindings**
+**Ubuntu 18.04, Python Bindings**
 
 1. Build the onnxruntime image for one of the accelerators supported below.
 
