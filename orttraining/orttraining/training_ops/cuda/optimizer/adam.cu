@@ -54,32 +54,16 @@ __global__ void _AdamOptimizer_mode0(
 
   const T4 delta = -T4(*eta) * update;
 
-  // Update only delta is finite
-  if (_IsFiniteScalar(T_GRAD(delta))) {
-    if (grads_out) {
-      grads_out[id] = T_GRAD(delta);
-    }  
-    // Compute the new weight.
-    if (weights_out) {
-      weights_out[id] = weights[id] + T3(delta);
-    }
-
-    moment_1_out[id] = m1o;
-    moment_2_out[id] = m2o;
+  if (grads_out) {
+    grads_out[id] = T_GRAD(delta);
+  }  
+  // Compute the new weight.
+  if (weights_out) {
+    weights_out[id] = weights[id] + T3(delta);
   }
-  else {
-    printf("###### IN ADAM, delta not finite\n");
-    if (grads_out) {
-      grads_out[id] = T_GRAD(g);
-    }  
-    // Return weight as is.
-    if (weights_out) {
-      weights_out[id] = weights[id];
-    }
 
-    moment_1_out[id] = moment_1[id];
-    moment_2_out[id] = moment_2[id];
-  }
+  moment_1_out[id] = m1o;
+  moment_2_out[id] = m2o;
 
   if (fp16_weights_out) {
     fp16_weights_out[id] = static_cast<half>(weights_out[id]);
