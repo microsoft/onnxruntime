@@ -36,7 +36,7 @@ __global__ void _AdamOptimizer_mode0(
   const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
 
   // Gradient scaling/clipping.
-  const T4 g = T4(grads[id]) / (actual_scale + 1e-6);
+  const T4 g = T4(grads[id]) / (actual_scale + T4(1e-6));
   // A shared constant.
   const T4 one = T4(1.0f);
 
