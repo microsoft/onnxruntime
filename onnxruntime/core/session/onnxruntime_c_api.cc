@@ -1614,6 +1614,9 @@ static constexpr OrtApi ort_api_1_to_4 = {
     // Version 4 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,
     &OrtApis::ReleaseAvailableProviders,
+
+    &OrtApis::CreateDeviceAllocator,
+    &OrtApis::ReleaseDeviceAllocator
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
