@@ -178,7 +178,7 @@ void ModelBuilder::GetTargetDevices() {
 
 void ModelBuilder::GetAllInitializers() {
   for (const auto& tensor : model_proto_.graph().initializer()) {
-    initializers_.insert({tensor.name(), tensor});
+    initializers_.emplace(tensor.name(), tensor);
   }
 }
 
@@ -347,7 +347,7 @@ uint32_t ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type) {
 void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
                                    const OperandType& operand_type, bool is_nhwc) {
   operand_indices_[name] = index;
-  operand_types_.insert({name, operand_type});
+  operand_types_.emplace(name, operand_type);
   operands_.insert(name);
 
   if (is_nhwc)

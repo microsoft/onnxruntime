@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace nnapi {
 
-#define USENNAPISHAREDMEM 0
+#define USENNAPISHAREDMEM 1
 
 class Model {
   friend class ModelBuilder;
@@ -125,6 +125,8 @@ class Model {
   Model();
   void AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
 
+  // It is possible that the actual output from NNAPI model is not the same as the name of
+  // the output from the onnx model, need to have both names and add mapping between them
   void AddOutput(const std::string& onnx_output_name,
                  const std::string& nnapi_output_name,
                  const android::nn::wrapper::OperandType& operand_type);

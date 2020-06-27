@@ -60,7 +60,7 @@ void TransposeBetweenNCHWAndNHWC(ModelBuilder& model_builder,
                                  const std::string& output,
                                  bool nchw_to_nhwc) {
   ORT_ENFORCE(!model_builder.UseNCHW(), "model_builder.UseNCHW() is on");
-  auto& shaper(model_builder.GetShaper());
+  const auto& shaper(model_builder.GetShaper());
   ORT_ENFORCE(
       4 == shaper[input].size(),
       "TransposeNCHWToNHWC input has to be a 4d tensor, actual dimensions: " +
@@ -535,13 +535,13 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     for (int32_t i = input_dims - 1; i >= 0; i--)
       perm.push_back(i);
   } else {
-    ORT_ENFORCE(perm.size() == input_dims, "Perm for 4D shape should be 4D");
+    ORT_ENFORCE(perm.size() == input_dims, "Perm and input should have same dimension");
   }
 
   if (model_builder.IsOperandNHWC(input)) {
     ORT_ENFORCE(input_dims == 4, "Only 4D shape can be nhwc");
 
-    // we are using nhwc here, but the axis is in nwhw, need to transpose axis from nchw to nhwc
+    // we are using nhwc here, but the axis is in nchw, need to transpose axis from nchw to nhwc
     const int32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
     for (size_t i = 0; i < perm.size(); i++)
       perm[i] = axis_nchw_to_nhwc[perm[i]];
@@ -550,7 +550,9 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::string perm_name = model_builder.GetUniqueName(node.name() + input + "perm");
 
   // It is possible this onnx transpose operator can be nchw->nhwc, but so far I don't see
-  // any scenario will do this, assume the output is always not nhwc
+  // any scenario will do this since onnx is nchw only, assume the output is always not nhwc
+  // even it is, there will be extra transpose in the onnx model to convert it back to nchw
+  // before conv/pool/... operators
   AddTransposeOperator(model_builder, input, perm_name, perm, output, false /* is_nhwc */);
 }
 

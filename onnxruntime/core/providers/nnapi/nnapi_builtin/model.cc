@@ -27,7 +27,7 @@ Model::~Model() {
 
 void Model::AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type) {
   input_names_.push_back(name);
-  operand_types_.insert({name, operand_type});
+  operand_types_.emplace(name, operand_type);
 }
 
 void Model::AddOutput(const std::string& onnx_output_name,
@@ -38,7 +38,7 @@ void Model::AddOutput(const std::string& onnx_output_name,
 
   output_names_.push_back(onnx_output_name);
   onnx_to_nnapi_output_map_.emplace(onnx_output_name, nnapi_output_name);
-  operand_types_.insert({nnapi_output_name, operand_type});
+  operand_types_.emplace(nnapi_output_name, operand_type);
 }
 
 const std::vector<std::string>& Model::GetInputs() const {
