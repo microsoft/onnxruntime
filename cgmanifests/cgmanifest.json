@@ -295,6 +295,16 @@
                "DownloadUrl": "https://docs.nvidia.com/deeplearning/sdk/nccl-install-guide/index.html"
             }
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "67afac65ce64fd4dce1494f43e565e8fe34bdffb",
+               "repositoryUrl": "https://android.googlesource.com/platform/frameworks/ml"
+            },
+            "comments": "used by onnxruntime"
+         }
       }
    ],
    "Version": 1

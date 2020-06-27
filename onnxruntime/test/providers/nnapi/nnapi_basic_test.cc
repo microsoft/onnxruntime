@@ -2,8 +2,13 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
-#include "core/providers/nnapi/nnapi_execution_provider.h"
 #include "core/common/logging/logging.h"
+
+#ifdef USE_NNAPI_DNNLIBRARY
+#include "core/providers/nnapi/nnapi_dnnlibrary/nnapi_execution_provider.h"
+#elif USE_NNAPI_BUILTIN
+#include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
