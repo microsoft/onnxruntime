@@ -273,15 +273,6 @@ jobs:
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
   - task: PowerShell@2
-    displayName: 'NuGet Tests: Build Tests (CppWinRT)'
-    inputs:
-      targetType: 'inline'
-      script: |
-        msbuild /p:Platform=x86 Microsoft.AI.MachineLearning.Tests.vcxproj
-        msbuild /p:Platform=x64 Microsoft.AI.MachineLearning.Tests.vcxproj
-      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
-
-  - task: PowerShell@2
     displayName: 'NuGet Tests: Restore Windows.AI.MachineLearning Nuget Package (C#)'
     inputs:
       targetType: 'inline'
@@ -311,12 +302,21 @@ jobs:
       workingDirectory: $(Build.ArtifactStagingDirectory)\merged
 
   - task: PowerShell@2
+    displayName: 'NuGet Tests: Build Tests (CppWinRT)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        msbuild /p:Platform=x86 Microsoft.AI.MachineLearning.Tests.vcxproj
+        msbuild /p:Platform=x64 Microsoft.AI.MachineLearning.Tests.vcxproj
+      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests
+
+  - task: PowerShell@2
     displayName: 'NuGet Tests: Build Tests (C#)'
     inputs:
       targetType: 'inline'
       script: |
-        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x86
-        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x64
+        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=AnyCpu /t:Configuration=Debug
+        msbuild Microsoft.AI.MachineLearning.Tests.CSharp.csproj /p:Platform=x64 /t:Configuration=Debug
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.CSharp
 
   - script: |
@@ -328,8 +328,8 @@ jobs:
      pushd Microsoft.AI.MachineLearning.Tests\x64\Debug
      Microsoft.AI.MachineLearning.Tests.exe
      popd
-     @echo "Run Microsoft.AI.MachineLearning CSharp Tests (x86)"
-     pushd Microsoft.AI.MachineLearning.Tests.CSharp\bin\x86\Debug
+     @echo "Run Microsoft.AI.MachineLearning CSharp Tests (AnyCpu)"
+     pushd Microsoft.AI.MachineLearning.Tests.CSharp\bin\Debug
      Microsoft.AI.MachineLearning.Tests.CSharp.exe
      popd
      @echo "Run Microsoft.AI.MachineLearning CSharp Tests (x64)"
