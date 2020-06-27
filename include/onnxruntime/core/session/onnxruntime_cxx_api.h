@@ -65,6 +65,7 @@ std::vector<std::string> GetAvailableProviders();
 #define ORT_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { Global<void>::api_.Release##NAME(ptr); }
 
+ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(Env);
@@ -309,6 +310,9 @@ struct AllocatorWithDefaultOptions {
   OrtAllocator* p_{};
 };
 
+struct Allocator : public Base<OrtAllocator> {
+};
+
 struct MemoryInfo : Base<OrtMemoryInfo> {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
@@ -317,6 +321,15 @@ struct MemoryInfo : Base<OrtMemoryInfo> {
 
   explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
 };
+
+struct Allocator : public Base<OrtAllocator> {
+  Allocator(const Session& session, const MemoryInfo&);
+
+  void* Alloc(size_t size) const;
+  void Free(void* p) const;
+  const OrtMemoryInfo* GetInfo() const;
+};
+
 
 //
 // Custom OPs (only needed to implement custom OPs)

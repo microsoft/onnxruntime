@@ -836,6 +836,11 @@ struct OrtApi {
    */
   ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
                   _In_ int providers_length);
+
+  ORT_API2_STATUS(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+                      _Outptr_ OrtAllocator** out);
+
+  ORT_CLASS_RELEASE(Allocator);
 };
 
 /*

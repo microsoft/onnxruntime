@@ -78,6 +78,27 @@ inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, O
   ThrowOnError(Global<void>::api_.CreateMemoryInfo(name, type, id, mem_type, &p_));
 }
 
+inline Allocator::Allocator(const Session& sess, const MemoryInfo& mem_info) {
+  ThrowOnError(Global<void>::api_.CreateAllocator(sess.operator const OrtSession*(),
+                                                  mem_info.operator const OrtMemoryInfo*(), &p_));
+}
+
+inline void* Allocator::Alloc(size_t size) const {
+  void* out = nullptr;
+  ThrowOnError(Global<void>::api_.AllocatorAlloc(p_, size, &out));
+  return out;
+}
+
+inline void Allocator::Free(void* p) const {
+  ThrowOnError(Global<void>::api_.AllocatorFree(p_, p));
+}
+
+inline const OrtMemoryInfo* Allocator::GetInfo() const {
+  const OrtMemoryInfo* out = nullptr;
+  ThrowOnError(Global<void>::api_.AllocatorGetInfo(p_, &out));
+  return out;
+}
+
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ThrowOnError(Global<void>::api_.CreateEnv(default_warning_level, logid, &p_));
 }
@@ -620,7 +641,7 @@ inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
 
 inline std::vector<std::string> GetAvailableProviders() {
   int len;
-  char **providers;
+  char** providers;
   const OrtApi& api = GetApi();
   ThrowOnError(api.GetAvailableProviders(&providers, &len));
   std::vector<std::string> available_providers(providers, providers + len);
