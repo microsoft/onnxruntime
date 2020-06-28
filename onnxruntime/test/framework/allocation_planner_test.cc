@@ -158,6 +158,8 @@ class PlannerTest : public ::testing::Test {
   std::vector<std::pair<onnxruntime::Node*, KernelDef&>> kernel_bindings_;
   ExecutionProviders execution_providers_;
   std::unique_ptr<concurrency::ThreadPool> tp_;
+  DataTransferManager dtm_;
+  profiling::Profiler profiler_;
   SessionState state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
@@ -166,8 +168,10 @@ class PlannerTest : public ::testing::Test {
   PlannerTest()
       : model_("test", false, DefaultLoggingManager().DefaultLogger()),
         graph_(model_.MainGraph()),
-        tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams(), concurrency::ThreadPoolType::INTRA_OP)),
-        state_(execution_providers_, false, tp_.get(), nullptr) {
+        tp_(concurrency::CreateThreadPool(&onnxruntime::Env::Default(), OrtThreadPoolParams(),
+                                          concurrency::ThreadPoolType::INTRA_OP)),
+        state_(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_, DefaultLoggingManager().DefaultLogger(),
+               profiler_) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
@@ -225,7 +229,7 @@ class PlannerTest : public ::testing::Test {
   void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
-    state_.SetGraph(graph_);
+    state_.CreateGraphInfo();
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
 
