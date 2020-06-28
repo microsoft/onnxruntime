@@ -104,8 +104,8 @@
     </PropertyGroup>
     <Error Condition="!Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.props'))" />
     <Error Condition="!Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets'))" />
-    <Error Condition="!Exists('packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets'))" />
+    <Error Condition="!Exists('packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets'))" />
   </Target>
   <Import Project="packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets" Condition="Exists('packages\Microsoft.Windows.CsWinRT.0.1.0-prerelease.200512.7\build\Microsoft.Windows.CsWinRT.targets')" />
-  <Import Project="packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets" Condition="Exists('packages\Microsoft.AI.MachineLearning.1.3.1-dev-20200626-0616-f44313c3d\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" />
+  <Import Project="packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets" Condition="Exists('packages\Microsoft.AI.MachineLearning.[PackageVersion]\build\netstandard2.0\Microsoft.AI.MachineLearning.targets')" />
 </Project>
