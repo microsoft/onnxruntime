@@ -28,7 +28,7 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/session_state_initializer.h"
+#include "core/framework/finalize_session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -209,15 +209,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                 " threadpools, the env must be created with the the CreateEnvWithGlobalThreadPools API.");
   }
 
-  session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
-                                                          session_options_.enable_mem_pattern &&
-                                                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
-                                                          GetIntraOpThreadPoolToUse(),
-                                                          GetInterOpThreadPoolToUse());
-  session_state_->SetLogger(*session_logger_);
-  session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
-  session_state_->SetProfiler(session_profiler_);
   if (session_options_.enable_profiling) {
     StartProfiling(session_options_.profile_file_prefix);
   }
@@ -317,6 +309,16 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+  if (is_inited_) {
+    // adding an EP is pointless as the graph as already been partitioned so no nodes will be assigned to
+    // the new EP
+    LOGS(*session_logger_, ERROR) << "Execution providers must be registered before the session is initialized. ";
+    return common::Status(common::ONNXRUNTIME, common::FAIL,
+                          "Execution providers must be registered before the session is initialized.");
+  }
+
   const std::string& provider_type = p_exec_provider->Type();
 
   // DML's memory is not byte addressable and hence mem pattern doesn't work.
@@ -349,6 +351,16 @@ common::Status InferenceSession::RegisterGraphTransformer(
   if (p_graph_transformer == nullptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
+
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+  if (is_inited_) {
+    // adding a transformer now is pointless as the graph as already been transformed
+    LOGS(*session_logger_, ERROR) << "Graph transformers must be registered before the session is initialized.";
+    return common::Status(common::ONNXRUNTIME, common::FAIL,
+                          "Graph transformers must be registered before the session is initialized.");
+  }
+
   return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
@@ -626,8 +638,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(
-      partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr()));
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
+                                                       session_state.GetMutableFuncMgr()));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -702,13 +714,16 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
       Graph* subgraph = entry.second;
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
-      auto subgraph_session_state =
-          onnxruntime::make_unique<SessionState>(execution_providers_, session_state.GetEnableMemoryPattern(),
-                                                 session_state.GetThreadPool(), session_state.GetInterOpThreadPool());
-      subgraph_session_state->SetProfiler(session_profiler_);
-      subgraph_session_state->SetLogger(*session_logger_);
-      // Pass data transfer manager to subgraph.
-      subgraph_session_state->SetDataTransferMgr(&session_state.GetDataTransferMgr());
+      auto subgraph_session_state = onnxruntime::make_unique<SessionState>(
+          *subgraph,
+          execution_providers_,
+          session_state.GetEnableMemoryPattern(),
+          session_state.GetThreadPool(),
+          session_state.GetInterOpThreadPool(),
+          session_state.GetDataTransferMgr(),
+          *session_logger_,
+          session_profiler_);
+
       // Pass fused function manager to subgraph
       subgraph_session_state->GetMutableFuncMgr().SetFusedFuncs(session_state.GetFuncMgr());
 
@@ -750,12 +765,10 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       SessionState* subgraph_session_state = session_state.GetMutableSubgraphSessionState(node.Index(), name);
       ORT_ENFORCE(subgraph_session_state, "CreateSubgraphSessionState should have created an entry earlier.");
 
-      // setup everything required to execute the subgraph and save it in subgraph_session_state
-      SessionStateInitializer initializer(session_options_.enable_mem_pattern, model_location_, subgraph,
-                                          *subgraph_session_state, execution_providers_, kernel_registry_manager_);
+      ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*subgraph_session_state, model_location_,
+                                                          kernel_registry_manager_, &node,
+                                                          session_options_.execution_mode));
 
-      const auto implicit_inputs = node.ImplicitInputDefs();
-      ORT_RETURN_IF_ERROR_SESSIONID_(initializer.CreatePlan(&node, &implicit_inputs, session_options_.execution_mode));
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
 
@@ -828,28 +841,54 @@ common::Status InferenceSession::Initialize() {
 
   try {
     LOGS(*session_logger_, INFO) << "Initializing session.";
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
-    if (!is_model_loaded_) {
-      LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+
+    bool have_cpu_ep = false;
+
+    {
+      std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
+
+      if (!is_model_loaded_) {
+        LOGS(*session_logger_, ERROR) << "Model was not loaded";
+        return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+      }
+
+      if (is_inited_) {  // already initialized
+        LOGS(*session_logger_, INFO) << "Session has already been initialized.";
+        return common::Status::OK();
+      }
+
+      have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
-    if (is_inited_) {  // already initialized
-      LOGS(*session_logger_, INFO) << "Session has already been initialized.";
-      return common::Status::OK();
-    }
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-    TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
-    session_activity_started_ = true;
-#endif
-    // Register default CPUExecutionProvider if user didn't provide it through the Register() calls
-    if (!execution_providers_.Get(onnxruntime::kCpuExecutionProvider)) {
+
+    // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
+    // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
+    if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
       auto p_cpu_exec_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
+
+    // re-acquire mutex
+    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
+    session_activity_started_ = true;
+#endif
+
+    // now that we have all the execution providers, create the session state
+    session_state_ = onnxruntime::make_unique<SessionState>(
+        model_->MainGraph(),
+        execution_providers_,
+        session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
+        GetIntraOpThreadPoolToUse(),
+        GetInterOpThreadPoolToUse(),
+        data_transfer_mgr_,
+        *session_logger_,
+        session_profiler_);
 
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
@@ -876,9 +915,6 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
-    SessionStateInitializer session_initializer(session_options_.enable_mem_pattern, model_location_, graph,
-                                                *session_state_, execution_providers_, kernel_registry_manager_);
-
     // create SessionState for subgraphs as it's needed by the transformers
     ORT_RETURN_IF_ERROR_SESSIONID_(CreateSubgraphSessionState(graph, *session_state_));
 
@@ -903,7 +939,8 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(session_initializer.CreatePlan(nullptr, nullptr, session_options_.execution_mode));
+    ORT_RETURN_IF_ERROR_SESSIONID_(FinalizeSessionState(*session_state_, model_location_, kernel_registry_manager_,
+                                                        nullptr, session_options_.execution_mode));
 
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
