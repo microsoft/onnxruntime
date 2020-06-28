@@ -452,9 +452,11 @@ class InferenceSession {
 
  protected:
   bool IsInitialized() const;
-  // Immutable state for each op in the model. Shared by all executors.
-  // It has a dependency on execution_providers_.
-  std::unique_ptr<SessionState> session_state_;
+
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
 
   // Use these 2 threadpool methods to get access to the threadpools since they rely on
   // specific flags in session options
@@ -468,6 +470,10 @@ class InferenceSession {
   }
 
  private:
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  std::unique_ptr<SessionState> session_state_;
+
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
@@ -497,6 +503,7 @@ class InferenceSession {
     MLDataType ml_data_type;
     TensorShape tensor_shape;  // not applicable if the input is non-tensor type
   };
+
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 

@@ -1775,11 +1775,12 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   InferenceSession session_object{so, GetEnvironment()};
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  ASSERT_STATUS_OK(session_object.Initialize());
 
   auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(dummy_provider)));
+
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2};
@@ -2199,7 +2200,8 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 class InferenceSessionTestGlobalThreadPools : public InferenceSession {
  public:
   InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
-                                        const Environment& env) : InferenceSession(session_options, env) {
+                                        const Environment& env)
+      : InferenceSession(session_options, env) {
   }
 
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
@@ -2210,9 +2212,7 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSession {
     return InferenceSession::GetInterOpThreadPoolToUse();
   }
 
-  const SessionState& GetSessionState() {
-    return *session_state_;
-  }
+  const SessionState& GetSessionState() { return InferenceSession::GetSessionState(); }
 };
 
 // Test 1: env created WITHOUT global tp / use per session tp (default case): in this case per session tps should be in use
