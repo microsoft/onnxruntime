@@ -297,11 +297,6 @@ jobs:
         $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version
         Set-Content -Path $csproj -Value $csproj_content
 
-        Write-Host "\nProject:"
-        Write-Host $csproj
-        Write-Host "\nContents:\n"
-        Write-Host $csproj_content
-
         $input_config = [System.IO.Path]::Combine($src_dir, 'packages.config.pp')
         $output_config = [System.IO.Path]::Combine($src_dir, 'packages.config')
         $input_config_content = Get-Content -Path $input_config
