@@ -17,19 +17,65 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
-Status SessionState::SetGraph(const Graph& graph) {
-  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph);
-  auto& logger = Logger();
+void SessionState::SetupAllocators() {
+  for (const auto& provider : execution_providers_) {
+    for (const auto& allocator : provider->GetAllocators()) {
+      const OrtMemoryInfo& memory_info = allocator->Info();
+      if (allocators_.find(memory_info) != allocators_.end()) {
+        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
+        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                            << ". Ignoring allocator from " << provider->Type();
+      } else {
+        // slightly weird indirection to go back to the provider to get the allocator each time it's needed
+        // in order to support scenarios such as the CUDA EP's per-thread allocator.
+        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
+          return provider->GetAllocator(id, mem_type);
+        };
+      }
+    }
+  }
+}
+
+AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
+  AllocatorPtr result;
+  auto entry = allocators_.find(location);
+  if (entry != allocators_.cend()) {
+    result = entry->second(location.id, location.mem_type);
+  }
+
+  return result;
+}
+
+AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
+  AllocatorPtr result;
+
+  using AllocatorEntry = std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
+                                  OrtMemoryInfoLessThanIgnoreAllocType>::const_reference;
+
+  auto entry = std::find_if(allocators_.cbegin(), allocators_.cend(),
+                            [device](AllocatorEntry& entry) {
+                              return entry.first.device == device &&
+                                     entry.first.mem_type == OrtMemTypeDefault;
+                            });
+
+  if (entry != allocators_.cend()) {
+    result = entry->second(device.Id(), OrtMemTypeDefault);
+  }
+
+  return result;
+}
+
+void SessionState::CreateGraphInfo() {
+  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph_);
   // use graph_viewer_ to initialize ort_value_name_idx_map_
-  LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
+  LOGS(logger_, VERBOSE) << "SaveMLValueNameIndexMapping";
   int idx = 0;
 
   // we keep all graph inputs (including initializers), even if they are unused, so make sure they all have an entry
   for (const auto* input_def : graph_viewer_->GetInputsIncludingInitializers()) {
     idx = ort_value_name_idx_map_.Add(input_def->Name());
-    VLOGS(logger, 1) << "Added graph_viewer_ input with name: " << input_def->Name()
-                     << " to OrtValueIndex with index: " << idx;
+    VLOGS(logger_, 1) << "Added graph_viewer_ input with name: " << input_def->Name()
+                      << " to OrtValueIndex with index: " << idx;
   }
 
   for (auto& node : graph_viewer_->Nodes()) {
@@ -37,24 +83,24 @@ Status SessionState::SetGraph(const Graph& graph) {
     for (const auto* input_def : node.InputDefs()) {
       if (input_def->Exists()) {
         idx = ort_value_name_idx_map_.Add(input_def->Name());
-        VLOGS(logger, 1) << "Added input argument with name: " << input_def->Name()
-                         << " to OrtValueIndex with index: " << idx;
+        VLOGS(logger_, 1) << "Added input argument with name: " << input_def->Name()
+                          << " to OrtValueIndex with index: " << idx;
       }
     }
 
     for (const auto* input_def : node.ImplicitInputDefs()) {
       if (input_def->Exists()) {
         idx = ort_value_name_idx_map_.Add(input_def->Name());
-        VLOGS(logger, 1) << "Added implicit input argument with name: " << input_def->Name()
-                         << " to OrtValueIndex with index: " << idx;
+        VLOGS(logger_, 1) << "Added implicit input argument with name: " << input_def->Name()
+                          << " to OrtValueIndex with index: " << idx;
       }
     }
 
     for (const auto* output_def : node.OutputDefs()) {
       if (output_def->Exists()) {
         ort_value_name_idx_map_.Add(output_def->Name());
-        VLOGS(logger, 1) << "Added output argument with name: " << output_def->Name()
-                         << " to OrtValueIndex with index: " << idx;
+        VLOGS(logger_, 1) << "Added output argument with name: " << output_def->Name()
+                          << " to OrtValueIndex with index: " << idx;
       }
     }
   }
@@ -63,12 +109,11 @@ Status SessionState::SetGraph(const Graph& graph) {
   for (const auto& output : graph_viewer_->GetOutputs()) {
     if (output->Exists()) {
       idx = ort_value_name_idx_map_.Add(output->Name());
-      VLOGS(logger, 1) << "Added graph output with name: " << output->Name() << " to OrtValueIndex with index: " << idx;
+      VLOGS(logger_, 1) << "Added graph output with name: " << output->Name() << " to OrtValueIndex with index: " << idx;
     }
   }
 
-  LOGS(logger, INFO) << "Done saving OrtValue mappings.";
-  return Status::OK();
+  LOGS(logger_, VERBOSE) << "Done saving OrtValue mappings.";
 }
 
 Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_manager) {
@@ -86,7 +131,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
 
       const IExecutionProvider* exec_provider = nullptr;
-      if (exec_provider_name.empty() || (exec_provider = execution_providers_.get().Get(exec_provider_name)) == nullptr) {
+      if (exec_provider_name.empty() || (exec_provider = execution_providers_.Get(exec_provider_name)) == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
                                " as there's no execution provider allocated.");
       }
@@ -165,20 +210,9 @@ NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::s
 }
 #endif
 
-SessionState& SessionState::SetLogger(const logging::Logger& logger) {
-  logger_ = &logger;
-  return *this;
+void SessionState::CleanInitializedTensorsFromGraph() {
+  graph_.CleanAllInitializedTensors();
 }
-
-const logging::Logger& SessionState::Logger() const {
-  // DefaultLogger either throws or returns a valid logger.
-  const logging::Logger* logger = logger_ != nullptr ? logger_ : &logging::LoggingManager::DefaultLogger();
-  return *logger;
-}
-
-void SessionState::SetProfiler(profiling::Profiler& profiler) { profiler_ = &profiler; }
-
-::onnxruntime::profiling::Profiler& SessionState::Profiler() const { return *profiler_; }
 
 static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
   int64_t key = 0;
@@ -199,16 +233,16 @@ Status ResolveDimParams(const GraphViewer& graph,
     if (it == feeds.end()) {
       return Status(ONNXRUNTIME, FAIL,
                     "Graph input " + input->Name() +
-                    " is not found in the feed list, unable to resolve the value for dynamic shape.");
+                        " is not found in the feed list, unable to resolve the value for dynamic shape.");
     }
     if (it->second.NumDimensions() == 0 && !shape) {
-      // This is a scalar, which has nothing to do with symbolic shapes. 
+      // This is a scalar, which has nothing to do with symbolic shapes.
       continue;
     }
     if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions())) {
       return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
-                    "'s shape is not present or its shape doesn't match feed's shape."
-                    "Unable to resolve the value for dynamic shape");
+                                           "'s shape is not present or its shape doesn't match feed's shape."
+                                           "Unable to resolve the value for dynamic shape");
     }
     for (int k = 0, end = shape->dim_size(); k < end; ++k) {
       if (shape->dim()[k].has_dim_param()) {
@@ -485,8 +519,6 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
     return;
 
-  const Graph& graph = GetGraphViewer()->GetGraph();
-
   // Get the nodes generating the fetches.
   std::vector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
@@ -496,12 +528,12 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
     std::string node_arg_name;
     const auto status = this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    auto ending_node = graph.GetProducerNode(node_arg_name);
+    auto ending_node = graph_.GetProducerNode(node_arg_name);
     nodes.push_back(ending_node);
   }
 
   // Reversely traverse to get reachable nodes.
-  graph.ReverseDFSFrom(
+  graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
   to_be_executed_nodes_.insert(std::make_pair(sorted_idxs, reachable_nodes));
 }

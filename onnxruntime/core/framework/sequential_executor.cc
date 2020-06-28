@@ -75,7 +75,6 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
       total_output_sizes += tensor_size;
     }
   }
-
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
@@ -158,7 +157,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
-  const auto* graph_viewer = session_state.GetGraphViewer();
+  const auto& graph_viewer = session_state.GetGraphViewer();
 
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
@@ -175,11 +174,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-    "forward-" + tag,
-    profile::Color::White);
+      "forward-" + tag,
+      profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-    "backward-" + tag,
-    profile::Color::Black);
+      "backward-" + tag,
+      profile::Color::Black);
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
@@ -195,7 +194,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       continue;
     }
 
-    const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
+    const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
@@ -287,7 +286,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes,input_parameter_sizes, node_name_for_profiling);
+                               input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
 #ifdef CONCURRENCY_VISUALIZER
