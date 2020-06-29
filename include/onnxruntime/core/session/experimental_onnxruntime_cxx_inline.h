@@ -87,24 +87,27 @@ inline std::vector<std::vector<int64_t>> Session::GetOverridableInitializerShape
 }
 
 template <typename T>
-inline Ort::Value Value::CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape) {
+inline Value Value::CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape) {
   return CreateTensor(p_data, p_data_element_count * sizeof(T), shape, TypeToTensorType<T>::type);
 }
 
-inline Ort::Value Value::CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
+inline Value Value::CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   Ort::MemoryInfo info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  Ort::Value out = Ort::Value::CreateTensor(info, p_data, p_data_byte_count, shape.data(), shape.size(), type);
-  return out;
+  OrtValue* out;
+  ThrowOnError(Global<void>::api_.CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape.data(), shape.size(), type, &out));
+  return Value{out};
 }
 
 template <typename T>
-inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape) {
+inline Value Value::CreateTensor(const std::vector<int64_t>& shape) {
   return CreateTensor(shape, TypeToTensorType<T>::type);
 }
 
-inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
+inline Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   Ort::AllocatorWithDefaultOptions allocator;
-  return Ort::Value::CreateTensor(allocator, shape.data(), shape.size(), type);
+  OrtValue* out;
+  ThrowOnError(Global<void>::api_.CreateTensorAsOrtValue(allocator, shape.data(), shape.size(), type, &out));
+  return Value{out};
 }
 
 }  // namespace Ort::Experimental

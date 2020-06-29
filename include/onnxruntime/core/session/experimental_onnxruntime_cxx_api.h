@@ -50,16 +50,14 @@ struct Session : Ort::Session {
 struct Value : Ort::Value {
   Value(OrtValue* p)
     : Ort::Value(p) {};
-  Value(Value&&) = default;
-  Value& operator=(Value&&) = default;
 
   template <typename T>
-  static Ort::Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);
-  static Ort::Value CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
+  static Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);
+  static Value CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
 
   template <typename T>
-  static Ort::Value CreateTensor(const std::vector<int64_t>& shape);
-  static Ort::Value CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
+  static Value CreateTensor(const std::vector<int64_t>& shape);
+  static Value CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
 };
 
 }  // namespace Ort::Experimental
