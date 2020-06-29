@@ -389,7 +389,6 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.partition_optimizer = partition_optimizer
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
-    ort_parameters.use_deterministic_compute = use_deterministic_compute
 
     output_types = {}
     for output in model.graph.output:
@@ -441,7 +440,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-    session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
+    sessionOptions = ort.SessionOptions()
+    sessionOptions.use_deterministic_compute = use_deterministic_compute
+    session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 

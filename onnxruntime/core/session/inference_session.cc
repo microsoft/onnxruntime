@@ -213,7 +213,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                                           session_options_.enable_mem_pattern &&
                                                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                                                           GetIntraOpThreadPoolToUse(),
-                                                          GetInterOpThreadPoolToUse());
+                                                          GetInterOpThreadPoolToUse(),
+                                                          session_options_.use_deterministic_compute);
   session_state_->SetLogger(*session_logger_);
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);

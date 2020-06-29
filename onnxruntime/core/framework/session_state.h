@@ -53,12 +53,13 @@ class SessionState {
   SessionState(const ExecutionProviders& execution_providers,
                bool enable_mem_pattern,
                concurrency::ThreadPool* thread_pool,
-               concurrency::ThreadPool* inter_op_thread_pool)
+               concurrency::ThreadPool* inter_op_thread_pool, 
+               bool use_deterministic_compute = false)
       : execution_providers_(execution_providers),
-        use_deterministic_compute_(false),
         enable_mem_pattern_(enable_mem_pattern),
         thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool) {
+        inter_op_thread_pool_(inter_op_thread_pool),
+        use_deterministic_compute_(use_deterministic_compute) {
   }
 
   ~SessionState() {
@@ -178,7 +179,6 @@ class SessionState {
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   bool GetUseDeterministicCompute() const {return use_deterministic_compute_;}
-  void SetUseDeterministicCompute(bool use_deterministic_compute) {use_deterministic_compute_ = use_deterministic_compute;}
 
   /**
   Get enable memory pattern flag
@@ -284,8 +284,6 @@ class SessionState {
   const logging::Logger* logger_ = nullptr;
   profiling::Profiler* profiler_ = nullptr;
 
-  bool use_deterministic_compute_;
-
   // switch for enable memory pattern optimization or not.
   bool enable_mem_pattern_;
   // lock for the mem_patterns_
@@ -305,6 +303,8 @@ class SessionState {
   // It could be NULL
   concurrency::ThreadPool* const thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};
+
+  bool use_deterministic_compute_;
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;

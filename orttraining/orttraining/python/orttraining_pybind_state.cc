@@ -52,7 +52,6 @@ struct TrainingParameters {
   bool partition_optimizer = false;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
-  bool use_deterministic_compute = false;
 };
 
 struct TrainingConfigurationResult {
@@ -99,7 +98,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.set_gradients_as_graph_outputs = parameters.set_gradients_as_graph_outputs;
 
   config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
-  config.use_deterministic_compute = parameters.use_deterministic_compute;
 
   config.distributed_config.world_rank = parameters.world_rank;
   config.distributed_config.world_size = parameters.world_size;
@@ -184,8 +182,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("partition_optimizer", &TrainingParameters::partition_optimizer)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
-      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
-      .def_readwrite("use_deterministic_compute", &TrainingParameters::use_deterministic_compute);
+      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
