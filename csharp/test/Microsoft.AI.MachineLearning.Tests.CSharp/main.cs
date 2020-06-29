@@ -22,6 +22,7 @@ namespace Microsoft.AI.MachineLearning.Tests
             var image = image_task.GetResults();
             Console.WriteLine("Load StorageFile into Stream.");
             var stream_task = image.OpenReadAsync();
+            System.Threading.Thread.Sleep(1000);
             // stream_task.AsTask().Wait();
             //
             // Unable to call AsTask on IAsyncOperation<IRandomAccessStreamWithContentType>... 
@@ -35,14 +36,27 @@ namespace Microsoft.AI.MachineLearning.Tests
             //   ABI.Windows.Foundation.AsyncOperationCompletedHandler<TResult>.AsyncOperationCompletedHandler()
             // 
             // So sleep instead...
-            System.Threading.Thread.Sleep(1000);
             using (var stream = stream_task.GetResults())
             {
                 Console.WriteLine("Create SoftwareBitmap from decoded Stream.");
                 var decoder_task = Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
-                decoder_task.AsTask().Wait();
+                System.Threading.Thread.Sleep(1000);
+                // decoder_task.AsTask().Wait();
+                //
+                // Unable to call AsTask on IAsyncOperation<SoftwareBitmap>... 
+                // System.TypeInitializationException: 'The type initializer for 'ABI.Windows.Foundation.AsyncOperationCompletedHandler`1' threw an exception.'
+                // This exception was originally thrown at this call stack:
+                //   System.RuntimeType.ThrowIfTypeNeverValidGenericArgument(System.RuntimeType)
+                //   System.RuntimeType.SanityCheckGenericArguments(System.RuntimeType[], System.RuntimeType[])
+                //   System.RuntimeType.MakeGenericType(System.Type[])
+                //   System.Linq.Expressions.Compiler.DelegateHelpers.MakeNewDelegate(System.Type[])
+                //   System.Linq.Expressions.Compiler.DelegateHelpers.MakeDelegateType(System.Type[])
+                //   ABI.Windows.Foundation.AsyncOperationCompletedHandler<TResult>.AsyncOperationCompletedHandler()
+                // 
+                // So sleep instead...
                 var decoder = decoder_task.GetResults();
                 var software_bitmap_task = decoder.GetSoftwareBitmapAsync();
+                System.Threading.Thread.Sleep(1000);
                 // software_bitmap_task.AsTask().Wait();
                 //
                 // Unable to call AsTask on IAsyncOperation<SoftwareBitmap>... 
@@ -56,7 +70,6 @@ namespace Microsoft.AI.MachineLearning.Tests
                 //   ABI.Windows.Foundation.AsyncOperationCompletedHandler<TResult>.AsyncOperationCompletedHandler()
                 // 
                 // So sleep instead...
-                System.Threading.Thread.Sleep(1000);
                 using (var software_bitmap = software_bitmap_task.GetResults())
                 {
                     Console.WriteLine("Create VideoFrame.");
