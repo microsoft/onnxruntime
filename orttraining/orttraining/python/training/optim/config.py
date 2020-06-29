@@ -13,7 +13,8 @@ class _OptimizerConfig(object):
         param_groups (list of dict, default is []): list of parameters groups.
             Each dict must contain a 'params' key with a list of model parameters that will
             be optimized with the group's custom hyper-parameters values.
-            In other words, parameter groups override the default :py:attr:`.hyper_parameters` for specific model parameters
+            In other words, parameter groups override the default :py:attr:`.hyper_parameters`
+            for specific model parameters.
 
     Example:
 
@@ -21,9 +22,9 @@ class _OptimizerConfig(object):
 
         lamb_optim = _OptimizerConfig(name = 'LambOptimizer',
                                     hyper_parameters = {'lr': 0.001, 'alpha' : 0.01, 'beta' : 0.9},
-                                    param_groups = [ { 'params' : ['model_param_0', 'model_param1'],
+                                    param_groups = [ { 'params' : ['model_param0', 'model_param1'],
                                                        'epsilon' : 0.03, 'beta' : 0.5},
-                                                     { 'params' : ['model_param_2'],
+                                                     { 'params' : ['model_param2'],
                                                        'alpha' : 0.04},
                                                    ]
                     )
@@ -90,7 +91,7 @@ class SGDConfig(_OptimizerConfig):
                          hyper_parameters={'lr': lr},
                          param_groups=param_groups)
         assert isinstance(param_groups, list) and len(
-            param_groups) == 0, "'param_groups' must be an empty list"
+            param_groups) == 0, "'param_groups' must be an empty list for SGD optimizer"
 
 
 class AdamConfig(_OptimizerConfig):
