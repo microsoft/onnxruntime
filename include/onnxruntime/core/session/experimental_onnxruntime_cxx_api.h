@@ -26,14 +26,14 @@ struct Session : Ort::Session {
       : Ort::Session(env, model_data, model_data_length, options){};
 
   // overloaded Run() with sensible defaults
-  std::vector<Value> Run(const std::vector<std::string>& input_names,
-                         const std::vector<Value>& input_values,
+  std::vector<Ort::Value> Run(const std::vector<std::string>& input_names,
+                         const std::vector<Ort::Value>& input_values,
                          const std::vector<std::string>& output_names,
                          const RunOptions& run_options = RunOptions());
   void Run(const std::vector<std::string>& input_names,
-           const std::vector<Value>& input_values,
+           const std::vector<Ort::Value>& input_values,
            const std::vector<std::string>& output_names,
-           std::vector<Value>& output_values,
+           std::vector<Ort::Value>& output_values,
            const RunOptions& run_options = RunOptions());
 
   // convenience methods that simplify common lower-level API calls
@@ -45,6 +45,21 @@ struct Session : Ort::Session {
   std::vector<std::vector<int64_t> > GetInputShapes() const;
   std::vector<std::vector<int64_t> > GetOutputShapes() const;
   std::vector<std::vector<int64_t> > GetOverridableInitializerShapes() const;
+};
+
+struct Value : Ort::Value {
+  Value(OrtValue* p)
+    : Ort::Value(p) {};
+  Value(Value&&) = default;
+  Value& operator=(Value&&) = default;
+
+  template <typename T>
+  static Ort::Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);
+  static Ort::Value CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
+
+  template <typename T>
+  static Ort::Value CreateTensor(const std::vector<int64_t>& shape);
+  static Ort::Value CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
 };
 
 }  // namespace Ort::Experimental
