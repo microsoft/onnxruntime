@@ -193,9 +193,9 @@ static bool MatchInputToConcatSubgraph(
  *    Shape -> ^Gather (indice=1)^ -> ^Unsqueeze^                                       |
  *                |                                                                     |
  *                +-------------- # one of the below subgraph patterns # ---------------+
- *       # Unsqueeze -> ConstantOfShape -> NonZero -> Transpose -> Squeeze -> Cast -> Unsqueeze #
- *       #                                      or                                              #
- *       #        Cast (to=7) (optional) -> Range (start=0, delta=1) -> Unsqueeze               #
+ *       # Unsqueeze -> ConstantOfShape -> NonZero -> Transpose -> Squeeze -> (Cast) -> Unsqueeze #
+ *       #                                      or                                                #
+ *       #              (Cast (to=7)) -> Range (start=0, delta=1) -> Unsqueeze                    #
  * 
  * Note that position gather node is the node in the bottom of above sub-graph.
  * Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found.
@@ -223,17 +223,28 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
       {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
       {0, 0, "Gather", {1, 11}, kOnnxDomain},
       {0, 0, "Shape", {1}, kOnnxDomain}};
-  // Path 2 Pattern:
-  // Shape -> Gather -> Cast (to=7) (optional) -> Range (start=0, delta=1) -> Unsqueeze -> Expand
+  // Look for Path 2 (Path 1 with no cast):
   std::vector<graph_utils::EdgeEndToMatch> parent_path_2{
+      {0, 1, "Expand", {8}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Transpose", {1}, kOnnxDomain},
+      {0, 0, "NonZero", {9}, kOnnxDomain},
+      {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
+  // Path 3 Pattern:
+  // Shape -> Gather -> Cast (to=7) -> Range (start=0, delta=1) -> Unsqueeze -> Expand
+  std::vector<graph_utils::EdgeEndToMatch> parent_path_3{
       {0, 1, "Expand", {8}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
       {0, 0, "Range", {1, 11}, kOnnxDomain},
       {0, 1, "Cast", {9}, kOnnxDomain},
       {0, 0, "Gather", {1, 11}, kOnnxDomain},
       {0, 0, "Shape", {1}, kOnnxDomain}};
-  // Path 3 pattern (Path 2 with no "Cast"):
-  std::vector<graph_utils::EdgeEndToMatch> parent_path_3{
+  // Path 4 pattern (Path 3 with no "Cast"):
+  std::vector<graph_utils::EdgeEndToMatch> parent_path_4{
       {0, 1, "Expand", {8}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
       {0, 0, "Range", {1, 11}, kOnnxDomain},
@@ -242,7 +253,8 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   // Match one of the three path patterns.
   if (!graph_utils::FindPath(position_gather_node, true, parent_path_1, pg_edges, logger) &&
       !graph_utils::FindPath(position_gather_node, true, parent_path_2, pg_edges, logger) &&
-      !graph_utils::FindPath(position_gather_node, true, parent_path_3, pg_edges, logger)) {
+      !graph_utils::FindPath(position_gather_node, true, parent_path_3, pg_edges, logger) &&
+      !graph_utils::FindPath(position_gather_node, true, parent_path_4, pg_edges, logger)) {
     return false;
   }
   const size_t gather_index = pg_edges.size() - 2;
@@ -303,23 +315,23 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
     //                  |                  |
     //                  --------------------
     std::vector<const Node::EdgeEnd*> pg_edges_2;
-    std::vector<const Node::EdgeEnd*> pg_edges_3;
     std::vector<graph_utils::EdgeEndToMatch> path_to_match_1{
         {0, 1, "Where", {9}, kOnnxDomain},
         {0, 0, "Equal", {1, 11}, kOnnxDomain},
         {0, 0, "Reshape", {5}, kOnnxDomain}};
-    std::vector<graph_utils::EdgeEndToMatch> path_to_match_2{
-        {0, 1, "Where", {9}, kOnnxDomain},
-        {0, 2, "Reshape", {5}, kOnnxDomain}};
-    if (graph_utils::FindPath(expand_node, true, path_to_match_1, pg_edges_2, logger) &&
-        graph_utils::FindPath(expand_node, true, path_to_match_2, pg_edges_3, logger)) {
+    if (graph_utils::FindPath(expand_node, true, path_to_match_1, pg_edges_2, logger)) {
       if (!optimizer_utils::CheckOutputEdges(graph, pg_edges_2[0]->GetNode(), 1) ||
           !optimizer_utils::CheckOutputEdges(graph, pg_edges_2[1]->GetNode(), 1) ||
           !optimizer_utils::CheckOutputEdges(graph, pg_edges_2[2]->GetNode(), 2)) {
         DEBUG_LOG("Optional position subgraph nodes number of outputs unexpected.");
         return false;
       }
+      Node& where_node = *graph.GetNode(pg_edges_2[0]->GetNode().Index());
       Node& reshape_node = *graph.GetNode(pg_edges_2[2]->GetNode().Index());
+      if (where_node.MutableInputDefs()[2] != reshape_node.MutableOutputDefs()[0]) {
+        DEBUG_LOG("Optional position subgraph nodes Where node is expected to be the parent of Reshape.");
+        return false;
+      }
       // Match [input_ids] -> Gather -> Shape -> Unsqueeze from Reshape node.
       if (!MatchInputToConcatSubgraph(graph, reshape_node, input_ids, 0, logger, subgraph_node_indices, gather_node.Index())) {
         DEBUG_LOG("Failed to match position subgraph.");
