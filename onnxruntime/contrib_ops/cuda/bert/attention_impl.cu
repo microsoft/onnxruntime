@@ -158,7 +158,7 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-  float thread_data_max = is_valid ? input[index] : (-CUDART_INF_F);
+  float thread_data_max = is_valid ? float(input[index]) : float(-CUDART_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
 
   // Store max value
@@ -169,8 +169,7 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
 
   float thread_data_exp(0.f);
   if (is_valid) {
-    const float val = input[index];
-    thread_data_exp = expf(val - max_block);
+    thread_data_exp = expf(float(input[index]) - max_block);
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
@@ -216,8 +215,7 @@ __device__ inline void SoftmaxWithMask2DSmall(const int all_sequence_length,
       }
     }
 
-    float qk = (float)input[index];
-    thread_data = qk * scalar + mask_value;
+    thread_data = float(input[index]) * scalar + mask_value;
   }
 
   const float max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), all_sequence_length);
