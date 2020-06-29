@@ -48,6 +48,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                            dims.size());
   }
   int batch_size = static_cast<int>(dims[0]);
+  int sequence_length = static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -77,19 +78,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                            "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
   }
 
-  if (mask_index != nullptr) {  // mask_index is optional
-
-    const auto& mask_dims = mask_index->Shape().GetDims();
-    if (mask_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 dimension, got ",
-                             mask_dims.size());
-    }
-    const int elements = static_cast<int>(mask_dims[0]);
-    if (elements != batch_size && elements != 2 * batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' dimension 0 shall have length of batch_size or 2 * batch_size");
-    }
-  }
-
+  int past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
     if (!is_unidirectional_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is only allowed for unidirectional");
@@ -112,8 +101,24 @@ Status AttentionBase::CheckInputs(const Tensor* input,
     if (static_cast<int>(past_dims[4]) != hidden_size / num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'past' dimension 2 shall have length of ", hidden_size / num_heads_);
     }
+    past_sequence_length = static_cast<int>(past_dims[3]);
   }
 
+  if (mask_index != nullptr) {  // mask_index is optional
+    const auto& mask_dims = mask_index->Shape().GetDims();
+    if (mask_dims.size() == 1) {
+      if (static_cast<int>(mask_dims[0]) != batch_size && static_cast<int>(mask_dims[0]) != 2 * batch_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' dimension 0 shall have length of batch_size or 2 * batch_size");
+      }
+    } else if (mask_dims.size() == 2) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || static_cast<int>(mask_dims[1]) != past_sequence_length + sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with raw attention mask shall have shape batch_size x (past_sequence_length + sequence_length)");
+      }
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 or 2 dimensions, got ",
+                             mask_dims.size());
+    }
+  }
   return Status::OK();
 }
 

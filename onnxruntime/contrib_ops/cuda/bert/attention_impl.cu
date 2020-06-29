@@ -66,8 +66,7 @@ __device__ inline void Softmax(const int all_sequence_length,
                                const int valid_end,
                                const int valid_start,
                                const T* input,
-                               T* output,
-                               bool is_unidirectional) {
+                               T* output) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
 
@@ -76,14 +75,12 @@ __device__ inline void Softmax(const int all_sequence_length,
 
   float thread_data_max(-CUDART_INF_F);
 
-  const int end = is_unidirectional ? min(all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1, valid_end) : valid_end;
-
   // e^x is represented as infinity if x is large enough, like 100.f.
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
   const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
-  for (int i = threadIdx.x; i < end; i += TPB) {
+  for (int i = threadIdx.x; i < valid_end; i += TPB) {
     if (i >= valid_start) {
       const int index = offset + i;
       if (thread_data_max < float(input[index])) {
@@ -101,7 +98,7 @@ __device__ inline void Softmax(const int all_sequence_length,
   __syncthreads();
 
   float thread_data_sum(0.f);
-  for (int i = threadIdx.x; i < end; i += TPB) {
+  for (int i = threadIdx.x; i < valid_end; i += TPB) {
     if (i >= valid_start) {
       const int index = offset + i;
       const float val = input[index];
@@ -117,7 +114,7 @@ __device__ inline void Softmax(const int all_sequence_length,
 
   for (int i = threadIdx.x; i < all_sequence_length; i += TPB) {
     const int index = offset + i;
-    const float val = (i >= valid_start && i < end) ? expf(float(input[index]) - max_block) * sum_reverse_block : 0.f;
+    const float val = (i >= valid_start && i < valid_end) ? expf(float(input[index]) - max_block) * sum_reverse_block : 0.f;
     output[index] = T(val);
   }
 }
@@ -140,18 +137,28 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
   const int index = offset + threadIdx.x;
 
+  bool is_valid = false;  // whether it has attention mask == 1.
+
   // Update end position for unidirectional.
-  const int end = is_unidirectional ? min(all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1, valid_end) : valid_end;
+  int end = valid_end;
+  if (is_unidirectional) {
+    int end_unid = all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1;
+    if (end_unid <= valid_start) {
+      // In this situation, mask of [0, end_unid) and [valid_start, valid_end) has -10000, and [end_unid, valid_start) and [valid_end, all_seq_len) has -20000.
+      // So [0, end_unid) will also have value after softmax.
+      is_valid = threadIdx.x < end_unid;
+    } else {
+      end = min(valid_end, end_unid);
+    }
+  }
+
+  is_valid = is_valid || (threadIdx.x >= valid_start && threadIdx.x < end);
 
   // e^x is represented as infinity if x is large enough, like 100.f.
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-  float thread_data_max(-CUDART_INF_F);
-  if (threadIdx.x >= valid_start && threadIdx.x < end) {
-    thread_data_max = input[index];
-  }
-
+  float thread_data_max = is_valid ? input[index] : (-CUDART_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
 
   // Store max value
@@ -161,22 +168,76 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   __syncthreads();
 
   float thread_data_exp(0.f);
-  if (threadIdx.x >= valid_start && threadIdx.x < end) {
+  if (is_valid) {
     const float val = input[index];
     thread_data_exp = expf(val - max_block);
   }
 
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
 
-  // Store max value
+  // Store value of 1.0/sum.
   if (threadIdx.x == 0) {
-    sum_reverse_block = (end <= valid_start) ? 0.f : (1.f) / sum;
+    sum_reverse_block = (1.f) / sum;
   }
   __syncthreads();
 
   // threadIdx.x might be larger than all_sequence_length due to alignment to 32x.
   if (threadIdx.x < all_sequence_length) {
-    // this will be 0 for threadIdx.x >= end
+    output[index] = T(thread_data_exp * sum_reverse_block);
+  }
+}
+
+template <typename T, unsigned TPB>
+__device__ inline void SoftmaxWithMask2DSmall(const int all_sequence_length,
+                                              const int sequence_length,
+                                              const int* attention_mask,  // 2D attention mask
+                                              const T* input,
+                                              T* output,
+                                              const bool is_unidirectional,
+                                              const float scalar) {
+  using BlockReduce = cub::BlockReduce<float, TPB>;
+  __shared__ typename BlockReduce::TempStorage tmp_storage;
+
+  __shared__ float sum_reverse_block;
+  __shared__ float max_block;
+
+  // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
+  int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
+
+  float thread_data = -CUDART_INF_F;
+  if (threadIdx.x < all_sequence_length) {
+    const int& mask = attention_mask[blockIdx.y * all_sequence_length + threadIdx.x];
+    float mask_value = mask > 0 ? 0.0f : -10000.0f;
+
+    if (is_unidirectional) {
+      int from_index = all_sequence_length - sequence_length + (blockIdx.x % sequence_length);  // offset of from token in all sequence length.
+      if (threadIdx.x > from_index) {
+        mask_value += -10000.0f;
+      }
+    }
+
+    float qk = (float)input[index];
+    thread_data = qk * scalar + mask_value;
+  }
+
+  const float max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), all_sequence_length);
+
+  // Store max value
+  if (threadIdx.x == 0) {
+    max_block = max;
+  }
+  __syncthreads();
+
+  float thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), all_sequence_length);
+
+  // Store value of 1.0/sum
+  if (threadIdx.x == 0) {
+    sum_reverse_block = (1.f) / sum;
+  }
+  __syncthreads();
+
+  if (threadIdx.x < all_sequence_length) {
     output[index] = T(thread_data_exp * sum_reverse_block);
   }
 }
@@ -187,8 +248,8 @@ __global__ void SoftmaxKernelSmall(const int all_sequence_length, const int sequ
 }
 
 template <typename T, unsigned TPB>
-__global__ void SoftmaxKernel(const int all_sequence_length, const int sequence_length, const T* input, T* output, bool is_unidirectional) {
-  Softmax<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0, input, output, is_unidirectional);
+__global__ void SoftmaxKernel(const int all_sequence_length, const int sequence_length, const T* input, T* output) {
+  Softmax<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0, input, output);
 }
 
 template <typename T>
@@ -199,22 +260,33 @@ bool ComputeSoftmax(
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 64) {
+    const int blockSize = 64;
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
-  } else if (all_sequence_length == 384) {
-    const int blockSize = 384;
-    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
-  } else {
+  } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
-    SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 512) {
+    const int blockSize = 512;
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 1024) {
+    const int blockSize = 1024;
+    SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output, is_unidirectional);
+  } else if (!is_unidirectional) {
+    const int blockSize = 1024;
+    SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, input, output);
+  } else {
+    ORT_THROW("Attention CUDA operator does not support unidirectional with total sequence length > 1024.");
   }
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template <typename T, unsigned TPB>
-__global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const int sequence_length, const int* mask_end, const int* mask_start, const T* input, T* output) {
+__global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const int sequence_length, const int* mask_end, const int* mask_start, const T* input, T* output, bool is_unidirectional) {
   __shared__ int start_position;
   __shared__ int end_position;
 
@@ -222,10 +294,16 @@ __global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length, const in
     const int batch = blockIdx.y;
     start_position = mask_start != nullptr ? max(0, mask_start[batch]) : 0;
     end_position = min(all_sequence_length, mask_end[batch]);
+
+    // Attend to no word has same effect as attend to all words. This is added to get parity with CPU result.
+    if (start_position >= end_position) {
+      start_position = 0;
+      end_position = all_sequence_length;
+    }
   }
   __syncthreads();
 
-  SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, end_position, start_position, input, output, false);
+  SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, end_position, start_position, input, output, is_unidirectional);
 }
 
 template <typename T, unsigned TPB>
@@ -237,38 +315,94 @@ __global__ void MaskedSoftmaxKernel(const int all_sequence_length, const int seq
     const int batch = blockIdx.y;
     start_position = mask_start != nullptr ? max(0, mask_start[batch]) : 0;
     end_position = min(all_sequence_length, mask_end[batch]);
+
+    // Attend to no word has same effect as attend to all words. This is added to get parity with CPU result.
+    if (start_position >= end_position) {
+      start_position = 0;
+      end_position = all_sequence_length;
+    }
   }
   __syncthreads();
 
-  Softmax<T, TPB>(all_sequence_length, sequence_length, end_position, start_position, input, output, false);
+  Softmax<T, TPB>(all_sequence_length, sequence_length, end_position, start_position, input, output);
+}
+
+template <typename T, unsigned TPB>
+__global__ void SoftmaxWithMask2DSmallKernel(const int all_sequence_length, const int sequence_length, const int* attention_mask, const T* input, T* output, const bool is_unidirectional, const float scalar) {
+  SoftmaxWithMask2DSmall<T, TPB>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
 }
 
 template <typename T>
-bool ComputeMaskedSoftmax(cudaStream_t stream, const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
-                          const int* mask_index, int mask_index_length, const T* input, T* output) {
-  // Mask is of length batch_size and assumes the valid region is contiguous starting
-  // from the beginning of the sequence
-
+bool ComputeSoftmaxWithMask1D(cudaStream_t stream, const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
+                              const int* mask_index, const int* mask_start, const T* input, T* output, const bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
-
-  const int* mask_start = (mask_index_length == 2 * batch_size) ? mask_index + batch_size : nullptr;
 
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
     MaskedSoftmaxKernelSmall<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output);
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 64) {
+    const int blockSize = 64;
+    MaskedSoftmaxKernelSmall<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output, is_unidirectional);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
     MaskedSoftmaxKernelSmall<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output);
-  } else if (all_sequence_length == 384) {
-    const int blockSize = 384;
-    MaskedSoftmaxKernelSmall<T, blockSize>
-        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output);
-  } else {
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
+    MaskedSoftmaxKernelSmall<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 512) {
+    const int blockSize = 512;
+    MaskedSoftmaxKernelSmall<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output, is_unidirectional);
+  } else if (all_sequence_length <= 1024) {
+    const int blockSize = 1024;
+    MaskedSoftmaxKernelSmall<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output, is_unidirectional);
+  } else if (!is_unidirectional) {
+    const int blockSize = 1024;
     MaskedSoftmaxKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start, input, output);
+  } else {
+    ORT_THROW("Attention CUDA operator does not support unidirectional with total sequence length > 1024.");
+  }
+
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+
+template <typename T>
+bool ComputeSoftmaxWithMask2D(cudaStream_t stream, const int all_sequence_length, const int sequence_length, const int batch_size, const int num_heads,
+                              const int* attention_mask, const T* input, T* output, const bool is_unidirectional, const float scalar) {
+  const dim3 grid(sequence_length * num_heads, batch_size, 1);
+
+  if (all_sequence_length <= 32) {
+    const int blockSize = 32;
+    SoftmaxWithMask2DSmallKernel<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
+  } else if (all_sequence_length <= 64) {
+    const int blockSize = 64;
+    SoftmaxWithMask2DSmallKernel<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
+  } else if (all_sequence_length <= 128) {
+    const int blockSize = 128;
+    SoftmaxWithMask2DSmallKernel<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
+  } else if (all_sequence_length <= 256) {
+    const int blockSize = 256;
+    SoftmaxWithMask2DSmallKernel<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
+  } else if (all_sequence_length <= 512) {
+    const int blockSize = 512;
+    SoftmaxWithMask2DSmallKernel<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
+  } else if (all_sequence_length <= 1024) {
+    const int blockSize = 1024;
+    SoftmaxWithMask2DSmallKernel<T, blockSize>
+        <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, attention_mask, input, output, is_unidirectional, scalar);
+  } else {
+    ORT_THROW("Attention CUDA operator does not supported 2D attention mask with total sequence length > 1024.");
   }
 
   return CUDA_CALL(cudaPeekAtLastError());
@@ -506,7 +640,7 @@ bool QkvToContext(
     cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size, const size_t element_size,
     const T* input, T* output, T* workspace,
-    const int* mask_index, int mask_index_length,
+    const int* mask_index, const std::vector<int64_t>* mask_index_dims,
     bool is_unidirectional, int past_sequence_length, const T* past, T* present) {
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = ScratchSize(element_size, batch_size, num_heads, sequence_length, all_sequence_length);
@@ -545,22 +679,32 @@ bool QkvToContext(
     v = present + batches * present_size_per_batch;
   }
 
+  bool use_2d_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && mask_index_dims->size() == 2);
+
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
+  T alpha = (T)(use_2d_attention_mask ? 1.0f : rsqrt_head_size);
   if (!CUBLAS_CALL(CublasGemmStridedBatched(
-          cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, rsqrt_head_size, k, head_size, present_size_per_batch,
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch, 0.f, scratch1, all_sequence_length, temp_matrix_size, batches))) {
     return false;
   }
 
   // apply softmax and store result P to scratch2: BxNxSxS*
-  if (nullptr != mask_index) {
-    if (!ComputeMaskedSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_index_length, scratch1, scratch2)) {
+  if (use_2d_attention_mask) {  // 2d attention mask
+    if (!ComputeSoftmaxWithMask2D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional, rsqrt_head_size)) {
       return false;
     }
-  } else {
+  } else if (nullptr != mask_index) {  // 1d mask index
+    ORT_ENFORCE(nullptr != mask_index_dims && mask_index_dims->size() == 1);
+    // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
+    const int* mask_start = (mask_index_dims->at(0) > batch_size) ? mask_index + batch_size : nullptr;
+    if (!ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, mask_start, scratch1, scratch2, is_unidirectional)) {
+      return false;
+    }
+  } else {  // no mask
     if (!ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, scratch1, scratch2, is_unidirectional)) {
       return false;
     }
@@ -580,7 +724,7 @@ bool QkvToContext(
 bool LaunchAttentionKernel(
     const void* input,
     const int* mask_index,
-    int mask_index_length,
+    const std::vector<int64_t>* mask_index_dims,
     void* output,
     const int batch_size,
     const int sequence_length,
@@ -600,13 +744,13 @@ bool LaunchAttentionKernel(
     return QkvToContext(cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
-                        mask_index, mask_index_length, is_unidirectional,
+                        mask_index, mask_index_dims, is_unidirectional,
                         past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<half*>(present));
   } else {
     return QkvToContext(cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
-                        mask_index, mask_index_length, is_unidirectional,
+                        mask_index, mask_index_dims, is_unidirectional,
                         past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<float*>(present));
   }
 }

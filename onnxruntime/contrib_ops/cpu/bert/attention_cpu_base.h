@@ -57,12 +57,12 @@ class AttentionCPUBase : public AttentionBase {
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
     const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
-    const int mask_index_length = mask_index != nullptr ? static_cast<int>(mask_index->Shape().Size()) : (int)0;
+    const std::vector<int64_t>* mask_index_dims = mask_index != nullptr ? &(mask_index->Shape().GetDims()) : nullptr;
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             mask_index_data, mask_index_length, static_cast<T*>(mask_data),
+                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
                              batch_size, sequence_length, past_sequence_length, head_size,
                              past_data, present_data, tp);
 
@@ -84,18 +84,18 @@ class AttentionCPUBase : public AttentionBase {
   //                                    1 x mask_data(B, N, S, S*)
   //  II.attention_probs(B, N, S, S*) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,         // output buffer for the attention probs. Its size is BxNxSxS
-                             const T* Q,                 // Q data. Its size is BxNxSxH
-                             const T* K,                 // k data. Its size is BxNxSxH
-                             const int32_t* mask_index,  // mask index. nullptr if no mask or its size is B
-                             int mask_index_length,      // mask index length
-                             T* mask_data,               // buffer for mask data. Its size is: SxS* if is_unidirectional_; BxSxS* if mask_index; null otherwise
-                             int batch_size,             // batch size of self-attention
-                             int sequence_length,        // sequence length of self-attention
-                             int past_sequence_length,   // sequence length of past state
-                             int head_size,              // head size of self-attention
-                             const T* past,              // past state
-                             T* present,                 // present state
+  void ComputeAttentionProbs(T* attention_probs,                           // output buffer for the attention probs. Its size is BxNxSxS
+                             const T* Q,                                   // Q data. Its size is BxNxSxH
+                             const T* K,                                   // k data. Its size is BxNxSxH
+                             const int32_t* mask_index,                    // mask index. nullptr if no mask or its size is B
+                             const std::vector<int64_t>* mask_index_dims,  // mask index shape
+                             T* mask_data,                                 // buffer for mask data. Its size is: SxS* if is_unidirectional_; BxSxS* if mask_index; null otherwise
+                             int batch_size,                               // batch size of self-attention
+                             int sequence_length,                          // sequence length of self-attention
+                             int past_sequence_length,                     // sequence length of past state
+                             int head_size,                                // head size of self-attention
+                             const T* past,                                // past state
+                             T* present,                                   // present state
                              ThreadPool* tp) const {
     const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * head_size);  // S' x H
@@ -104,7 +104,7 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       if (mask_data != nullptr) {
-        PrepareMask(mask_index, mask_index_length, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
+        PrepareMask(mask_index, mask_index_dims, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
       } else {  // no any mask
         memset(attention_probs, 0, batch_size * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
       }
