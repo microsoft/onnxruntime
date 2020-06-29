@@ -8,7 +8,7 @@
 namespace Ort::Experimental {
 
 inline std::vector<Ort::Value> Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values,
-                                       const std::vector<std::string>& output_names, const RunOptions& run_options) {
+                                            const std::vector<std::string>& output_names, const RunOptions& run_options) {
   size_t output_names_count = GetOutputNames().size();
   std::vector<Ort::Value> output_values;
   for (size_t i = 0; i < output_names_count; i++) output_values.emplace_back(nullptr);

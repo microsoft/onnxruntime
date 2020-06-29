@@ -27,9 +27,9 @@ struct Session : Ort::Session {
 
   // overloaded Run() with sensible defaults
   std::vector<Ort::Value> Run(const std::vector<std::string>& input_names,
-                         const std::vector<Ort::Value>& input_values,
-                         const std::vector<std::string>& output_names,
-                         const RunOptions& run_options = RunOptions());
+                              const std::vector<Ort::Value>& input_values,
+                              const std::vector<std::string>& output_names,
+                              const RunOptions& run_options = RunOptions());
   void Run(const std::vector<std::string>& input_names,
            const std::vector<Ort::Value>& input_values,
            const std::vector<std::string>& output_names,
@@ -49,7 +49,7 @@ struct Session : Ort::Session {
 
 struct Value : Ort::Value {
   Value(OrtValue* p)
-    : Ort::Value(p) {};
+      : Ort::Value(p){};
 
   template <typename T>
   static Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);
