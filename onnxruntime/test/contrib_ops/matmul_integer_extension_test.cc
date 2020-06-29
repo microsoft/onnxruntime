@@ -81,7 +81,7 @@ TEST(MatMulIntegerExtension, Int8_test) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<int8_t>(A_dims, B_dims, "testdata/matmul_interger_extension_int8.onnx");
+  TestMatMulIntegerExtension<int8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_int8.onnx");
 #endif
 }
 
@@ -91,7 +91,7 @@ TEST(MatMulIntegerExtension, Int8_bias_test) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<int8_t>(A_dims, B_dims, "testdata/matmul_interger_extension_int8_bias.onnx", false, true);
+  TestMatMulIntegerExtension<int8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_int8_bias.onnx", false, true);
 #endif
 }
 
@@ -100,7 +100,7 @@ TEST(MatMulIntegerExtension, UInt8_test) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<uint8_t>(A_dims, B_dims, "testdata/matmul_interger_extension_uint8.onnx");
+  TestMatMulIntegerExtension<uint8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_uint8.onnx");
 }
 
 TEST(MatMulIntegerExtension, UInt8_bias_test) {
@@ -108,7 +108,7 @@ TEST(MatMulIntegerExtension, UInt8_bias_test) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<uint8_t>(A_dims, B_dims, "testdata/matmul_interger_extension_uint8_bias.onnx", false, true);
+  TestMatMulIntegerExtension<uint8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_uint8_bias.onnx", false, true);
 }
 
 }  // namespace test
