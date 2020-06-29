@@ -191,15 +191,14 @@ Status TrainingSession::ConfigureForTraining(
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   if (config.weight_names_to_not_train.size() > 0)
   {
-    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:\n";
+    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:";
     for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
       trainable_initializers.erase(weight_name_to_not_train);
       LOGS(*session_logger_, INFO) << weight_name_to_not_train;
     }
-    LOGS(*session_logger_, INFO) << std::endl;
   }
   
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers));
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation));
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -469,9 +468,9 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train) {
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation) {
   GraphTransformerManager graph_transformation_mgr{1};
-  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train);
+  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, enable_gelu_approximation);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -484,11 +483,13 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
+                                                 bool enable_gelu_approximation,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(level, weights_to_train, custom_list);
+    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+        level, weights_to_train, enable_gelu_approximation, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }

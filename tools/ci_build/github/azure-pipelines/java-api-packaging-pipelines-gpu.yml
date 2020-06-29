@@ -163,7 +163,7 @@ jobs:
         ren onnxruntime-$(OnnxRuntimeVersion).jar onnxruntime_gpu-$(OnnxRuntimeVersion).jar
         ren onnxruntime-$(OnnxRuntimeVersion)-javadoc.jar onnxruntime_gpu-$(OnnxRuntimeVersion)-javadoc.jar
         ren onnxruntime-$(OnnxRuntimeVersion)-sources.jar onnxruntime_gpu-$(OnnxRuntimeVersion)-sources.jar
-        ren onnxruntime-$(OnnxRuntimeVersion).pom onnxruntime_gpu_$(OnnxRuntimeVersion).pom
+        ren onnxruntime-$(OnnxRuntimeVersion).pom onnxruntime_gpu-$(OnnxRuntimeVersion).pom
         popd
       workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
       displayName: 'Create final GPU Jar'
