@@ -6,10 +6,10 @@ from . import config
 class LRScheduler(object):
     r"""Base class for implementing custom learning rate schedulers
 
-    Schedulers can be either statefull or stateless.
+    Schedulers can be either stateful or stateless.
     Stateless implementations can only rely on information available at
     :py:class:`.TrainStepInfo` and :py:attr:`.optimizer_config`.
-    Statefull, on the other hand, can store more parameters by overriding
+    Stateful, on the other hand, can store more parameters by overriding
     the constructor.
 
     In both cases, once the scheduler is configured, no user code is needed
