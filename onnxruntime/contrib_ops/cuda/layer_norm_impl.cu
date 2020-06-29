@@ -358,7 +358,7 @@ void HostApplyLayerNorm(
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
   
   bool custom_supported_dim = std::find(std::begin(SUPPORTED_REDUCTION_DIM), std::end(SUPPORTED_REDUCTION_DIM), n2) != std::end(SUPPORTED_REDUCTION_DIM);
-  if(!(std::is_same<T, double>::value) && custom_supported_dim){
+  if(custom_supported_dim){
     launch_custom_layer_norm<T,U>(
       output,
       input,
@@ -386,13 +386,44 @@ void HostApplyLayerNorm(
   }
 }
 
+template <>
+void HostApplyLayerNorm(
+    const cudaDeviceProp& prop,
+    double* output,
+    double* mean,
+    double* invvar,
+    const double* input,
+    int64_t n1,
+    int64_t n2,
+    double epsilon,
+    const double* gamma,
+    const double* beta) {
+  const uint64_t maxGridY = prop.maxGridSize[1];
+  const int warp_size = prop.warpSize;
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+  
+  const dim3 threads(warp_size, 4, 1);
+  const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
+  int nshared =
+      threads.y > 1 ? threads.y * sizeof(double) + (threads.y / 2) * sizeof(double) : 0;
+  cuApplyLayerNorm<<<blocks, threads, nshared, 0>>>(
+      output,
+      mean,
+      invvar,
+      input,
+      n1, n2,
+      epsilon,
+      gamma, beta);
+  
+}
+
 #define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
   template void HostApplyLayerNorm(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
                                    double epsilon, const T* gamma, const T* beta);
 
 LAYERNORM_LINEAR_IMPL(float, float)
 LAYERNORM_LINEAR_IMPL(half, float)
-LAYERNORM_LINEAR_IMPL(double, double)
+// LAYERNORM_LINEAR_IMPL(double, double)
 //LAYERNORM_LINEAR_IMPL(half, half)
 
 }  // namespace cuda
