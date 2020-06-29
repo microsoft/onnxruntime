@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/onnx_protobuf.h"
-#include "core/framework/session_state_initializer.h"
+#include "core/framework/finalize_session_state.h"
 
 #include <functional>
 #include <limits>
@@ -30,44 +30,37 @@ namespace onnxruntime {
 // T should have signature of '(int idx, const OrtValue& value, const OrtCallback& d) -> Status'
 template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                             const onnxruntime::Graph& graph, const ExecutionProviders& exec_providers,
+                                             const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                             ITensorAllocator* planner, const T& save_tensor_func,
+                                             ITensorAllocator& planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
                                              const DataTransferManager& data_transfer_mgr);
 
-static common::Status SaveInputOutputNamesToNodeMapping(
-    const onnxruntime::Graph& graph,
-    const KernelRegistryManager& custom_registry_manager,
-    SessionState& session_state,
-    const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs);
+static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
+                                                        const KernelRegistryManager& custom_registry_manager,
+                                                        SessionState& session_state,
+                                                        const std::vector<const NodeArg*>& implicit_inputs);
 
-SessionStateInitializer::SessionStateInitializer(bool enable_mem_pattern,
-                                                 const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                                 onnxruntime::Graph& graph, SessionState& session_state,
-                                                 const ExecutionProviders& providers,
-                                                 KernelRegistryManager& kernel_registry_manager)
-    : graph_loc_(graph_loc),
-      graph_(graph),
-      session_state_(session_state),
-      execution_providers_(providers),
-      kernel_registry_manager_(kernel_registry_manager),
-      logger_(session_state.Logger()),
-      enable_mem_pattern_(enable_mem_pattern) {}
+Status FinalizeSessionState(SessionState& session_state,
+                            const std::basic_string<PATH_CHAR_TYPE>& graph_location,
+                            KernelRegistryManager& kernel_registry_manager,
+                            _In_opt_ const Node* parent_node,
+                            ExecutionMode execution_mode) {
+  session_state.CreateGraphInfo();
 
-common::Status SessionStateInitializer::CreatePlan(
-    _In_opt_ const Node* parent_node,
-    _In_opt_ const ConstPointerContainer<std::vector<NodeArg*>>* outer_scope_node_args, ExecutionMode execution_mode) {
-  session_state_.SetGraph(graph_);
-  const GraphViewer* graph_viewer = session_state_.GetGraphViewer();
+  const GraphViewer& graph_viewer = session_state.GetGraphViewer();
+  const auto& logger = session_state.Logger();
 
   // populate the SessionState OrtValueNameIdxMap
-  const auto& ort_value_name_idx_map = session_state_.GetOrtValueNameIdxMap();
+  const auto& ort_value_name_idx_map = session_state.GetOrtValueNameIdxMap();
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;
-  if (outer_scope_node_args) {
-    std::for_each(outer_scope_node_args->cbegin(), outer_scope_node_args->cend(),
+  if (parent_node) {
+    auto outer_scope_node_args = parent_node->ImplicitInputDefs();
+    valid_outer_scope_node_args.reserve(outer_scope_node_args.size());
+
+    std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
                   [&ort_value_name_idx_map, &valid_outer_scope_node_args](const NodeArg* node_arg) {
                     int idx;
                     if (ort_value_name_idx_map.GetIdx(node_arg->Name(), idx).IsOK()) {
@@ -78,39 +71,42 @@ common::Status SessionStateInitializer::CreatePlan(
 
   std::unique_ptr<SequentialExecutionPlan> exec_plan;
   SequentialPlannerContext context(execution_mode);
-  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_registry_manager_,
+  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, graph_viewer, valid_outer_scope_node_args,
+                                                    session_state.GetExecutionProviders(), kernel_registry_manager,
                                                     ort_value_name_idx_map, context, exec_plan));
-  session_state_.SetExecutionPlan(std::move(exec_plan));
 
-  const auto* exec_plan_ptr = session_state_.GetExecutionPlan();
-  ORT_ENFORCE(exec_plan_ptr, "Execution plan was not found in SessionState. CreatePlan must be called first.");
+  const auto* exec_plan_ptr = exec_plan.get();
+  session_state.SetExecutionPlan(std::move(exec_plan));
 
-  std::unique_ptr<ITensorAllocator> tensor_allocator(ITensorAllocator::Create(
-      enable_mem_pattern_, *exec_plan_ptr, execution_providers_, session_state_.GetMutableWeightsBuffers()));
+  std::unique_ptr<ITensorAllocator> tensor_allocator_(
+      ITensorAllocator::Create(session_state.GetEnableMemoryPattern(), *exec_plan_ptr, session_state,
+                               session_state.GetMutableWeightsBuffers()));
 
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
-      env, graph_loc_, graph_, execution_providers_, ort_value_name_idx_map, tensor_allocator.get(),
-      [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
-        return session_state_.AddInitializedTensor(idx, value, &d, constant);
+      env, graph_location, graph_viewer,
+      session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo(),
+      ort_value_name_idx_map, *tensor_allocator_,
+      [&session_state](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
+        return session_state.AddInitializedTensor(idx, value, &d, constant);
       },
-      logger_, session_state_.GetDataTransferMgr()));
+      logger, session_state.GetDataTransferMgr()));
+
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
   // TODO: make it better
-  graph_.CleanAllInitializedTensors();
+  session_state.CleanInitializedTensorsFromGraph();
 
-  ORT_RETURN_IF_ERROR(session_state_.CreateKernels(kernel_registry_manager_));
-  ORT_RETURN_IF_ERROR(
-      SaveInputOutputNamesToNodeMapping(graph_, kernel_registry_manager_, session_state_, outer_scope_node_args));
+  ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
+  ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
+                                                        valid_outer_scope_node_args));
   return Status::OK();
 }
 
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m,
-                                             const ExecutionProviders& exec_providers, OrtValue& ort_value,
+                                             const OrtMemoryInfo& default_cpu_memory_info, OrtValue& ort_value,
                                              OrtCallback& deleter,
                                              const DataTransferManager& data_transfer_mgr) {
   const OrtMemoryInfo& alloc_info = m.GetAllocInfo();
@@ -118,11 +114,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     // deserialize directly to CPU tensor
     return utils::TensorProtoToMLValue(env, proto_path.c_str(), tensor_proto, m, ort_value, deleter);
   }
-  //alloc_info.name is not 'CPU'
-  const IExecutionProvider* provider = exec_providers.Get(alloc_info);
-  if (provider == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid allocation info. Provider name = ", alloc_info.name);
-  }
+
   // deserialize and copy. In the copy stage, it won't check if the buffer has enough room.
   // The result tensor won't need a deleter because:
   // 1. It mustn't be a string tensor
@@ -132,6 +124,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
   }
+
   // deserialize to CPU first for non-CPU allocator, then alloc and copy
   size_t cpu_tensor_length;
   ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
@@ -139,13 +132,15 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
                            cpu_tensor_length, ", Got ", m.GetLen());
   }
-  OrtMemoryInfo info = exec_providers.GetDefaultCpuMemoryInfo();
+
   std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
   std::unique_ptr<Tensor> p_tensor;
   OrtValue tmp_ort_value;
   OrtCallback d;
   ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(env, proto_path.c_str(), tensor_proto,
-                                                  MemBuffer(data.get(), cpu_tensor_length, info), tmp_ort_value, d));
+                                                  MemBuffer(data.get(), cpu_tensor_length, default_cpu_memory_info),
+                                                  tmp_ort_value, d));
+
   const Tensor& p_deserialize_tensor = tmp_ort_value.Get<Tensor>();
 
   p_tensor = onnxruntime::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
@@ -153,13 +148,13 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   // TODO: does this function work for string tensor?
   Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);
   if (d.f) d.f(d.param);
+
   if (!copy_status.IsOK()) {
     if (copy_status.ErrorMessage().empty()) {
       // The windows execution provider does not return any error message today for CopyTensor since it is
       // not implemented yet. That's the reason we're adding our own error message so that we can debug better.
-      return Status(copy_status.Category(),
-                    copy_status.Code(),
-                    "Failed to copy tensor to execution provider: " + provider->Type());
+      return Status(copy_status.Category(), copy_status.Code(),
+                    "Failed to copy tensor to " + p_tensor->Location().ToString());
     }
     return copy_status;
   }
@@ -171,8 +166,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
 template <typename T>
 common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
-                                      const Graph& graph, const ExecutionProviders& exec_providers,
-                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator* planner,
+                                      const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
+                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
                                       const T& save_tensor_func, const logging::Logger& logger,
                                       const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
@@ -186,8 +181,9 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
     id_to_initialized_tensor[ort_value_index] = entry.second;
   }
+
   for (const auto& entry : id_to_initialized_tensor) {
-    ORT_RETURN_IF_ERROR(planner->Trace(entry.first, entry.second));
+    ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 
   //2. allocate weight buffer on different locations
@@ -195,14 +191,15 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
   // It's the virtual size computed by planner.
   std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
-    planner->FinalizePlan(planned_initializers_memory_sizes_in_byte));
+      planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
 
-  for (auto i: planned_initializers_memory_sizes_in_byte) {
+  for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
 
   OrtCallback deleter;
+
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
@@ -211,20 +208,21 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
     std::unique_ptr<MemBuffer> m;
     // TODO: if the tensor need be copied, does it have enough room?
-    ORT_RETURN_IF_ERROR(planner->GetPreallocatedBuffer(ort_value_index, name, m));
+    ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m));
 #ifndef NDEBUG
     ORT_ENFORCE(m != nullptr);
     ORT_ENFORCE(m->GetBuffer() != nullptr || m->GetLen() == 0);
 #endif
     OrtValue ort_value;
-    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, exec_providers, ort_value, deleter, data_transfer_mgr);
+    Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, *m, default_cpu_memory_info, ort_value, deleter,
+                                       data_transfer_mgr);
     if (!st.IsOK()) {
       std::ostringstream oss;
       oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
       return Status(st.Category(), st.Code(), oss.str());
     }
 
-    bool constant = graph_utils::IsConstantInitializer(graph, name, /* check_outer_scope */ false);
+    bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
     ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
@@ -237,22 +235,20 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 template <typename T>  // T is container of const NodeArg* or NodeArg*
 static bool IsArgNameInInputsOutputs(const std::string& name,
                                      const T& graph_args) {
-  auto it = std::find_if(graph_args.cbegin(), graph_args.cend(), [&name](const onnxruntime::NodeArg* arg) {
-    return arg->Name() == name;
-  });
+  auto it = std::find_if(graph_args.cbegin(), graph_args.cend(),
+                         [&name](const onnxruntime::NodeArg* arg) {
+                           return arg->Name() == name;
+                         });
   return it != graph_args.cend();
 }
 
-common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph,
-                                                 const KernelRegistryManager& custom_registry_manager,
-                                                 SessionState& session_state,
-                                                 const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs) {
+static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
+                                                        const KernelRegistryManager& custom_registry_manager,
+                                                        SessionState& session_state,
+                                                        const std::vector<const NodeArg*>& implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 
-  if (implicit_inputs && implicit_inputs->empty()) {
-    implicit_inputs = nullptr;
-  }
   const auto* exec_plan = session_state.GetExecutionPlan();
   const auto& name_to_id = session_state.GetOrtValueNameIdxMap();
 
@@ -280,18 +276,12 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::Graph& graph
                 return Status::OK();
               }
 
-              if (implicit_inputs) {
-                if (IsArgNameInInputsOutputs(arg.Name(), *implicit_inputs)) {
+              if (!implicit_inputs.empty()) {
+                if (IsArgNameInInputsOutputs(arg.Name(), implicit_inputs)) {
                   ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
                   return Status::OK();
                 }
               }
-
-              // ??? Why are we checking if an input to a node is also in the graph output
-              //if (IsArgNameInInputsOutputs(arg.Name(), graph_outputs)) {
-              //  session_state.AddOutputNameToNodeInfoMapping(arg.Name(), node_info);
-              //  return Status::OK();
-              //}
 
               return Status::OK();
             }));

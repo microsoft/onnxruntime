@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/logging/logging.h>
+
 #include "model.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -25,12 +27,18 @@ Model::~Model() {
 
 void Model::AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type) {
   input_names_.push_back(name);
-  operand_types_.insert({name, operand_type});
+  operand_types_.emplace(name, operand_type);
 }
 
-void Model::AddOutput(const std::string& name, const android::nn::wrapper::OperandType& operand_type) {
-  output_names_.push_back(name);
-  operand_types_.insert({name, operand_type});
+void Model::AddOutput(const std::string& onnx_output_name,
+                      const std::string& nnapi_output_name,
+                      const android::nn::wrapper::OperandType& operand_type) {
+  LOGS_DEFAULT(VERBOSE) << "Model::AddOutput output name " << onnx_output_name
+                        << " shape " << Shape2String(operand_type.dimensions);
+
+  output_names_.push_back(onnx_output_name);
+  onnx_to_nnapi_output_map_.emplace(onnx_output_name, nnapi_output_name);
+  operand_types_.emplace(nnapi_output_name, operand_type);
 }
 
 const std::vector<std::string>& Model::GetInputs() const {
@@ -46,9 +54,10 @@ const android::nn::wrapper::OperandType& Model::GetInputType(const std::string& 
 }
 
 const android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name) const {
-  const auto& output_type = operand_types_.at(name);
+  const auto& nnapi_output_name = onnx_to_nnapi_output_map_.at(name);
+  const auto& output_type = operand_types_.at(nnapi_output_name);
   android::nn::wrapper::OperandType type(
-      output_type.type, shaper_for_exeuction_[name], output_type.operandType.scale, output_type.operandType.zeroPoint);
+      output_type.type, shaper_for_exeuction_[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
 
   return type;
 }
@@ -78,6 +87,9 @@ void Model::SetInputBuffer(const int32_t index, const InputBuffer& input) {
 
 void Model::SetOutputBuffer(const int32_t index, const OutputBuffer& output) {
   PrepareForExecution();
+
+  LOGS_DEFAULT(VERBOSE) << "Model::SetOutputBuffer, output shape "
+                        << Shape2String(output.type.dimensions);
 
   THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setOutput(
       execution_, index, &output.type.operandType, output.buffer, output.type.GetOperandBlobByteSize()));
