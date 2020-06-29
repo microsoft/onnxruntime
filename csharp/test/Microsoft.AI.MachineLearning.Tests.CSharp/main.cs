@@ -13,8 +13,6 @@ namespace Microsoft.AI.MachineLearning.Tests
             Console.WriteLine("Load squeezenet.onnx.");
             var model = LearningModel.LoadFromFilePath("squeezenet.onnx");
 
-            Windows.Media.VideoFrame frame = null;
-
             Console.WriteLine("Load kitten_224.png as StorageFile.");
             var name = AppDomain.CurrentDomain.BaseDirectory + "kitten_224.png";
             var image_task = Windows.Storage.StorageFile.GetFileFromPathAsync(name);
@@ -73,21 +71,22 @@ namespace Microsoft.AI.MachineLearning.Tests
                 using (var software_bitmap = software_bitmap_task.GetResults())
                 {
                     Console.WriteLine("Create VideoFrame.");
-                    frame = Windows.Media.VideoFrame.CreateWithSoftwareBitmap(software_bitmap);
+                    var frame = Windows.Media.VideoFrame.CreateWithSoftwareBitmap(software_bitmap);
+
+                    Console.WriteLine("Create LearningModelSession.");
+                    using (var session = new LearningModelSession(model))
+                    {
+                        Console.WriteLine("Create LearningModelBinding.");
+                        var binding = new LearningModelBinding(session);
+                        Console.WriteLine("Bind data_0.");
+                        binding.Bind("data_0", frame);
+                        Console.WriteLine("Evaluate.");
+                        var results = session.Evaluate(binding, "");
+                    }
+                    Console.WriteLine("Success!\n");
                 }
             }
 
-            Console.WriteLine("Create LearningModelSession.");
-            using (var session = new LearningModelSession(model))
-            {
-                Console.WriteLine("Create LearningModelBinding.");
-                var binding = new LearningModelBinding(session);
-                Console.WriteLine("Bind data_0.");
-                binding.Bind("data_0", frame);
-                Console.WriteLine("Evaluate.");
-                var results = session.Evaluate(binding, "");
-            }
-            Console.WriteLine("Success!\n");
         }
     }
 }
