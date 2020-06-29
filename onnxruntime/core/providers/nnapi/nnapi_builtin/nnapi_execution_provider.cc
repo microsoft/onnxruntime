@@ -66,12 +66,12 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph_view.Nodes()) {
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
-    for (auto input : node.InputDefs()) {
+    for (auto* input : node.InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);
       all_node_inputs.insert(input->Name());
     }
-    for (auto output : node.OutputDefs()) {
+    for (auto* output : node.OutputDefs()) {
       auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
       outputs.push_back(&n_output);
     }
@@ -113,9 +113,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     for (const auto& index : group) {
       sub_graph->nodes.push_back(node_index[index]);
-      const auto node = graph_view.GetNode(node_index[index]);
+      const auto* node = graph_view.GetNode(node_index[index]);
 
-      for (const auto& input : node->InputDefs()) {
+      for (const auto* input : node->InputDefs()) {
         const auto it = fused_outputs.find(input);
         if (it != fused_outputs.end()) {
           fused_outputs.erase(it);
@@ -135,7 +135,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       std::unordered_set<const NodeArg*> processed_outputs;
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         const auto node_idx = it->GetNode().Index();
-        const auto output = node->OutputDefs()[it->GetSrcArgIndex()];
+        const auto* output = node->OutputDefs()[it->GetSrcArgIndex()];
 
         if (node_set.find(node_idx) != node_set.end()) {
           const auto iter = fused_inputs.find(output);
@@ -152,7 +152,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         processed_outputs.insert(output);
       }
 
-      for (const auto& output : node->OutputDefs()) {
+      for (const auto* output : node->OutputDefs()) {
         if (processed_outputs.find(output) != processed_outputs.end())
           continue;
 
@@ -209,13 +209,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-std::string GetShape(const std::vector<uint32_t>& dimensions) {
-  std::string ret = "";
-  for (auto dim : dimensions)
-    ret += std::to_string(dim) + " ";
-  return "[" + ret + "]";
-}
-
 common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   using namespace android::nn::wrapper;
@@ -235,6 +228,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
     {
       nnapi::ModelBuilder builder(model_proto);
+      builder.SetUseNCHW(false);
+      builder.SetUseFp16(false);
       std::unique_ptr<nnapi::Model> nnapi_model = builder.Compile();
 
       // Build map from input name to its index in input definitions
@@ -275,8 +270,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
-
-      // TODO[VSO:798241], need to have exclusive access to the model within the scope of this compute_func
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
       const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
@@ -316,44 +309,49 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
 
-      model->SetInputBuffers(inputs);
-      std::vector<nnapi::Model::OutputBuffer> outputs;
-      outputs.reserve(num_outputs);
-      for (size_t i = 0; i < num_outputs; i++) {
-        const auto output_name = model->GetOutputs()[i];
-        const auto model_output_type = model->GetOutputType(output_name);
-        const auto output_shape = model_output_type.dimensions;
+      // From this point we will need to take the exclusive lock on the model until the Predict is
+      // performed, to block other threads (if any) to modify this particular model
+      {
+        std::unique_lock<OrtMutex> lock(model->GetMutex());
+        model->SetInputBuffers(inputs);
+        std::vector<nnapi::Model::OutputBuffer> outputs;
+        outputs.reserve(num_outputs);
+        for (size_t i = 0; i < num_outputs; i++) {
+          const auto output_name = model->GetOutputs()[i];
+          const auto model_output_type = model->GetOutputType(output_name);
+          const auto output_shape = model_output_type.dimensions;
 
-        std::vector<int64_t> int64_output_shape(output_shape.begin(),
-                                                output_shape.end());
-        auto output_idx = model->GetMappedOutputIdx(output_name);
-        auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx,
-                                                          int64_output_shape.data(),
-                                                          int64_output_shape.size());
+          std::vector<int64_t> int64_output_shape(output_shape.begin(),
+                                                  output_shape.end());
+          auto output_idx = model->GetMappedOutputIdx(output_name);
+          auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx,
+                                                            int64_output_shape.data(),
+                                                            int64_output_shape.size());
 
-        void* output_buffer = nullptr;
-        switch (model_output_type.type) {
-          case Type::TENSOR_FLOAT32:
-            output_buffer = ort.GetTensorMutableData<float>(output_tensor);
-            break;
-          case Type::TENSOR_INT32:
-            output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
-            break;
-          default:
-            ORT_THROW("Unsupported output type: " + TypeToStr(model_output_type.type));
-            break;
+          void* output_buffer = nullptr;
+          switch (model_output_type.type) {
+            case Type::TENSOR_FLOAT32:
+              output_buffer = ort.GetTensorMutableData<float>(output_tensor);
+              break;
+            case Type::TENSOR_INT32:
+              output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+              break;
+            default:
+              return Status(common::ONNXRUNTIME, common::FAIL,
+                            "Unsupported output type: " + TypeToStr(model_output_type.type));
+              break;
+          }
+
+          if (model_output_type.GetOperandBlobByteSize() == 0) {
+            return Status(common::ONNXRUNTIME, common::FAIL, "We do not support dynamic output shape for now");
+          }
+
+          outputs.push_back({output_buffer, std::move(model_output_type)});
         }
 
-        if (model_output_type.GetOperandBlobByteSize() == 0) {
-          return Status(common::ONNXRUNTIME, common::FAIL, "We do not support dynamic output shape for now");
-        }
-
-        outputs.push_back({output_buffer, std::move(model_output_type)});
+        model->SetOutputBuffers(outputs);
+        model->Predict();
       }
-
-      model->SetOutputBuffers(outputs);
-
-      model->Predict();
 
       return Status::OK();
     };

@@ -41,8 +41,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       if (alloc->Info().alloc_type == OrtArenaAllocator) {
         // Arena has a specific way to store static memory.
         // Arena does not reuse static memory allocated by Reserve.
-        buffer = static_cast<IArenaAllocator*>(
-          alloc.get())->Reserve(peak_size);
+        buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(peak_size);
       }
       else {
         buffer = alloc->Alloc(peak_size);
@@ -60,9 +59,9 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(session_state),
         planner_(execution_plan),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}

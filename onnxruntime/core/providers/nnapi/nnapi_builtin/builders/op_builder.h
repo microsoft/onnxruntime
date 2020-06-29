@@ -31,5 +31,9 @@ class IOpBuilder {
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
 CreateOpBuilders();
 
+void TransposeNHWCToNCHW(ModelBuilder& model_builder,
+                         const std::string& input,
+                         const std::string& output);
+
 }  // namespace nnapi
 }  // namespace onnxruntime
