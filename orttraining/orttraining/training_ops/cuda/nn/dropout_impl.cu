@@ -29,13 +29,13 @@ __global__ void DropoutGradientKernel(
     const int64_t N,
     const T* dY_data,
     const bool* mask_data,
-    const T scale,
+    const float scale,
     T* dX_data) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      dX_data[id] = dY_data[id] * T(mask_data[id]) * scale;
+      dX_data[id] = T(float(dY_data[id]) * mask_data[id] * scale);
       id += NumThreadsPerBlock;
     }
   }
@@ -56,7 +56,7 @@ void DropoutGradientKernelImpl(
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = static_cast<int>(CeilDiv(N, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
     DropoutGradientKernel<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-                         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(N, dY_data, mask_data, T(scale), dX_data);
+                         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(N, dY_data, mask_data, scale, dX_data);
   }
 }
 
@@ -86,7 +86,7 @@ __global__ void BiasDropoutKernel(
     T* Y_data,
     bool* mask_data) {
   const float p = 1.0f - ratio;
-  const T scale = T(1.0f / p);
+  const float scale = 1.0f / p;
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
@@ -109,15 +109,15 @@ __global__ void BiasDropoutKernel(
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
         int offset = fdm_dim.mod(li);
-        T bias = bias_data[offset];
+        float bias = float(bias_data[offset]);
 
         mask_data[li] = (&rand.x)[i] < p;
-        T output_data = (X_data[li] + bias) * T(mask_data[li]) * scale;
+        float output_data = (float(X_data[li]) + bias) * mask_data[li] * scale;
         if (has_residual) {
-          output_data += residual_data[li];
+          output_data += float(residual_data[li]);
         }
 
-        Y_data[li] = output_data;
+        Y_data[li] = T(output_data);
       }
     }
 

@@ -35,7 +35,7 @@ __global__ void DropoutKernel(
     T* Y_data,
     bool* mask_data) {
   const float p = 1.0f - ratio;
-  const T scale = T(1.0f / p);
+  const float scale = 1.0f / p;
 
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
   CUDA_LONG step_size = gridDim.x * blockDim.x * UNROLL;
@@ -52,12 +52,13 @@ __global__ void DropoutKernel(
   //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
   for (CUDA_LONG id = idx; id < rounded_size; id += step_size) {
     float4 rand = curand_uniform4(&state);
-
+  
+  #pragma unroll
     for (CUDA_LONG i = 0; i < UNROLL; i++) {
       CUDA_LONG li = id + gridDim.x * blockDim.x * i;
       if (li < N) {
         mask_data[li] = (&rand.x)[i] < p;
-        Y_data[li] = X_data[li] * T(mask_data[li]) * scale;
+        Y_data[li] = T(float(X_data[li]) * mask_data[li] * scale);
       }
     }
 
