@@ -3,44 +3,53 @@ from onnx import helper
 from onnx import TensorProto
 from enum import Enum
 
+def MakeSubGraph(suffix, has_bias):
+    mul_bottom_output = "mul_output" + suffix if has_bias else "output" + suffix
+    nodes = [
+        helper.make_node("MatMulInteger", ["a_quantized", "b_quantized" + suffix, "a_zp", "b_zp" + suffix], ["matmul_output_int32" + suffix], "MatMulInteger" + suffix),
+        helper.make_node("Mul", ["a_scale", "b_scale" + suffix], ["multiplier" + suffix], "mul_right" + suffix),
+        helper.make_node("Cast", ["matmul_output_int32" + suffix], ["matmul_output_float" + suffix], "cast" + suffix, to=1),
+        helper.make_node("Mul", ["matmul_output_float" + suffix, "multiplier" + suffix], [mul_bottom_output], "mul_bottom" + suffix),
+        ]
+    
+    if has_bias:
+        nodes.extend([helper.make_node("Add", [mul_bottom_output, "bias" + suffix], ["output" + suffix], "bias_add" + suffix),])
+    
+    return nodes
+
+def MakeInitializer(suffix):
+    return [
+        helper.make_tensor('b_quantized' + suffix, TensorProto.UINT8, [2,3], [2, 4, 5, 6, 7, 8]),
+        helper.make_tensor('b_zp' + suffix, TensorProto.UINT8, [], [128]),
+        helper.make_tensor('b_scale' + suffix, TensorProto.FLOAT, [], [1.8]),
+        ]
+
 def GenerateModel(model_name):
-    nodes = [  # LayerNorm subgraph
-        helper.make_node("DynamicQuantizeLinear", ["input"], ["a_quantized", "a_scale", "a_zp"], "DynamicQuantizeLinear"),
-        
-        #MatMulInteger 1
-        helper.make_node("MatMulInteger", ["a_quantized", "b_quantized_1", "a_zp", "b_zp_1"], ["matmul_output_int32_1"], "MatMulInteger_1"),
-        helper.make_node("Mul", ["a_scale", "b_scale_1"], ["multiplier_1"], "mul_right_1"),
-        helper.make_node("Cast", ["matmul_output_int32_1"], ["matmul_output_float_1"], "cast_1", to=1),
-        helper.make_node("Mul", ["matmul_output_float_1", "multiplier_1"], ["output_1"], "mul_bottom_1"),
+    nodes = [helper.make_node("DynamicQuantizeLinear", ["input"], ["a_quantized", "a_scale", "a_zp"], "DynamicQuantizeLinear"),]
+    nodes.extend(MakeSubGraph("_1", True))
+    nodes.extend(MakeSubGraph("_2", True))
+    nodes.extend(MakeSubGraph("_3", False))
 
-        #MatMulInteger 2
-        helper.make_node("MatMulInteger", ["a_quantized", "b_quantized_2", "a_zp", "b_zp_2"], ["matmul_output_int32_2"], "MatMulInteger_2"),
-        helper.make_node("Mul", ["a_scale", "b_scale_2"], ["multiplier_2"], "mul_right_2"),
-        helper.make_node("Cast", ["matmul_output_int32_2"], ["matmul_output_float_2"], "cast_2", to=1),
-        helper.make_node("Mul", ["matmul_output_float_2", "multiplier_2"], ["output_2"], "mul_bottom_2"),
+    initializers = []
+    initializers.extend(MakeInitializer("_1"))
+    initializers.extend(MakeInitializer("_2"))
+    initializers.extend(MakeInitializer("_3"))
 
-    ]
-
-    initializers = [  # initializers
-        helper.make_tensor('b_quantized_1', TensorProto.UINT8, [2,3], [2, 4, 5, 6, 7, 8]),
-        helper.make_tensor('b_quantized_2', TensorProto.UINT8, [2,3], [2, 4, 5, 6, 7, 8]),
-
-        helper.make_tensor('b_zp_1', TensorProto.UINT8, [], [128]),
-        helper.make_tensor('b_zp_2', TensorProto.UINT8, [], [128]),
-
-        helper.make_tensor('b_scale_1', TensorProto.FLOAT, [], [1.8]),
-        helper.make_tensor('b_scale_2', TensorProto.FLOAT, [], [1.8]),
-    ]
+    initializers.extend([
+        helper.make_tensor('bias_1', TensorProto.FLOAT, [3], [2, 4, 5]),
+        helper.make_tensor('bias_2', TensorProto.FLOAT, [3,3], [1, 2, 3, 4, 5, 6, 7, 8, 9]),
+    ])
 
     graph = helper.make_graph(
         nodes,
-        "DynamicQuantizeLinear_fusion",  #name
+        "MatMulIntegerExtension_fusion",  #name
         [  # inputs
             helper.make_tensor_value_info('input', TensorProto.FLOAT, [3, 2]),
         ],
         [  # outputs
             helper.make_tensor_value_info('output_1', TensorProto.FLOAT, [3, 3]),
             helper.make_tensor_value_info('output_2', TensorProto.FLOAT, [3, 3]),
+            helper.make_tensor_value_info('output_3', TensorProto.FLOAT, [3, 3]),
         ],
         initializers)
 

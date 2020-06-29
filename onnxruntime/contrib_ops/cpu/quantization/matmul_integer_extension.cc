@@ -69,6 +69,8 @@ Status MatMulIntegerExtension<T1, T2>::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* Y = ctx->Output(0, helper.OutputShape());
 
+  const Tensor* bias_tensor = ctx->Input<Tensor>(6);
+
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     QGemm(static_cast<int>(helper.M()),
@@ -83,7 +85,7 @@ Status MatMulIntegerExtension<T1, T2>::Compute(OpKernelContext* ctx) const {
           Y->template MutableData<float>() + helper.OutputOffsets()[i],
           static_cast<int>(helper.N()),
           &multiplier,
-          nullptr,
+          nullptr != bias_tensor ? bias_tensor->Data<float>() : nullptr,
           thread_pool);
   }
 

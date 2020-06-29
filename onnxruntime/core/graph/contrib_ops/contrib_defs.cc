@@ -1696,6 +1696,11 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "of elements should be equal to the number of columns of input 'B'.",
           "T2",
           OpSchema::Optional)
+      .Input(4,
+             "bias",
+             "1D input tensor, whose dimension is same as B's last dimension",
+             "T1",
+             OpSchema::Optional)
       .Output(0, "Y", "Matrix multiply results from A * B", "T1")
       .TypeConstraint(
           "T1",
@@ -1745,6 +1750,11 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "of elements should be equal to the number of columns of input 'B'.",
           "T2",
           OpSchema::Optional)
+      .Input(6,
+             "bias",
+             "1D input tensor, whose dimension is same as B's last dimension",
+             "T3",
+             OpSchema::Optional)
       .Output(0, "Y", "Matrix multiply results from A * B", "T3")
       .TypeConstraint(
           "T1",
