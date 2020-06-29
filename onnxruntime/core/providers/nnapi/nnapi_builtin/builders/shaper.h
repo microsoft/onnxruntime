@@ -47,6 +47,10 @@ class Shaper {
           const std::string& input2_name,
           const std::string& output_name);
 
+  void Concat(const std::vector<std::string>& input_names,
+              const int32_t axis,
+              const std::string& output_name);
+
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
@@ -68,3 +72,5 @@ class Shaper {
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<void(Shaper&)>> shape_ops_;
 };
+
+std::string Shape2String(const Shaper::Shape& shape);
