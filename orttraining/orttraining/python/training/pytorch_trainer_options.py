@@ -11,14 +11,13 @@ class PytorchTrainerOptions(object):
     The parameters are hierarchically organized to facilitate configuration through semantic groups
     that encompasses features, such as distributed training, etc.
 
-    Although this class uses a dictionary for initialization, input validation
-    is performed to make sure only supported parameters and values are stored.
-    When an invalid iknput is detected, a :py:obj:`ValueError` exception is raised
-    with details on it.
+    Input validation is performed on the input dict during instantiation to ensure
+    that supported parameters and values are passed in. Invalid input results
+    in :py:obj:`ValueError` exception with details on it.
 
     Args:
         options (dict): contains all training options
-        _validate (bool, default is True) : internal flag that indicates whether input should be validated
+        _validate (bool, default is True): for internal use only
 
     Supported schema for kwargs:
 
