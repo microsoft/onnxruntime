@@ -61,7 +61,6 @@ To achieve the best performance on a growing set of compute targets across cloud
 Supported
 
 Supported EPs are listed [here](../README.md#supported-accelerators). Upcoming EPs include:
-* AMD GPU
 * Xilinx FPGA
 
 

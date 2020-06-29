@@ -22,6 +22,7 @@
     * [ArmNN](#ArmNN)
     * [Rockchip RKNPU](#RKNPU)
     * [Xilinx Vitis-AI](#Vitis-AI)
+    * [AMD MIGraphX](#AMD-MIGraphX)
   * Options
     * [OpenMP](#OpenMP)
     * [OpenBLAS](#OpenBLAS)
@@ -59,8 +60,8 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 ```
 ./build.sh --config RelWithDebInfo --build_shared_lib --parallel
 ```
-By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12. 
-The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+. 
+By default, ORT is configured to be built for a minimum target Mac OS X version of 10.12.
+The shared library in the release Nuget(s) and the Python wheel may be installed on Mac OS X versions of 10.12+.
 
 #### Notes
 
@@ -159,7 +160,7 @@ Build instructions are [here](./docs/Server.md)
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./dockerfiles#cuda). 
+A Dockerfile is available [here](./dockerfiles#cuda).
 
 
 #### Notes
@@ -207,14 +208,15 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
+---
 
 #### Jetson TX1/TX2/Nano (ARM64 Builds)
 
-1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated. 
+1. ONNX Runtime v1.2.0 or higher requires TensorRT 7 support, at this moment, the compatible TensorRT and CUDA libraries in [JetPack](https://docs.nvidia.com/jetson/jetpack/release-notes/) 4.4 is still under developer preview stage. Therefore, we suggest using ONNX Runtime v1.1.2 with JetPack 4.3 which has been validated.
 ```
 git clone --single-branch --recursive --branch v1.1.2 https://github.com/Microsoft/onnxruntime
 ```
-2. Indicate CUDA compiler. It's optional, cmake can automatically find the correct cuda. 
+2. Indicate CUDA compiler. It's optional, cmake can automatically find the correct cuda.
 ```
 export CUDACXX="/usr/local/cuda/bin/nvcc"
 ```
@@ -226,10 +228,10 @@ export CUDACXX="/usr/local/cuda/bin/nvcc"
 4. Modify cmake/CMakeLists.txt
 ```
 -  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # Jetson TX1/Nano 
++  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # Jetson TX1/Nano
 +  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # Jetson TX2
 ```
-5. Build onnxruntime with --use_tensorrt flag 
+5. Build onnxruntime with --use_tensorrt flag
 ```
 ./build.sh --config Release --update --build --build_wheel --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu --tensorrt_home /usr/lib/aarch64-linux-gnu
 
@@ -251,6 +253,18 @@ DNNL: `./build.sh --use_dnnl`
 
 
 ### nGraph
+
+#### Deprecation Notice
+
+| | |
+| --- | --- | 
+| Deprecation Begins	| June 1, 2020 |
+| Removal Date |	December 1, 2020 |
+
+Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
+
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
+
 See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
 #### Build Instructions
@@ -270,17 +284,20 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.3** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.3/index.html) for detailed instructions.
+
+  *Although 2020.3 LTS is the recommended OpenVINO version, [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is also additionally supported.*
+
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#install-VPU)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#install-VPU. Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -291,6 +308,12 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
    ```
       C:\ <openvino_install_directory>\bin\setupvars.bat
    ```
+
+4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
+   * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:
+      * Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field "bypass_device_number" to 8.
+      * Restart the hddl daemon for the changes to take effect.
+      * Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
 
 
 #### Build Instructions
@@ -601,7 +624,7 @@ OnnxRuntime supports build options for enabling debugging of intermediate tensor
 #### Build Instructions
 Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to one of the values below.
 
-**Linux** 
+**Linux**
 ```
 ./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=VALUE
 ```
@@ -657,7 +680,7 @@ The build process can take hours.
 
 This option is very fast and allows the package to be built in minutes, but is challenging to setup. If you have a large code base (e.g. you are adding a new execution provider to onnxruntime), this may be the only feasible method.
 
-##### 1. Get the corresponding toolchain. 
+##### 1. Get the corresponding toolchain.
 TLDR; Go to https://www.linaro.org/downloads/, get "64-bit Armv8 Cortex-A, little-endian" and "Linux Targeted", not "Bare-Metal Targeted". Extract it to your build machine and add the bin folder to your $PATH env. Then skip this part.
 
 You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
@@ -682,7 +705,7 @@ Thread model: single
 gcc version 9.2.1 20190827 (Red Hat Cross 9.2.1-3) (GCC)
 ```
 
-Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`. 
+Check the value of `--build`, `--host`, `--target`, and if it has special args like `--with-arch=armv8-a`, `--with-arch=armv6`, `--with-tune=arm1176jz-s`, `--with-fpu=vfp`, `--with-float=hard`.
 
 You must also know what kind of flags your target hardware need, which can differ greatly. For example, if you just get the normal ARMv7 compiler and use it for Raspberry Pi V1 directly, it won't work because Raspberry Pi only has ARMv6. Generally every hardware vendor will provide a toolchain; check how that one was built.
 
@@ -694,33 +717,33 @@ A target env is identifed by:
 * ABI: ARM has mutilple ABIs like eabi, eabihf...
 
 You can get all these information from the previous output, please be sure they are all correct.
-    
-##### 2. Get a pre-compiled protoc:    
+
+##### 2. Get a pre-compiled protoc:
    Get this from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip and unzip after downloading.
    The version must match the one onnxruntime is using. Currently we are using 3.11.2.
-   
+
 ##### 3. (Optional) Setup sysroot to enable python extension. *Skip if not using Python.*
-   
+
    Dump the root file system of the target operating system to your build machine. We'll call that folder "sysroot" and use it for build onnxruntime python extension. Before doing that, you should install python3 dev package(which contains the C header files) and numpy python package on the target machine first.
-   
+
    Below are some examples.
-   
+
    If the target OS is raspbian-buster, please download the RAW image from [their website](https://www.raspberrypi.org/downloads/raspbian/) then run:
-```bash   
-$ fdisk -l 2020-02-13-raspbian-buster.img   
-```   
-Disk 2020-02-13-raspbian-buster.img: 3.54 GiB, 3787456512 bytes, 7397376 sectors    
-Units: sectors of 1 * 512 = 512 bytes    
-Sector size (logical/physical): 512 bytes / 512 bytes    
-I/O size (minimum/optimal): 512 bytes / 512 bytes    
-Disklabel type: dos    
-Disk identifier: 0xea7d04d6    
-  
+```bash
+$ fdisk -l 2020-02-13-raspbian-buster.img
+```
+Disk 2020-02-13-raspbian-buster.img: 3.54 GiB, 3787456512 bytes, 7397376 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0xea7d04d6
+
 | Device                          | Boot | Start  | End     | Sectors | Size | Id | Type            |
 |---------------------------------|------|--------|---------|---------|------|----|-----------------|
 | 2020-02-13-raspbian-buster.img1 |      | 8192   | 532479  | 524288  | 256M | c  | W95 FAT32 (LBA) |
 | 2020-02-13-raspbian-buster.img2 |      | 532480 | 7397375 | 6864896 | 3.3G | 83 | Linux           |
-    
+
 You'll find the the root partition starts at the 532480 sector, which is 532480 \* 512=272629760 bytes from the beginning.
 
 Then run:
@@ -784,17 +807,17 @@ docker export 5a796e98db05 -o manylinux2014_aarch64.tar
 
 ##### 4. Generate CMake toolchain file
    Save the following content as tool.cmake
-   
+
 ```cmake
-    SET(CMAKE_SYSTEM_NAME Linux)    
-    SET(CMAKE_SYSTEM_VERSION 1)    
-    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)    
-    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)            
-    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)    
-    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)    
-    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)    
-    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)    
-    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)    
+    SET(CMAKE_SYSTEM_NAME Linux)
+    SET(CMAKE_SYSTEM_VERSION 1)
+    SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+    SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+    SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+    SET(CMAKE_FIND_ROOT_PATH /mnt/pi)
 ```
 If you don't have a sysroot, you can delete the last line.
 
@@ -890,54 +913,54 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
 
 #### Prerequisites
 
-The SDK and NDK packages can be installed via Android Studio or the sdkmanager command line tool. 
-Android Studio is more convenient but a larger installation. 
+The SDK and NDK packages can be installed via Android Studio or the sdkmanager command line tool.
+Android Studio is more convenient but a larger installation.
 The command line tools are smaller and usage can be scripted, but are  a little more complicated to setup. They also require a Java runtime environment to be available.
 
-General Info:  
+General Info:
   - API levels: https://developer.android.com/guide/topics/manifest/uses-sdk-element.html
   - Android ABIs: https://developer.android.com/ndk/guides/abis
   - System Images: https://developer.android.com/topic/generic-system-image
 
 ##### Android Studio
 
-Install Android Studio from https://developer.android.com/studio 
+Install Android Studio from https://developer.android.com/studio
 
 Install any additional SDK Platforms if necessary
   - File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
-    - Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page 
+    - Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
     - Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
 
 Install an NDK version
   - File->Settings->Appearance & Behavior->System Settings->Android SDK
     - 'SDK Tools' tab
-      - Select 'Show package details' checkbox at the bottom to see specific versions. 
+      - Select 'Show package details' checkbox at the bottom to see specific versions.
         By default the latest will be installed which should be fine.
   - The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
     - e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
 
-##### sdkmanager from command line tools 
+##### sdkmanager from command line tools
   - If necessary install the Java Runtime Environment and set the JAVA_HOME environment variable to point to it
     - https://www.java.com/en/download/
     - Windows note: You MUST install the 64-bit version (https://www.java.com/en/download/manual.jsp) otherwise sdkmanager will only list x86 packages
-      and the latest NDK is x64 only. 
-  - For sdkmanager to work it needs a certain directory structure. 
+      and the latest NDK is x64 only.
+  - For sdkmanager to work it needs a certain directory structure.
     First create the top level directory for the Android infrastructure.
     - in our example we'll call that `.../Android/`
-  - Download the command line tools from the 'Command line tools only' section towards the bottom 
+  - Download the command line tools from the 'Command line tools only' section towards the bottom
     of https://developer.android.com/studio
   - Create a directory called 'cmdline-tools' under your top level directory
     - giving `.../Android/cmdline-tools`
   - extract the 'tools' directory from the command line tools zip file into this directory
     - giving `.../Android/cmdline-tools/tools`
-    - Windows note: preferably extract using 7-zip. 
-      If using the built in Windows zip extract tool you will need to fix the directory structure 
-      by moving the jar files from `tools\lib\_` up to `tools\lib` 
+    - Windows note: preferably extract using 7-zip.
+      If using the built in Windows zip extract tool you will need to fix the directory structure
+      by moving the jar files from `tools\lib\_` up to `tools\lib`
       - See https://stackoverflow.com/questions/27364963/could-not-find-or-load-main-class-com-android-sdkmanager-main
   - you should now be able to run Android/cmdline-tools/bin/sdkmanager[.bat] successfully
-    - if you see an error about it being unable to save settings and the sdkmanager help text, 
+    - if you see an error about it being unable to save settings and the sdkmanager help text,
       your directory structure is incorrect.
-      - see the final steps in this answer to double check: https://stackoverflow.com/a/61176718 
+      - see the final steps in this answer to double check: https://stackoverflow.com/a/61176718
 
   - Run `.../Android/cmdline-tools/bin/sdkmanager --list` to see the packages available
 
@@ -946,7 +969,7 @@ Install an NDK version
       - e.g. `sdkmanager --install "platforms;android-29"`
     - This will install into the 'platforms' directory of our top level directory
       - so the 'Android' directory in our example
-    - The SDK path to use as --android_sdk_path when building is this top level directory 
+    - The SDK path to use as --android_sdk_path when building is this top level directory
 
   - Install the NDK
     - Find the available NDK versions by running `sdkmanager --list`
@@ -960,7 +983,7 @@ Install an NDK version
 
 ##### Cross compiling on Windows
 
-The [Ninja](https://ninja-build.org/) generator needs to be used to build on Windows as the Visual Studio generator doesn't support Android. 
+The [Ninja](https://ninja-build.org/) generator needs to be used to build on Windows as the Visual Studio generator doesn't support Android.
 
 ```
 ./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)> --cmake_generator Ninja
@@ -979,6 +1002,28 @@ e.g. using the paths from our example
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
 If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+---
+
+### AMD MIGraphX
+
+See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
+
+#### Prerequisites
+* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html) 
+   * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
+* Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
+   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
+
+#### Build Instructions
+
+##### Linux
+
+```
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
+```
+
+Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 ***
 
