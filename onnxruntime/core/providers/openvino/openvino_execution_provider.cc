@@ -97,6 +97,7 @@ bool IsOpSupported(std::string name, std::string device) {
       "Div",
       "Dropout",
       "Elu",
+      "Erf",
       "Flatten",
       "Floor",
       "Gather",
@@ -124,8 +125,8 @@ bool IsOpSupported(std::string name, std::string device) {
       "ReduceSum",
       "Relu",
       "Reshape",
-      "Shape",
       "Selu",
+      "Shape",
       "Sigmoid",
       "Slice",
       "Softmax",
@@ -135,7 +136,6 @@ bool IsOpSupported(std::string name, std::string device) {
       "Sum",
       "Tanh",
       "TopK",
-      "Erf",
       "Transpose",
       "Unsqueeze",
   };
@@ -164,7 +164,6 @@ bool IsOpSupported(std::string name, std::string device) {
 
 
   std::set<std::string> supported_ops_gpu = {
-    "HardSigmoid",
     "Abs",
     "Asin",
     "Asinh",
@@ -422,11 +421,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // nGraph only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
     return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
-  } else if (optype == "ArgMax" || optype == "ArgMin" ) {
-      
+  } else if (optype == "ArgMax" || optype == "ArgMin") {
+    // tensor type supports float as input for argmax and argmin  
     auto dtype = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    if (!(dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT ||
-          dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)) {
+    if (dtype != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       return true;      
     }
   }  
