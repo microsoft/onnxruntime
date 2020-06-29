@@ -4,7 +4,7 @@ class LossScaler(object):
     Once the scaler is configured, no user intervention is needed to update loss scale during training.
 
     Note:
-        This class should never be instantiated, but used as an abstract class for custom implementation
+        This class should never be instantiated, but used as an abstract class for custom loss scaling strategy.
     """
 
     def __init__(self):
@@ -15,7 +15,7 @@ class LossScaler(object):
         raise NotImplementedError
 
     def update(self, train_step_info):
-        r"""Updates loss scale based on user input and training session info
+        r"""Updates loss based on user input and training session info
 
         Args:
             train_step_info (TrainStepInfo): last step state information
@@ -27,7 +27,7 @@ class DynamicLossScaler(LossScaler):
     r"""Default implementation for :py:class:`.LossScaler` class used for mixed precision
 
     This loss scaler works by assuming an initial scale, which is doubled every time a certain number of
-    (stable) training steps are performed without gradients to explode (overflow or reach infinity).
+    (stable) training steps are performed without exploding gradients (overflow or reach infinity).
     When at least one of the gradients explode, loss scale is divided by 2.
 
     Users can use this class in two ways:
