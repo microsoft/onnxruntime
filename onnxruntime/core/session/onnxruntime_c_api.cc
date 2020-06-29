@@ -1611,12 +1611,15 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::AddFreeDimensionOverrideByName,
     // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 4 - In development, feel free to add/remove/rearrange here
-    &OrtApis::GetAvailableProviders,
-    &OrtApis::ReleaseAvailableProviders,
+    // Version 4 - In development
 
+    // Allocator and Bidning APIs are exposed via C# API , do not move
     &OrtApis::CreateAllocator,
-    &OrtApis::ReleaseAllocator
+    &OrtApis::ReleaseAllocator,
+
+    // feel free to add/remove/rearrange here
+    &OrtApis::GetAvailableProviders,
+    &OrtApis::ReleaseAvailableProviders
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
