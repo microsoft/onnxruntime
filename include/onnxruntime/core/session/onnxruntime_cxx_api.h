@@ -318,9 +318,6 @@ struct AllocatorWithDefaultOptions {
   OrtAllocator* p_{};
 };
 
-struct Allocator : public Base<OrtAllocator> {
-};
-
 struct MemoryInfo : Base<OrtMemoryInfo> {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 

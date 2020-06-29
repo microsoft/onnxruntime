@@ -819,6 +819,19 @@ struct OrtApi {
                   _In_ int64_t dim_value);
 
   /**
+   * \param sess valid OrtSession instance
+   * \para mem_info - valid OrtMemoryInfo instance
+   * \param - out a ptr to a new instance of OrtAllocator according to the spec within mem_info
+   *         if successful
+   * \return OrtStatus or nullptr if successful
+   */
+  ORT_API2_STATUS(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+                  _Outptr_ OrtAllocator** out);
+
+  // Release instance of OrtAllocator obtained from CreateAllocator API
+  ORT_CLASS_RELEASE(Allocator);
+
+  /**
    * \param out_ptr will hold a pointer to the array of char *
    * representing available providers.
    * \param provider_length is a pointer to an int variable where
@@ -837,7 +850,6 @@ struct OrtApi {
   ORT_API2_STATUS(ReleaseAvailableProviders, _In_ char **ptr,
                   _In_ int providers_length);
 
-<<<<<<< HEAD
   /**
      * \param value A tensor created from OrtCreateTensor... function.
      * \param index index of string tensor element, length of element at index will be returned.

@@ -441,6 +441,39 @@ TEST(CApiTest, create_session_without_session_option) {
 }
 #endif
 
+TEST(CApiTest, GetAllocatorCPU) {
+  Ort::SessionOptions session_options;
+  OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1);
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+  Ort::Allocator cpu_allocator(session, info_cpu);
+
+  int com_result = 0;
+  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info_cpu, cpu_allocator.GetInfo(), &com_result));
+  ASSERT_EQ(com_result, 0);
+  void* p = cpu_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  cpu_allocator.Free(p);
+}
+
+#ifdef USE_CUDA
+TEST(CApiTest, GetAllocatorCUDA) {
+  Ort::SessionOptions session_options;
+  OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0);
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator cuda_allocator(session, info_cuda);
+
+  int com_result = 0;
+  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info_cuda, cuda_allocator.GetInfo(), &com_result));
+  ASSERT_EQ(com_result, 0);
+  void* p = cuda_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  cuda_allocator.Free(p);
+}
+#endif
+
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
