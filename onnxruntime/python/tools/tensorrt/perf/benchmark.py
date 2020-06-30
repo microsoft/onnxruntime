@@ -11,7 +11,7 @@ from Resnet50 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    # "bert-squad": (BERTSquad, "bert-squad"),
+    "bert-squad": (BERTSquad, "bert-squad"),
     "resnet50": (Resnet50, "resnet50")
 }
 
