@@ -2,6 +2,7 @@ package ai.onnxruntime;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 
 /**
  * This is the base class for anything backed by JNI. It manages open versus closed state and
@@ -16,6 +17,8 @@ abstract class NativeObject implements AutoCloseable {
       throw new RuntimeException("Failed to load onnx-runtime library", e);
     }
   }
+
+  private static final Logger logger = Logger.getLogger(NativeObject.class.getName());
 
   private final Object handleLock = new Object();
 
@@ -75,6 +78,7 @@ abstract class NativeObject implements AutoCloseable {
        * REFERENCE COUNT UPDATE:
        */
       if (referenceCount.decrementAndGet() > 0) {
+        logger.warning("Waiting to close: " + toString());
         /*
          * In this case, there are still references being used. Wait here until the last one informs us it is
          * done.
