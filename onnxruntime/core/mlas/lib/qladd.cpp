@@ -26,7 +26,8 @@ MlasCalcQLinearAddParameters(
     float ScaleRatio_BC,
     int32_t& Shift,
     int32_t& MultiplierA,
-    int32_t& MultiplierB)
+    int32_t& MultiplierB
+    )
 {
     constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
     constexpr float MaxScaleRatio = 256.0f; //std::stof("0x1.0p+8f");
@@ -49,7 +50,8 @@ MlasCalcQLinearAddParameters(
 
 // Pure C++ helper, back off here in rare case.
 template<typename DataType, bool IsScalarA, bool IsScalarB>
-MLAS_FORCEINLINE static
+MLAS_FORCEINLINE
+static
 void
 MlasQLinearAddKernelRawHelper(
     const DataType* InputA,
@@ -129,7 +131,7 @@ public:
 
     static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a)
     {
-        return vget_high_u8(a); 
+        return vget_high_u8(a);
     }
 
     static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b)
@@ -141,7 +143,7 @@ public:
     {
         return vreinterpretq_s16_u16(a);
     }
-    
+
     static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a)
     {
         return vreinterpretq_u32_u8(a);
@@ -156,7 +158,7 @@ public:
     {
         return vreinterpret_u32_u8(a);
     }
-    
+
     static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a)
     {
         return vreinterpret_u16_u8(a);
@@ -166,12 +168,12 @@ public:
     {
         return vld1q_u8_ex(ptr, 8);
     }
-    
+
     static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a)
     {
         vst1_u8_ex(ptr, a, 8);
     }
-    
+
     static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a)
     {
         vst1q_u8_ex(ptr, a, 8);
@@ -319,6 +321,7 @@ public:
 #endif
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
+static
 void
 MlasQLinearAddKernelHelper(
     const DataType* InputA,
@@ -566,61 +569,49 @@ MlasQLinearAddKernelHelper(
 #elif defined(MLAS_SSE2_INTRINSICS)
 
 template <typename DataType>
-MLAS_FORCEINLINE static
+MLAS_FORCEINLINE
+static
 MLAS_INT32X4
 MlasShiftRightInt32(
     MLAS_INT32X4 v,
-    int imm);
+    int imm
+    );
 
 template<>
 MLAS_INT32X4
 MlasShiftRightInt32<int8_t>(
     MLAS_INT32X4 v,
-    int imm)
+    int imm
+    )
 {
-    return _mm_srai_epi32(v, imm); 
+    return _mm_srai_epi32(v, imm);
 }
 
 template<>
 MLAS_INT32X4
 MlasShiftRightInt32<uint8_t>(
     MLAS_INT32X4 v,
-    int imm)
+    int imm
+    )
 {
     return _mm_srli_epi32(v, imm);
 }
 
 template <typename DataType>
-MLAS_FORCEINLINE static
-MLAS_INT32X4
-MlasUnpackLowI8ToS16(MLAS_INT32X4 v);
-
-template <>
-MLAS_INT32X4
-MlasUnpackLowI8ToS16<int8_t>(MLAS_INT32X4 v)
-{
-    return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8);
-}
-
-template <>
-MLAS_INT32X4
-MlasUnpackLowI8ToS16<uint8_t>(MLAS_INT32X4 v)
-{
-    return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8);
-}
-
-template <typename DataType>
-MLAS_FORCEINLINE static
+MLAS_FORCEINLINE
+static
 MLAS_INT32X4
 MlasPackS16_128(
     MLAS_INT32X4 a,
-    MLAS_INT32X4 b);
+    MLAS_INT32X4 b
+    );
 
 template <>
 MLAS_INT32X4
 MlasPackS16_128<uint8_t>(
     MLAS_INT32X4 a,
-    MLAS_INT32X4 b)
+    MLAS_INT32X4 b
+    )
 {
     return _mm_packus_epi16(a, b);
 }
@@ -629,12 +620,14 @@ template <>
 MLAS_INT32X4
 MlasPackS16_128<int8_t>(
     MLAS_INT32X4 a,
-    MLAS_INT32X4 b)
+    MLAS_INT32X4 b
+    )
 {
     return _mm_packs_epi16(a, b);
 }
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
+static
 void
 MlasQLinearAddKernelHelper(
     const DataType* InputA,
@@ -717,6 +710,7 @@ MlasQLinearAddKernelHelper(
 #else
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
+static
 void
 MlasQLinearAddKernelHelper(
     const DataType* InputA,
@@ -739,6 +733,7 @@ MlasQLinearAddKernelHelper(
 #endif
 
 template<typename DataType>
+static
 void
 MLASCALL
 MlasQLinearAddKernel(

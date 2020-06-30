@@ -21,35 +21,46 @@ Abstract:
 #include "../../mlasi.h"
 
 template <typename DataType>
-MLAS_FORCEINLINE static
+MLAS_FORCEINLINE
+static
 __m256i
-MlasShiftRight24Epi32(__m256i v);
+MlasShiftRight24Epi32(
+    __m256i v
+    );
 
 template <>
 __m256i
 MlasShiftRight24Epi32<int8_t>(
-    __m256i v)
+    __m256i v
+    )
 {
-    return _mm256_srai_epi32(v, 24); 
+    return _mm256_srai_epi32(v, 24);
 }
 
 template <>
 __m256i
-MlasShiftRight24Epi32<uint8_t>(__m256i v)
+MlasShiftRight24Epi32<uint8_t>(
+    __m256i v
+    )
 {
-    return _mm256_srli_epi32(v, 24); 
+    return _mm256_srli_epi32(v, 24);
 }
 
 template <typename DataType>
-MLAS_FORCEINLINE static
+MLAS_FORCEINLINE
+static
 __m256i
-MlasPackS16_256(__m256i a, __m256i b);
+MlasPackS16_256(
+    __m256i a,
+    __m256i b
+    );
 
 template <>
 __m256i
 MlasPackS16_256<uint8_t>(
     __m256i a,
-    __m256i b)
+    __m256i b
+    )
 {
     return _mm256_packus_epi16(a, b);
 }
@@ -58,12 +69,14 @@ template <>
 __m256i
 MlasPackS16_256<int8_t>(
     __m256i a,
-    __m256i b)
+    __m256i b
+    )
 {
-    return _mm256_packs_epi16(a, b); 
+    return _mm256_packs_epi16(a, b);
 }
 
 template <typename DataType, bool IsScalarA, bool IsScalarB>
+static
 void
 MlasQLinearAddKernelAvx2Helper(
     const DataType* InputA,
@@ -75,7 +88,8 @@ MlasQLinearAddKernelAvx2Helper(
     float ScaleC,
     int32_t ZeroPointC,
     DataType* OutputC,
-    size_t N)
+    size_t N
+    )
 {
   const float ScaleRatio_AC = ScaleA / ScaleC;
   const float ScaleRatio_BC = ScaleB / ScaleC;
@@ -185,6 +199,7 @@ MlasQLinearAddKernelAvx2Helper(
 }
 
 void
+MLASCALL
 MlasQLinearAddS8KernelAvx2(
     const int8_t* InputA,
     float ScaleA,
@@ -196,7 +211,8 @@ MlasQLinearAddS8KernelAvx2(
     int32_t ZeroPointC,
     int8_t* OutputC,
     size_t LengthA,
-    size_t LengthB)
+    size_t LengthB
+    )
 {
   if (LengthA == 1) {
     MlasQLinearAddKernelAvx2Helper<int8_t, true, false>(
@@ -211,6 +227,7 @@ MlasQLinearAddS8KernelAvx2(
 }
 
 void
+MLASCALL
 MlasQLinearAddU8KernelAvx2(
     const uint8_t* InputA,
     float ScaleA,
@@ -222,7 +239,8 @@ MlasQLinearAddU8KernelAvx2(
     int32_t ZeroPointC,
     uint8_t* OutputC,
     size_t LengthA,
-    size_t LengthB)
+    size_t LengthB
+    )
 {
   if (LengthA == 1) {
     MlasQLinearAddKernelAvx2Helper<uint8_t, true, false>(
