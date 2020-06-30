@@ -1045,7 +1045,7 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
-    run_subprocess([sys.executable, 'orttraining_test_pytorch_trainer_frontend.py'], cwd=cwd)
+    run_subprocess([sys.executable, 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):

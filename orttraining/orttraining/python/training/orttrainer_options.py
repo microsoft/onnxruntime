@@ -5,7 +5,7 @@ from .optim import lr_scheduler
 from .amp import loss_scaler
 
 
-class PytorchTrainerOptions(object):
+class ORTTrainerOptions(object):
     r"""Settings used by ONNX Runtime training backend
 
     The parameters are hierarchically organized to facilitate configuration through semantic groups
@@ -195,7 +195,7 @@ class PytorchTrainerOptions(object):
     Example:
         .. code-block:: python
 
-            opts = PytorchTrainerOptions({
+            opts = ORTTrainerOptions({
                                'batch' : {
                                    'gradient_accumulation_steps' : 128
                                },
@@ -221,8 +221,8 @@ class PytorchTrainerOptions(object):
 
         # Validates user input
         self._validated_opts = dict(self._original_opts)
-        validator = PytorchTrainerOptionsValidator(
-            _PYTORCH_TRAINER_OPTIONS_SCHEMA)
+        validator = ORTTrainerOptionsValidator(
+            _ORTTRAINER_OPTIONS_SCHEMA)
         self._validated_opts = validator.validated(self._validated_opts)
         if self._validated_opts is None:
             raise ValueError(f'Invalid options: {validator.errors}')
@@ -249,10 +249,10 @@ class PytorchTrainerOptions(object):
         if isinstance(v, (tuple, list, set, frozenset)):
             return type(v)([self._wrap(v) for v in v])
         else:
-            return _PytorchTrainerOptionsInternal(self._main_class_name, v) if isinstance(v, dict) else v
+            return _ORTTrainerOptionsInternal(self._main_class_name, v) if isinstance(v, dict) else v
 
 
-class _PytorchTrainerOptionsInternal(PytorchTrainerOptions):
+class _ORTTrainerOptionsInternal(ORTTrainerOptions):
     r"""Internal class used by ONNX Runtime training backend for input validation
 
     NOTE: Users MUST NOT use this class in any way!
@@ -271,7 +271,7 @@ class _PytorchTrainerOptionsInternal(PytorchTrainerOptions):
         self._initialized = True
 
 
-class PytorchTrainerOptionsValidator(cerberus.Validator):
+class ORTTrainerOptionsValidator(cerberus.Validator):
     _LR_SCHEDULER = cerberus.TypeDefinition(
         'lr_scheduler', (lr_scheduler.LRScheduler,), ())
     _LOSS_SCALER = cerberus.TypeDefinition(
@@ -295,7 +295,7 @@ def _check_is_callable(field, value, error):
         error(field, "Must be callable or None")
 
 
-_PYTORCH_TRAINER_OPTIONS_SCHEMA = {
+_ORTTRAINER_OPTIONS_SCHEMA = {
     'batch': {
         'type': 'dict',
         'default_setter': lambda _: {},

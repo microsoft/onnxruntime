@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from onnxruntime.capi.training import pytorch_trainer_options as pt_options
+from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 
 
 @pytest.mark.parametrize("test_input", [
@@ -13,7 +13,7 @@ from onnxruntime.capi.training import pytorch_trainer_options as pt_options
       'utils': {},
       '_internal_use': {}})
 ])
-def testPytorchTrainerOptionsDefaultValues(test_input):
+def testORTTrainerOptionsDefaultValues(test_input):
     ''' Test different ways of using default values for incomplete input'''
 
     expected_values = {
@@ -47,14 +47,14 @@ def testPytorchTrainerOptionsDefaultValues(test_input):
         }
     }
 
-    actual_values = pt_options.PytorchTrainerOptions(test_input)
+    actual_values = orttrainer_options.ORTTrainerOptions(test_input)
     assert actual_values._validated_opts == expected_values
 
 
-def testPytorchTrainerOptionsInvalidMixedPrecisionEnabledSchema():
+def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema():
     '''Test an invalid input based on schema validation error message'''
 
     expected_msg = "Invalid options: {'mixed_precision': [{'enabled': ['must be of boolean type']}]}"
     with pytest.raises(ValueError) as e:
-        pt_options.PytorchTrainerOptions({'mixed_precision': {'enabled': 1}})
+        orttrainer_options.ORTTrainerOptions({'mixed_precision': {'enabled': 1}})
     assert str(e.value) == expected_msg
