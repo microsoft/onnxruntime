@@ -16,6 +16,9 @@ import psutil
 import argparse
 import logging
 import torch
+import onnx
+from transformers.modeling_utils import Conv1D
+from quantize import quantize, QuantizationMode
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Tokenizer, AutoConfig
 
 logger = logging.getLogger('')
@@ -69,7 +72,6 @@ def setup_environment():
     os.environ["OMP_WAIT_POLICY"] = 'ACTIVE'
     dump_environment()
 
-
 def pytorch_inference(model, inputs, total_runs=100):
     logger.debug(f"start pytorch_inference")
     input_ids, past, attention_mask, position_ids = inputs
@@ -79,11 +81,13 @@ def pytorch_inference(model, inputs, total_runs=100):
         attention_mask = attention_mask.to(dtype=torch.float32)
     past = [p.to(dtype=torch.float32) for p in past]
 
+    inference = torch.jit.trace(model, input_ids,  past=past, attention_mask=attention_mask, position_ids=position_ids)
+
     latency = []
     with torch.no_grad():
         for _ in range(total_runs):
             start = time.time()
-            outputs = model(input_ids=input_ids, past=past, attention_mask=attention_mask, position_ids=position_ids)
+            outputs = inference(input_ids=input_ids, past=past, attention_mask=attention_mask, position_ids=position_ids)
             latency.append(time.time() - start)
 
     average_latency = sum(latency) * 1000 / len(latency)
@@ -344,6 +348,8 @@ def parse_arguments():
 
     parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
 
+    parser.add_argument("-q", "--quantize", required=False, action="store_true", help="Run quantization model")
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -460,6 +466,38 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, verbose):
 
     return session
 
+def quantize_onnx_model(onnx_model_path, quantized_model_path):
+    onnx_opt_model = onnx.load(onnx_model_path)
+    quantized_onnx_model = quantize(onnx_opt_model, quantization_mode=QuantizationMode.IntegerOps, symmetric_weight=True, force_fusions=True)
+    onnx.save(quantized_onnx_model, quantized_model_path)
+    logger.info(f"quantized model saved to:{quantized_model_path}")
+
+def _conv1d_to_linear(module):
+    in_size, out_size = module.weight.shape
+    linear = torch.nn.Linear(in_size, out_size)
+    linear.weight.data = module.weight.data.T.contiguous()
+    linear.bias.data = module.bias.data
+    return linear
+
+
+def conv1d_to_linear(model):
+    '''in-place
+    This is for Dynamic Quantization, as Conv1D is not recognized by PyTorch, convert it to nn.Linear
+    '''
+    for name in list(model._modules):
+        module = model._modules[name]
+        if isinstance(module, Conv1D):
+            linear = _conv1d_to_linear(module)
+            model._modules[name] = linear
+            print(name)
+        else:
+            conv1d_to_linear(module)
+
+def quantize_model(model, dtype=torch.qint8):
+    # TODO: mix of in-place and return, but results are different
+    # Usage model = quantize_model(model)
+    conv1d_to_linear(model)
+    return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
 
 def main():
     args = parse_arguments()
@@ -483,7 +521,7 @@ def main():
     use_LMHead = (args.model_class == 'GPT2LMHeadModel')
 
     model_name = args.model_name
-    config = AutoConfig.from_pretrained(model_name, torchscript=False, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(model_name, torchscript=True, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     
@@ -524,6 +562,13 @@ def main():
             output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu",
                                                "fp16" if args.float16 else "fp32"))
         m.save_model_to_file(onnx_model_path)
+
+    if quantize:
+        print("quantizing model")
+        quantize_onnx_model(onnx_model_path, onnx_model_path)
+        conv1d_to_linear(model)
+        model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+        print("finished quantizing")
 
     session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose)
     if session is None:
