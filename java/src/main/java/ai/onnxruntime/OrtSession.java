@@ -5,11 +5,9 @@
 package ai.onnxruntime;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,17 +29,13 @@ public class OrtSession extends NativeObject {
 
   private final OrtAllocator allocator;
 
-  private final long numInputs;
-
-  private final Set<String> inputNames;
-
   private final Map<String, NodeInfo> inputInfo;
 
-  private final long numOutputs;
-
+  /**
+   * a preconstructed array so conversion from outputInfo.keySet() to array does not need to be
+   * repeated.
+   */
   private final String[] outputNamesArray;
-
-  private final Set<String> outputNames;
 
   private final Map<String, NodeInfo> outputInfo;
 
@@ -112,21 +106,16 @@ public class OrtSession extends NativeObject {
     this.allocator = allocator;
     try (NativeReference allocatorReference = allocator.reference()) {
       long allocatorHandle = allocatorReference.handle();
-      numInputs = getNumInputs(OnnxRuntime.ortApiHandle, sessionHandle);
-      inputNames =
-          Collections.unmodifiableSet(
-              new LinkedHashSet<>(
-                  Arrays.asList(
-                      getInputNames(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle))));
-      numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle, sessionHandle);
-      outputNamesArray = getOutputNames(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle);
-      outputNames =
-          Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(outputNamesArray)));
       metadata = constructMetadata(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle);
-      // TODO: can number of inputs and their names be extracted from the map?
       inputInfo = wrapInMap(getInputInfo(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle));
-      outputInfo =
-          wrapInMap(getOutputInfo(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle));
+      NodeInfo[] outputInfoArray =
+          getOutputInfo(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle);
+      outputInfo = wrapInMap(outputInfoArray);
+      int numOutputs = outputInfoArray.length;
+      outputNamesArray = new String[numOutputs];
+      for (int i = 0; i < numOutputs; i++) {
+        outputNamesArray[i] = outputInfoArray[i].getName();
+      }
     }
   }
 
@@ -136,7 +125,7 @@ public class OrtSession extends NativeObject {
    * @return The number of inputs.
    */
   public long getNumInputs() {
-    return numInputs;
+    return inputInfo.size();
   }
 
   /**
@@ -145,7 +134,7 @@ public class OrtSession extends NativeObject {
    * @return The number of outputs.
    */
   public long getNumOutputs() {
-    return numOutputs;
+    return outputInfo.size();
   }
 
   /**
@@ -154,7 +143,7 @@ public class OrtSession extends NativeObject {
    * @return The input names.
    */
   public Set<String> getInputNames() {
-    return inputNames;
+    return inputInfo.keySet();
   }
 
   /**
@@ -163,7 +152,7 @@ public class OrtSession extends NativeObject {
    * @return The output names.
    */
   public Set<String> getOutputNames() {
-    return outputNames;
+    return outputInfo.keySet();
   }
 
   /**
@@ -260,6 +249,7 @@ public class OrtSession extends NativeObject {
    */
   private String[] convertRequestedOutputs(Set<String> requestedOutputs) throws OrtException {
     int requestedOutputsLength = requestedOutputs.size();
+    int numOutputs = outputInfo.size();
     if (requestedOutputsLength == 0 || (requestedOutputsLength > numOutputs)) {
       throw new OrtException(
           "Unexpected number of requestedOutputs, expected [1,"
@@ -270,11 +260,11 @@ public class OrtSession extends NativeObject {
     String[] requestedOutputsArray = new String[requestedOutputsLength];
     int i = 0;
     for (String s : requestedOutputs) {
-      if (outputNames.contains(s)) {
+      if (outputInfo.containsKey(s)) {
         requestedOutputsArray[i++] = s;
       } else {
         throw new OrtException(
-            "Unknown output name " + s + ", expected one of " + outputNames.toString());
+            "Unknown output name " + s + ", expected one of " + outputInfo.keySet());
       }
     }
     return requestedOutputsArray;
@@ -284,6 +274,7 @@ public class OrtSession extends NativeObject {
       Map<String, OnnxTensor> inputs, String[] requestedOutputsArray, RunOptions runOptions)
       throws OrtException {
     int numRequestedInputs = inputs.size();
+    int numInputs = inputInfo.size();
     if (inputs.isEmpty() || (numRequestedInputs > numInputs)) {
       throw new OrtException(
           "Unexpected number of inputs, expected [1,"
@@ -301,9 +292,9 @@ public class OrtSession extends NativeObject {
       int i = 0;
       for (Map.Entry<String, OnnxTensor> t : inputs.entrySet()) {
         String key = t.getKey();
-        if (!inputNames.contains(key)) {
+        if (!inputInfo.containsKey(key)) {
           throw new OrtException(
-              "Unknown input name " + key + ", expected one of " + inputNames.toString());
+              "Unknown input name " + key + ", expected one of " + inputInfo.keySet());
         }
         requestedInputsArray[i] = key;
         inputHandles[i] = inputsReferences.handle(t.getValue());
@@ -386,7 +377,12 @@ public class OrtSession extends NativeObject {
 
   @Override
   public String toString() {
-    return super.toString() + "(numInputs=" + numInputs + ",numOutputs=" + numOutputs + ")";
+    return super.toString()
+        + "(numInputs="
+        + getNumInputs()
+        + ",numOutputs="
+        + getNumOutputs()
+        + ")";
   }
 
   @Override
@@ -398,7 +394,7 @@ public class OrtSession extends NativeObject {
    * Converts a NodeInfo array into a map from node name to node info.
    *
    * @param infos The NodeInfo array to convert.
-   * @return A Map from String to NodeInfo.
+   * @return An ordered, unmodifiable Map from String to NodeInfo.
    */
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
     Map<String, NodeInfo> output = new LinkedHashMap<>(infos.length);
@@ -416,17 +412,7 @@ public class OrtSession extends NativeObject {
   private static native long createSession(
       long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
 
-  private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
-
-  private native String[] getInputNames(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
-
   private native NodeInfo[] getInputInfo(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
-
-  private native long getNumOutputs(long apiHandle, long nativeHandle) throws OrtException;
-
-  private native String[] getOutputNames(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
   private native NodeInfo[] getOutputInfo(long apiHandle, long nativeHandle, long allocatorHandle)

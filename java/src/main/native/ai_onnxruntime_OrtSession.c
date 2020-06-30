@@ -59,98 +59,6 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJ_3BJ
 
 /*
  * Class:     ai_onnxruntime_OrtSession
- * Method:    getNumInputs
- * Signature: (JJ)J
- */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_getNumInputs
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    size_t numInputs;
-    checkOrtStatus(jniEnv,api,api->SessionGetInputCount((OrtSession*)handle, &numInputs));
-    return numInputs;
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession
- * Method:    getInputNames
- * Signature: (JJJ)[Ljava/lang/String;
- */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputNames
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
-
-    // Setup
-    char *stringClassName = "java/lang/String";
-    jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
-
-    // Get the number of inputs
-    size_t numInputs = Java_ai_onnxruntime_OrtSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
-
-    // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numInputs,stringClazz,NULL);
-    for (uint32_t i = 0; i < numInputs; i++) {
-        // Read out the input name and convert it to a java.lang.String
-        char* inputName;
-        checkOrtStatus(jniEnv,api,api->SessionGetInputName((OrtSession*)sessionHandle, i, allocator, &inputName));
-        jstring name = (*jniEnv)->NewStringUTF(jniEnv,inputName);
-        (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,inputName));
-    }
-
-    return array;
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession
- * Method:    getNumOutputs
- * Signature: (JJ)J
- */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_getNumOutputs
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    size_t numOutputs;
-    checkOrtStatus(jniEnv,api,api->SessionGetOutputCount((OrtSession*)handle, &numOutputs));
-    return numOutputs;
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession
- * Method:    getOutputNames
- * Signature: (JJJ)[Ljava/lang/String;
- */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputNames
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
-    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
-    const OrtApi* api = (const OrtApi*) apiHandle;
-    OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
-
-    // Setup
-    char *stringClassName = "java/lang/String";
-    jclass stringClazz = (*jniEnv)->FindClass(jniEnv, stringClassName);
-
-    // Get the number of outputs
-    size_t numOutputs = Java_ai_onnxruntime_OrtSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
-
-    // Allocate the return array
-    jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,stringClazz,NULL);
-    for (uint32_t i = 0; i < numOutputs; i++) {
-        // Read out the output name and convert it to a java.lang.String
-        char* outputName;
-        checkOrtStatus(jniEnv,api,api->SessionGetOutputName((OrtSession*)sessionHandle, i, allocator, &outputName));
-        jstring name = (*jniEnv)->NewStringUTF(jniEnv,outputName);
-        (*jniEnv)->SetObjectArrayElement(jniEnv, array, i, name);
-        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,outputName));
-    }
-
-    return array;
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession
  * Method:    getInputInfo
  * Signature: (JJJ)[Lai/onnxruntime/NodeInfo;
  */
@@ -166,7 +74,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getInputInfo
     jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,nodeInfoClazz, "<init>", "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
 
     // Get the number of inputs
-    size_t numInputs = Java_ai_onnxruntime_OrtSession_getNumInputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numInputs;
+    checkOrtStatus(jniEnv,api,api->SessionGetInputCount((OrtSession*)sessionHandle, &numInputs));
 
     // Allocate the return array
     jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numInputs,nodeInfoClazz,NULL);
@@ -207,7 +116,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_getOutputInfo
     jmethodID nodeInfoConstructor = (*jniEnv)->GetMethodID(jniEnv, nodeInfoClazz, "<init>", "(Ljava/lang/String;Lai/onnxruntime/ValueInfo;)V");
 
     // Get the number of outputs
-    size_t numOutputs = Java_ai_onnxruntime_OrtSession_getNumOutputs(jniEnv, jobj, apiHandle, sessionHandle);
+    size_t numOutputs;
+    checkOrtStatus(jniEnv,api,api->SessionGetOutputCount((OrtSession*)sessionHandle, &numOutputs));
 
     // Allocate the return array
     jobjectArray array = (*jniEnv)->NewObjectArray(jniEnv,numOutputs,nodeInfoClazz,NULL);
