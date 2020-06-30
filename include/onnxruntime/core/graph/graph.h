@@ -101,9 +101,22 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
 
-  /** Gets the function body if the #NodeType is fused, or nullptr if not. 
-  @remarks Initialization of function body is deferred till the first time it is used. */
-  const Function* GetFunctionBody() noexcept;
+  /** 
+  Gets the function body if applicable otherwise nullptr
+  @param try_init_func_body If not already intialized, initialize the function body
+  (only applicable to operators which are defined as function in ONNX spec).
+  Function body can be initialized in 2 cases : 
+  1. For nodes of type "Fused" 
+  2. For nodes which are defined as functions in ONNX spec (example: DynamicQuantizeLinear)
+  For all other cases this will always return nullptr.
+  Nodes of type "Fused" are created during partitioning and the function body 
+  initialization for such nodes also happens during node creation. Therefore, 
+  initialization of function body will happen via this method only in case 2 mentioned above.
+  */ 
+  const Function* GetFunctionBody(bool try_int_func_body = true) noexcept;
+
+  /** Gets the function body if applicable otherwise nullptr. */
+  const Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
   const std::string& Description() const noexcept;

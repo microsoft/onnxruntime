@@ -433,14 +433,20 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-const Function* Node::GetFunctionBody() noexcept {
+const Function* Node::GetFunctionBody(bool try_init_func_body) noexcept {
   if (nullptr != func_body_) {
     return func_body_;
   }
 
   // Initialize function body
-  graph_->InitFunctionBodyForNode(*(const_cast<onnxruntime::Node*>(this)));
+  if (try_init_func_body) {
+    graph_->InitFunctionBodyForNode(*this);
+  }
 
+  return func_body_;
+}
+
+const Function* Node::GetFunctionBody() const noexcept {
   return func_body_;
 }
 
