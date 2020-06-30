@@ -3,6 +3,7 @@ import timeit
 from datetime import datetime
 import numpy
 import logging
+import coloredlogs
 
 from BERTSquad import *
 from Resnet50 import *
@@ -10,7 +11,7 @@ from Resnet50 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    "bert-squad": (BERTSquad, "bert-squad"),
+    # "bert-squad": (BERTSquad, "bert-squad"),
     "resnet50": (Resnet50, "resnet50")
 }
 
@@ -37,13 +38,50 @@ def inference_ort(ort_session, result_template, repeat_times, batch_size):
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
+def get_cuda_version():
+    p = subprocess.Popen(["cat", "/usr/local/cuda/version.txt"], stdout=subprocess.PIPE) # (stdout, stderr)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    
+    return stdout
+
+def get_trt_version():
+    p1 = subprocess.Popen(["dpkg", "-l"], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["grep", "TensorRT runtime libraries"], stdin=p1.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = p2.communicate()
+    stdout = stdout.decode("ascii").strip()
+    
+    if stdout != "":
+        import re
+        stdout = re.sub('\s+', ' ', stdout)
+        return stdout 
+
+    if os.path.exists("/usr/lib/x86_64-linux-gnu/libnvinfer.so"):
+        p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/x86_64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(["grep", "version"], stdin=p1.stdout, stdout=subprocess.PIPE)
+        stdout, sterr = p2.communicate()
+        stdout = stdout.decode("ascii").strip()
+        stdout = stdout.split(" ")[-1]
+        return stdout
+
+    elif os.path.exists("/usr/lib/aarch64-linux-gnu/libnvinfer.so"):
+        p1 = subprocess.Popen(["readelf", "-s", "/usr/lib/aarch64-linux-gnu/libnvinfer.so"], stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(["grep", "version"], stdin=p1.stdout, stdout=subprocess.PIPE)
+        stdout, sterr = p2.communicate()
+        stdout = stdout.decode("ascii").strip()
+        stdout = stdout.split(" ")[-1]
+        return stdout
+    
+    return ""
+
+
 def run_onnxruntime(models=MODELS):
     import onnxruntime
 
     results = []
     for name in models.keys():
         info = models[name] 
-        model = info[0]
+        model_class = info[0]
         path = info[1]
 
         pwd = os.getcwd()
@@ -53,6 +91,7 @@ def run_onnxruntime(models=MODELS):
 
 
         for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider"]:
+        # for ep in ["CUDAExecutionProvider"]:
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
@@ -63,37 +102,44 @@ def run_onnxruntime(models=MODELS):
             optimize_onnx = False
             repeat_times = 10
             batch_size = 1
+            device_info = [] 
 
             # create onnxruntime inference session
-            print("Initializing {} with {}...".format(name, ep))
-            model_obj = model()
-            
-            sess = model_obj.get_session()
+            logger.info("Initializing {} with {}...".format(name, ep))
+
+            model = model_class()
+            sess = model.get_session()
+
             if ep == "CUDAExecutionProvider":
                 sess.set_providers([ep])
+                device_info.append(get_cuda_version())
+            elif ep == "TensorrtExecutionProvider":
+                device_info.append(get_cuda_version())
+                device_info.append(get_trt_version())
 
             result_template = {
                 "engine": "onnxruntime",
                 "version": onnxruntime.__version__,
                 "device": ep,
+                "device_info": ','.join(device_info),
                 "optimizer": optimize_onnx,
                 "fp16": fp16,
                 "io_binding": False,
-                "model_name": model_obj.get_model_name(),
+                "model_name": model.get_model_name(),
                 "inputs": len(sess.get_inputs()),
                 "batch_size": batch_size,
                 "sequence_length": sequence_length,
                 "datetime": str(datetime.now()),
             }
 
-            print(sess.get_providers())
-            print("Inferencing {} with {} ...".format(model_obj.get_model_name(), ep))
+            logger.info(sess.get_providers())
+            logger.info("Inferencing {} with {} ...".format(model.get_model_name(), ep))
 
-            result = inference_ort(model_obj, result_template, repeat_times, batch_size)
+            result = inference_ort(model, result_template, repeat_times, batch_size)
 
-            print(result)
+            logger.info(result)
             results.append(result)
-            model_obj.postprocess()
+            model.postprocess()
 
         os.chdir(pwd)
 
@@ -102,7 +148,7 @@ def run_onnxruntime(models=MODELS):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
+            "engine", "version", "device", "device_info", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
             "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
@@ -124,8 +170,16 @@ def parse_arguments():
     args = parser.parse_args()
     return args
 
+def setup_logger(verbose):
+    if verbose:
+        coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
+    else:
+        coloredlogs.install(fmt='%(message)s')
+        logging.getLogger("transformers").setLevel(logging.WARNING)
+
 def main():
     args = parse_arguments()
+    setup_logger(False)
 
     results = run_onnxruntime()
 
