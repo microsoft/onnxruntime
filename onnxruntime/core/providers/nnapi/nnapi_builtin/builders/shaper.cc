@@ -345,6 +345,39 @@ void Shaper::FC(const std::string& input1_name, const std::string& input2_name,
   }
 }
 
+void Shaper::Concat(const std::vector<std::string>& input_names,
+                    const int32_t axis,
+                    const std::string& output_name) {
+  std::vector<Shape> dimens;
+  for (const auto& input_name : input_names) {
+    auto& dimen = shape_map_.at(input_name);
+    if (!dimens.empty()) {
+      for (size_t i = 0; i < dimens[0].size(); i++) {
+        if ((int32_t)i == axis)
+          continue;
+
+        ORT_ENFORCE(dimen[i] == dimens[0][i], "Wrong input for concat");
+      }
+    }
+
+    dimens.push_back(shape_map_.at(input_name));
+  }
+
+  auto output_dimen = dimens[0];
+  for (size_t i = 1; i < dimens.size(); i++) {
+    output_dimen[axis] += dimens[i][axis];
+  }
+
+  shape_map_[output_name] = output_dimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_names, axis, output_name](Shaper& shaper) {
+          shaper.Concat(input_names, axis, output_name);
+        });
+  }
+}
+
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
 }
@@ -354,10 +387,12 @@ void Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
               "Cannot UpdateShape while shaper is not finalized");
 
   const auto& old_shape = shape_map_.at(name);
-  if (old_shape != new_shape && Product(shape_map_.at(name)) != 0)
-    ORT_THROW("The shape should be same size or old shape has size 0");
+  if (old_shape != new_shape) {
+    if (Product(old_shape) != 0)
+      ORT_THROW("The shape should be same size or old shape has size 0 (dynamic shape)");
 
-  shape_map_[name] = new_shape;
+    shape_map_[name] = new_shape;
+  }
 }
 
 void Shaper::UpdateDynamicDimensions() {
@@ -372,4 +407,14 @@ void Shaper::Clear() {
   shaper_finalized_ = false;
   shape_map_.clear();
   shape_ops_.clear();
+}
+
+std::string Shape2String(const Shaper::Shape& shape) {
+  std::ostringstream os;
+  os << "[ ";
+  for (const auto& dim : shape)
+    os << dim << " ";
+
+  os << "]";
+  return os.str();
 }
