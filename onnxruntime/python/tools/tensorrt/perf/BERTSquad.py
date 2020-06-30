@@ -11,7 +11,7 @@ import subprocess
 from BaseModel import *
 
 class BERTSquad(BaseModel):
-    def __init__(self, model_name = 'BERT Squad'): 
+    def __init__(self, model_name='BERT Squad'): 
         BaseModel.__init__(self, model_name)
         self.input_file_ = 'inputs.json'
         self.all_results_ = []
@@ -20,7 +20,6 @@ class BERTSquad(BaseModel):
         self.segment_ids_ = None 
         self.extra_data_ = None 
         self.eval_examples_ = None 
-        self.session_ = None
 
         if not os.path.exists("uncased_L-12_H-768_A-12"):
             subprocess.run("wget -q https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip", shell=True, check=True)     
@@ -31,7 +30,12 @@ class BERTSquad(BaseModel):
             subprocess.run("tar zxf bertsquad-10.tar.gz", shell=True, check=True)
 
         self.preprocess()
-        self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10.onnx')
+
+        try: 
+            self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10.onnx')
+        except:
+            subprocess.run("python3 ../symbolic_shape_infer.py --input ./download_sample_10/bertsquad10.onnx --output ./download_sample_10/bertsquad10_new.onnx --auto_merge", shell=True, check=True)     
+            self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10_new.onnx')
 
     def preprocess(self):
 

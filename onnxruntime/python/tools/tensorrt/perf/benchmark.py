@@ -40,32 +40,37 @@ def inference_ort(ort_session, result_template, repeat_times, batch_size):
 def run_onnxruntime(models=MODELS):
     import onnxruntime
 
-    for ep in ["CUDAExecutionProvider", "TensorrtExecutionProvider"]:
-        if (ep not in onnxruntime.get_available_providers()):
-            logger.error(
-                "No {} support".format(ep)
-            )
-            continue
+    results = []
+    for name in models.keys():
+        info = models[name] 
+        model = info[0]
+        path = info[1]
 
-        for name in models.keys():
-            info = models[name] 
-            model = info[0]
-            path = info[1]
+        pwd = os.getcwd()
+        if not os.path.exists(path):
+            os.mkdir(path)
+        os.chdir(path)
+
+
+        for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider"]:
+            if (ep not in onnxruntime.get_available_providers()):
+                logger.error("No {} support".format(ep))
+                continue
+
+            # these settings are temporary
             fp16 = False
-            num_inputs = 2
-            batch_size = 1
             sequence_length = 1
             optimize_onnx = False
-
-            pwd = os.getcwd()
-            if not os.path.exists(path):
-                os.mkdir(path)
-            os.chdir(path)
+            repeat_times = 10
+            batch_size = 1
 
             # create onnxruntime inference session
-            model = model()
-            sess = model.get_session()
-            sess.set_providers([ep])
+            print("Initializing {} with {}...".format(name, ep))
+            model_obj = model()
+            
+            sess = model_obj.get_session()
+            if ep == "CUDAExecutionProvider":
+                sess.set_providers([ep])
 
             result_template = {
                 "engine": "onnxruntime",
@@ -74,17 +79,63 @@ def run_onnxruntime(models=MODELS):
                 "optimizer": optimize_onnx,
                 "fp16": fp16,
                 "io_binding": False,
-                "model_name": model.get_model_name(),
-                "inputs": num_inputs,
+                "model_name": model_obj.get_model_name(),
+                "inputs": len(sess.get_inputs()),
                 "batch_size": batch_size,
                 "sequence_length": sequence_length,
                 "datetime": str(datetime.now()),
             }
 
-            result = inference_ort(model, result_template, 1, 1)
+            print(sess.get_providers())
+            print("Inferencing {} with {} ...".format(model_obj.get_model_name(), ep))
+
+            result = inference_ort(model_obj, result_template, repeat_times, batch_size)
+
             print(result)
-            model.postprocess()
+            results.append(result)
+            model_obj.postprocess()
 
-            os.chdir(pwd)
+        os.chdir(pwd)
 
-run_onnxruntime()
+    return results
+
+def output_details(results, csv_filename):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = [
+            "engine", "version", "device", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
+            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
+            "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+        ]
+
+        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+        csv_writer.writeheader()
+        for result in results:
+            csv_writer.writerow(result)
+
+    logger.info(f"Detail results are saved to csv file: {csv_filename}")
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
+
+    # parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
+
+    args = parser.parse_args()
+    return args
+
+def main():
+    args = parse_arguments()
+
+    results = run_onnxruntime()
+
+    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
+    output_details(results, csv_filename)
+
+    # csv_filename = args.result_csv or f"benchmark_summary_{time_stamp}.csv"
+    # output_summary(results, csv_filename, args)
+
+
+if __name__ == "__main__":
+    main()

@@ -8,7 +8,7 @@ from onnx import numpy_helper
 from BaseModel import *
 
 class Resnet50(BaseModel):
-    def __init__(self, model_name = 'Resnet 50'): 
+    def __init__(self, model_name='Resnet 50'): 
         BaseModel.__init__(self, model_name)
         self.inputs_ = []
         self.ref_outputs_ = []
