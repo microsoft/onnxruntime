@@ -36,7 +36,6 @@ namespace Dml
 
         inline DML_TENSOR_DATA_TYPE GetDmlDataType() const { return m_bufferTensorDesc.DataType; }
         inline MLOperatorTensorDataType GetMlOperatorDataType() const { return m_mlOperatorTensorDataType; }
-        inline gsl::span<const uint32_t> GetDmlSizes() const { return m_sizes; }
         void ForceUnsignedDataType();
         void Remap64bitDmlDataTypeTo32bit();
         bool WasRemapped64bitTo32bit() const;

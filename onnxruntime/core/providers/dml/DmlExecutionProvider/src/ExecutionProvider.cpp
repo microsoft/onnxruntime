@@ -376,8 +376,9 @@ namespace Dml
     {
         assert(!m_closed);
 
+        const size_t sourceSizeInBytes = ComputeByteSizeFromTensor(*src);
         const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst);
-        THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src)); // Tensors must be the same size
+        THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != sourceSizeInBytes); // Tensors must be the same size
 
         if (dataSizeInBytes == 0)
         {
