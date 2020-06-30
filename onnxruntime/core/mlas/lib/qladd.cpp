@@ -22,8 +22,11 @@ Abstract:
 
 bool
 MlasCalcQLinearAddParameters(
-    float ScaleRatio_AC, float ScaleRatio_BC,
-    int32_t& Shift, int32_t& MultiplierA, int32_t& MultiplierB)
+    float ScaleRatio_AC,
+    float ScaleRatio_BC,
+    int32_t& Shift,
+    int32_t& MultiplierA,
+    int32_t& MultiplierB)
 {
     constexpr float MinScaleRatio = 6.103515625e-05f; // std::stof("0x1.0p-14f");
     constexpr float MaxScaleRatio = 256.0f; //std::stof("0x1.0p+8f");
@@ -46,8 +49,7 @@ MlasCalcQLinearAddParameters(
 
 // Pure C++ helper, back off here in rare case.
 template<typename DataType, bool IsScalarA, bool IsScalarB>
-static
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE static
 void
 MlasQLinearAddKernelRawHelper(
     const DataType* InputA,
@@ -62,7 +64,6 @@ MlasQLinearAddKernelRawHelper(
     size_t N
     )
 {
-
     const float MinimumValue = (float)((int)std::numeric_limits<DataType>::min() - ZeroPointC);
     const float MaximumValue = (float)((int)std::numeric_limits<DataType>::max() - ZeroPointC);
 
@@ -116,29 +117,83 @@ public:
     typedef uint8x16_t i8x16_t;
     typedef uint16x8_t i16x8_t;
 
-    static MLAS_FORCEINLINE i8x8_t vmov_n_i8(T value) { return vmov_n_u8(value); }
-    static MLAS_FORCEINLINE i8x8_t vget_low_i8(i8x16_t a) { return vget_low_u8(a); }
-    static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a) { return vget_high_u8(a); }
-    static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b) { return vsubl_u8(a, b); }
+    static MLAS_FORCEINLINE i8x8_t vmov_n_i8(T value)
+    {
+        return vmov_n_u8(value);
+    }
 
-    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a) { return vreinterpretq_s16_u16(a); }
-    static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a) { return vreinterpretq_u32_u8(a); }
-    static MLAS_FORCEINLINE uint16x8_t vreinterpretq_u16_i8(i8x16_t a) { return vreinterpretq_u16_u8(a); }
-    static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_u8(a); }
-    static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a) { return vreinterpret_u16_u8(a); }
+    static MLAS_FORCEINLINE i8x8_t vget_low_i8(i8x16_t a)
+    {
+        return vget_low_u8(a);
+    }
 
-    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_u8_ex(ptr, 8); }
-    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_u8_ex(ptr, a, 8); }
-    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_u8_ex(ptr, a, 8); }
+    static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a)
+    {
+        return vget_high_u8(a); 
+    }
+
+    static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b)
+    {
+        return vsubl_u8(a, b);
+    }
+
+    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a)
+    {
+        return vreinterpretq_s16_u16(a);
+    }
+    
+    static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a)
+    {
+        return vreinterpretq_u32_u8(a);
+    }
+
+    static MLAS_FORCEINLINE uint16x8_t vreinterpretq_u16_i8(i8x16_t a)
+    {
+        return vreinterpretq_u16_u8(a);
+    }
+
+    static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a)
+    {
+        return vreinterpret_u32_u8(a);
+    }
+    
+    static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a)
+    {
+        return vreinterpret_u16_u8(a);
+    }
+
+    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr)
+    {
+        return vld1q_u8_ex(ptr, 8);
+    }
+    
+    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a)
+    {
+        vst1_u8_ex(ptr, a, 8);
+    }
+    
+    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a)
+    {
+        vst1q_u8_ex(ptr, a, 8);
+    }
 
     template <int n>
-    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_u8(ptr, a, n); }
+    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a)
+    {
+        vst1_lane_u8(ptr, a, n);
+    }
 
     template <int n>
-    static MLAS_FORCEINLINE i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi) { return vextq_u8(lo, hi, n); }
+    static MLAS_FORCEINLINE i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi)
+    {
+        return vextq_u8(lo, hi, n);
+    }
 
     template <int n>
-    static MLAS_FORCEINLINE i8x8_t vext_i8(i8x8_t lo, i8x8_t hi) { return vext_u8(lo, hi, n); }
+    static MLAS_FORCEINLINE i8x8_t vext_i8(i8x8_t lo, i8x8_t hi)
+    {
+        return vext_u8(lo, hi, n);
+    }
 
     static MLAS_FORCEINLINE i8x16_t combine_i8_s16(int16x8_t v0, int16x8_t v1)
     {
@@ -161,29 +216,83 @@ public:
     typedef int8x16_t i8x16_t;
     typedef int16x8_t i16x8_t;
 
-    static MLAS_FORCEINLINE i8x8_t vmov_n_i8(T value) { return vmov_n_s8(value); }
-    static MLAS_FORCEINLINE i8x8_t vget_low_i8(i8x16_t a) { return vget_low_s8(a); }
-    static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a) { return vget_high_s8(a); }
-    static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b) { return vsubl_s8(a, b); }
+    static MLAS_FORCEINLINE i8x8_t vmov_n_i8(T value)
+    {
+        return vmov_n_s8(value);
+    }
 
-    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a) { return a; }
-    static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a) { return vreinterpretq_u32_s8(a); }
-    static MLAS_FORCEINLINE uint16x8_t vreinterpretq_u16_i8(i8x16_t a) { return vreinterpretq_u16_s8(a); }
-    static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a) { return vreinterpret_u32_s8(a); }
-    static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a) { return vreinterpret_u16_s8(a); }
+    static MLAS_FORCEINLINE i8x8_t vget_low_i8(i8x16_t a)
+    {
+        return vget_low_s8(a);
+    }
 
-    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr) { return vld1q_s8_ex(ptr, 8); }
-    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a) { vst1_s8_ex(ptr, a, 8); }
-    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a) { vst1q_s8_ex(ptr, a, 8); }
+    static MLAS_FORCEINLINE i8x8_t vget_high_i8(i8x16_t a)
+    {
+        return vget_high_s8(a);
+    }
+
+    static MLAS_FORCEINLINE i16x8_t vsubl_i8(i8x8_t a, i8x8_t b)
+    {
+        return vsubl_s8(a, b);
+    }
+
+    static MLAS_FORCEINLINE int16x8_t vreinterpretq_s16_i16(i16x8_t a)
+    {
+        return a;
+    }
+
+    static MLAS_FORCEINLINE uint32x4_t vreinterpretq_u32_i8(i8x16_t a)
+    {
+        return vreinterpretq_u32_s8(a);
+    }
+
+    static MLAS_FORCEINLINE uint16x8_t vreinterpretq_u16_i8(i8x16_t a)
+    {
+        return vreinterpretq_u16_s8(a);
+    }
+
+    static MLAS_FORCEINLINE uint32x2_t vreinterpret_u32_i8(i8x8_t a)
+    {
+        return vreinterpret_u32_s8(a);
+    }
+
+    static MLAS_FORCEINLINE uint16x4_t vreinterpret_u16_i8(i8x8_t a)
+    {
+        return vreinterpret_u16_s8(a);
+    }
+
+    static MLAS_FORCEINLINE i8x16_t vld1q_i8(T const * ptr)
+    {
+        return vld1q_s8_ex(ptr, 8);
+    }
+
+    static MLAS_FORCEINLINE void vst1_i8(T* ptr, i8x8_t a)
+    {
+        vst1_s8_ex(ptr, a, 8);
+    }
+
+    static MLAS_FORCEINLINE void vst1q_i8(T* ptr, i8x16_t a)
+    {
+        vst1q_s8_ex(ptr, a, 8);
+    }
 
     template <int n>
-    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a) { vst1_lane_s8(ptr, a, n); }
+    static MLAS_FORCEINLINE void vst1_lane_i8(T* ptr, i8x8_t a)
+    {
+        vst1_lane_s8(ptr, a, n);
+    }
 
     template <int n>
-    static MLAS_FORCEINLINE i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi) { return vextq_s8(lo, hi, n); }
+    static MLAS_FORCEINLINE i8x16_t vextq_i8(i8x16_t lo, i8x16_t hi)
+    {
+        return vextq_s8(lo, hi, n);
+    }
 
     template <int n>
-    static MLAS_FORCEINLINE i8x8_t vext_i8(i8x8_t lo, i8x8_t hi) { return vext_s8(lo, hi, n); }
+    static MLAS_FORCEINLINE i8x8_t vext_i8(i8x8_t lo, i8x8_t hi)
+    {
+        return vext_s8(lo, hi, n);
+    }
 
     static MLAS_FORCEINLINE i8x16_t combine_i8_s16(int16x8_t v0, int16x8_t v1)
     {
@@ -457,28 +566,73 @@ MlasQLinearAddKernelHelper(
 #elif defined(MLAS_SSE2_INTRINSICS)
 
 template <typename DataType>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE static
 MLAS_INT32X4
-MlasShiftRightInt32(MLAS_INT32X4 v, int imm);
+MlasShiftRightInt32(
+    MLAS_INT32X4 v,
+    int imm);
 
-template<> MLAS_INT32X4 MlasShiftRightInt32<int8_t>(MLAS_INT32X4 v, int imm) { return _mm_srai_epi32(v, imm); }
-template<> MLAS_INT32X4 MlasShiftRightInt32<uint8_t>(MLAS_INT32X4 v, int imm) { return _mm_srli_epi32(v, imm); }
+template<>
+MLAS_INT32X4
+MlasShiftRightInt32<int8_t>(
+    MLAS_INT32X4 v,
+    int imm)
+{
+    return _mm_srai_epi32(v, imm); 
+}
+
+template<>
+MLAS_INT32X4
+MlasShiftRightInt32<uint8_t>(
+    MLAS_INT32X4 v,
+    int imm)
+{
+    return _mm_srli_epi32(v, imm);
+}
 
 template <typename DataType>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE static
 MLAS_INT32X4
 MlasUnpackLowI8ToS16(MLAS_INT32X4 v);
 
-template <> MLAS_INT32X4 MlasUnpackLowI8ToS16<int8_t>(MLAS_INT32X4 v) { return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8); }
-template <> MLAS_INT32X4 MlasUnpackLowI8ToS16<uint8_t>(MLAS_INT32X4 v) { return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8); }
+template <>
+MLAS_INT32X4
+MlasUnpackLowI8ToS16<int8_t>(MLAS_INT32X4 v)
+{
+    return _mm_srai_epi16(_mm_unpacklo_epi8(v, v), 8);
+}
+
+template <>
+MLAS_INT32X4
+MlasUnpackLowI8ToS16<uint8_t>(MLAS_INT32X4 v)
+{
+    return _mm_srli_epi16(_mm_unpacklo_epi8(v, v), 8);
+}
 
 template <typename DataType>
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE static
 MLAS_INT32X4
-MlasPackS16_128(MLAS_INT32X4 a, MLAS_INT32X4 b);
+MlasPackS16_128(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b);
 
-template <> MLAS_INT32X4 MlasPackS16_128<uint8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packus_epi16(a, b); }
-template <> MLAS_INT32X4 MlasPackS16_128<int8_t>(MLAS_INT32X4 a, MLAS_INT32X4 b) { return _mm_packs_epi16(a, b); }
+template <>
+MLAS_INT32X4
+MlasPackS16_128<uint8_t>(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b)
+{
+    return _mm_packus_epi16(a, b);
+}
+
+template <>
+MLAS_INT32X4
+MlasPackS16_128<int8_t>(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b)
+{
+    return _mm_packs_epi16(a, b);
+}
 
 template<typename DataType, bool IsScalarA, bool IsScalarB>
 void
@@ -709,4 +863,3 @@ MlasQLinearAddU8Kernel(
     MlasQLinearAddKernel<uint8_t>(
         InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, LengthA, LengthB);
 }
-

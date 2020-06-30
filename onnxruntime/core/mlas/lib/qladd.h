@@ -24,7 +24,7 @@ union MLAS_FLOAT32BITS {
     float    fp32;
 };
 
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE static
 uint32_t
 MlasBitsOfFp32(float f)
 {
@@ -33,7 +33,7 @@ MlasBitsOfFp32(float f)
     return uf.u32;
 }
 
-MLAS_FORCEINLINE
+MLAS_FORCEINLINE static
 float
 MlasFp32FromBits(uint32_t u)
 {
@@ -43,6 +43,9 @@ MlasFp32FromBits(uint32_t u)
 
 bool
 MlasCalcQLinearAddParameters(
-    float ScaleRatio_AC, float ScaleRatio_BC,
-    int32_t& Shift, int32_t& MultiplierA, int32_t& MultiplierB
+    float ScaleRatio_AC,
+    float ScaleRatio_BC,
+    int32_t& Shift,
+    int32_t& MultiplierA,
+    int32_t& MultiplierB
     );
