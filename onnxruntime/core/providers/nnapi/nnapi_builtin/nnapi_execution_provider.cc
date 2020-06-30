@@ -87,7 +87,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  nnapi::ModelBuilder builder(model_proto);
+  nnapi::ModelBuilder builder(model_proto, graph_view);
   const auto supported_nodes_vector = builder.GetSupportedNodes();
 
   // Find inputs, initializers and outputs for each supported subgraph
@@ -227,7 +227,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     {
-      nnapi::ModelBuilder builder(model_proto);
+      onnxruntime::GraphViewer graph_viewer(graph_body);
+      nnapi::ModelBuilder builder(model_proto, graph_viewer);
       builder.SetUseNCHW(false);
       builder.SetUseFp16(false);
       std::unique_ptr<nnapi::Model> nnapi_model = builder.Compile();

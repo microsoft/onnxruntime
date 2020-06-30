@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <core/graph/graph.h>
 #include <onnx/onnx_pb.h>
 #include <string>
 
@@ -24,4 +25,20 @@ class NodeAttrHelper {
 
  private:
   const ONNX_NAMESPACE::NodeProto& node_;
+};
+
+class GraphNodeAttrHelper {
+ public:
+  GraphNodeAttrHelper(const onnxruntime::Node& proto);
+
+  float Get(const std::string& key, float def_val) const;
+  int32_t Get(const std::string& key, int32_t def_val) const;
+  std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
+  std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
+  std::string Get(const std::string& key, const std::string& def_val) const;
+
+  bool HasAttr(const std::string& key) const;
+
+ private:
+  const onnxruntime::NodeAttributes& node_attributes_;
 };

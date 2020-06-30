@@ -150,6 +150,30 @@ int GetType(const ONNX_NAMESPACE::ModelProto& model_proto,
   return invalid_type;
 }
 
+bool GetType(const onnxruntime::Node& node, int32_t& type) {
+  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  auto* type_proto = node.InputDefs()[0]->TypeAsProto();
+  if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] has no input type";
+    return false;
+  }
+
+  type = type_proto->tensor_type().elem_type();
+  return true;
+}
+
+Shaper::Shape GetShape(const ONNX_NAMESPACE::TensorShapeProto* shape_proto) {
+  Shaper::Shape shape;
+  if (!shape_proto)
+    return shape;
+
+  for (const auto& dim : shape_proto->dim())
+    // NNAPI uses 0 for dynamic dimension, which is the default value for dim.dim_value()
+    shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
+
+  return shape;
+}
+
 Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
                        const std::string& name) {
   Shaper::Shape empty_shape;
@@ -318,6 +342,9 @@ class BaseOpBuilder : public IOpBuilder {
   bool IsOpSupported(ModelBuilder& model_builder,
                      const ONNX_NAMESPACE::NodeProto& node) override final;
 
+  bool IsOpSupported(ModelBuilder& model_builder,
+                     const onnxruntime::Node& node) override final;
+
   void AddToModelBuilder(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override final;
 
@@ -325,12 +352,20 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool IsOpSupportedImpl(
       ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node);
 
+  virtual bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                                 const onnxruntime::Node& node);
+
   virtual int32_t GetMinSupportedSdkVer(
       ModelBuilder& /* model_builder */,
       const ONNX_NAMESPACE::NodeProto& /* node */) const { return 27; }
 
-  virtual bool HasSupportedInputs(
-      ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node);
+  virtual int32_t GetMinSupportedSdkVer(
+      ModelBuilder& /* model_builder */,
+      const onnxruntime::Node& /* node */) const { return 27; }
+
+  virtual bool HasSupportedInputs(ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node);
+
+  virtual bool HasSupportedInputs(const onnxruntime::Node& node);
 
   virtual void AddToModelBuilderImpl(
       ModelBuilder& model_builder, const ONNX_NAMESPACE::NodeProto& node);
@@ -353,7 +388,26 @@ bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
     return false;
 
   return IsOpSupportedImpl(model_builder, node);
-}  // namespace nnapi
+}
+
+bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
+                                  const onnxruntime::Node& node) {
+#ifdef __ANDROID__
+  int32_t android_sdk_ver = model_builder.GetAndroidSdkVer();
+  int32_t required_sdk_ver = GetMinSupportedSdkVer(model_builder, node);
+  if (required_sdk_ver > android_sdk_ver) {
+    LOGS_DEFAULT(VERBOSE) << "Current Android API level [" << android_sdk_ver
+                          << "], Operator [" << node.OpType()
+                          << "] is only supported on API >" << required_sdk_ver;
+    return false;
+  }
+#endif
+
+  if (!HasSupportedInputs(node))
+    return false;
+
+  return IsOpSupportedImpl(model_builder, node);
+}
 
 bool BaseOpBuilder::HasSupportedInputs(
     ModelBuilder& model_builder,
@@ -371,8 +425,30 @@ bool BaseOpBuilder::HasSupportedInputs(
   return true;
 }
 
+bool BaseOpBuilder::HasSupportedInputs(const onnxruntime::Node& node) {
+  // We only check the type of input 0 by default
+  // specific op builder can override this
+  int32_t input_type;
+  if (!GetType(node, input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
 bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
                                       const ONNX_NAMESPACE::NodeProto& /* node */) {
+  return true;
+}
+
+bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                      const onnxruntime::Node& /* node */) {
   return true;
 }
 
@@ -497,9 +573,11 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class TransposeOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(
-      ModelBuilder& model_builder,
-      const ONNX_NAMESPACE::NodeProto& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
                                 const ONNX_NAMESPACE::NodeProto& /* node */) const override {
@@ -509,6 +587,18 @@ class TransposeOpBuilder : public BaseOpBuilder {
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
+
+bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                           const onnxruntime::Node& node) {
+  const auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+  if (input_size > 4 || input_size == 0) {
+    LOGS_DEFAULT(VERBOSE) << "Transpose only supports 1-4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
 
 bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
                                            const ONNX_NAMESPACE::NodeProto& node) {
@@ -566,9 +656,12 @@ class ReshapeOpBuilder : public BaseOpBuilder {
                              const ONNX_NAMESPACE::NodeProto& node) override;
 
  private:
-  bool IsOpSupportedImpl(
-      ModelBuilder& model_builder,
-      const ONNX_NAMESPACE::NodeProto& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
+
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
@@ -576,6 +669,37 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
                                              const ONNX_NAMESPACE::NodeProto& node) {
   model_builder.AddInitializerToSkip(node.input(1));
+}
+
+bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                         const onnxruntime::Node& node) {
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& perm_name = node.InputDefs()[1]->Name();
+  if (!Contains(initializers, perm_name)) {
+    LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
+    return false;
+  }
+
+  const auto input_shape = GetShape(node.InputDefs()[0]->Shape());
+  if (input_shape.size() > 4 || input_shape.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Reshape only supports up to 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  const auto& shape_tensor = initializers.at(perm_name);
+  const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
+  const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
+
+  for (uint32_t i = 0; i < size; i++) {
+    // NNAPI reshape does not support 0 as dimension
+    if (rawShape[i] == 0 && i < input_shape.size() && input_shape[i] == 0) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape doesn't suppport 0 reshape dimension on a dynamic dimension";
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool ReshapeOpBuilder::IsOpSupportedImpl(
@@ -669,6 +793,10 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
+
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
@@ -680,6 +808,39 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node.input(2));  // B
   model_builder.AddInitializerToSkip(node.input(3));  // mean
   model_builder.AddInitializerToSkip(node.input(4));  //var
+}
+
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                                    const onnxruntime::Node& node) {
+  if (node.OutputDefs().size() != 1) {
+    LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
+                             "it in test mode.";
+    return false;
+  }
+
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& scale_name = node.InputDefs()[1]->Name();
+  const auto& b_name = node.InputDefs()[2]->Name();
+  const auto& mean_name = node.InputDefs()[3]->Name();
+  const auto& var_name = node.InputDefs()[4]->Name();
+  if (!Contains(initializers, scale_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Scale of BN must be known";
+    return false;
+  }
+  if (!Contains(initializers, b_name)) {
+    LOGS_DEFAULT(VERBOSE) << "B of BN must be known";
+    return false;
+  }
+  if (!Contains(initializers, mean_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Mean of BN must be known";
+    return false;
+  }
+  if (!Contains(initializers, var_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Var of BN must be known";
+    return false;
+  }
+
+  return true;
 }
 
 bool BatchNormalizationOpBuilder::IsOpSupportedImpl(
@@ -793,9 +954,11 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 class PoolOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(
-      ModelBuilder& model_builder,
-      const ONNX_NAMESPACE::NodeProto& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
                                 const ONNX_NAMESPACE::NodeProto& /* node */) const override {
@@ -805,6 +968,62 @@ class PoolOpBuilder : public BaseOpBuilder {
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
+
+bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                      const onnxruntime::Node& node) {
+  const auto& op = node.OpType();
+  if (op == "AveragePool" || op == "MaxPool") {
+    GraphNodeAttrHelper helper(node);
+
+    const auto count_include_pad = helper.Get("count_include_pad", 0);
+    if (count_include_pad == 1) {
+      LOGS_DEFAULT(VERBOSE) << "count_include_pad == 1 is not supported";
+      return false;
+    }
+
+    const auto storage_order = helper.Get("storage_order", 0);
+    if (storage_order == 1) {
+      LOGS_DEFAULT(VERBOSE) << "storage_order == 1 is not supported";
+      return false;
+    }
+
+    if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
+      LOGS_DEFAULT(VERBOSE) << "auto_pad is not supported";
+      return false;
+    }
+
+    if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
+      LOGS_DEFAULT(VERBOSE) << "Only pooling 2d is supported";
+      return false;
+    }
+
+    if (helper.Get("ceil_mode", 0) == 1) {
+      LOGS_DEFAULT(VERBOSE) << "ceil_mode == 1 is not supported for pooling";
+      return false;
+    }
+
+    if (helper.Get("dilations", std::vector<int32_t>{1, 1}) !=
+        std::vector<int32_t>{1, 1}) {
+      LOGS_DEFAULT(VERBOSE) << "Dilations of pooling is not supported";
+      return false;
+    }
+
+    if (node.OutputDefs().size() != 1) {
+      LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
+      return false;
+    }
+  } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
+    const auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+    if (input_size != 4) {
+      LOGS_DEFAULT(VERBOSE)
+          << "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in "
+          << node.InputDefs()[0]->Name() << ", actual dim count " << input_size;
+      return false;
+    }
+  }
+
+  return true;
+}
 
 bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
                                       const ONNX_NAMESPACE::NodeProto& node) {
@@ -946,6 +1165,10 @@ class ConvOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
+
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
@@ -956,9 +1179,36 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
   model_builder.AddInitializerToSkip(node.input(1));
 }
 
-bool ConvOpBuilder::IsOpSupportedImpl(
-    ModelBuilder& model_builder,
-    const ONNX_NAMESPACE::NodeProto& node) {
+bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                      const onnxruntime::Node& node) {
+  GraphNodeAttrHelper helper(node);
+  if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
+    LOGS_DEFAULT(VERBOSE) << "SAME_LOWER auto_pad is not supported";
+    return false;
+  }
+
+  const auto group = helper.Get("group", 1);
+  const auto weight_name = node.InputDefs()[1]->Name();
+  if (Contains(model_builder.GetInitializerTensors(), weight_name)) {
+    const auto& tensor = model_builder.GetInitializerTensors().at(weight_name);
+    if (tensor.dims().size() != 4) {
+      LOGS_DEFAULT(VERBOSE) << "Only conv 2d is supported.";
+      return false;
+    }
+    if (group != 1 && tensor.dims()[1] != 1) {
+      LOGS_DEFAULT(VERBOSE) << "group != 1 is not supported";
+      return false;
+    }
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
+    return false;
+  }
+
+  return true;
+}
+
+bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                      const ONNX_NAMESPACE::NodeProto& node) {
   NodeAttrHelper helper(node);
   if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
     LOGS_DEFAULT(VERBOSE) << "SAME_LOWER auto_pad is not supported";
@@ -1112,9 +1362,11 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class CastOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(
-      ModelBuilder& model_builder,
-      const ONNX_NAMESPACE::NodeProto& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
                                 const ONNX_NAMESPACE::NodeProto& /* node */) const override {
@@ -1125,9 +1377,21 @@ class CastOpBuilder : public BaseOpBuilder {
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-bool CastOpBuilder::IsOpSupportedImpl(
-    ModelBuilder& /* model_builder */,
-    const ONNX_NAMESPACE::NodeProto& node) {
+bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                      const onnxruntime::Node& node) {
+  GraphNodeAttrHelper helper(node);
+  auto to = helper.Get("to", 0);
+  if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
+      to != ONNX_NAMESPACE::TensorProto::INT32) {
+    LOGS_DEFAULT(VERBOSE) << "[Cast] Only support cast to int32 or float";
+    return false;
+  }
+
+  return true;
+}
+
+bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                      const ONNX_NAMESPACE::NodeProto& node) {
   NodeAttrHelper helper(node);
   auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
@@ -1177,9 +1441,11 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(
-      ModelBuilder& model_builder,
-      const ONNX_NAMESPACE::NodeProto& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const ONNX_NAMESPACE::NodeProto& node) override;
+
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
                                 const ONNX_NAMESPACE::NodeProto& /* node */) const override {
@@ -1190,9 +1456,19 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
 
-bool SoftMaxOpBuilder::IsOpSupportedImpl(
-    ModelBuilder& model_builder,
-    const ONNX_NAMESPACE::NodeProto& node) {
+bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                         const onnxruntime::Node& node) {
+  const auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+  if (input_size != 2 && input_size != 4) {
+    LOGS_DEFAULT(VERBOSE) << "SoftMax only support 2d/4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+  return true;
+}
+
+bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                         const ONNX_NAMESPACE::NodeProto& node) {
   const auto input_size = GetShape(model_builder.GetOnnxModel(), node.input(0)).size();
   if (input_size != 2 && input_size != 4) {
     LOGS_DEFAULT(VERBOSE) << "SoftMax only support 2d/4d shape, input is "
@@ -1276,9 +1552,70 @@ class GemmOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
 
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
+
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
+
+bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
+                                      const onnxruntime::Node& node) {
+  const auto& op = node.OpType();
+  const auto& initializers(model_builder.GetInitializerTensors());
+
+  if (GetShape(node.InputDefs()[0]->Shape()).size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "A must be 2D";
+    return false;
+  }
+
+  if (GetShape(node.InputDefs()[1]->Shape()).size() != 2) {
+    LOGS_DEFAULT(VERBOSE) << "B must be 2D";
+    return false;
+  }
+
+  if (op == "MatMul") {  // Only support A*B B is an initializer
+    if (!Contains(initializers, node.InputDefs()[1]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
+      return false;
+    }
+  } else if (op == "Gemm") {
+    // Only support
+    // 1. A*B'+C
+    // 2. A*B+C and B is an initializer
+    GraphNodeAttrHelper helper(node);
+    const auto transA = helper.Get("transA", 0);
+    const auto transB = helper.Get("transB", 0);
+    const auto alpha = helper.Get("alpha", 1.0f);
+    const auto beta = helper.Get("beta", 1.0f);
+
+    if (!(transA == 0 && alpha == 1.f && beta == 1.f)) {
+      LOGS_DEFAULT(VERBOSE) << "Only transA == 0, alpha == 1.0 "
+                            << "and beta == 1.0 is supported.";
+      return false;
+    }
+
+    if (transB == 0 && !Contains(initializers, node.InputDefs()[1]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "B of Gemm must be known if transB != 1";
+      return false;
+    }
+
+    if (node.InputDefs().size() == 3) {
+      const auto b_shape = GetShape(node.InputDefs()[1]->Shape());
+      const auto c_shape = GetShape(node.InputDefs()[2]->Shape());
+      if (c_shape.size() != 1 ||
+          c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]"
+                              << " b_shape: " << Shape2String(b_shape)
+                              << " c_shape: " << Shape2String(c_shape);
+
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
 
 bool GemmOpBuilder::IsOpSupportedImpl(
     ModelBuilder& model_builder,
@@ -1484,9 +1821,24 @@ class ConcatOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
 
+  bool IsOpSupportedImpl(ModelBuilder& model_builder,
+                         const onnxruntime::Node& node) override;
+
   void AddToModelBuilderImpl(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 };
+
+bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
+                                        const onnxruntime::Node& node) {
+  auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+  if (input_size > 4 || input_size == 0) {
+    LOGS_DEFAULT(VERBOSE) << "Concat only supports up to 1-4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
 
 bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
                                         const ONNX_NAMESPACE::NodeProto& node) {

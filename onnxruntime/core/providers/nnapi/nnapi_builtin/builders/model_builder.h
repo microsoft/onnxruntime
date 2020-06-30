@@ -5,6 +5,7 @@
 #include <onnx/onnx_pb.h>
 #include <unordered_set>
 
+#include <core/graph/graph_viewer.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "op_builder.h"
@@ -26,7 +27,7 @@ class ModelBuilder {
     CPU_ONLY,      // use CPU only
   };
 
-  ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto);
+  ModelBuilder(const ONNX_NAMESPACE::ModelProto& model_proto, const onnxruntime::GraphViewer& graph_view);
   ~ModelBuilder() = default;
 
   std::vector<std::vector<int>> GetSupportedNodes();
@@ -94,6 +95,7 @@ class ModelBuilder {
   GetInitializerTensors() const { return initializers_; }
 
   const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
+  const onnxruntime::Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
 
   void RegisterNHWCOperand(const std::string& name);
   bool IsOperandNHWC(const std::string& name);
@@ -109,7 +111,8 @@ class ModelBuilder {
 
  private:
   const NnApi* nnapi_{nullptr};
-  ONNX_NAMESPACE::ModelProto& model_proto_;
+  const ONNX_NAMESPACE::ModelProto& model_proto_;
+  const onnxruntime::GraphViewer& graph_view_;
   std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};
@@ -150,6 +153,7 @@ class ModelBuilder {
   uint32_t next_index_ = 0;
 
   bool IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
+  bool IsNodeSupported(const onnxruntime::Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();
@@ -172,6 +176,7 @@ class ModelBuilder {
                          bool is_nhwc);
 
   IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
+  IOpBuilder* GetOpBuilder(const onnxruntime::Node& node);
 };
 
 }  // namespace nnapi

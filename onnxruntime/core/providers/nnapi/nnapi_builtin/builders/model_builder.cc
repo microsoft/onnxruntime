@@ -21,8 +21,9 @@ const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
              : tensor.float_data().data();
 }
 
-ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
-    : nnapi_(NnApiImplementation()), model_proto_(model_proto) {
+ModelBuilder::ModelBuilder(const ONNX_NAMESPACE::ModelProto& model_proto,
+                           const onnxruntime::GraphViewer& graph_view)
+    : nnapi_(NnApiImplementation()), model_proto_(model_proto), graph_view_(graph_view) {
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
 }
@@ -32,13 +33,21 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
 }
 
 bool ModelBuilder::IsNodeSupported(
-    const ONNX_NAMESPACE::NodeProto& node) {
-  if (auto* opBuilder = GetOpBuilder(node)) {
-    return opBuilder->IsOpSupported(*this, node);
+    const onnxruntime::Node& node) {
+  if (auto* op_builder = GetOpBuilder(node)) {
+    return op_builder->IsOpSupported(*this, node);
   } else {
     return false;
   }
 }
+// bool ModelBuilder::IsNodeSupported(
+//     const ONNX_NAMESPACE::NodeProto& node) {
+//   if (auto* op_builder = GetOpBuilder(node)) {
+//     return op_builder->IsOpSupported(*this, node);
+//   } else {
+//     return false;
+//   }
+// }
 
 bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
                               const ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -73,12 +82,31 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 #endif
 
   std::vector<int> supported_node_vec;
-  for (int i = 0; i < model_proto_.graph().node_size(); i++) {
-    const auto& node(model_proto_.graph().node(i));
-    bool supported = IsNodeSupported(node);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.op_type()
+  // for (int i = 0; i < model_proto_.graph().node_size(); i++) {
+  //   const auto& node(model_proto_.graph().node(i));
+  //   bool supported = IsNodeSupported(node);
+  //   LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.op_type()
+  //                         << "] index: [" << i
+  //                         << "] name: [" << node.name()
+  //                         << "] supported: [" << supported
+  //                         << "]";
+  //   if (supported) {
+  //     supported_node_vec.push_back(i);
+  //   } else {
+  //     if (IsValidSupportedNodesVec(supported_node_vec, model_proto_)) {
+  //       supported_node_vecs.push_back(supported_node_vec);
+  //       supported_node_vec.clear();
+  //     }
+  //   }
+  // }
+  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_view_.GetNode(node_indices[i]));
+    ORT_ENFORCE(nullptr != node, "node should not be null");
+    bool supported = IsNodeSupported(*node);
+    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << i
-                          << "] name: [" << node.name()
+                          << "] name: [" << node->Name()
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
@@ -156,16 +184,16 @@ void ModelBuilder::GetTargetDevices() {
   const std::string nnapi_cpu("nnapi-reference");
   uint32_t num_devices = 0;
   THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDeviceCount(&num_devices),
-                           "Getting list of available devices");
+                           "Getting count of available devices");
 
   for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* device_name = nullptr;
     THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDevice(i, &device),
-                             "Getting list of available devices");
+                             "Getting " + std::to_string(i) + "th device");
 
     THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
-                             "Getting list of available devices");
+                             "Getting " + std::to_string(i) + "th device's name");
 
     bool device_is_cpu = nnapi_cpu == device_name;
     if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
@@ -514,6 +542,13 @@ IOpBuilder* ModelBuilder::GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node) {
     return nullptr;
 
   return op_builders_[node.op_type()].get();
+}
+
+IOpBuilder* ModelBuilder::GetOpBuilder(const onnxruntime::Node& node) {
+  if (!Contains(op_builders_, node.OpType()))
+    return nullptr;
+
+  return op_builders_[node.OpType()].get();
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {

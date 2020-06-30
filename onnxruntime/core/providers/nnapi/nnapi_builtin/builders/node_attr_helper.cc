@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/common/safeint.h"
+#include "helper.h"
 #include "node_attr_helper.h"
 
 using std::string;
@@ -101,4 +102,62 @@ bool NodeAttrHelper::HasAttr(const std::string& key) {
   }
 
   return false;
+}
+
+GraphNodeAttrHelper::GraphNodeAttrHelper(const onnxruntime::Node& node)
+    : node_attributes_(node.GetAttributes()) {}
+
+float GraphNodeAttrHelper::Get(const std::string& key, float def_val) const {
+  if (HasAttr(key))
+    return node_attributes_.at(key).f();
+
+  return def_val;
+}
+
+int32_t GraphNodeAttrHelper::Get(const std::string& key, int32_t def_val) const {
+  if (HasAttr(key))
+    return SafeInt<int32_t>(node_attributes_.at(key).i());
+
+  return def_val;
+}
+
+string GraphNodeAttrHelper::Get(const std::string& key, const string& def_val) const {
+  if (HasAttr(key))
+    return node_attributes_.at(key).s();
+
+  return def_val;
+}
+
+vector<int32_t> GraphNodeAttrHelper::Get(const std::string& key, const vector<int32_t>& def_val) const {
+  if (HasAttr(key)) {
+    const auto& attr(node_attributes_.at(key));
+    std::vector<int32_t> v;
+    v.reserve(static_cast<size_t>(attr.ints_size()));
+    for (int j = 0; j < attr.ints_size(); j++) {
+      int64_t val = attr.ints(j);
+      v.push_back(SafeInt<int32_t>(val));
+    }
+    return v;
+  }
+
+  return def_val;
+}
+
+vector<float> GraphNodeAttrHelper::Get(const std::string& key, const vector<float>& def_val) const {
+  if (HasAttr(key)) {
+    const auto& attr(node_attributes_.at(key));
+    std::vector<float> v;
+    v.reserve(static_cast<size_t>(attr.ints_size()));
+    for (int j = 0; j < attr.ints_size(); j++) {
+      v.push_back(attr.floats(j));
+    }
+
+    return v;
+  }
+
+  return def_val;
+}
+
+bool GraphNodeAttrHelper::HasAttr(const std::string& key) const {
+  return Contains(node_attributes_, key);
 }
