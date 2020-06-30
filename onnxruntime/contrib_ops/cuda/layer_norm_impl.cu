@@ -358,7 +358,8 @@ void HostApplyLayerNorm(
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
   
   bool custom_supported_dim = std::find(std::begin(SUPPORTED_REDUCTION_DIM), std::end(SUPPORTED_REDUCTION_DIM), n2) != std::end(SUPPORTED_REDUCTION_DIM);
-  if(custom_supported_dim){
+  bool supported_half2 = (prop.major >= 7) || !(std::is_same<T, half>::value);
+  if(custom_supported_dim && supported_half2){
     launch_custom_layer_norm<T,U>(
       output,
       input,
