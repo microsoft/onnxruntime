@@ -76,6 +76,11 @@ class DistributedRunContext {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).group_id;
   }
 
+  static int32_t IdInGroup(WorkerGroupType group_type) {
+    const auto& all_ranks = DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks;
+    return all_ranks[DistributedRunContext::GetInstance().GetWorkerGroup(group_type).rank_in_group];
+  }
+
   static bool IsPipelineLastStage(){
     auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).group_id;
     auto pipeline_stage_size = DistributedRunContext::GetInstance().GetRunConfig().pipeline_stage_size;

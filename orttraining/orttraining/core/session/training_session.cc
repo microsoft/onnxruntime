@@ -133,7 +133,10 @@ std::cout<<"** inside ConfigureForTraining 2"<<std::endl;
 std::cout<<"** inside ConfigureForTraining 3"<<std::endl;
   int32_t pipeline_stage_id = -1;
   if (config.pipeline_config.has_value()){
-    pipeline_stage_id = DistributedRunContext::GroupId(WorkerGroupType::ModelParallel);
+    // pipeline_stage_id = DistributedRunContext::GroupId(WorkerGroupType::ModelParallel);
+    // a pipeline group contains ranks that compose to a whole graph, with each partition belong to
+    // a single rank.
+    pipeline_stage_id = DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel);
   }
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
@@ -168,9 +171,13 @@ std::cout<<"** inside ConfigureForTraining 3"<<std::endl;
         config.loss_function_config.has_value()
             ? config.loss_function_config.value().loss_function_info
             : optional<LossFunctionInfo>{};
+    std::cout<<" ** loss_function_info "<<loss_function_info.has_value()<<std::endl;
     ORT_RETURN_IF_ERROR(ConfigureLossFunction(
         config.loss_name, loss_function_info,
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+  }
+  else{
+    std::cout<<"** loss_name: "<<loss_name<<std::endl;
   }
 
   ORT_ENFORCE(

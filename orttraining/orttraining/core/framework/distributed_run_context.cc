@@ -10,7 +10,12 @@ namespace training {
 int32_t GetPipelineStageId(const int32_t world_rank,
                            const int32_t horizontal_parallel_size,
                            const int32_t data_parallel_size){
-  return world_rank % (horizontal_parallel_size * data_parallel_size);
+  if (horizontal_parallel_size * data_parallel_size == 1){
+    return world_rank;
+  }
+  else{
+    return world_rank % (horizontal_parallel_size * data_parallel_size);
+  }
 }
 
 DistributedRunContext::DistributedRunContext(int32_t world_rank,
@@ -68,17 +73,26 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   if (data_group_id == 1 && data_parallel_size > 1){
     data_group_ranks.push_back(2);
     data_group_ranks.push_back(3);
+  } else if(data_parallel_size == 1){
+    data_group_ranks.push_back(world_rank);
   }
   else{
     for (auto r = 0; r < data_parallel_size; r++) {
       data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
     }
   }
+  ORT_ENFORCE(
+      data_group_ranks[rank_in_owning_data_group] == world_rank,
+      "data parallel distributed group cal wrong: ", world_rank, " ", data_group_ranks[rank_in_owning_data_group]);
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
                                             WorkerGroupType::DataParallel, rank_in_owning_data_group};
 
   std::cout<<"** world rank["<<world_rank<<"] DP: data_parallel_size: "<<data_parallel_size<<" "
-  <<data_group_ranks[0]<<" "<<data_group_ranks[1]<<" data_group_id: "<<data_group_id<<" "<<rank_in_owning_data_group<<std::endl;
+  // <<data_group_ranks[0]<<" "
+  // <<data_group_ranks[1]
+  <<" data_group_id: "<<data_group_id<<" "
+  <<" in_group_id: "<<data_group_ranks[rank_in_owning_data_group]<<std::endl;
+  // <<rank_in_owning_data_group<<std::endl;
   // // Initialize Data Parallel Group
   // const int32_t data_group_id = world_rank_with_offset % (horizontal_parallel_size);
   // const int32_t rank_in_owning_data_group = world_rank_with_offset / (horizontal_parallel_size);
@@ -96,11 +110,19 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   for (auto r = 0; r < horizontal_parallel_size; r++) {
     hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
   }
+    ORT_ENFORCE(
+      hori_group_ranks[rank_in_owning_hori_group] == world_rank,
+      "hori parallel distributed group cal wrong: ", world_rank, " ", hori_group_ranks[rank_in_owning_hori_group]);
+
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
                                                   WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
 
   std::cout<<"** world rank["<<world_rank<<"] HP: horizontal_parallel_size: "<<horizontal_parallel_size<<" "
-  <<hori_group_ranks[0]<<" "<<hori_group_ranks[1]<<" data_group_id: "<<hori_group_id<<" "<<rank_in_owning_hori_group<<std::endl;
+  // <<hori_group_ranks[0]<<" "
+  // <<hori_group_ranks[1]
+  <<" data_group_id: "<<hori_group_id
+  <<" in_group_id: "<<hori_group_ranks[rank_in_owning_hori_group]<<std::endl;
+  // <<" "<<rank_in_owning_hori_group<<std::endl;
   // // Horizontal Model Parallel Group
   // const int32_t hori_group_id = world_rank_with_offset / horizontal_parallel_size;
   // const int32_t rank_in_owning_hori_group = world_rank_with_offset % horizontal_parallel_size;
@@ -118,11 +140,16 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   for (auto r = 0; r < pipeline_stage_size; r++) {
     pipeline_group_ranks.push_back(pipeline_group_id + horizontal_parallel_size * data_parallel_size * r);
   }
+      ORT_ENFORCE(
+      pipeline_group_ranks[rank_in_owning_pipeline_group] == world_rank,
+      "pipeline parallel distributed group cal wrong: ", world_rank, " ", pipeline_group_ranks[rank_in_owning_pipeline_group]);
+
   groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipeline_group_id,
                                                   WorkerGroupType::ModelParallel, rank_in_owning_pipeline_group};
 
-  std::cout<<"** world rank["<<world_rank<<"] HP: pipeline_stage_size: "<<pipeline_stage_size<<" "
-  <<pipeline_group_ranks[0]<<" "<<pipeline_group_ranks[1]<<" data_group_id: "<<pipeline_group_id<<" "<<rank_in_owning_pipeline_group<<std::endl;
+  std::cout<<"** world rank["<<world_rank<<"] MP: pipeline_stage_size: "<<pipeline_stage_size<<" "
+  <<" data_group_id: "<<pipeline_group_id
+  <<" in_group_id: "<<pipeline_group_ranks[rank_in_owning_pipeline_group]<<std::endl;
 
 
   // const int32_t slice_index = world_rank / (horizontal_parallel_size * data_parallel_size);
