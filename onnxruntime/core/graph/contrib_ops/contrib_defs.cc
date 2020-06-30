@@ -447,6 +447,34 @@ and present state are optional. Present state could appear in output even when p
         return;
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaskIndex)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Mask Index for Attention. It converts attention mask into the end positions and start positions of each sequence.")
+      .Input(0, "attention_mask", "2D attention mask with shape (batch_size, sequence_length)", "T")
+      .Output(0, "mask_index", "1D mask_index tensor with shape (2*batch_size)", "Ti")
+      .TypeConstraint("T", {"tensor(int32)", "tensor(int64)", "tensor(float)"}, "Constrain input integer tensors types")
+      .TypeConstraint("Ti", {"tensor(int32)"}, "Constrain output integer tensors types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto output_data_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_data_type->set_elem_type(::ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& mask_shape = getInputShape(ctx, 0);
+        auto& mask_dims = mask_shape.dim();
+        if (mask_dims.size() != 2) {
+          fail_shape_inference("Inputs 0 shall be 2 dimensions");
+        }
+
+        ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+        mask_index_shape.add_dim();
+        mask_index_shape.mutable_dim(0)->set_dim_value(2 * mask_shape.dim(0).dim_value());
+        updateOutputShape(ctx, 0, mask_index_shape);
+      });
+
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
