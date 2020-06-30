@@ -86,6 +86,20 @@ inline std::vector<std::vector<int64_t>> Session::GetOverridableInitializerShape
   return out;
 }
 
+template <typename Tp>
+Tp Value::At(const std::initializer_list<size_t>& location) {
+  std::vector<size_t> location_ = location;
+  std::vector<int64_t> shape = this->GetTensorTypeAndShapeInfo().GetShape();
+  size_t offset = 0;
+  for (int i = 0; i < shape.size(); i++) {
+    int sum = 1;
+    for (int j = i + 1; j <= shape.size(); j++) sum *= shape[j];
+    offset += location_[i] * sum;
+  }
+  Tp* data_ptr = this->GetTensorMutableData<Tp>();
+  return data_ptr[offset];
+}
+
 template <typename T>
 inline Value Value::CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape) {
   return CreateTensor(p_data, p_data_element_count * sizeof(T), shape, TypeToTensorType<T>::type);

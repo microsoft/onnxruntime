@@ -51,6 +51,10 @@ struct Value : Ort::Value {
   Value(OrtValue* p)
       : Ort::Value(p){};
 
+  // a convenience function to improve tensor element access
+  template <typename Tp>
+  Tp At(const std::initializer_list<size_t>& location);
+
   template <typename T>
   static Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);
   static Value CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
