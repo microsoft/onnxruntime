@@ -29,7 +29,9 @@ class TestInferenceSession(unittest.TestCase):
 
     def testGetProviders(self):
         self.assertTrue('CPUExecutionProvider' in onnxrt.get_available_providers())
-        self.assertTrue('CPUExecutionProvider' in onnxrt.get_all_providers())
+        # get_all_providers() returns the default EP order from highest to lowest.
+        # CPUExecutionProvider should always be last.
+        self.assertTrue('CPUExecutionProvider' == onnxrt.get_all_providers()[-1])
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
         self.assertTrue('CPUExecutionProvider' in sess.get_providers())
 

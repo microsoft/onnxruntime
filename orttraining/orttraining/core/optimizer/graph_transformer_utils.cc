@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
+
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
+#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -29,17 +31,20 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {
-
+namespace training {
 namespace transformer_utils {
 
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(TransformerLevel level,
                                                                                const std::unordered_set<std::string>& weights_to_train,
+                                                                               bool enable_gelu_approximation,
                                                                                const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
@@ -58,11 +63,19 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
       rule_transformer->Register(make_unique<UnsqueezeElimination>());
       rule_transformer->Register(make_unique<ExpandElimination>());
       rule_transformer->Register(make_unique<CastElimination>());
+      rule_transformer->Register(make_unique<NonZeroShapeSetter>());
       rule_transformer->Register(make_unique<InsertSoftmaxCrossEntropyLossOutput>());
 
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(compatible_eps));
+
+      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(compatible_eps));
+
+      if (enable_gelu_approximation) {
+        transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(compatible_eps));
+      }
+
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(compatible_eps, weights_to_train));
       auto horizontal_parallel_size = training::DistributedRunContext::GroupSize(training::WorkerGroupType::HorizontalParallel);
       if (horizontal_parallel_size > 1) {
@@ -182,4 +195,5 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 }
 
 }  // namespace transformer_utils
+}  // namespace training
 }  // namespace onnxruntime
