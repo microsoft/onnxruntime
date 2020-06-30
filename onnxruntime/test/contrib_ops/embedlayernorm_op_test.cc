@@ -61,7 +61,7 @@ static void RunTest(
     std::vector<int64_t> gamma_dims = {hidden_size};
     std::vector<int64_t> beta_dims = gamma_dims;
     std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
-    std::vector<int64_t> mask_index_dims = {batch_size};
+    std::vector<int64_t> mask_index_dims = {2 * batch_size};
 
     OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
     tester.AddInput<int32_t>("input_ids", input_ids_dims, input_ids_data);
@@ -75,6 +75,8 @@ static void RunTest(
       tester.AddAttribute("epsilon", epsilon);
       if (has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, mask_data);
+      } else {
+        tester.AddMissingOptionalInput<int32_t>();
       }
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
     } else {
@@ -86,6 +88,8 @@ static void RunTest(
       tester.AddAttribute("epsilon", epsilon);
       if (has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, mask_data);
+      } else {
+        tester.AddMissingOptionalInput<int32_t>();
       }
       tester.AddOutput<float>("output", output_dims, output_data);
     }
@@ -136,7 +140,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1) {
       0.74301940202713013, -0.057434864342212677, 0.84324657917022705, -0.85171419382095337};
 
   std::vector<int32_t> mask_index_data = {
-      2};
+      2, 0};
 
   RunTest(input_ids_data,
           segment_ids_data,
@@ -196,7 +200,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
       0.7431640625, -0.057586669921875, 0.84326171875, -0.8525390625};
 
   std::vector<int32_t> mask_index_data = {
-      2};
+      2, 0};
 
   RunTest(input_ids_data,
           segment_ids_data,
@@ -267,7 +271,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
       0.64977931976318359, 0.11039737612009048, 1.1869535446166992, 0.14469735324382782};
 
   std::vector<int32_t> mask_index_data = {
-      2, 2, 1};
+      2, 2, 1, 0, 0, 0};
 
   RunTest(input_ids_data,
           segment_ids_data,
@@ -333,7 +337,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2_NoMask) {
       0.57668739557266235, 0.2979130744934082, 0.96158987283706665, 0.44627034664154053,
       0.64977931976318359, 0.11039737612009048, 1.1869535446166992, 0.14469735324382782};
 
-  std::vector<int32_t> mask_index_data = {0, 0, 0};
+  std::vector<int32_t> mask_index_data = {2, 2, 2, 0, 0, 0};
 
   RunTest(input_ids_data,
           segment_ids_data,
@@ -350,7 +354,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch2_NoMask) {
           sequence_length,
           hidden_size,
           false,
-          false); // no mask
+          false);  // no mask
 }
 
 // BatchSize > HiddenSize to reproduce mask processing bug
@@ -416,7 +420,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
       0.64977931976318359, 0.11039737612009048, 1.1869535446166992, 0.14469735324382782};
 
   std::vector<int32_t> mask_index_data = {
-      2, 2, 1, 2, 1};
+      2, 2, 1, 2, 1, 0, 0, 0, 0, 0};
 
   RunTest(input_ids_data,
           segment_ids_data,
@@ -433,5 +437,6 @@ TEST(EmbedLayerNormTest, EmbedLayerNormLargeBatchSmallHiddenSize) {
           sequence_length,
           hidden_size);
 }
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -497,7 +497,7 @@ will be calculated.)DOC";
       .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
       .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-      .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
+      .Output(1, "mask_index", "1D mask_index tensor with shape (2 * batch_size)", "T1")
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -535,9 +535,10 @@ will be calculated.)DOC";
 
         updateOutputShape(ctx, 0, output_shape);
 
-        // mask_index shape is (batch_size)
+        // mask_index shape is (2 * batch_size)
         ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-        *mask_index_shape.add_dim() = input_ids_dims[0];
+        mask_index_shape.add_dim();
+        mask_index_shape.mutable_dim(0)->set_dim_value(2 * input_ids_shape.dim(0).dim_value());
         updateOutputShape(ctx, 1, mask_index_shape);
       });
 

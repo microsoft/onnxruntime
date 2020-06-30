@@ -7,6 +7,7 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "embed_layer_norm.h"
 #include "embed_layer_norm_impl.h"
+#include "mask_index_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -53,19 +54,23 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
 
-  TensorShape mask_index_shape({input_dims[0]});
+  TensorShape mask_index_shape({2 * input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  if (!LaunchEmbedLayerNormKernel(
+  cudaStream_t stream = nullptr;  // use default stream
+  if (!LaunchMaskIndexKernel(stream,
+                             mask != nullptr ? mask->template Data<int32_t>() : nullptr,
+                             mask_index->template MutableData<int32_t>(),
+                             batch_size,
+                             sequence_length) ||
+      !LaunchEmbedLayerNormKernel(
           output->template MutableData<T>(),
-          mask_index->template MutableData<int32_t>(),
           input_ids->template Data<int32_t>(),
           segment_ids->template Data<int32_t>(),
-          nullptr == mask ? nullptr : mask->template Data<int32_t>(),
           gamma->template Data<T>(),
           beta->template Data<T>(),
           word_embedding->template Data<T>(),

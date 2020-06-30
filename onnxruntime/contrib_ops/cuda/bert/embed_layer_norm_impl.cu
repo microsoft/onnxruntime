@@ -31,78 +31,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <unsigned TPB>
-__global__ void MaskIndexKernelSmall(int sequence_length, const int* mask, int* mask_index) {
-  using BlockReduce = cub::BlockReduce<int, TPB>;
-  __shared__ typename BlockReduce::TempStorage temp_storage;
-
-  // blockIdx.x is b
-  const int offset = blockIdx.x * sequence_length;  // batch strides of sequence_length
-
-  cub::Min min;
-  int thread_data(sequence_length);
-
-  const int idx = offset + threadIdx.x;
-  if (threadIdx.x < sequence_length) {
-    const int val = mask[idx];
-    if (val == 0)  // masked position: report thread idx
-    {
-      thread_data = threadIdx.x;
-    }
-  }
-
-  const auto min_index = BlockReduce(temp_storage).Reduce(thread_data, min);
-
-  if (threadIdx.x == 0) {
-    mask_index[blockIdx.x] = min_index;
-  }
-}
-
-template <unsigned TPB>
-__global__ void MaskIndexKernel(int sequence_length, const int* mask, int* mask_index) {
-  using BlockReduce = cub::BlockReduce<int, TPB>;
-  __shared__ typename BlockReduce::TempStorage temp_storage;
-
-  // blockIdx.x is b
-  const int offset = blockIdx.x * sequence_length;  // batch strides of sequence_length
-
-  cub::Min min;
-  int thread_data(sequence_length);
-
-  for (int i = threadIdx.x; i < sequence_length; i += TPB) {
-    const int idx = offset + i;
-    const int val = mask[idx];
-    if (val == 0)  // masked position: report thread idx
-    {
-      thread_data = min(thread_data, i);
-    }
-  }
-
-  const auto min_index = BlockReduce(temp_storage).Reduce(thread_data, min);
-
-  if (threadIdx.x == 0) {
-    mask_index[blockIdx.x] = min_index;
-  }
-}
-
-inline bool ComputeMaskIndex(cudaStream_t stream, const int sequence_length, const int batch_size, const int* mask, int* mask_index) {
-  // Mask idx is of length batch_size and assumes the valid region is contiguous starting
-  // from the beginning of the sequence
-
-  // Assume n = batch_size x sequence_length
-  if (sequence_length <= 32) {
-    MaskIndexKernelSmall<32><<<batch_size, 32, 0, stream>>>(sequence_length, mask, mask_index);
-  } else if (sequence_length <= 128) {
-    MaskIndexKernelSmall<128><<<batch_size, 128, 0, stream>>>(sequence_length, mask, mask_index);
-  } else if (sequence_length == 384) {
-    MaskIndexKernelSmall<384><<<batch_size, 384, 0, stream>>>(sequence_length, mask, mask_index);
-  } else {
-    MaskIndexKernel<256><<<batch_size, 256, 0, stream>>>(sequence_length, mask, mask_index);
-  }
-
-  return CUDA_CALL(cudaPeekAtLastError());
-}
-
 template <typename T, unsigned TPB>
 __global__ void EmbedLayerNormKernel(
     int hidden_size, const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
@@ -168,10 +96,9 @@ bool EmbedSkipLayerNorm(
 
 bool LaunchEmbedLayerNormKernel(
     void* output,
-    void* mask_index,
     const int* input_ids,
     const int* segment_ids,
-    const int* input_mask,
+
     const void* gamma,
     const void* beta,
     const void* word_embedding,
@@ -184,18 +111,11 @@ bool LaunchEmbedLayerNormKernel(
     const size_t element_size) {
   const cudaStream_t stream = nullptr;  // default stream
 
-  if (nullptr == input_mask) {
-    if (!CUDA_CALL(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size)))
-      return false;
-  } else if (!ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index))) {
-    return false;
-  }
-
   if (element_size == 2) {
     return EmbedSkipLayerNorm<half>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
-        reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding), 
+        reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding),
         reinterpret_cast<const half*>(segment_embedding), __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
   } else {
