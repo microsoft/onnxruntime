@@ -41,6 +41,8 @@ public class OrtSession extends NativeObject {
 
   private final OnnxModelMetadata metadata;
 
+  private final RunOptions defaultRunOptions;
+
   /**
    * Create a session loading the model from disk.
    *
@@ -104,6 +106,7 @@ public class OrtSession extends NativeObject {
     super(sessionHandle);
     this.environment = environment;
     this.allocator = allocator;
+    this.defaultRunOptions = new RunOptions();
     try (NativeReference allocatorReference = allocator.reference()) {
       long allocatorHandle = allocatorReference.handle();
       metadata = constructMetadata(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle);
@@ -188,7 +191,7 @@ public class OrtSession extends NativeObject {
    *     there are zero or too many inputs.
    */
   public Result run(Map<String, OnnxTensor> inputs) throws OrtException {
-    return run(inputs, outputNamesArray, null);
+    return run(inputs, outputNamesArray, defaultRunOptions);
   }
 
   /**
@@ -219,7 +222,7 @@ public class OrtSession extends NativeObject {
    */
   public Result run(Map<String, OnnxTensor> inputs, Set<String> requestedOutputs)
       throws OrtException {
-    return run(inputs, convertRequestedOutputs(requestedOutputs), null);
+    return run(inputs, convertRequestedOutputs(requestedOutputs), defaultRunOptions);
   }
 
   /**
@@ -285,7 +288,7 @@ public class OrtSession extends NativeObject {
     try (NativeReference environmentReference = environment.reference();
         NativeReference allocatorReference = allocator.reference();
         NativeReference sessionReference = reference();
-        NativeReference runOptionsReference = optionalReference(runOptions);
+        NativeReference runOptionsReference = runOptions.reference();
         NativeInputReferences inputsReferences = new NativeInputReferences(numRequestedInputs)) {
       String[] requestedInputsArray = new String[numRequestedInputs];
       long[] inputHandles = new long[numRequestedInputs];
@@ -385,8 +388,27 @@ public class OrtSession extends NativeObject {
         + ")";
   }
 
+  /**
+   * Terminate running model evaluations.
+   *
+   * <p>This is typically used in multi-threaded environments, where session management and model
+   * evaluation are occurring in different threads. This method can be used prior to calling {@link
+   * #close()} to prevent the normal behavior of blocking until pending model evaluations are
+   * completed.
+   *
+   * <p>Note: This will only terminate calls to {@link #run(Map)} and {@link #run(Map,Set)}. It will
+   * not work with {@link #run(Map,RunOptions)} or {@link #run(Map,Set,RunOptions)}. In those cases,
+   * termination should be done using the {@link RunOptions} passed into those methods.
+   *
+   * @throws OrtException If the terminate setting failed.
+   */
+  public synchronized void terminate() throws OrtException {
+    defaultRunOptions.setTerminate(true);
+  }
+
   @Override
   protected void doClose(long handle) {
+    defaultRunOptions.close();
     closeSession(OnnxRuntime.ortApiHandle, handle);
   }
 
