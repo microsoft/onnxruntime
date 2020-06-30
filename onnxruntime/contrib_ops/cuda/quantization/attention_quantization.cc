@@ -173,6 +173,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
+          nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
