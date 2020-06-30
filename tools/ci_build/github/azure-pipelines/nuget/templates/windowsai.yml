@@ -326,6 +326,7 @@ jobs:
 
   - task: PowerShell@2
     displayName: 'NuGet Tests: Run Tests'
+    continueOnError: true
     inputs:
       targetType: 'inline'
       script: |
@@ -347,8 +348,6 @@ jobs:
         popd
         Write-Host "Done!"
       workingDirectory: $(Build.SourcesDirectory)\csharp\test
-      errorActionPreference: continue
-      continueOnError: true
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
