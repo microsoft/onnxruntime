@@ -703,7 +703,7 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(indicesDimensions.size() >= 0);
         int outDimCount = gsl::narrow_cast<int>(inputDimensions.size() + indicesDimensions.size() - 1);
-        ML_CHECK_VALID_ARGUMENT(outDimCount >= 0 && outDimCount <= NchwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(outDimCount >= 0);
 
         std::vector<DimensionType> outputDimensions(outDimCount, 1);
 
@@ -746,7 +746,7 @@ namespace OperatorHelper
         const uint32_t numberOfOutputDimensionsFromInput = static_cast<uint32_t>(inputDimensions.size()) - numberOfCoordinatesPerIndex;
         const uint32_t numberOfOutputDimensionsFromIndices = static_cast<uint32_t>(indicesDimensions.size()) - 1; // Strip off last dimension.
         uint32_t outputDimensionCount = gsl::narrow_cast<uint32_t>(numberOfOutputDimensionsFromIndices + numberOfOutputDimensionsFromInput);
-        ML_CHECK_VALID_ARGUMENT(outputDimensionCount > 0 && outputDimensionCount <= NchwDimensionCount);
+        ML_CHECK_VALID_ARGUMENT(outputDimensionCount > 0);
 
         // Form the full expected size by concatenating the prefix part of the indices tensor shape
         // with the suffix of the input tensor shape.
@@ -812,8 +812,6 @@ namespace OperatorHelper
         // Dim Offset   : 1
 
         std::vector<DimensionType> reducedDims = shapeInfo.GetInputTensorShape(0);
-        ML_CHECK_VALID_ARGUMENT(reducedDims.size() <= NchwDimensionCount);
-
         std::vector<bool> reduced(reducedDims.size(), false);
 
         for (auto& dim : m_axes)
@@ -847,8 +845,6 @@ namespace OperatorHelper
 
     void ReduceHelperBase::AdjustAxesAndOutputShape(const std::vector<uint32_t>& inputShape)
     {
-        ML_CHECK_VALID_ARGUMENT(inputShape.size() <= NchwDimensionCount);
-
         // If axes is not specified, reduce over all the dimensions
         if (m_axes.empty())
         {
@@ -1001,7 +997,6 @@ namespace OperatorHelper
     std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto outputShape = shapeInfo.GetInputTensorShape(0);
-        ML_CHECK_VALID_ARGUMENT(outputShape.size() <= NcdhwDimensionCount);
 
         uint32_t inputCount = shapeInfo.GetInputCount();
 

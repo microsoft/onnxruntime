@@ -27,7 +27,6 @@ public:
         auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
         std::vector<DimensionType> indicesDimensions = outputTensorShapeDescription.GetInputTensorShape(1);
-        ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
         uint32_t dmlAxis = GetDmlAdjustedAxis(m_axis, kernelCreationContext, m_inputTensorDescs.front().GetDimensionCount());
 
         DML_GATHER_OPERATOR_DESC operatorDesc = {};
