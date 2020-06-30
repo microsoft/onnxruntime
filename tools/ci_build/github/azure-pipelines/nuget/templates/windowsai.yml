@@ -347,7 +347,7 @@ jobs:
         popd
         Write-Host "Done!"
       workingDirectory: $(Build.SourcesDirectory)\csharp\test
-      continueOnError: true
+      errorActionPreference: continue
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
