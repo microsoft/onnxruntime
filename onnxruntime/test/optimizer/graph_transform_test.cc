@@ -2530,8 +2530,8 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest_With_Bias_No_B_ZP) {
   EXPECT_EQ(op_to_count["DynamicQuantizeMatMul"], 1);
 }
 
-TEST_F(GraphTransformationTests, MatMulIntegerExtensionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/matmul_integer_extension.onnx";
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
+  auto model_uri = MODEL_FOLDER "fusion/matmul_integer_to_float.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -2546,7 +2546,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerExtensionTest) {
   EXPECT_EQ(op_to_count["MatMulInteger"], 0);
   EXPECT_EQ(op_to_count["Cast"], 0);
   EXPECT_EQ(op_to_count["Mul"], 0);
-  EXPECT_EQ(op_to_count["MatMulIntegerExtension"], 3);
+  EXPECT_EQ(op_to_count["MatMulIntegerToFloat"], 3);
   EXPECT_EQ(op_to_count["Add"], 1);
 }
 

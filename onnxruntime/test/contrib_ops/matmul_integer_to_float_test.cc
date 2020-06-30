@@ -23,7 +23,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void TestMatMulIntegerExtension(const std::vector<int64_t>& A_dims,
+void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                                 std::vector<int64_t> B_dims,
                                 const std::string& reference_model,
                                 bool has_zp = true,
@@ -51,7 +51,7 @@ void TestMatMulIntegerExtension(const std::vector<int64_t>& A_dims,
 
   std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
 
-  OpTester test("MatMulIntegerExtension", 1, onnxruntime::kMSDomain);
+  OpTester test("MatMulIntegerToFloat", 1, onnxruntime::kMSDomain);
   test.AddInput<uint8_t>("A", A_dims, A_data);
   test.AddInput<T>("B", B_dims, B_data);
   test.AddInput<float>("a_scale", {1}, A_scale);
@@ -75,40 +75,40 @@ void TestMatMulIntegerExtension(const std::vector<int64_t>& A_dims,
   test.Run();
 }
 
-TEST(MatMulIntegerExtension, Int8_test) {
+TEST(MatMulIntegerToFloat, Int8_test) {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<int8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_int8.onnx");
+  TestMatMulIntegerToFloat<int8_t>(A_dims, B_dims, "testdata/matmul_integer_to_float_int8.onnx");
 #endif
 }
 
-TEST(MatMulIntegerExtension, Int8_bias_test) {
+TEST(MatMulIntegerToFloat, Int8_bias_test) {
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<int8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_int8_bias.onnx", false, true);
+  TestMatMulIntegerToFloat<int8_t>(A_dims, B_dims, "testdata/matmul_integer_to_float_int8_bias.onnx", false, true);
 #endif
 }
 
-TEST(MatMulIntegerExtension, UInt8_test) {
+TEST(MatMulIntegerToFloat, UInt8_test) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<uint8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_uint8.onnx");
+  TestMatMulIntegerToFloat<uint8_t>(A_dims, B_dims, "testdata/matmul_integer_to_float_uint8.onnx");
 }
 
-TEST(MatMulIntegerExtension, UInt8_bias_test) {
+TEST(MatMulIntegerToFloat, UInt8_bias_test) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerExtension<uint8_t>(A_dims, B_dims, "testdata/matmul_integer_extension_uint8_bias.onnx", false, true);
+  TestMatMulIntegerToFloat<uint8_t>(A_dims, B_dims, "testdata/matmul_integer_to_float_uint8_bias.onnx", false, true);
 }
 
 }  // namespace test

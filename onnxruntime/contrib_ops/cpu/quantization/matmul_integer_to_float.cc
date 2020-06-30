@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_integer_extension.h"
+#include "matmul_integer_to_float.h"
 
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
@@ -12,9 +12,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_MATMUL_INTEGER_EXTENSION(T)                            \
+#define REGISTER_MATMUL_INTEGER_TO_FLOAT(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      MatMulIntegerExtension,                                           \
+      MatMulIntegerToFloat,                                           \
       kMSDomain,                                                        \
       1,                                                                \
       T,                                                                \
@@ -23,13 +23,13 @@ namespace contrib {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())       \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),  \
-      MatMulIntegerExtension<uint8_t, T>);
+      MatMulIntegerToFloat<uint8_t, T>);
 
-REGISTER_MATMUL_INTEGER_EXTENSION(int8_t)
-REGISTER_MATMUL_INTEGER_EXTENSION(uint8_t)
+REGISTER_MATMUL_INTEGER_TO_FLOAT(int8_t)
+REGISTER_MATMUL_INTEGER_TO_FLOAT(uint8_t)
 
 template <typename T1, typename T2>
-Status MatMulIntegerExtension<T1, T2>::Compute(OpKernelContext* ctx) const {
+Status MatMulIntegerToFloat<T1, T2>::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = ctx->Input<Tensor>(1);
   ORT_ENFORCE(a != nullptr && b != nullptr);

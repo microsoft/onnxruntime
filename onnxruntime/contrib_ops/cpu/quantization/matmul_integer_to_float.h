@@ -10,9 +10,9 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T1, typename T2>
-class MatMulIntegerExtension final : public OpKernel {
+class MatMulIntegerToFloat final : public OpKernel {
  public:
-  MatMulIntegerExtension(const OpKernelInfo& info) : OpKernel(info) {
+  MatMulIntegerToFloat(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

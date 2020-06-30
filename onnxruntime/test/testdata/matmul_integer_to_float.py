@@ -49,7 +49,7 @@ def GenerateModel(model_name, sign, has_zp = True, bias = False):
     onnx.save(model, model_name)
 
 if __name__ == "__main__":
-    GenerateModel('matmul_integer_extension_int8.onnx', True)
-    GenerateModel('matmul_integer_extension_uint8.onnx', False)
-    GenerateModel('matmul_integer_extension_int8_bias.onnx', True, False, True)
-    GenerateModel('matmul_integer_extension_uint8_bias.onnx', False, False, True)
+    GenerateModel('matmul_integer_to_float_int8.onnx', True)
+    GenerateModel('matmul_integer_to_float_uint8.onnx', False)
+    GenerateModel('matmul_integer_to_float_int8_bias.onnx', True, False, True)
+    GenerateModel('matmul_integer_to_float_uint8_bias.onnx', False, False, True)

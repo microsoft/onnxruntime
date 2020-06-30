@@ -1715,7 +1715,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulIntegerExtension)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulIntegerToFloat)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "A", "N-dimensional matrix A", "T1")

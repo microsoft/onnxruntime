@@ -52,7 +52,7 @@ MatMulInteger (B const)      Mul (B const)                     (input)
                               v
                           (output)
 
-It also fuses subgraph like below into MatMulIntegerExtension:
+It also fuses subgraph like below into MatMulIntegerToFloat:
                                               input                                                                            input
                                                 |                                                                                |
                                                 v                                                                                v
@@ -61,7 +61,7 @@ It also fuses subgraph like below into MatMulIntegerExtension:
           |                    +----------------+--------------+                    |                                  +---------+----------+
           |                    |                              |                     |                                  |                    |
           V                    v                              v                     v                                  V                    v
-    MatMulInteger(B const)   Mul(B const)                MatMulInteger (B const)   Mul (B const)       --->   MatMulIntegerExtension MatMulIntegerExtension
+    MatMulInteger(B const)   Mul(B const)                MatMulInteger (B const)   Mul (B const)       --->   MatMulIntegerToFloat MatMulIntegerToFloat
           |                    |                               |                    |                                  |                    | 
           v                    v                               v                    v                                  v                    v 
         Cast ---------------->Mul                            Cast ---------------->Mul                              (output1) ----------(output2)
@@ -173,7 +173,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
 
       nodes_to_remove.push_back(dql_node_left);
     } else {
-      op_type_to_fuse = "MatMulIntegerExtension";
+      op_type_to_fuse = "MatMulIntegerToFloat";
 
       input_defs.push_back(matmulinteger_node.MutableInputDefs()[0]);
       input_defs.push_back(matmulinteger_node.MutableInputDefs()[1]);

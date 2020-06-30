@@ -42,7 +42,7 @@ def GenerateModel(model_name):
 
     graph = helper.make_graph(
         nodes,
-        "MatMulIntegerExtension_fusion",  #name
+        "MatMulIntegerToFloat_fusion",  #name
         [  # inputs
             helper.make_tensor_value_info('input', TensorProto.FLOAT, [3, 2]),
         ],
@@ -57,4 +57,4 @@ def GenerateModel(model_name):
     onnx.save(model, model_name)
 
 if __name__ == "__main__":
-    GenerateModel('matmul_integer_extension.onnx')
+    GenerateModel('matmul_integer_to_float.onnx')
