@@ -110,8 +110,8 @@ abstract class NativeObject implements AutoCloseable {
 
   /**
    * Get a reference to the backing native object. This method ensures the object is open. It is
-   * recommended this be used with a try-with-resources to ensure the NativeReference is closed and
-   * does not leak out of scope. The reference should not be shared between threads.
+   * recommended this be used with a try-with-resources to ensure the {@link NativeReference} is
+   * closed and does not leak out of scope. The reference should not be shared between threads.
    *
    * @return a reference from which the backing native object's handle can be used.
    */
@@ -123,8 +123,8 @@ abstract class NativeObject implements AutoCloseable {
    * A nullable implementation of reference().
    *
    * @param object possibly null NativeObject
-   * @return a NativeReference for that object, or when null, NativeReference which returns address
-   *     0
+   * @return a {@link NativeReference} for that object, or when null, {@link NativeReference} which
+   *     returns address 0
    */
   static final NativeReference optionalReference(NativeObject object) {
     if (object == null) {
@@ -133,7 +133,7 @@ abstract class NativeObject implements AutoCloseable {
     return object.reference();
   }
 
-  /** A NativeReference implementation for non-null Java objects. */
+  /** A {@link NativeReference} implementation for non-null Java objects. */
   private final class DefaultNativeReference implements NativeReference {
 
     private boolean referenceClosed;
@@ -187,7 +187,7 @@ abstract class NativeObject implements AutoCloseable {
     }
   }
 
-  /** A NativeReference implementation for null Java objects. */
+  /** A {@link NativeReference} implementation for null Java objects. */
   private static final class NullNativeReference implements NativeReference {
 
     private static final NativeReference INSTANCE = new NullNativeReference();

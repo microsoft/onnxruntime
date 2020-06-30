@@ -22,6 +22,9 @@ import java.util.logging.Logger;
  *
  * <p>Most instance methods throw {@link IllegalStateException} if the session is closed and the
  * methods are called.
+ *
+ * <p>This class is thread-safe. It is possible to manage sessions in one thread and conduct model
+ * evaluations in other threads.
  */
 public class OrtSession extends NativeObject {
 
@@ -413,10 +416,10 @@ public class OrtSession extends NativeObject {
   }
 
   /**
-   * Converts a NodeInfo array into a map from node name to node info.
+   * Converts a {@link NodeInfo} array into a map from node name to node info.
    *
-   * @param infos The NodeInfo array to convert.
-   * @return An ordered, unmodifiable Map from String to NodeInfo.
+   * @param infos The {@link NodeInfo} array to convert.
+   * @return An ordered, unmodifiable Map from String to {@link NodeInfo}.
    */
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
     Map<String, NodeInfo> output = new LinkedHashMap<>(infos.length);
