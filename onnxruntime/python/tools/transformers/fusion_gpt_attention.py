@@ -17,11 +17,23 @@ class FusionGptAttention(Fusion):
     Fuse GPT-2 Attention with past state subgraph into one Attention node.
     This does not support attention_mask graph input right now.
     """
-    def __init__(self, model: OnnxModel, num_heads: int):
+    def __init__(self, model: OnnxModel, num_heads: int, use_mask_index:bool = False):
         super().__init__(model, "Attention", "LayerNormalization", "with past")
         self.num_heads = num_heads
+        self.use_mask_index = use_mask_index
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
+    
+    def add_mask_index(self, attention_mask: str):
+        node_name = self.model.create_node_name('MaskIndex')
+        output_name = node_name + '_output'
+        new_node = helper.make_node('MaskIndex',
+                                    inputs=[attention_mask],
+                                    outputs=[output_name],
+                                    name=node_name)
+        new_node.domain = "com.microsoft"
+        self.model.add_node(new_node)
+        return output_name
 
     def create_attention_node(self, gemm, gemm_qkv, past, present, input, output, mask=''):
         attention_node_name = self.model.create_node_name('GptAttention')
@@ -212,10 +224,17 @@ class FusionGptAttention(Fusion):
             if input_name in self.casted_attention_mask:
                 attention_mask_input_name = self.casted_attention_mask[input_name]
             elif self.model.find_graph_input(input_name):
-                casted, attention_mask_input_name = self.utils.cast_graph_input_to_int32(input_name)
+                if not self.use_mask_index:
+                    casted, attention_mask_input_name = self.utils.cast_graph_input_to_int32(input_name)
+                else:
+                    attention_mask_input_name = self.add_mask_index(input_name)
+
                 self.casted_attention_mask[input_name] = attention_mask_input_name
             else:
-                attention_mask_input_name, cast_node = self.utils.cast_input_to_int32(input_name)
+                if not self.use_mask_index:
+                    attention_mask_input_name, cast_node = self.utils.cast_input_to_int32(input_name)
+                else:
+                    attention_mask_input_name = self.add_mask_index(input_name)
                 self.casted_attention_mask[input_name] = attention_mask_input_name
 
         self.create_attention_node(gemm, gemm_qkv, past, present, layernorm_before_attention.output[0],
