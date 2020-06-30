@@ -683,7 +683,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
           &(pipeline_worker_pool_.worker_states[worker_id].fetches));
 
       ORT_THROW_IF_ERROR(status);
-    } catch (std::exception& e) {
+    } catch (std::exception&) {
       // If exception happens during worker execution, propogate the exception to main thread.
       pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
     }
@@ -782,7 +782,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
           pipeline_worker_pool_.worker_states[worker_id].fetch_names,
           &(pipeline_worker_pool_.worker_states[worker_id].fetches));
       ORT_THROW_IF_ERROR(status);
-    } catch (std::exception& e) {
+    } catch (std::exception&) {
       pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
     }
   },
