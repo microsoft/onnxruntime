@@ -599,7 +599,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
   const auto* input = tensor.Data<std::string>();
   auto len = static_cast<size_t>(tensor.Shape().Size());
   if (offsets_len < len) {
-    return OrtApis::CreateStatus(ORT_FAIL, "space is not enough");
+    return OrtApis::CreateStatus(ORT_FAIL, "offsets buffer is too small");
   }
   {
     size_t ret = 0;
@@ -607,7 +607,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
       ret += input[i].size();
     }
     if (s_len < ret) {
-      return OrtApis::CreateStatus(ORT_FAIL, "space is not enough");
+      return OrtApis::CreateStatus(ORT_FAIL, "output buffer is too small");
     }
   }
   size_t f = 0;
@@ -632,14 +632,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "element index is out of bounds");
   }
 
-  {
-    size_t ret = input[index].size();
-    if (s_len < ret) {
-      return OrtApis::CreateStatus(ORT_FAIL, "space is not enough");
-    }
+  size_t ret = input[index].size();
+  if (s_len < ret) {
+    return OrtApis::CreateStatus(ORT_FAIL,"buffer size is too small for string");
   }
 
-memcpy(s, input[index].data(), input[index].size());
+  memcpy(s, input[index].data(), input[index].size());
 
   return nullptr;
   API_IMPL_END

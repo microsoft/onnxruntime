@@ -439,15 +439,15 @@ TEST(CApiTest, get_string_tensor_element) {
 
   tensor.FillStringTensor(s, expected_len);
     
-  auto expected_str = s[element_index];
-  size_t expected_strlen = expected_str.size();
+  auto expected_string = s[element_index];
+  size_t expected_string_len = expected_string.size();
 
   std::string result(expected_string_len, '\0');
-  tensor.GetStringTensorElement((void*)result.data(), expected_strlen, element_index);
-  ASSERT_STREQ(result.c_str(), expected_str);
+  tensor.GetStringTensorElement((void*)result.data(), expected_string_len, element_index);
+  ASSERT_STREQ(result.c_str(), expected_string);
 
-  auto strlen= tensor.GetStringTensorElementLength(element_index);
-  ASSERT_EQ(expected_strlen, strlen);
+  auto string_len = tensor.GetStringTensorElementLength(element_index);
+  ASSERT_EQ(expected_strlen, string_len);
 }
 
 TEST(CApiTest, create_tensor_with_data) {
