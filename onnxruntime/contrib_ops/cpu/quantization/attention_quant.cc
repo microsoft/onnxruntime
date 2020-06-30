@@ -34,21 +34,23 @@ REGISTER_KERNEL_TYPED(float, uint8_t, int8_t)
 REGISTER_KERNEL_TYPED(float, uint8_t, uint8_t)
 
 template <typename T, typename QInput, typename QWeight>
-QAttention<T, QInput, QWeight>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionBase(info) {
+QAttention<T, QInput, QWeight>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
 template <typename T, typename QInput, typename QWeight>
 Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   // Input and output shapes:
-  //   Input 0 - input             : (batch_size, sequence_length, hidden_size)
-  //   Input 1 - weights           : (hidden_size, 3 * hidden_size)
-  //   Input 2 - bias              : (3 * hidden_size)
-  //   Input 3 - input_scale       : scalar
-  //   Input 4 - weight_scale      : scalar
-  //   Input 5 - mask_index        : (batch_size)
-  //   Input 6 - input_zero_point  : scalar
-  //   Input 7 - weight_zero_point : scalar
-  //   Output                      : (batch_size, sequence_length, hidden_size)
+  //   Input  0 - input             : (batch_size, sequence_length, hidden_size)
+  //   Input  1 - weights           : (hidden_size, 3 * hidden_size)
+  //   Input  2 - bias              : (3 * hidden_size)
+  //   Input  3 - input_scale       : scalar
+  //   Input  4 - weight_scale      : scalar
+  //   Input  5 - mask_index        : (batch_size)
+  //   Input  6 - input_zero_point  : scalar
+  //   Input  7 - weight_zero_point : scalar
+  //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
+  //   Output 0                     : (batch_size, sequence_length, hidden_size)
+  //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
   //   ORT_RETURN_IF_ERROR(CheckInputs(context));
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
@@ -58,8 +60,9 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(5);
   const Tensor* i_zp_tensor = context->Input<Tensor>(6);
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
+  const Tensor* past_tensor = context->Input<Tensor>(8);
 
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, nullptr));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input, weights, bias, mask_index, past_tensor));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -146,51 +149,15 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
               &dequant_scale,                 // output scale
               bias_data + weights_offset,     // bias
               nullptr                         // use single-thread
-              );
+        );
       }
     });
   }
 
-  // STEP.2: compute the attention score. It does 2 things:
-  //         I. attention_probs(B, N, S, S) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S, H -> B, N, H, S) +
-  //                                         1 x mask_data(B, N, S, S)
-  //         II.attention_probs(B, N, S, S) = Softmax(attention_probs)
-  size_t attention_probs_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * sequence_length * element_size;
-  auto attention_probs = allocator->Alloc(attention_probs_bytes);
-  BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
-
-  size_t mask_data_bytes = 0;
-  if (mask_index != nullptr) {
-    mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * sequence_length * element_size;
-  } else if (is_unidirectional_) {
-    mask_data_bytes = SafeInt<size_t>(sequence_length) * sequence_length * element_size;
-  }
-
-  void* mask_data = nullptr;
-  if (mask_data_bytes > 0) {
-    mask_data = allocator->Alloc(mask_data_bytes);
-    memset(mask_data, 0, mask_data_bytes);
-  }
-  BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
-
-  const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
-
-  int past_sequence_length = 0;
-  const T* past_data = nullptr;
-  T* present_data = nullptr;
-  ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K, mask_index_data, static_cast<T*>(mask_data),
-                           batch_size, sequence_length, past_sequence_length, head_size, num_heads_, is_unidirectional_,
-                           past_data, present_data, tp);
-
-  // STEP.3: compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S) x V(B, N, S, H)
-  auto out_tmp_data =
-      allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * element_size);
-  BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
-
-  ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
-                          batch_size, sequence_length, past_sequence_length, head_size, num_heads_, hidden_size, past_data, present_data, tp);
-
-  return Status::OK();
+  // Compute the attention score and apply the score to V
+  return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
+                        batch_size, sequence_length,
+                        head_size, hidden_size, context);
 }
 
 }  // namespace contrib

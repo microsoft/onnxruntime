@@ -28,6 +28,8 @@ MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type);
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
                           py::object& value, OrtValue* p_mlvalue);
 
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr);
+
 template <class T>
 struct DecRefFn {
   void operator()(T* pyobject) const {

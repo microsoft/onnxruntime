@@ -12,19 +12,14 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
+
 
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
-
-// BEGIN: forward declaration for stuff in onnxruntime_pybind_state
-void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types);
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr);
-void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc, const std::string& name_input,
-                          py::object& value, OrtValue* p_mlvalue);
-// END: forward declaration
 
 struct TrainingParameters {
   std::string loss_output_name;

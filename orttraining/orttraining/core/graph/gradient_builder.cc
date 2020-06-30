@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cmath>
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder.h"
+
+#include <cmath>
+#include <numeric>
+
+#include "onnx/defs/attr_proto_util.h"
+
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
-#include "onnx/defs/attr_proto_util.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -18,7 +22,7 @@ namespace training {
 
 IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
   // TODO: handle invalid conversion cases
-  const auto& data_type = I(0).type_proto->tensor_type().elem_type();
+  const auto data_type = I(0).type_proto->tensor_type().elem_type();
   return std::vector<NodeDef>{
       NodeDef("Cast",
               {GO(0)},
@@ -619,7 +623,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   bool is_sub = (SrcNodeOpType() == "Sub");
 
-  const ArgDef &a = I(0), b = I(1);
+  const ArgDef a = I(0), b = I(1);
 
   std::vector<Dimension> a_shape = GetShape(a);
   std::vector<Dimension> b_shape = GetShape(b);
@@ -669,7 +673,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
-  const ArgDef &a = I(0), b = I(1);
+  const ArgDef a = I(0), b = I(1);
 
   std::vector<Dimension> a_shape = GetShape(a);
   std::vector<Dimension> b_shape = GetShape(b);
@@ -720,7 +724,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
                 {GI(0), GI(1)})};
   } else if (IsGradientRequiredForSrcNodeInput(0)) {
     // Y = A / B, dA = dY / B
-    const ArgDef &a = I(0), b = I(1);
+    const ArgDef a = I(0), b = I(1);
     std::vector<int64_t> a_axes, b_axes;
     ComputeBroadcastBackwardAxes(GetShape(a), GetShape(b), &a_axes, &b_axes);
 
@@ -860,7 +864,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
-  const ArgDef& X = I(0);
+  const ArgDef X = I(0);
 
   // TODO: ONNX supports unknown shape for the input feed, e.g. [1, 3, -1, 28],
   // thus the shape of input might be missing at graph construction time.
@@ -898,6 +902,57 @@ IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
       NodeDef(OpDef{"GeluGrad", kMSDomain, 1},
               {GO(0), I(0)},
               {GI(0)})};
+}
+
+namespace {
+std::vector<NodeDef> GetBiasGeluGradNodes(
+    bool use_approximation,
+    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
+    const ArgDef& dX, const ArgDef& dB) {                // outputs
+  const auto B_shape = GetShape(B);
+  ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
+
+  const std::vector<int64_t> B_axes = [&B_shape, &X]() {
+    std::vector<int64_t> result{};
+    ComputeBroadcastBackwardAxes(B_shape, GetShape(X), &result, nullptr);
+    return result;
+  }();
+
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
+              {dY, X, B},
+              {dX}),
+      NodeDef("ReduceSum",
+              {dX},
+              {dB},
+              {{"keepdims", MakeAttribute("keepdims", int64_t{0})},
+               {"axes", MakeAttribute("axes", B_axes)}})};
+}
+}  // namespace
+
+IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
+  const auto dY = GO(0), X = I(0), B = I(1),
+             dX = GI(0), dB = GI(1);
+  return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
+  const auto dY = GO(0), X = I(0),
+             dX = GI(0);
+  const auto num_src_node_inputs = GetSrcNodeInputSize();
+  if (num_src_node_inputs == 2) {  // with bias
+    // FastGeluGrad doesn't support bias - it needs to be composed with other ops
+    const auto B = I(1),
+               dB = GI(1);
+    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
+  }
+  if (num_src_node_inputs == 1) {  // without bias
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
+                {dY, X},
+                {dX})};
+  }
+  ORT_THROW("Unexpected number of FastGelu inputs: ", num_src_node_inputs);
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
@@ -951,13 +1006,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
               {I(0)},
               {IA("I0_shape")}),
       NodeDef(OpDef{"SliceGrad", kMSDomain, 1}, inputs, {GI(0)})};
-}
-
-IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
-              {GO(0), I(0)},
-              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
