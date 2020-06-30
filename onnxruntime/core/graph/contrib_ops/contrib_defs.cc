@@ -291,9 +291,14 @@ const char* contrib_ops_auto_pad_doc =
 
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
-Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
-The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
-mask_index shall not be provided.)DOC";
+Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
+we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+where value of each element is the end position, or valid length of actual sequence excluding padding. When input has 
+left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by 
+the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
+and present state are optional. Present state could appear in output even when past state is not in input.
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
@@ -308,7 +313,7 @@ mask_index shall not be provided.)DOC";
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
       .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(3, "mask_index", "Attention mask index with shape (batch_size).", "M", OpSchema::Optional)
+      .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
