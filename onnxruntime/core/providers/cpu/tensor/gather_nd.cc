@@ -44,12 +44,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     GatherND);
 
 template <typename Tind>
-Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, concurrency::ThreadPool* tp) const {
-  const auto* input_tensor = context->Input<Tensor>(0);
-  const auto* indices_tensor = context->Input<Tensor>(1);
-  ORT_ENFORCE(input_tensor != nullptr && indices_tensor != nullptr, "GatherNDBase PrepareForCompute: Input count mismatch");
-
-  const auto& input_shape = input_tensor->Shape();
+Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Tensor* indices_tensor,
+                                       const int64_t bytes_per_value, Prepare& p, concurrency::ThreadPool* tp) const {
   const auto& indices_shape = indices_tensor->Shape();
   if (indices_shape.NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor must has rank larger than 0");
@@ -61,36 +57,17 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, con
   const auto num_batches = input_shape.SizeToDimension(batch_dims_);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims_);
   const auto num_slices_per_batch = num_slices / num_batches;
-
-  int64_t last_indices_dimension = batch_dims_ + num_slice_dims;
-  if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
-  }
-
-  std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
-  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension, input_shape.GetDims().end());
-  auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
-
   std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
   for (int64_t i = 0; i < num_slice_dims; ++i) {
     sizes_from_slice_dims[i] = input_shape.SizeFromDimension(batch_dims_ + i + 1);
   }
 
   int64_t err_index = 0;
-  p.element_bytes = input_tensor->DataType()->Size();
+  p.element_bytes = bytes_per_value;
   p.element_count_per_slice = slice_size;
   p.bytes_per_slice = p.element_bytes * p.element_count_per_slice;
   const auto* indices_data = indices_tensor->Data<Tind>();
   p.slice_offsets.assign(num_slices, 0LL);
-
-  if (input_tensor->IsDataTypeString()) {
-    p.input_str_base = static_cast<const std::string*>(input_tensor->DataRaw());
-    p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
-  } else {
-    p.input_base = static_cast<const uint8_t*>(input_tensor->DataRaw());
-    p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
-  }
 
   // Compute the element_offset
   auto lambda = [&](int64_t slice_idx) {
@@ -125,15 +102,57 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p, con
                         : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
 }
 
-template Status GatherNDBase::PrepareForCompute<int32_t>(OpKernelContext*, Prepare&, concurrency::ThreadPool*) const;
-template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepare&, concurrency::ThreadPool*) const;
+template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,
+                                                         const Tensor*,
+                                                         const int64_t,
+                                                         Prepare&,
+                                                         concurrency::ThreadPool*) const;
+template Status GatherNDBase::PrepareForCompute<int64_t>(const TensorShape&,
+                                                         const Tensor*,
+                                                         const int64_t,
+                                                         Prepare&,
+                                                         concurrency::ThreadPool*) const;
 
 Status GatherND::Compute(OpKernelContext* context) const {
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* indices_tensor = context->Input<Tensor>(1);
+
+  ORT_ENFORCE(input_tensor != nullptr && indices_tensor != nullptr, "GatherNDBase PrepareForCompute: Input count mismatch");
+
+  const auto& input_shape = input_tensor->Shape();
+  const auto& indices_shape = indices_tensor->Shape();
+
+  int64_t last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
+  if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "last dimension of indices must not be larger than rank of input tensor");
+  }
+
+  std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
+  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension,
+               input_shape.GetDims().end());
+
+  auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
+
   Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->IsDataType<int32_t>()
-                          ? PrepareForCompute<int32_t>(context, p, tp)
-                          : PrepareForCompute<int64_t>(context, p, tp));
+  if (input_tensor->IsDataTypeString()) {
+    p.input_str_base = static_cast<const std::string*>(input_tensor->DataRaw());
+    p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
+  } else {
+    p.input_base = static_cast<const uint8_t*>(input_tensor->DataRaw());
+    p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
+  }
+
+  auto bytes_per_value = input_tensor->DataType()->Size();
+
+  if (indices_tensor->IsDataType<int32_t>()) {
+    PrepareForCompute<int32_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
+  } else if (indices_tensor->IsDataType<int64_t>()) {
+    PrepareForCompute<int64_t>(input_shape, indices_tensor, bytes_per_value, p, tp);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices tensor data type not supported");
+  }
 
   return nullptr == p.input_str_base ? GatherNumber(p, tp) : GatherString(p, tp);
 }

@@ -101,7 +101,21 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
 
-  /** Gets the function body if the #NodeType is fused, or nullptr if not. */
+  /** 
+  Gets the function body if applicable otherwise nullptr
+  @param try_init_func_body If not already intialized, initialize the function body
+  (only applicable to operators which are defined as function in ONNX spec).
+  Function body can be initialized in 2 cases : 
+  1. For nodes of type "Fused" 
+  2. For nodes which are defined as functions in ONNX spec (example: DynamicQuantizeLinear)
+  For all other cases this will always return nullptr.
+  Nodes of type "Fused" are created during partitioning and the function body 
+  initialization for such nodes also happens during node creation. Therefore, 
+  initialization of function body will happen via this method only in case 2 mentioned above.
+  */ 
+  const Function* GetFunctionBody(bool try_int_func_body = true) noexcept;
+
+  /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
@@ -263,6 +277,9 @@ class Node {
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept;
+
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept;
 
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
@@ -737,6 +754,20 @@ class Graph {
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
 
+  /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
+  up to their source node/s.
+  @param from Set of Nodes to traverse from.
+  @param enter Visit function that will be invoked on a node when it is visited but its parents haven't been.
+  @param leave Visit function invoked on the node after its parents have all been visited.
+  @param stop Stop traversal from node n to input node p if stop(n, p) is true.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void ReverseDFSFrom(const std::vector<const Node*>& from,
+                      const std::function<void(const Node*)>& enter,
+                      const std::function<void(const Node*)>& leave,
+                      const std::function<bool(const Node*, const Node*)>& comp,
+                      const std::function<bool(const Node*, const Node*)>& stop) const;
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
@@ -762,7 +793,10 @@ class Graph {
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
-  Status InlineFunction(Node& node);
+  Status InlineFunction(Node& node); 
+
+  /** Initialize function body for the given node */
+  void InitFunctionBodyForNode(Node& node);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..

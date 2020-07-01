@@ -40,7 +40,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* bias = p_ctx->Input<Tensor>(4);
   Tensor* output = p_ctx->Output(0, input->Shape());
 
-  const auto input_dims = input->Shape().GetDims();
+  const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 dimensions, got ", input_dims.size());
@@ -51,7 +51,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                            "skip is expected to have same shape as input");
   }
 
-  const auto gamma_dims = gamma->Shape().GetDims();
+  const auto& gamma_dims = gamma->Shape().GetDims();
   if (gamma_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "gamma is expected to have 1 dimension, got ", gamma_dims.size());
@@ -61,7 +61,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                            "Last dimension of gamma and input does not match");
   }
 
-  const auto beta_dims = beta->Shape().GetDims();
+  const auto& beta_dims = beta->Shape().GetDims();
   if (beta_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "beta is expected to have 1 dimension, got ", beta_dims.size());
@@ -72,7 +72,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   }
 
   if (nullptr != bias) {
-    const auto bias_dims = bias->Shape().GetDims();
+    const auto& bias_dims = bias->Shape().GetDims();
     if (bias_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "bias is expected to have 1 dimension, got ", bias_dims.size());
@@ -124,7 +124,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                }, 0);
 
   return Status::OK();
-}  // namespace contrib
+}
 
 }  // namespace contrib
 }  // namespace onnxruntime

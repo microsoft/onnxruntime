@@ -69,6 +69,9 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
 
+/** Gets the index of an input arg with the specified input arg name. */
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
+
 /** Gets the name of the outgoing NodeArg with the specified index for the given node. */
 const std::string& GetNodeOutputName(const Node& node, int index);
 
@@ -89,7 +92,7 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 }
 
 /** Find the first child of the specified op type. */
-const Node* FirstChildByType(Node& node, const std::string& child_type); 
+const Node* FirstChildByType(Node& node, const std::string& child_type);
 /** Find the first parent of the specified op type. */
 const Node* FirstParentByType(Node& node, const std::string& parent_type);
 
@@ -199,7 +202,6 @@ const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 */
 const Node* GetInputNode(const Node& node, int arg_index);
 
-
 /** Expected edge end information for matching input or output edge.
     For input edge, the node in the edge end refers to the source node, otherwise the destination node.
 */
@@ -243,6 +245,10 @@ struct EdgeEndToMatch {
     It is because each node input (dst_arg_index) only accepts one input edge.
 */
 bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
+
+/** Same as FindPath above, but return the references of matched Node
+*/
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
 
 /**
  * Remove nodes with only one output edge using bottom-up bfs traversal.

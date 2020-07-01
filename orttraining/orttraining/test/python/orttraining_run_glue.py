@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 import unittest
 import numpy as np
+from numpy.testing import assert_allclose
 
 from transformers import (
     AutoConfig,
@@ -67,18 +68,28 @@ class ORTGlueTest(unittest.TestCase):
         self.logging_steps = 10
 
     def test_bert_with_mrpc(self):
+        expected_acc = 0.8578431372549019
+        expected_f1 = 0.9003436426116839
+        expected_acc_and_f1 = 0.8790933899332929
+        expected_loss = 0.415903969430456
+
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        self.assertTrue(results['acc'] > 0.84)
-        self.assertTrue(results['f1'] > 0.88)
-        self.assertTrue(results['acc_and_f1'] > 0.86)
-        self.assertTrue(results['loss'] < 0.47)
+        assert_allclose(results['acc'], expected_acc)
+        assert_allclose(results['f1'], expected_f1)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
+        assert_allclose(results['loss'], expected_loss)
 
     def test_bert_fp16_with_mrpc(self):
+        expected_acc = 0.8529411764705882
+        expected_f1 = 0.8951048951048952
+        expected_acc_and_f1 = 0.8740230357877417
+        expected_loss = 0.36075809042827756
+
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        self.assertTrue(results['acc'] > 0.85)
-        self.assertTrue(results['f1'] > 0.89)
-        self.assertTrue(results['acc_and_f1'] > 0.87)
-        self.assertTrue(results['loss'] < 0.46)
+        assert_allclose(results['acc'], expected_acc)
+        assert_allclose(results['f1'], expected_f1)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
+        assert_allclose(results['loss'], expected_loss)
 
     def run_glue(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
@@ -126,6 +137,7 @@ class ORTGlueTest(unittest.TestCase):
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
         )
+
         model = AutoModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -139,8 +151,6 @@ class ORTGlueTest(unittest.TestCase):
             else None
         )
 
-        print(data_args)
-        print(training_args.local_rank)
         eval_dataset = (
             GlueDataset(data_args, tokenizer=tokenizer, mode="dev")
             if training_args.do_eval

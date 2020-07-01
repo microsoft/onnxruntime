@@ -125,7 +125,7 @@ class TrainingSession : public InferenceSession {
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
-      bool partition_optimizer{};
+      ZeROConfig deepspeed_zero{};
       // Selects the reduction algorithm for Adasum.
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
       // Whether to enable gradient clipping.
@@ -172,6 +172,9 @@ class TrainingSession : public InferenceSession {
     // If pipeline is enabled, this field's has_value() returns true.
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
+
+    // Whether to enable GELU approximation which is faster but produces different results.
+    bool enable_gelu_approximation{false};
   };
 
   /**
@@ -370,7 +373,8 @@ class TrainingSession : public InferenceSession {
   //  3. Backward operators' descriptions are all "Backward pass". This assumption is used to
   //     identify backward nodes.
   //  4. No event operator is inserted by other graph transform.
-  common::Status InsertPipelineOps(std::string& forward_waited_event_name,
+  common::Status InsertPipelineOps(const std::unordered_set<std::string>& initializer_names_to_preserve,
+                                   std::string& forward_waited_event_name,
                                    std::string& forward_recorded_event_name,
                                    std::string& backward_waited_event_name,
                                    std::string& backward_recorded_event_name,
@@ -383,11 +387,13 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_event_after_recv_name,
                                    std::string& backward_recorded_event_before_send_name);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train);
+  common::Status ApplyTransformationsToMainGraph(
+      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
+                                  bool enable_gelu_approximation,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -426,7 +432,12 @@ class TrainingSession : public InferenceSession {
                                       bool use_fp16_initializer,
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+  /** Discover all trainable initializers by reverse DFS starting from a given tensor (for example, the loss value)
+  @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
+  @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
+  */
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+                                                                const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;
 

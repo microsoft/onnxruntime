@@ -5,13 +5,13 @@
 
 from logging import getLogger
 from onnx import helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 
 
 class FusionGeluApproximation(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(model, 'FastGelu(GeluApproximation)', ['Gelu', 'BiasGelu'])
+        super().__init__(model, 'FastGelu', ['Gelu', 'BiasGelu'], 'GeluApproximation')
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         new_node = helper.make_node("FastGelu",

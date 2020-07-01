@@ -172,6 +172,26 @@ const TensorShapeProto* NodeArg::Shape() const {
   }
 }
 
+bool NodeArg::HasTensorOrScalarShape() const {
+  const TypeProto* type = TypeAsProto();
+  if (!type) return false;
+  const auto type_case = type->value_case();
+  switch (type_case) {
+    case TypeProto::kTensorType:
+    case TypeProto::kSparseTensorType:
+      // Standard tensor has a valid shape field while
+      // scalar's shape is empty. Thus, we don't need to
+      // check shape here.
+      return true;
+    case TypeProto::kSequenceType:
+    case TypeProto::kMapType:
+    case TypeProto::kOpaqueType:
+    case TypeProto::VALUE_NOT_SET:
+    default:
+      return false;
+  }
+}
+
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
@@ -413,6 +433,19 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
+const Function* Node::GetFunctionBody(bool try_init_func_body) noexcept {
+  if (nullptr != func_body_) {
+    return func_body_;
+  }
+
+  // Initialize function body
+  if (try_init_func_body) {
+    graph_->InitFunctionBodyForNode(*this);
+  }
+
+  return func_body_;
+}
+
 const Function* Node::GetFunctionBody() const noexcept {
   return func_body_;
 }
@@ -651,6 +684,10 @@ Status Node::UpdateInputArgCount() {
 }
 
 const NodeAttributes& Node::GetAttributes() const noexcept {
+  return attributes_;
+}
+
+NodeAttributes& Node::GetMutableAttributes() noexcept {
   return attributes_;
 }
 
@@ -1283,13 +1320,21 @@ void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
     node_vec.push_back(GetNode(i));
   }
 
-  ReverseDFSFrom(node_vec, enter, leave, comp);
+  ReverseDFSFrom(node_vec, enter, leave, comp, {});
 }
 
 void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
+  ReverseDFSFrom(from, enter, leave, comp, {});
+}
+
+void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+                           const std::function<void(const Node*)>& enter,
+                           const std::function<void(const Node*)>& leave,
+                           const std::function<bool(const Node*, const Node*)>& comp,
+                           const std::function<bool(const Node* from, const Node* to)>& stop) const {
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
   std::vector<WorkEntry> stack(from.size());
   for (size_t i = 0; i < from.size(); i++) {
@@ -1323,6 +1368,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (comp) {
       std::vector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+        if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
       }
       std::sort(sorted_nodes.begin(), sorted_nodes.end(), comp);
@@ -1334,6 +1380,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
       }
     } else {
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+        if (stop && stop(&n, &(*iter))) continue;
         const NodeIndex idx = (*iter).Index();
         if (!visited[idx]) {
           stack.emplace_back(GetNode(idx), false);
@@ -2002,22 +2049,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-      if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-        onnx::FunctionProto onnx_function_proto;
-        onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
-        if (node.op_->HasContextDependentFunction()) {
-          node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
-        } else {
-          onnx_function_proto = *(node.op_->GetFunction());
-        }
-
-        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                            logger_);
-
-        function_container_.emplace_back(std::move(func_ptr));
-        node.SetFunctionBody(*function_container_.back());
-      }
-
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
@@ -2063,6 +2094,26 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   }
 
   return Status::OK();
+}
+
+void Graph::InitFunctionBodyForNode(Node& node) {
+  if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
+    onnx::FunctionProto onnx_function_proto;
+    if (node.op_->HasContextDependentFunction()) {
+      NodeProto node_proto;
+      node.ToProto(node_proto);
+      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
+      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+    } else {
+      onnx_function_proto = *(node.op_->GetFunction());
+    }
+
+    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                        logger_);
+
+    function_container_.emplace_back(std::move(func_ptr));
+    node.SetFunctionBody(*function_container_.back());
+  }
 }
 
 void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
@@ -2363,8 +2414,8 @@ const std::vector<const NodeArg*>& Graph::GetValueInfo() const noexcept {
   return value_info_;
 }
 
-void Graph::AddValueInfo(const NodeArg* new_value_info){
-  for(const auto* info : value_info_){
+void Graph::AddValueInfo(const NodeArg* new_value_info) {
+  for (const auto* info : value_info_) {
     ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
   }
   value_info_.push_back(new_value_info);

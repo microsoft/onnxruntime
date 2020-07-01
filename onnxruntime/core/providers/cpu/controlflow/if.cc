@@ -123,7 +123,7 @@ class IfImpl {
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
 };
 
-If::If(const OpKernelInfo& info) : OpKernel(info) {
+If::If(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the required attributes are present even though we don't need it here.
   // The GraphProto attributes are loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -147,7 +147,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_ENFORCE(info == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
 
   const auto& node = Node();
-  info = onnxruntime::make_unique<If::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info = onnxruntime::make_unique<If::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // all inputs for the If subgraph are implicit
   std::vector<std::string> feed_names;
@@ -189,7 +189,7 @@ common::Status If::SetupSubgraphExecutionInfo(const SessionState& session_state,
     fetch_locations.push_back(&alloc_info);
   }
 
-  utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
+  utils::FinalizeFeedFetchCopyInfo(*ffm, feed_locations, fetch_locations);
 
   if (attribute_name == "then_branch")
     then_feeds_fetches_manager_ = std::move(ffm);

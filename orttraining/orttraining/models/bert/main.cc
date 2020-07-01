@@ -133,7 +133,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Maximum number of masked LM predictions per sequence. "
         "Must match data generation.", cxxopts::value<int>()->default_value("80"))
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
-      ("partition_optimizer", "Whether to partition the optimizer state for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("deepspeed_zero_stage", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
+       "Stages 0 (disabled) and 1 (optimizer state partitioning) are supported.",
+       cxxopts::value<int>()->default_value("0"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
@@ -161,6 +163,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
+        cxxopts::value<bool>()->default_value("true"))
+      ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
         cxxopts::value<bool>()->default_value("true"));
   options
     .add_options("ORT configuration")
@@ -323,7 +327,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
 
-    params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
@@ -445,6 +449,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
 
+    params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
+
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity &&
@@ -504,13 +510,21 @@ const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_m
 MapStringToString mapped_dimensions;
 
 void setup_training_params(BertParameters& params) {
-  params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
-  params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
-  params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
-  params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  auto model_name_base = ToPathString(params.model_name);
+  params.model_path = model_name_base + ORT_TSTR(".onnx");
+  params.model_with_loss_func_path = model_name_base + ORT_TSTR("_with_cost.onnx");
+  params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
+  params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
 
-#ifdef USE_HOROVOD
-  params.mpi_context = setup_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  params.mpi_context = setup_mpi();
+
+  if (params.pipeline_parallel_size > 1) {
+    auto pipeline_model_name_base = model_name_base + ToPathString(std::to_string(params.mpi_context.world_rank));
+    params.model_with_loss_func_path = pipeline_model_name_base + ORT_TSTR("_with_cost.onnx");
+    params.model_with_training_graph_path = pipeline_model_name_base + ORT_TSTR("_bw.onnx");
+    params.model_actual_running_graph_path = pipeline_model_name_base + ORT_TSTR("_bw_running.onnx");
+  }
   ORT_ENFORCE(params.horizontal_parallel_size <= params.mpi_context.world_size);
   ORT_ENFORCE(params.data_parallel_size <= params.mpi_context.world_size);
   if (params.mpi_context.world_size % params.horizontal_parallel_size != 0) {
@@ -551,11 +565,6 @@ void setup_training_params(BertParameters& params) {
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
 
-  params.weights_not_to_train = {
-      "position_01",            // Slice's dat input
-      "op_min_ends_expand_10",  //op_min_ends_expand_10
-      "72",                     // [BERT-tiny only] input of expand
-  };
   params.fetch_names = {"total_loss", "mlm_loss", "nsp_loss"};
 
   if (params.EnableTensorboard()) {
@@ -791,8 +800,8 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#ifdef USE_HOROVOD
-  shutdown_horovod();
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
+  shutdown_mpi();
 #endif
 
   return 0;
