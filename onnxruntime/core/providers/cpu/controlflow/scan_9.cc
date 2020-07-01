@@ -159,7 +159,7 @@ class ScanImpl {
 };
 
 template <>
-Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
+Scan<9>::Scan(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
