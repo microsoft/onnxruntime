@@ -104,6 +104,9 @@ def parse_arguments():
         "--enable_training_python_frontend_e2e_tests", action="store_true",
         help="Enable the pytorch frontend training tests.")
     parser.add_argument(
+        "--enable_training_multi_gpu_tests", action="store_true",
+        help="Enable multi gpu test.")
+    parser.add_argument(
         "--use_horovod", action='store_true', help="Enable Horovod.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
@@ -1112,6 +1115,16 @@ def run_training_python_frontend_e2e_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_all'], cwd=cwd)
 
+def run_training_multi_gpu_tests(cwd):
+    log.info("Running multi gpu test.")
+
+    run_subprocess(['/bert_ort/openmpi/bin/mpirun', '-n', '2', '--tag-output', '-merge-stderr-to-stdout', '--output-filename',
+        'log-mem-many-p3-s128-b1-a16', './build/Linux/RelWithDebInfo/onnxruntime_training_bert', '--model_name', 
+        '/bert_ort/bert_models/nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm', '--train_data_dir',
+        '/bert_data/128/books_wiki_en_corpus/train', '--test_data_dir', '/bert_data/128/books_wiki_en_corpus/test', 
+        '--train_batch_size', '1', '--mode', 'train', '--display_loss_steps', '1', '--optimizer', 'lamb', '--learning_rate', '0.006',
+        '--gradient_accumulation_steps', '16', '--num_train_steps', '32', '--warmup_ratio', '0', '--warmup_mode', 'Linear', '--use_nccl'])
+
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
@@ -1123,6 +1136,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # this is not a PR merge test so skip other non-frontend tests.
             run_training_python_frontend_e2e_tests(cwd=cwd)
             run_training_python_frontend_tests(cwd=cwd)
+            continue
+        
+        if args.enable_training and args.use_cuda and args.enable_training_multi_gpu_tests:
+            run_training_multi_gpu_tests(cwd=cwd)
             continue
 
         android_x86_64 = args.android_abi == 'x86_64'
