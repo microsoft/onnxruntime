@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
@@ -44,7 +45,7 @@ public class OrtSession extends NativeObject {
 
   private final OnnxModelMetadata metadata;
 
-  private final RunOptions defaultRunOptions;
+  private final Set<RunOptions> activeRunOptions;
 
   /**
    * Create a session loading the model from disk.
@@ -109,7 +110,7 @@ public class OrtSession extends NativeObject {
     super(sessionHandle);
     this.environment = environment;
     this.allocator = allocator;
-    this.defaultRunOptions = new RunOptions();
+    this.activeRunOptions = ConcurrentHashMap.newKeySet();
     try (NativeReference allocatorReference = allocator.reference()) {
       long allocatorHandle = allocatorReference.handle();
       metadata = constructMetadata(OnnxRuntime.ortApiHandle, sessionHandle, allocatorHandle);
@@ -194,7 +195,9 @@ public class OrtSession extends NativeObject {
    *     there are zero or too many inputs.
    */
   public Result run(Map<String, OnnxTensor> inputs) throws OrtException {
-    return run(inputs, outputNamesArray, defaultRunOptions);
+    try (RunOptions runOptions = new RunOptions()) {
+      return run(inputs, outputNamesArray, runOptions);
+    }
   }
 
   /**
@@ -225,7 +228,9 @@ public class OrtSession extends NativeObject {
    */
   public Result run(Map<String, OnnxTensor> inputs, Set<String> requestedOutputs)
       throws OrtException {
-    return run(inputs, convertRequestedOutputs(requestedOutputs), defaultRunOptions);
+    try (RunOptions runOptions = new RunOptions()) {
+      return run(inputs, convertRequestedOutputs(requestedOutputs), runOptions);
+    }
   }
 
   /**
@@ -279,6 +284,9 @@ public class OrtSession extends NativeObject {
   private Result run(
       Map<String, OnnxTensor> inputs, String[] requestedOutputsArray, RunOptions runOptions)
       throws OrtException {
+    if (runOptions == null) {
+      throw new OrtException("RunOptions is required");
+    }
     int numRequestedInputs = inputs.size();
     int numInputs = inputInfo.size();
     if (inputs.isEmpty() || (numRequestedInputs > numInputs)) {
@@ -305,23 +313,34 @@ public class OrtSession extends NativeObject {
         requestedInputsArray[i] = key;
         inputHandles[i] = inputsReferences.handle(t.getValue());
         /*
-         * this handle will be valid from here until NativeInputReferences.close() which is automatically called
+         * This handle will be valid from here until NativeInputReferences.close() which is automatically called
          * in the try-with-resources finally.
          */
         i++;
       }
-      OnnxValue[] outputValues =
-          run(
-              OnnxRuntime.ortApiHandle,
-              sessionReference.handle(),
-              allocatorReference.handle(),
-              allocator,
-              requestedInputsArray,
-              inputHandles,
-              inputHandles.length,
-              requestedOutputsArray,
-              requestedOutputsArray.length,
-              runOptionsReference.handle());
+      OnnxValue[] outputValues;
+      /*
+       * Collect the RunOptions for terminate method to use, since there is no other way to interrupt JNI
+       * execution beyond calling RunOptions.setTerminate(true).
+       */
+      activeRunOptions.add(runOptions);
+      try {
+        outputValues =
+            run(
+                OnnxRuntime.ortApiHandle,
+                sessionReference.handle(),
+                allocatorReference.handle(),
+                allocator,
+                requestedInputsArray,
+                inputHandles,
+                inputHandles.length,
+                requestedOutputsArray,
+                requestedOutputsArray.length,
+                runOptionsReference.handle());
+      } finally {
+        // the RunOptions does not need to be terminated since the run is complete
+        activeRunOptions.remove(runOptions);
+      }
       return new Result(requestedOutputsArray, outputValues);
     }
   }
@@ -399,19 +418,18 @@ public class OrtSession extends NativeObject {
    * #close()} to prevent the normal behavior of blocking until pending model evaluations are
    * completed.
    *
-   * <p>Note: This will only terminate calls to {@link #run(Map)} and {@link #run(Map,Set)}. It will
-   * not work with {@link #run(Map,RunOptions)} or {@link #run(Map,Set,RunOptions)}. In those cases,
-   * termination should be done using the {@link RunOptions} passed into those methods.
-   *
    * @throws OrtException If the terminate setting failed.
    */
   public synchronized void terminate() throws OrtException {
-    defaultRunOptions.setTerminate(true);
+    for (RunOptions runOptions : activeRunOptions) {
+      if (!runOptions.isClosed()) {
+        runOptions.setTerminate(true);
+      }
+    }
   }
 
   @Override
   protected void doClose(long handle) {
-    defaultRunOptions.close();
     closeSession(OnnxRuntime.ortApiHandle, handle);
   }
 
