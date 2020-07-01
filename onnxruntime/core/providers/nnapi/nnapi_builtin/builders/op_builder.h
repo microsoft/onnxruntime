@@ -27,6 +27,10 @@ class IOpBuilder {
   // Add the operator to NNAPI model
   virtual void AddToModelBuilder(ModelBuilder& model_builder,
                                  const ONNX_NAMESPACE::NodeProto& node) = 0;
+
+  // Add the operator to NNAPI model
+  virtual void AddToModelBuilder(ModelBuilder& model_builder,
+                                 const onnxruntime::Node& node) = 0;
 };
 
 // Generate a lookup table with IOpBuilder delegates

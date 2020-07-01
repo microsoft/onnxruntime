@@ -427,14 +427,26 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
 }
 
 void ModelBuilder::AddOperations() {
-  for (const auto& node : model_proto_.graph().node()) {
-    if (auto* opBuilder = GetOpBuilder(node)) {
-      opBuilder->AddToModelBuilder(*this, node);
+  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_view_.GetNode(node_indices[i]));
+    ORT_ENFORCE(nullptr != node, "node should not be null");
+    if (auto* opBuilder = GetOpBuilder(*node)) {
+      opBuilder->AddToModelBuilder(*this, *node);
     } else {
       throw std::invalid_argument(
-          "Node not supported" + node.name());
+          "Node not supported" + node->Name());
     }
   }
+
+  // for (const auto& node : model_proto_.graph().node()) {
+  //   if (auto* opBuilder = GetOpBuilder(node)) {
+  //     opBuilder->AddToModelBuilder(*this, node);
+  //   } else {
+  //     throw std::invalid_argument(
+  //         "Node not supported" + node.name());
+  //   }
+  // }
 }
 
 void ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
