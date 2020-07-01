@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <core/common/logging/logging.h>
-#include <core/graph/graph_viewer.h>
 #include <core/common/safeint.h>
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -15,12 +14,6 @@ namespace nnapi {
 
 using namespace android::nn::wrapper;
 using std::vector;
-
-const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
-  return tensor.float_data().empty()
-             ? reinterpret_cast<const float*>(tensor.raw_data().data())
-             : tensor.float_data().data();
-}
 
 ModelBuilder::ModelBuilder(const onnxruntime::GraphViewer& graph_view)
     : nnapi_(NnApiImplementation()), graph_view_(graph_view) {
@@ -523,13 +516,6 @@ int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node,
   }
 
   return fuse_code;
-}
-
-IOpBuilder* ModelBuilder::GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node) {
-  if (!Contains(op_builders_, node.op_type()))
-    return nullptr;
-
-  return op_builders_[node.op_type()].get();
 }
 
 IOpBuilder* ModelBuilder::GetOpBuilder(const onnxruntime::Node& node) {

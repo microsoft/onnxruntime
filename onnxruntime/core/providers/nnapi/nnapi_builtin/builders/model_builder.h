@@ -91,8 +91,7 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  const std::unordered_map<std::string,
-                           const ONNX_NAMESPACE::TensorProto&>&
+  const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
   GetInitializerTensors() const { return initializers_; }
 
   const onnxruntime::Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
@@ -151,7 +150,6 @@ class ModelBuilder {
 
   uint32_t next_index_ = 0;
 
-  bool IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
   bool IsNodeSupported(const onnxruntime::Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
@@ -174,7 +172,6 @@ class ModelBuilder {
                          const android::nn::wrapper::OperandType& operand_type,
                          bool is_nhwc);
 
-  IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
   IOpBuilder* GetOpBuilder(const onnxruntime::Node& node);
 };
 
