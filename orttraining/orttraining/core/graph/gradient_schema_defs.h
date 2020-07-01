@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace training {
 
-void RegisterTrainingOpSchemas();
+void RegisterGradientSchemas();
 
 }  // namespace training
 }  // namespace onnxruntime
