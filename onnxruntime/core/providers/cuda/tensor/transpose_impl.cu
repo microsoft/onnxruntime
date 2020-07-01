@@ -10,7 +10,7 @@ namespace cuda {
 constexpr int TILE_DIM = 16;
 
 template <typename T>
-__global__ void _Transpose3DKernel(const TArray<int64_t> input_shape,
+__global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
                                    const TArray<int64_t> input_strides,
                                    const T* input_data, T* output_data) {
   __shared__ T tile[TILE_DIM * (TILE_DIM+1)];
@@ -48,25 +48,25 @@ Status Transpose3DImpl(size_t element_size,
 
   switch (element_size) {
     case sizeof(int8_t):
-      _Transpose3DKernel<int8_t><<<grid_size, block_size, 0>>>(
+      Transpose3DKernel<int8_t><<<grid_size, block_size, 0>>>(
           input_shape, input_strides,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data));
       break;
     case sizeof(int16_t):
-      _Transpose3DKernel<int16_t><<<grid_size, block_size, 0>>>(
+      Transpose3DKernel<int16_t><<<grid_size, block_size, 0>>>(
           input_shape, input_strides,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data));
       break;
     case sizeof(int32_t):
-      _Transpose3DKernel<int32_t><<<grid_size, block_size, 0>>>(
+      Transpose3DKernel<int32_t><<<grid_size, block_size, 0>>>(
           input_shape, input_strides,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data));
       break;
     case sizeof(int64_t):
-      _Transpose3DKernel<int64_t><<<grid_size, block_size, 0>>>(
+      Transpose3DKernel<int64_t><<<grid_size, block_size, 0>>>(
           input_shape, input_strides,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data));
@@ -80,7 +80,7 @@ Status Transpose3DImpl(size_t element_size,
 }
 
 template <typename T, int element_size>
-__global__ void _Transpose4DKernel(const TArray<int64_t> input_strides, const T* input_data,
+__global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const T* input_data,
                                    const TArray<int64_t> output_strides, T* output_data,
                                    CUDA_LONG N) {
   // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
@@ -136,22 +136,22 @@ Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, 
 
   switch (element_size) {
     case sizeof(int8_t):
-      _Transpose4DKernel<int8_t, sizeof(int8_t)><<<grid_size, block_size, 0>>>(
+      Transpose4DKernel<int8_t, sizeof(int8_t)><<<grid_size, block_size, 0>>>(
           input_strides, reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           output_strides, reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data), N/num_elements_per_thread);
       break;
     case sizeof(int16_t):
-      _Transpose4DKernel<int16_t, sizeof(int16_t)><<<grid_size, block_size, 0>>>(
+      Transpose4DKernel<int16_t, sizeof(int16_t)><<<grid_size, block_size, 0>>>(
           input_strides, reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           output_strides, reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data), N/num_elements_per_thread);
       break;
     case sizeof(int32_t):
-      _Transpose4DKernel<int32_t, sizeof(int32_t)><<<grid_size, block_size, 0>>>(
+      Transpose4DKernel<int32_t, sizeof(int32_t)><<<grid_size, block_size, 0>>>(
           input_strides, reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           output_strides, reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data), N/num_elements_per_thread);
       break;
     case sizeof(int64_t):
-      _Transpose4DKernel<int64_t, sizeof(int64_t)><<<grid_size, block_size, 0>>>(
+      Transpose4DKernel<int64_t, sizeof(int64_t)><<<grid_size, block_size, 0>>>(
           input_strides, reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           output_strides, reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data), N/num_elements_per_thread);
       break;

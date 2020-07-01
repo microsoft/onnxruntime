@@ -411,6 +411,7 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
+#ifdef USE_CUDA
 static void TestTranspose(
     const std::vector<int64_t>& perm,
     const std::vector<int64_t>& x_dims,
@@ -449,6 +450,7 @@ TEST(TransposeOpTest, Transpose0312) {
   const std::vector<int64_t> Y_dims{64, 128, 16, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
