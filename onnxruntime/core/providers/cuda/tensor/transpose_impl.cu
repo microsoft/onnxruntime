@@ -7,8 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr int TILE_DIM = GPU_WARP_SIZE;
-constexpr int BLOCK_ROWS = TILE_DIM / GridDim::maxElementsPerThread;
+constexpr int TILE_DIM = 16;
 
 template <typename T>
 __global__ void _Transpose3DKernel(const TArray<int64_t> input_shape,
@@ -19,20 +18,16 @@ __global__ void _Transpose3DKernel(const TArray<int64_t> input_shape,
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TILE_DIM + threadIdx.y;
 
-  for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
-    tile[(threadIdx.y+j) * TILE_DIM + threadIdx.x] = input_data[blockIdx.z * input_strides[0] + (y+j)*input_shape[2] + x];
-  }
+  tile[threadIdx.y * TILE_DIM + threadIdx.x] = input_data[blockIdx.z * input_strides[0] + y * input_shape[2] + x];
   __syncthreads();
 
   x = blockIdx.y * TILE_DIM + threadIdx.x;
   y = blockIdx.x * TILE_DIM + threadIdx.y;
 
-  for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
-    output_data[blockIdx.z * input_strides[0] + (y+j)*input_shape[1] + x] = tile[threadIdx.x * TILE_DIM + threadIdx.y + j];
-  }
+  output_data[blockIdx.z * input_strides[0] + y * input_shape[1] + x] = tile[threadIdx.x * TILE_DIM + threadIdx.y];
 }
 
-bool canDoTranspose3D(int32_t rank,
+bool CanDoTranspose3D(int32_t rank,
                       const std::vector<int64_t>& input_dims,
                       const std::vector<size_t>& permutations) {
   if (rank == 3 &&
@@ -48,7 +43,7 @@ bool canDoTranspose3D(int32_t rank,
 Status Transpose3DImpl(size_t element_size,
                        const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
                        const void* input_data, void* output_data, int64_t N) {
-  dim3 block_size(TILE_DIM, BLOCK_ROWS);
+  dim3 block_size(TILE_DIM, TILE_DIM);
   dim3 grid_size(input_shape[2]/TILE_DIM, input_shape[1]/TILE_DIM, input_shape[0]);
 
   switch (element_size) {
@@ -107,7 +102,7 @@ __global__ void _Transpose4DKernel(const TArray<int64_t> input_strides, const T*
   }
 }
 
-bool canDoTranspose4D(const cudaDeviceProp& prop,
+bool CanDoTranspose4D(const cudaDeviceProp& prop,
                       size_t element_size,
                       int32_t rank,
                       const std::vector<int64_t>& input_dims,

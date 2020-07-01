@@ -8,10 +8,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-bool canDoTranspose3D(int32_t rank, const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutations);
+bool CanDoTranspose3D(int32_t rank, const std::vector<int64_t>& input_dims, const std::vector<size_t>& permutations);
 Status Transpose3DImpl(size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
                        void* output_data, int64_t N);
-bool canDoTranspose4D(const cudaDeviceProp& prop,
+bool CanDoTranspose4D(const cudaDeviceProp& prop,
                       size_t element_size,
                       int32_t rank,
                       const std::vector<int64_t>& input_dims,
