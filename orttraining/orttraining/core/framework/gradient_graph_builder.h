@@ -15,6 +15,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
+#include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 
