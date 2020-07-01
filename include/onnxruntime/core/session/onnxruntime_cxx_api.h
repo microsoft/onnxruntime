@@ -224,6 +224,8 @@ struct Session : Base<OrtSession> {
   void Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
            const char* const* output_names, Value* output_values, size_t output_count);
 
+  void Run(const RunOptions& run_options, const struct IoBinding&);
+
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
   size_t GetOverridableInitializerCount() const;

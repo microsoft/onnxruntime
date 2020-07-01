@@ -441,7 +441,7 @@ TEST(CApiTest, create_session_without_session_option) {
 }
 #endif
 
-TEST(CApiTest, GetAllocatorCPU) {
+TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
   OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1);
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
@@ -457,7 +457,7 @@ TEST(CApiTest, GetAllocatorCPU) {
 }
 
 #ifdef USE_CUDA
-TEST(CApiTest, GetAllocatorCUDA) {
+TEST(CApiTest, get_allocator_cuda) {
   Ort::SessionOptions session_options;
   OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0);
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
@@ -473,6 +473,35 @@ TEST(CApiTest, GetAllocatorCUDA) {
   cuda_allocator.Free(p);
 }
 #endif
+
+TEST(CApiTest, io_bnding) {
+  Ort::SessionOptions session_options;
+  OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1);
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values  = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cpu, x_values.data(), x_values.size(),
+    x_shape.data(), x_shape.size());
+
+  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  const std::array<int64_t, 2> y_shape = {3, 2};
+  std::array<float, 3 * 2> y_values;
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cpu, y_values.data(), y_values.size(),
+                                                y_shape.data(), y_shape.size());
+
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  session.Run(Ort::RunOptions(), binding);
+  ASSERT_TRUE(std::equal(std::cbegin(y_values), std::cend(y_values), std::cbegin(expected_y)));
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};

@@ -295,6 +295,10 @@ inline void Session::Run(const RunOptions& run_options, const char* const* input
   ThrowOnError(GetApi().Run(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
 }
 
+inline void Session::Run(const RunOptions& run_options, const IoBinding& io_binding) {
+  ThrowOnError(Global<void>::api_.RunWithBinding(p_, run_options, io_binding));
+}
+
 inline size_t Session::GetInputCount() const {
   size_t out;
   ThrowOnError(GetApi().SessionGetInputCount(p_, &out));

@@ -530,6 +530,18 @@ struct OrtIoBinding {
   OrtIoBinding& operator=(const OrtIoBinding&) = delete;
 };
 
+ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
+  const OrtIoBinding* binding_ptr) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto status = session->Run(*run_options, *binding_ptr->binding_);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
@@ -1720,6 +1732,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     // Allocator and Binding APIs are exposed via C# API , do not move
     &OrtApis::CreateAllocator,
     &OrtApis::ReleaseAllocator,
+    &OrtApis::RunWithBinding,
     &OrtApis::CreateIoBinding,
     &OrtApis::ReleaseIoBinding,
     &OrtApis::BindInput,
