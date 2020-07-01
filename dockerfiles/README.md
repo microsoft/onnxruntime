@@ -12,6 +12,7 @@
 - ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-32v7)
 - ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 - ONNX Runtime Server: [Dockerfile](Dockerfile.server), [Instructions](#onnx-runtime-server)
+- MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
 
 **Published Microsoft Container Registry (MCR) Images**
 
@@ -27,10 +28,11 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 | OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm, :v1.0.0-openvino-r1.1-vadm | :latest-openvino-vadm   |
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad, :v1.3.0-openvino-2020.2.120-myriad| :latest-openvino-myriad |
 | OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu, :v1.3.0-openvino-2020.2.120-cpu | :latest-openvino-cpu    |
-| OpenVINO (GPU) |  mcr.microsoft.com/azureml/onnxruntime | :v1.3.0-openvino-2020.2.120-gpu | :latest-openvino-gpu    |
+| OpenVINO (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.3.0-openvino-2020.2.120-gpu | :latest-openvino-gpu    |
 | nGraph            | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-ngraph-v0.26.0                | :latest-ngraph          |
 | Nuphar            | mcr.microsoft.com/azureml/onnxruntime |                                       | :latest-nuphar          |
 | Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0, :v0.5.1, :v1.0.0      | :latest                 |
+| MIGraphX (GPU)    | mcr.microsoft.com/azureml/onnxruntime | :v0.6                                 | :latest                 |
 | Training ([usage](https://github.com/microsoft/onnxruntime-training-examples))| mcr.microsoft.com/azureml/onnxruntime-training | :0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8| 0.1-rc1-openmpi4.0-cuda10.1-cudnn7.6-nccl2.4.8|
 ---
 
@@ -67,6 +69,17 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## nGraph
 *Public Preview*
 
+### **Deprecation Notice**
+
+| | |
+| --- | --- | 
+| Deprecation Begins	| June 1, 2020 |
+| Removal Date |	December 1, 2020 |
+
+Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
+
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
+
 **Ubuntu 16.04, Python Bindings**
 
 1. Build the docker image from the Dockerfile in this repository.
@@ -97,17 +110,19 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 ## OpenVINO
 *Public Preview*
 
-**Ubuntu 16.04, Python Bindings**
+**Ubuntu 18.04, Python Bindings**
 
 1. Build the onnxruntime image for one of the accelerators supported below.
 
    Retrieve your docker image in one of the following ways.
 
-    -  To build your docker image, download the OpenVINO **online installer** package for version **2020.2** for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 16MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
+    -  To build your docker image, download the OpenVINO **online installer** package for version **2020.3** for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 19MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
        docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE .
        ```
     - Pull the official image from DockerHub.
+
+  *Although 2020.3 LTS is the recommended OpenVINO version, [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is also additionally supported.*
 
 
 2. DEVICE: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
@@ -244,6 +259,20 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 
   ```
   docker run -it onnxruntime-nuphar
+  ```
+
+## MIGraphX 
+**Ubuntu 16.04, rocm3.3, AMDMIGraphX v0.7**
+
+1. Build the docker image from the Dockerfile in this repository.
+  ```
+  docker build -t onnxruntime-migraphx -f Dockerfile.migraphx .
+  ```
+
+2. Run the Docker image
+
+  ```
+  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
   ```
 
 ## ONNX Runtime Server

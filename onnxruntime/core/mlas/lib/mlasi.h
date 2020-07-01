@@ -462,6 +462,53 @@ float
 
 typedef MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL)(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+typedef MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
+    const int8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const int8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    int8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
+
+typedef MLAS_QLINEAR_BINARY_OP_S8_KERNEL* PMLAS_QLINEAR_BINARY_OP_S8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QLINEAR_BINARY_OP_U8_KERNEL)(
+    const uint8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
+
+typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -549,6 +596,8 @@ extern "C" {
 #endif
 
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
+    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
+    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
@@ -557,6 +606,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
+    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
+    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernelFma3;
@@ -570,6 +621,11 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
+#endif
+
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
 #endif
 
 }
@@ -649,6 +705,8 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ErfKernelRoutine;
+    PMLAS_QLINEAR_BINARY_OP_S8_KERNEL QLinearAddS8Kernel;
+    PMLAS_QLINEAR_BINARY_OP_U8_KERNEL QLinearAddU8Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ComputeExpF32Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL LogisticKernelRoutine;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL TanhKernelRoutine;
@@ -656,6 +714,7 @@ struct MLAS_PLATFORM {
     PMLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL ComputeSoftmaxOutputF32Kernel;
     PMLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL ComputeLogSoftmaxOutputF32Kernel;
     PMLAS_REDUCE_MAXIMUM_FLOAT_KERNEL ReduceMaximumF32Kernel;
+    PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL ReduceMinimumMaximumF32Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
 #endif
@@ -735,6 +794,9 @@ MlasPartitionWork(
 #if defined(_M_ARM64)
 #ifndef vmaxvq_f32
 #define vmaxvq_f32(src) neon_fmaxv(src)
+#endif
+#ifndef vminvq_f32
+#define vminvq_f32(src) neon_fminv(src)
 #endif
 #endif
 
@@ -1459,6 +1521,29 @@ MlasReduceMaximumFloat32x4(MLAS_FLOAT32X4 Vector)
 #else
     Vector = MlasMaximumFloat32x4(Vector, MlasShuffleFloat32x4<2, 3, 2, 3>(Vector));
     Vector = MlasMaximumFloat32x4(Vector, MlasShuffleFloat32x4<1, 1, 1, 1>(Vector));
+    return MlasExtractLaneFloat32x4<0>(Vector);
+#endif
+}
+
+MLAS_FORCEINLINE
+float
+MlasReduceMinimumFloat32x4(MLAS_FLOAT32X4 Vector)
+{
+#if defined(MLAS_NEON64_INTRINSICS)
+    return vminvq_f32(Vector);
+#elif defined(MLAS_NEON32_INTRINSICS)
+    float32x2_t VectorLow = vget_low_f32(Vector);
+    float32x2_t VectorHigh = vget_high_f32(Vector);
+    VectorLow = vpmin_f32(VectorLow, VectorHigh);
+    VectorLow = vpmin_f32(VectorLow, VectorHigh);
+    return vget_lane_f32(VectorLow, 0);
+#elif defined(MLAS_VSX_INTRINSICS)
+    Vector = MlasMinimumFloat32x4(Vector, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Vector, 1)));
+    Vector = MlasMinimumFloat32x4(Vector, vec_splat(Vector, 1));
+    return Vector[0];
+#else
+    Vector = MlasMinimumFloat32x4(Vector, MlasShuffleFloat32x4<2, 3, 2, 3>(Vector));
+    Vector = MlasMinimumFloat32x4(Vector, MlasShuffleFloat32x4<1, 1, 1, 1>(Vector));
     return MlasExtractLaneFloat32x4<0>(Vector);
 #endif
 }

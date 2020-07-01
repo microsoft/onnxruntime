@@ -125,7 +125,7 @@ class TrainingSession : public InferenceSession {
       // Whether to use NCCL.
       bool use_nccl{};
       // Whether to partition the optimizer state.
-      bool partition_optimizer{};
+      ZeROConfig deepspeed_zero{};
       // Selects the reduction algorithm for Adasum.
       AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
       // Whether to enable gradient clipping.
@@ -172,6 +172,9 @@ class TrainingSession : public InferenceSession {
     // If pipeline is enabled, this field's has_value() returns true.
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
+
+    // Whether to enable GELU approximation which is faster but produces different results.
+    bool enable_gelu_approximation{false};
   };
 
   /**
@@ -384,11 +387,13 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_event_after_recv_name,
                                    std::string& backward_recorded_event_before_send_name);
 
-  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train);
+  common::Status ApplyTransformationsToMainGraph(
+      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
+                                  bool enable_gelu_approximation,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 

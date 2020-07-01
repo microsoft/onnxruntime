@@ -80,10 +80,26 @@ static void BM_MlasPoolNoSpinWithAffinity(benchmark::State& state) {
   RunMlasPool2D(param, batch_size, state);
 }
 
-BENCHMARK(BM_MlasPoolWithSpinAndAffinity)->UseRealTime()->Arg(1)->Arg(4)->Unit(benchmark::TimeUnit::kMicrosecond);
-BENCHMARK(BM_MlasPoolWithSpinNoAffinity)->UseRealTime()->Arg(1)->Arg(4)->Unit(benchmark::TimeUnit::kMicrosecond);
-BENCHMARK(BM_MlasPoolNoSpinWithAffinity)->UseRealTime()->Arg(1)->Arg(4)->Unit(benchmark::TimeUnit::kMicrosecond);
-BENCHMARK(BM_MlasPoolNoSpinNoAffinity)->UseRealTime()->Arg(1)->Arg(4)->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_MlasPoolWithSpinAndAffinity)
+    ->UseRealTime()
+    ->Arg(1)
+    ->Arg(4)
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_MlasPoolWithSpinNoAffinity)
+    ->UseRealTime()
+    ->Arg(1)
+    ->Arg(4)
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_MlasPoolNoSpinWithAffinity)
+    ->UseRealTime()
+    ->Arg(1)
+    ->Arg(4)
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_MlasPoolNoSpinNoAffinity)
+    ->UseRealTime()
+    ->Arg(1)
+    ->Arg(4)
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 static void RunPool2D(const OrtThreadPoolParams& param, int64_t batch_size, benchmark::State& state) {
   std::unique_ptr<ThreadPool> tp = CreateThreadPool(&onnxruntime::Env::Default(), param, onnxruntime::concurrency::ThreadPoolType::INTRA_OP);
@@ -130,5 +146,13 @@ static void BM_PoolSingleThread(benchmark::State& state) {
   RunPool2D(param, batch_size, state);
 }
 
-BENCHMARK(BM_Pool2D)->UseRealTime()->Arg(1)->Arg(4)->Unit(benchmark::TimeUnit::kMicrosecond);
-BENCHMARK(BM_PoolSingleThread)->UseRealTime()->Arg(1)->Arg(4)->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_Pool2D)
+    ->UseRealTime()
+    ->Arg(1)
+    ->Arg(4)
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_PoolSingleThread)
+    ->UseRealTime()
+    ->Arg(1)
+    ->Arg(4)
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
