@@ -1,7 +1,16 @@
 # ONNX Runtime Java API
 The ONNX runtime provides a Java binding for running inference on ONNX models on a JVM, using Java 8 or newer.
 
-Two jar files are created during the build process, one contains the onnxruntime shared library, the JNI binding and the Java class files, and the other only contains the class files. By default the shared libraries are loaded from the classpath in a folder called `/lib`, if you wish to have them load from `java.library.path` then supply `-DORT_LOAD_FROM_LIBRARY_PATH` to the JVM at runtime.
+Release artifacts are published to Maven Central for use as a dependency in most Java build tools:
+
+* [com.microsoft.onnxruntime:onnxruntime](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime) - cross-platform CPU artifact
+* [com.microsoft.onnxruntime:onnxruntime_gpu](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) - cross-platform GPU (CUDA) artifact
+
+These artifacts are currently built for common OS/Architecture combinations: Windows x64, Linux x64, MacOS x64.
+
+For building locally, please see the [Java API development documentation](../java/README.md) for more details.
+
+See [here](../java/README.md#Advanced Loading) for customization of the loading mechanism of the shared library.
 
 ## Sample Code
 
