@@ -141,6 +141,7 @@ typedef enum OrtErrorCode {
 ORT_RUNTIME_CLASS(Env);
 ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(MemoryInfo);
+ORT_RUNTIME_CLASS(IoBinding);
 ORT_RUNTIME_CLASS(Session);  //Don't call OrtReleaseSession from Dllmain (because session owns a thread pool)
 ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
@@ -825,11 +826,43 @@ struct OrtApi {
    *         if successful
    * \return OrtStatus or nullptr if successful
    */
-  ORT_API2_STATUS(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info,
+  ORT_API2_STATUS(CreateAllocator, _In_ const OrtSession* sess, _In_ const OrtMemoryInfo* mem_info,
                   _Outptr_ OrtAllocator** out);
 
   // Release instance of OrtAllocator obtained from CreateAllocator API
   ORT_CLASS_RELEASE(Allocator);
+
+  // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
+  // to input names. Thus if you want to use a raw on device buffer as input or output
+  // you can avoid extra copy during runtime.
+  ORT_API2_STATUS(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
+
+  // Release instance or OrtIoBinding obtained from CreateIoBinding API
+  ORT_CLASS_RELEASE(IoBinding);
+
+  /**
+   * The function will bind the OrtValue to a specified input name.
+   * The OrtValue must be a Tensor. ORT would use that value in place of input for the specified name.
+   * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
+   * \param name - name for the model input
+   * \param  val_ptr - OrtValue of Tensor type.
+   * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
+   */
+  ORT_API2_STATUS(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+  /**
+   * The function will bind the OrtValue to the specified output name.
+   * The OrtValue must be a Tensor. ORT would use that value in place of output for the specified name.
+   * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
+   * \param name - name for the model output
+   * \param  val_ptr - OrtValue of Tensor type.
+   * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
+   */
+  ORT_API2_STATUS(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+
+  /** Clears any previously specified bindings for inputs/outputs
+   */
+  void(ORT_API_CALL* ClearBoundInputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+  void(ORT_API_CALL* ClearBoundOutputs)(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   /**
    * \param out_ptr will hold a pointer to the array of char *
