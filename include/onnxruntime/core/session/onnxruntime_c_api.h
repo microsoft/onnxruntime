@@ -832,6 +832,8 @@ struct OrtApi {
   // Release instance of OrtAllocator obtained from CreateAllocator API
   ORT_CLASS_RELEASE(Allocator);
 
+  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+
   // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
   // to input names. Thus if you want to use a raw on device buffer as input or output
   // you can avoid extra copy during runtime.
