@@ -11,7 +11,7 @@ Module Name:
 Abstract:
 
     This module contains the private data structures and procedure prototypes
-    for QLinearAdd function usage.
+    for QLinearAdd function usage .
 
 --*/
 
