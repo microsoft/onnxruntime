@@ -16,7 +16,7 @@ For customization of the loading mechanism of the shared library, please see [ad
 
 ## API Reference
 
-The Javadoc is available [here](https://microsoft.github.io/onnxruntime/java/index.html).
+The Javadoc is available [here](https://javadoc.io/doc/com.microsoft.onnxruntime/onnxruntime).
 
 ## Sample Code
 
