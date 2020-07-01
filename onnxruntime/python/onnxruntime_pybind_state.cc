@@ -460,13 +460,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+                onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
 #ifdef USE_ACL
             onnxruntime::CreateExecutionProviderFactory_ACL(0)
 #endif
 #ifdef USE_ARMNN
-            onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
+                onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
 #endif
         };
 
@@ -642,7 +642,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
         }
 
-        //Check if input is sequence of tensors 
+        //Check if input is sequence of tensors
         onnx::TypeProto type_proto;
         const auto& def_list = *px.second;
         auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
@@ -654,7 +654,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         if (!temp) {
           throw std::runtime_error("Corresponding type_proto is null");
         } else {
-        type_proto = *temp;
+          type_proto = *temp;
         }
         if (type_proto.has_sequence_type()) {
           throw std::runtime_error("Cannot bind input to sequence of tensors");
@@ -681,8 +681,8 @@ void addObjectMethods(py::module& m, Environment& env) {
         OrtValue mlvalue;
 
         mlvalue.Init(p_tensor.release(),
-                       DataTypeImpl::GetType<Tensor>(),
-                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -699,9 +699,9 @@ void addObjectMethods(py::module& m, Environment& env) {
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
-                       DataTypeImpl::GetType<Tensor>(),
-                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-        
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
@@ -733,8 +733,8 @@ void addObjectMethods(py::module& m, Environment& env) {
       });
 
   py::class_<SessionOptions>
-      sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
-  sess
+      session_options(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+  session_options
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
@@ -800,7 +800,22 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                 break;
             }
           },
-          R"pbdoc(Graph optimization level for this session.)pbdoc");
+          R"pbdoc(Graph optimization level for this session.)pbdoc")
+      .def(
+          "add_free_dimension_override", [](SessionOptions* options, const char* dim_name, int64_t dim_value) -> void { options->free_dimension_overrides.push_back(
+                                                                                                                            onnxruntime::FreeDimensionOverride{
+                                                                                                                                dim_name,
+                                                                                                                                onnxruntime::FreeDimensionOverrideType::Denotation,
+                                                                                                                                dim_value}); }, "TODO")
+      .def(
+          "add_free_dimension_override_by_name", [](SessionOptions* options, const char* dim_name, int64_t dim_value) -> void { options->free_dimension_overrides.push_back(
+                                                                                                                                    onnxruntime::FreeDimensionOverride{
+                                                                                                                                        dim_name,
+                                                                                                                                        onnxruntime::FreeDimensionOverrideType::Name,
+                                                                                                                                        dim_value}); }, "TODO")
+      .def(
+          "clone", [](SessionOptions* options) -> SessionOptions { SessionOptions cloned = *options;  
+                                                                    return cloned; }, "TODO");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
