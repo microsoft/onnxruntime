@@ -107,6 +107,7 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
+                  --use_openmp \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
@@ -280,6 +281,7 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 16 2019"
             --enable_pybind
+            --use_openmp
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
@@ -485,7 +487,7 @@ stages:
       - script: |
           sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel ${{ parameters.build_py_parameters }}
+          ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
