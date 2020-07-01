@@ -963,7 +963,7 @@ if (onnxruntime_ENABLE_TRAINING)
     if (MPI_FOUND)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      else
+      else()
         execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT) 
       endif(NOT DEFINED onnxruntime_MPI_HOME)
       string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
