@@ -123,7 +123,7 @@ class IfImpl {
   std::vector<std::pair<AllocationType, OrtValue>> outputs_;
 };
 
-If::If(const OpKernelInfo& info) : OpKernel(info) {
+If::If(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the required attributes are present even though we don't need it here.
   // The GraphProto attributes are loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
