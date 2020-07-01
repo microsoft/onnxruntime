@@ -28,21 +28,25 @@ constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
     : Provider_IExecutionProvider{onnxruntime::kDnnlExecutionProvider} {
-  Provider_DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
-                                                                [](int) { return onnxruntime::CreateCPUAllocator(onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  Provider_DeviceAllocatorRegistrationInfo default_memory_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return onnxruntime::CreateCPUAllocator(
+             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL, OrtAllocatorType::OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
 
-  Provider_DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
-                                                            [](int) { return onnxruntime::CreateCPUAllocator(onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0, OrtMemTypeCPUOutput)); }, std::numeric_limits<size_t>::max()});
+  Provider_DeviceAllocatorRegistrationInfo cpu_memory_info(
+      {OrtMemTypeCPUOutput,
+       [](int) {
+         return onnxruntime::CreateCPUAllocator(
+             onnxruntime::Provider_OrtMemoryInfo::Create(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, nullptr, 0,
+                                                         OrtMemTypeCPUOutput));
+       },
+       std::numeric_limits<size_t>::max()});
 
-  if (info.create_arena) {
-    Provider_InsertAllocator(CreateAllocator(default_memory_info));
-
-    Provider_InsertAllocator(CreateAllocator(cpu_memory_info));
-  } else {
-    Provider_InsertAllocator(onnxruntime::CreateDummyArenaAllocator(default_memory_info.factory(0)));
-
-    Provider_InsertAllocator(onnxruntime::CreateDummyArenaAllocator(cpu_memory_info.factory(0)));
-  }
+  Provider_InsertAllocator(CreateAllocator(default_memory_info, 0, info.create_arena));
+  Provider_InsertAllocator(CreateAllocator(cpu_memory_info, 0, info.create_arena));
 }  // namespace onnxruntime
 
 DNNLExecutionProvider::~DNNLExecutionProvider() {

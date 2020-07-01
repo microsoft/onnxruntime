@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <core/common/make_unique.h>
+#include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/constants.h"
 #include "providers.h"
@@ -580,4 +581,20 @@ TEST(CApiTest, model_metadata) {
     ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
     ASSERT_TRUE(custom_metadata_map_keys == nullptr);
   }
+}
+
+TEST(CApiTest, get_available_providers) {
+  const OrtApi *g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  int len = 0;
+  char **providers;
+  ASSERT_EQ(g_ort->GetAvailableProviders(&providers, &len), nullptr);
+  ASSERT_TRUE(len > 0);
+  ASSERT_EQ(strcmp(providers[0], "CPUExecutionProvider"), 0);
+  ASSERT_EQ(g_ort->ReleaseAvailableProviders(providers, len), nullptr);
+}
+
+TEST(CApiTest, get_available_providers_cpp) {
+  std::vector<std::string> providers = Ort::GetAvailableProviders();
+  ASSERT_TRUE(providers.size() > 0);
+  ASSERT_TRUE(providers[0] == std::string("CPUExecutionProvider"));
 }

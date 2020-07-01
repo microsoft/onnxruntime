@@ -29,7 +29,7 @@ class MatMulComputeHelper {
     // A: [M1, M2, ... K], B: [N, K]^T
     // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
     // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
-    if (!transa && left_num_dims >= 2 && right_num_dims >= 2 &&
+    if (!transa && left_num_dims >= 2 && right_num_dims >= 2 && left_num_dims >= right_num_dims &&
         right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
       M_ = left_shape.SizeToDimension(left_num_dims - 1);
       K_ = left_shape[left_num_dims - 1];

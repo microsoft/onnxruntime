@@ -1,0 +1,16 @@
+jobs:
+- job: Linux_CI_Dev
+  timeoutInMinutes: 60
+  workspace:
+    clean: all
+  pool: Linux-CPU
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - script: >
+      PYTHONPATH='$(Build.SourcesDirectory)/tools' pytest -v python tools/python/test_custom_ops_pytorch_exporter.py
+    displayName: 'Test Custom Ops PyTorch Export'
+
+  - template: templates/linux-ci.yml

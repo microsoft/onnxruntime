@@ -97,7 +97,7 @@ Status SetupOptimizerParams(
           ? static_cast<int64_t>(hvd::ReduceOp::SUM)
           : static_cast<int64_t>(hvd::ReduceOp::ADASUM);
 #endif
-  opt_graph_config.partition_optimizer = optimizer_config.partition_optimizer;
+  opt_graph_config.deepspeed_zero = optimizer_config.deepspeed_zero;
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 
@@ -130,24 +130,27 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
-  // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
-  // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
-  // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
-  std::unordered_set<std::string> excluded_initializers =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
-          : GetTrainableModelInitializers(config.immutable_weights);
-  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
-    excluded_initializers.erase(weight_name_to_not_train);
+  if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
+    // Apply online pipeline partition to graph obj. This needs to be done first before any graph
+    // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
+                                                          config.pipeline_config.value().cut_list,
+                                                          config.distributed_config.world_rank,
+                                                          config.distributed_config.world_size));
   }
-
-  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(excluded_initializers));
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
 
   std::string loss_name{};
+  // Enable loss scale if mixed precision is enabled AND at pipeline last stage if pipeline is used.
+  // We are currently making the assumption that no data parallelism is used together with model parallelism.
+  // So we can check the last stage by checking the world_rank and world_size. Once DP and MP combination is
+  // enabled, we need to devise another way to check MP stages.
+  bool enable_loss_scale = is_mixed_precision_enabled_ &&
+                           (!config.pipeline_config.has_value() ||
+                            (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
   optional<std::string> loss_scale_input_name =
-        is_mixed_precision_enabled_ ? optional<std::string>{""} : optional<std::string>{};
+        enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
     // if use pipeline, first check if model contains send op. If it does, set the
     // send node's output as the start tensor to build gradient graph
@@ -168,7 +171,7 @@ Status TrainingSession::ConfigureForTraining(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
       "loss_scale_input_name should not be set to an empty string.");
 
-  if (is_mixed_precision_enabled_) {
+  if (enable_loss_scale) {
     TrainingConfigurationResult::MixedPrecisionConfigurationResult mp_result{};
     mp_result.loss_scale_input_name = loss_scale_input_name.value();
     config_result.mixed_precision_config_result = mp_result;
@@ -179,11 +182,29 @@ Status TrainingSession::ConfigureForTraining(
         config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
   }
 
+  // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
+  // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
+  // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
+  std::unordered_set<std::string> trainable_initializers =
+      !config.weight_names_to_train.empty()
+          ? config.weight_names_to_train
+          : GetTrainableModelInitializers(config.immutable_weights, loss_name);
+  if (config.weight_names_to_not_train.size() > 0)
+  {
+    LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:";
+    for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
+      trainable_initializers.erase(weight_name_to_not_train);
+      LOGS(*session_logger_, INFO) << weight_name_to_not_train;
+    }
+  }
+  
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation));
+
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !config.weight_names_to_train.empty()
           ? config.weight_names_to_train
-          : GetTrainableModelInitializers(config.immutable_weights);
+          : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     weight_names_to_train.erase(weight_name_to_not_train);
   }
@@ -210,14 +231,19 @@ Status TrainingSession::ConfigureForTraining(
 
   if (config.pipeline_config.has_value()) {
     TrainingConfigurationResult::PipelineConfigurationResult pipeline_result{};
-    ORT_RETURN_IF_ERROR(InsertPipelineOps(pipeline_result.forward_waited_event_name,
+    ORT_RETURN_IF_ERROR(InsertPipelineOps(weight_names_to_train,
+                                          pipeline_result.forward_waited_event_name,
                                           pipeline_result.forward_recorded_event_name,
                                           pipeline_result.backward_waited_event_name,
                                           pipeline_result.backward_recorded_event_name,
-                                          pipeline_result.forward_waited_output_name,
-                                          pipeline_result.forward_recorded_output_name,
-                                          pipeline_result.backward_waited_output_name,
-                                          pipeline_result.backward_recorded_output_name));
+                                          pipeline_result.forward_wait_output_name,
+                                          pipeline_result.forward_record_output_name,
+                                          pipeline_result.backward_wait_output_name,
+                                          pipeline_result.backward_record_output_name,
+                                          pipeline_result.forward_waited_event_after_recv_name,
+                                          pipeline_result.forward_recorded_event_before_send_name,
+                                          pipeline_result.backward_waited_event_after_recv_name,
+                                          pipeline_result.backward_recorded_event_before_send_name));
     // The following loop is for not to fetch tensors not in this pipeline stage.
     for (size_t i = 0; i < config.pipeline_config.value().fetch_names.size(); ++i) {
       auto name = config.pipeline_config.value().fetch_names[i];
@@ -229,7 +255,7 @@ Status TrainingSession::ConfigureForTraining(
       }
       pipeline_result.fetch_names.push_back(name);
     }
-    pipeline_result.pipeline_stage_id = config.distributed_config.world_rank / 
+    pipeline_result.pipeline_stage_id = config.distributed_config.world_rank /
       (config.distributed_config.data_parallel_size * config.distributed_config.horizontal_parallel_size);
     config_result.pipeline_config_result = pipeline_result;
   }
@@ -240,7 +266,8 @@ Status TrainingSession::ConfigureForTraining(
   for (auto it = weights_to_train_.begin(); it != weights_to_train_.end();) {
       const auto* node_arg = model_->MainGraph().GetNodeArg(*it);
       ORT_RETURN_IF_NOT(node_arg, "Failed to get NodeArg with name ", *it);
-      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      if (node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+          node_arg->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
         it = weights_to_train_.erase(it);
       }
       else{
@@ -303,13 +330,19 @@ Status TrainingSession::ConfigureForTraining(
         tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
         tensorboard_config.dump_convergence_metrics));
   }
-    
+
   // add GIST encoding
   if (config.gist_config.has_value()) {
     ORT_RETURN_IF_ERROR(AddGistEncoding());
   }
 
-  if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
+  // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
+  // store different model partition), and if model_with_training_graph_path is specified, save the model.
+  // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
+  // conflict. It is user's responsibility to make sure different rank is passed in with different
+  // model_with_training_graph_path value.
+  if ((IsRootNode(config) || config.pipeline_config.has_value())
+    && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
@@ -435,9 +468,9 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train) {
+Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation) {
   GraphTransformerManager graph_transformation_mgr{1};
-  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train);
+  AddPreTrainingTransformers(graph_transformation_mgr, weights_to_train, enable_gelu_approximation);
 
   // apply transformers
   Graph& graph = model_->MainGraph();
@@ -450,11 +483,13 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 // Registers all the pre transformers with transformer manager
 void TrainingSession::AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
+                                                 bool enable_gelu_approximation,
                                                  TransformerLevel graph_optimization_level,
                                                  const std::vector<std::string>& custom_list) {
   auto add_transformers = [&](TransformerLevel level) {
     // Generate and register transformers for level
-    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(level, weights_to_train, custom_list);
+    auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+        level, weights_to_train, enable_gelu_approximation, custom_list);
     for (auto& entry : transformers_to_register) {
       transformer_manager.Register(std::move(entry), level);
     }
@@ -524,24 +559,34 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
 }
 
 Status TrainingSession::InsertPipelineOps(
+  const std::unordered_set<std::string>& initializer_names_to_preserve,
   std::string& forward_waited_event_name,
   std::string& forward_recorded_event_name,
   std::string& backward_waited_event_name,
   std::string& backward_recorded_event_name,
-  std::string& forward_waited_output_name,
-  std::string& forward_recorded_output_name,
-  std::string& backward_waited_output_name,
-  std::string& backward_recorded_output_name) {
+  std::string& forward_wait_output_name,
+  std::string& forward_record_output_name,
+  std::string& backward_wait_output_name,
+  std::string& backward_record_output_name,
+  std::string& forward_waited_event_after_recv_name,
+  std::string& forward_recorded_event_before_send_name,
+  std::string& backward_waited_event_after_recv_name,
+  std::string& backward_recorded_event_before_send_name) {
   ORT_RETURN_IF_ERROR(TransformGraphForPipeline(
     model_->MainGraph(),
+    initializer_names_to_preserve,
     forward_waited_event_name,
     forward_recorded_event_name,
     backward_waited_event_name,
     backward_recorded_event_name,
-    forward_waited_output_name,
-    forward_recorded_output_name,
-    backward_waited_output_name,
-    backward_recorded_output_name));
+    forward_wait_output_name,
+    forward_record_output_name,
+    backward_wait_output_name,
+    backward_record_output_name,
+    forward_waited_event_after_recv_name,
+    forward_recorded_event_before_send_name,
+    backward_waited_event_after_recv_name,
+    backward_recorded_event_before_send_name));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -650,7 +695,7 @@ Status TrainingSession::OverrideGraphOutputs(const std::vector<std::string>& out
 }
 
 NameMLValMap TrainingSession::GetWeights() const {
-  return session_state_->GetInitializedTensors(weights_to_train_);
+  return GetSessionState().GetInitializedTensors(weights_to_train_);
 }
 
 static Status UpdateWeightsBeforeSaving(
@@ -699,7 +744,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
   std::shared_ptr<Model> new_model;
   ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model, nullptr, *session_logger_));
   ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(
-      new_model->MainGraph(), GetWeights(), session_state_->GetDataTransferMgr()));
+      new_model->MainGraph(), GetWeights(), GetSessionState().GetDataTransferMgr()));
 
   std::string actual_loss_name{};
   optional<std::string> loss_scale_input_name =
@@ -738,12 +783,12 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 }
 
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
-  bool allow_missing = opt_graph_config_.partition_optimizer;
-  return session_state_->GetInitializedTensors(GetStateTensorNames(), allow_missing, state_tensors);
+  bool allow_missing = (opt_graph_config_.deepspeed_zero.stage != 0);
+  return GetSessionState().GetInitializedTensors(GetStateTensorNames(), allow_missing, state_tensors);
 }
 
 const DataTransferManager& TrainingSession::GetDataTransferManager() const {
-  return session_state_->GetDataTransferMgr();
+  return GetSessionState().GetDataTransferMgr();
 }
 
 bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) const {
@@ -759,9 +804,10 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
     for (auto& drop_ratio : dropout_eval_feeds_) {
       OrtValue feed_value;
       // We allocate on CPU first, copy will be taken care off downstream.
-      auto cpu_allocator = session_state_->GetExecutionProviders()
-                           .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
+      const auto& session_state = GetSessionState();
+      auto default_cpu_alloc_info = session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo();
+      auto cpu_allocator = session_state.GetAllocator(default_cpu_alloc_info);
+      
       feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
       // Bind new feed to graph input.
       ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
@@ -812,7 +858,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
                  [](auto pair) { return pair.first; });
 
   NameMLValMap initializers;
-  ORT_RETURN_IF_ERROR(session_state_->GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
+  ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
 
   const std::unordered_set<std::string> valid_state_tensor_names = GetStateTensorNames();
 
@@ -838,7 +884,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
 
       auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();
-      ORT_RETURN_IF_ERROR(session_state_->GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+      ORT_RETURN_IF_ERROR(GetSessionState().GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
     }
   }
 
@@ -910,26 +956,46 @@ bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weight
 }
 
 std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
-    const ImmutableWeights& immutable_weights) const {
+    const ImmutableWeights& immutable_weights, const std::string& loss_name) const {
+
   const Graph& graph = model_->MainGraph();
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
-  std::unordered_set<std::string> model_initializers;
-  std::transform(initialized_tensors.begin(),
-                 initialized_tensors.end(),
-                 std::inserter(model_initializers, model_initializers.end()),
-                 [](const auto& pair) { return pair.first; });
+  std::unordered_set<std::string> trainable_initializers;
 
-  std::unordered_set<std::string> trainable_initializers(model_initializers);
-  for (const std::string& initializer_name : model_initializers) {
-    const auto& nodes = graph.GetConsumerNodes(initializer_name);
-    for (const Node* node : nodes) {
-      if (IsUntrainable(node, initializer_name, session_logger_) ||
-          IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_)) {
-        trainable_initializers.erase(initializer_name);
+  auto add_trainable_initializers = [&](const Node* node) { 
+      for (auto input : node->InputDefs()) {
+        std::string initializer_name = input->Name();
+        if (initialized_tensors.count(initializer_name) == 0)
+          continue;
+
+        if (IsUntrainable(node, initializer_name, session_logger_) ||
+            IsImmutableWeight(immutable_weights, node, initialized_tensors.at(initializer_name), session_logger_))
+          continue;
+
+        trainable_initializers.insert(initializer_name);
       }
-    }
-  }
+  };
 
+  auto stop_at_untrainable = [&](const Node* from, const Node* to) {
+
+      auto is_trainable_from_to_link = [&](Node::EdgeEnd e) { 
+        if (&e.GetNode() != to) 
+          return false;
+
+        std::string input_name = from->InputDefs()[e.GetDstArgIndex()]->Name();
+        return !IsUntrainable(from, input_name, session_logger_);
+      };
+
+      bool proceed = std::any_of(from->InputEdgesBegin(), from->InputEdgesEnd(), is_trainable_from_to_link);
+      if (!proceed && session_logger_) {
+        VLOGS(*session_logger_, 1) << "Stopping training parameters discovery traversal from " << from->Name() << " to " << to->Name() << std::endl;
+      }
+
+      return !proceed;
+  };
+
+  // perform reverse dfs from output node to discover trainable parameters
+  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 

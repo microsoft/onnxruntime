@@ -54,9 +54,6 @@ function(AddTest)
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CUDA_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include)
   endif()
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND onnxruntime_ENABLE_PYTHON)
-    target_compile_definitions(${_UT_TARGET} PRIVATE ENABLE_LANGUAGE_INTEROP_OPS)
-  endif()
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -165,6 +162,11 @@ file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
 file(GLOB_RECURSE onnxruntime_test_providers_cpu_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/providers/cpu/*"
   )
+
+if(onnxruntime_DISABLE_ML_OPS)
+  list(FILTER onnxruntime_test_providers_cpu_src EXCLUDE REGEX ".*/ml/.*")
+endif()
+
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
 if (onnxruntime_USE_CUDA)
@@ -204,7 +206,7 @@ if (onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_ngraph_src})
 endif()
 
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_DNNLIBRARY OR onnxruntime_USE_NNAPI_BUILTIN)
   file(GLOB_RECURSE onnxruntime_test_providers_nnapi_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/nnapi/*"
     )
@@ -300,7 +302,7 @@ if(onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
 endif()
 
-if(onnxruntime_USE_NNAPI)
+if(onnxruntime_USE_NNAPI_DNNLIBRARY OR onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
@@ -318,6 +320,11 @@ if(onnxruntime_USE_DML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dml)
 endif()
 
+if(onnxruntime_USE_MIGRAPHX)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
+endif()
+
+
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
   "${ONNXRUNTIME_ROOT}/test/tvm/*.cc"
@@ -334,6 +341,10 @@ if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
 
+if(onnxruntime_USE_ARMNN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
+endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
@@ -345,6 +356,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_CUDA}
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
@@ -352,6 +364,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -379,7 +392,7 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_tensorrt)
 endif()
 
-if(onnxruntime_USE_NNAPI)
+if(onnxruntime_USE_NNAPI_DNNLIBRARY OR onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nnapi/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
@@ -636,7 +649,17 @@ install(TARGETS onnx_test_runner
 
 if(onnxruntime_BUILD_BENCHMARKS)
   SET(BENCHMARK_DIR ${TEST_SRC_DIR}/onnx/microbenchmark)
-  add_executable(onnxruntime_benchmark ${BENCHMARK_DIR}/main.cc ${BENCHMARK_DIR}/modeltest.cc ${BENCHMARK_DIR}/pooling.cc ${BENCHMARK_DIR}/batchnorm.cc ${BENCHMARK_DIR}/batchnorm2.cc ${BENCHMARK_DIR}/tptest.cc ${BENCHMARK_DIR}/eigen.cc ${BENCHMARK_DIR}/gelu.cc ${BENCHMARK_DIR}/activation.cc)
+  add_executable(onnxruntime_benchmark
+    ${BENCHMARK_DIR}/main.cc
+    ${BENCHMARK_DIR}/modeltest.cc
+    ${BENCHMARK_DIR}/pooling.cc
+    ${BENCHMARK_DIR}/batchnorm.cc
+    ${BENCHMARK_DIR}/batchnorm2.cc
+    ${BENCHMARK_DIR}/tptest.cc
+    ${BENCHMARK_DIR}/eigen.cc
+    ${BENCHMARK_DIR}/gelu.cc
+    ${BENCHMARK_DIR}/activation.cc
+    ${BENCHMARK_DIR}/reduceminmax.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
     target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd4141>"
@@ -660,7 +683,7 @@ add_test(NAME onnx_test_pytorch_operator
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND android_shared_libs log android)
-    if (onnxruntime_USE_NNAPI)
+    if (onnxruntime_USE_NNAPI_DNNLIBRARY)
         list(APPEND android_shared_libs neuralnetworks)
     endif()
 endif()
@@ -834,7 +857,7 @@ if (onnxruntime_BUILD_JAVA)
 
     # delegate to gradle's test runner
     if(WIN32)
-      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> 
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>
                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
       # On windows ctest requires a test to be an .exe(.com) file
       # So there are two options 1) Install Chocolatey and its gradle package
@@ -847,7 +870,7 @@ if (onnxruntime_BUILD_JAVA)
         -DREPO_ROOT=${REPO_ROOT}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
-      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library> 
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>
                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
       if (onnxruntime_USE_CUDA)
         add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1

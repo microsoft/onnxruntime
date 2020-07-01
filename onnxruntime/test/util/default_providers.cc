@@ -20,7 +20,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 
 namespace test {
 
@@ -31,6 +33,14 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
   return CreateExecutionProviderFactory_Tensorrt(0)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
+#ifdef USE_MIGRAPHX
+  return CreateExecutionProviderFactory_MIGraphX(0)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -98,6 +108,15 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
 #ifdef USE_ACL
   return CreateExecutionProviderFactory_ACL(enable_arena)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena){
+#ifdef USE_ARMNN
+  return CreateExecutionProviderFactory_ArmNN(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;

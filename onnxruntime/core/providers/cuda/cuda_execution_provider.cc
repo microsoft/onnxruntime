@@ -56,8 +56,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
-
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
@@ -66,9 +64,14 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit, arena_extend_strategy});
+       [](OrtDevice::DeviceId id) {
+         return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+       },
+       cuda_mem_limit, 
+       arena_extend_strategy});
 
-  allocator_ = CreateAllocator(default_memory_info, device_id);
+  // CUDA malloc/free is expensive so always use an arena
+  allocator_ = CreateAllocator(default_memory_info, device_id, /*create_arena*/ true);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -86,7 +89,12 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
-  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
+
+  try {
+    CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "curandDestroyGenerator threw:" << ex.what();
+  }
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
@@ -124,67 +132,99 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUInput,
-                                                   [](int device_id) { return onnxruntime::make_unique<CPUAllocator>(
-                                                                           onnxruntime::make_unique<OrtMemoryInfo>(
-                                                                               "CUDA_CPU",
-                                                                               OrtAllocatorType::OrtDeviceAllocator,
-                                                                               OrtDevice(),
-                                                                               device_id,
-                                                                               OrtMemTypeCPUInput)); },
-                                                   std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_memory_info(
+      {OrtMemTypeCPUInput,
+       [](int device_id) {
+         return onnxruntime::make_unique<CPUAllocator>(
+             OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                           OrtMemTypeCPUInput));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
   auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    if (v.recorded)
-      CUDA_CALL_THROW(cudaEventSynchronize(e));
-    for (auto p : v.cpu_ptrs) {
-      cpu_alloc->Free(p);
+  {
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    auto it = deferred_release_cpu_ptr_.begin();
+    while (it != deferred_release_cpu_ptr_.end()) {
+      auto& e = it->first;
+      auto& v = it->second;
+      if (v.recorded)
+        CUDA_CALL_THROW(cudaEventSynchronize(e));
+      for (auto p : v.cpu_ptrs) {
+        cpu_alloc->Free(p);
+      }
+      CUDA_CALL_THROW(cudaEventDestroy(e));
+      it = deferred_release_cpu_ptr_.erase(it);
     }
-    CUDA_CALL_THROW(cudaEventDestroy(e));
-    it = deferred_release_cpu_ptr_.erase(it);
+  }
+
+  // clean up thread local context caches
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+      const auto cache = cache_weak.lock();
+      if (!cache) continue;
+      ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+    }
   }
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
-  if (per_thread_context_map_ == nullptr) {
-    per_thread_context_map_ = onnxruntime::make_unique<PerThreadContextMap>();
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
   }
 
-  auto* p = per_thread_context_map_.get();
-  if (p->count(this) == 0) {
-    std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    std::shared_ptr<PerThreadContext> ptc;
-    if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
     } else {
-      ptc = retired_context_pool_.back();
-      retired_context_pool_.pop_back();
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
     }
-    p->insert(std::make_pair(this, ptc));
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
   }
-  return *(p->at(this));
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
 }
 
-void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
-  ORT_ENFORCE(per_thread_context_map_ != nullptr);
-  auto iter_ctx = per_thread_context_map_->find(this);
-  ORT_ENFORCE(iter_ctx != per_thread_context_map_->end());
+void CUDAExecutionProvider::ReleasePerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
 
-  std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-  retired_context_pool_.push_back(iter_ctx->second);
-  per_thread_context_map_->erase(iter_ctx);
-  // Release TLS if empty to avoid memory leak report
-  if (per_thread_context_map_->empty()) {
-    per_thread_context_map_.reset(nullptr);
+  auto cached_context_it = per_thread_context_cache->find(this);
+  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
+  auto cached_context = cached_context_it->second.lock();
+  ORT_ENFORCE(cached_context);
+
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    context_state_.active_contexts.erase(cached_context);
+    context_state_.retired_context_pool.push_back(cached_context);
   }
+
+  per_thread_context_cache->erase(cached_context_it);
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -250,7 +290,7 @@ Status CUDAExecutionProvider::OnRunEnd() {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
-  ReleasePerThreadStuffs();
+  ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
   return Status::OK();
@@ -773,15 +813,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, GatherND);
 
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_MLFloat16, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_float, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_double, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_MLFloat16, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_float, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_double, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_MLFloat16, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_float, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_double, Dropout);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Dropout);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Einsum);
 
 static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -1300,15 +1333,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, GatherND)>,
 
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_MLFloat16, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_float, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_double, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_MLFloat16, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_float, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_double, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_MLFloat16, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_float, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_double, Dropout)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Dropout)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Einsum)>,
   };
 
   for (auto& function_table_entry : function_table) {

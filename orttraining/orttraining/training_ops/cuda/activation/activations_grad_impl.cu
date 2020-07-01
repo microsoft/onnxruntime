@@ -3,6 +3,7 @@
 
 #include <cuda_runtime.h>
 #include "orttraining/training_ops/cuda/activation/activations_grad_impl.h"
+#include "orttraining/training_ops/cuda/activation/gelu_grad_impl_common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 
@@ -12,21 +13,14 @@ namespace cuda {
 template <typename T>
 struct OP_GeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    const T kAlpha = T(M_2_SQRTPI) * T(M_SQRT1_2) * T(0.5);
-    return dy * (_Normcdf(x) + x * kAlpha * _Exp(-T(0.5) * x * x));
+    return ComputeGeluGradScalar(dy, x, gelu_computation_mode::Default{});
   }
 };
 
 template <typename T>
 struct OP_FastGeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    const T kAlpha = static_cast<T>(M_2_SQRTPI * M_SQRT1_2);
-    const T kGamma = T(0.044715);
-    const T kBeta = kAlpha * kGamma * T(3);
-    const auto tanh_value =
-        static_cast<T>(_Tanh(kAlpha * ((kGamma * x * x * x) + x)));
-    return dy * T(0.5) * ((-x * tanh_value * tanh_value + x) * (kBeta * x * x + kAlpha) +
-                          T(1) + tanh_value);
+    return ComputeGeluGradScalar(dy, x, gelu_computation_mode::Approximation{});
   }
 };
 

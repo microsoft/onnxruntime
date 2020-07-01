@@ -5,7 +5,7 @@
 #include "../framework/test_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include <core/framework/session_state_initializer.h>
+#include <core/framework/finalize_session_state.h>
 #include "core/framework/execution_providers.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -30,10 +30,10 @@ TEST(MemcpyTest, copy1) {
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;
-  auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
+  auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider,
+                                    onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  SessionState s{execution_providers, true, &tp, nullptr};
-  s.SetLogger(logging::LoggingManager::DefaultLogger());
+
   KernelRegistryManager kernel_registry_manager;
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
@@ -44,13 +44,17 @@ TEST(MemcpyTest, copy1) {
   ASSERT_TRUE(result);
 
   Model model(mp, nullptr, DefaultLoggingManager().DefaultLogger());
-  st = model.MainGraph().Resolve();
-  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);
-  SessionStateInitializer session_initializer{true, ORT_TSTR(""), model.MainGraph(),
-                                              s, execution_providers, kernel_registry_manager};
-  st = session_initializer.CreatePlan(nullptr, {}, ExecutionMode::ORT_SEQUENTIAL);
-  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+
+  DataTransferManager dtm;
+  profiling::Profiler profiler;
+  SessionState s(model.MainGraph(), execution_providers, true, &tp, nullptr, dtm,
+                 DefaultLoggingManager().DefaultLogger(), profiler);
+
+  s.CreateGraphInfo();
+  ASSERT_STATUS_OK(FinalizeSessionState(s, ORT_TSTR(""), kernel_registry_manager, nullptr));
 
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);

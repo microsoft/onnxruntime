@@ -95,10 +95,6 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
       y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-      // special case when there is a dim value of 0 in the shape.
-      if (Y->Shape().Size() == 0)
-        return Status::OK();
-
       std::vector<int64_t> x_dims_cudnn = x_dims;
       std::vector<int64_t> y_dims_cudnn = y_dims;
       if (rank < 2) {
@@ -112,11 +108,20 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         strides.push_back(1);
         dilations.push_back(1);
       }
-      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
       if (w_dims_changed)
         ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+
+      // Special case when there is a dim value of 0 in the shape.
+      // Return only after we have cached the following for subsequent runs :
+      // 1) `w_dims` in the `filter_desc`
+      // 2) `y_dims` in s_.y_dims
+      if (Y->Shape().Size() == 0) {
+        return Status::OK();
+      }
+
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
