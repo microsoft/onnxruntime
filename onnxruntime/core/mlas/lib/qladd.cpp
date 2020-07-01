@@ -699,7 +699,14 @@ MlasQLinearAddKernelHelper(
 
     if (n < 0) {
         n += 8;
-        uint64_t PackedValueC = (uint64_t)_mm_cvtsi128_si64(vc);
+        if (n & 4) {
+            *(int*)OutputC = _mm_cvtsi128_si32(vc);
+            n -= 4;
+            OutputC += 4;
+            vc = _mm_shuffle_epi32(vc, _MM_SHUFFLE(0, 3, 2, 1));
+        }
+
+        uint32_t PackedValueC = (uint32_t)_mm_cvtsi128_si32(vc);
         for (int64_t i = 0; i < n; ++i) {
             *((uint8_t*)OutputC + i) = (uint8_t)PackedValueC;
             PackedValueC >>= 8;
