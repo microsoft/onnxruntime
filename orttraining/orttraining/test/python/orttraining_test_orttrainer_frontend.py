@@ -288,7 +288,7 @@ def testSGDConfig():
         param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
         optim.SGDConfig(param_groups=param_groups, lr=0.002)
         assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
-    assert str(e.value) == "'param_groups' must be an empty list"
+    assert str(e.value) == "'param_groups' must be an empty list for SGD optimizer"
 
 
 def testAdamConfig():
