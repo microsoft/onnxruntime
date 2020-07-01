@@ -263,24 +263,19 @@ class BaseOpBuilder : public IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */,
                                      const onnxruntime::Node& /* node */) override {}
 
-  bool IsOpSupported(ModelBuilder& model_builder,
-                     const onnxruntime::Node& node) override final;
+  bool IsOpSupported(ModelBuilder& model_builder, const onnxruntime::Node& node) override final;
 
-  void AddToModelBuilder(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override final;
+  void AddToModelBuilder(ModelBuilder& model_builder, const onnxruntime::Node& node) override final;
 
  protected:
-  virtual bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                                 const onnxruntime::Node& node);
+  virtual bool IsOpSupportedImpl(ModelBuilder& model_builder, const onnxruntime::Node& node);
 
-  virtual int32_t GetMinSupportedSdkVer(
-      ModelBuilder& /* model_builder */,
-      const onnxruntime::Node& /* node */) const { return 27; }
+  virtual int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
+                                        const onnxruntime::Node& /* node */) const { return 27; }
 
   virtual bool HasSupportedInputs(const onnxruntime::Node& node);
 
-  virtual void AddToModelBuilderImpl(
-      ModelBuilder& model_builder, const onnxruntime::Node& node);
+  virtual void AddToModelBuilderImpl(ModelBuilder& model_builder, const onnxruntime::Node& node) = 0;
 };
 
 bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
@@ -332,11 +327,6 @@ void BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder,
   AddToModelBuilderImpl(model_builder, node);
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
-}
-
-void BaseOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
-                                          const onnxruntime::Node& node) {
-  ORT_NOT_IMPLEMENTED("Unsupported operator " + node.OpType());
 }
 
 #pragma endregion op_base

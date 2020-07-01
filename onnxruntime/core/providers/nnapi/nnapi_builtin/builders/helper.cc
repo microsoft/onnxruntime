@@ -3,7 +3,6 @@
 //
 
 #include <core/common/safeint.h>
-#include <core/graph/graph.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,6 +11,34 @@
 
 using std::string;
 using std::vector;
+
+std::string GetErrorCause(int error_code) {
+  switch (error_code) {
+    case ANEURALNETWORKS_NO_ERROR:
+      return "ANEURALNETWORKS_NO_ERROR";
+    case ANEURALNETWORKS_OUT_OF_MEMORY:
+      return "ANEURALNETWORKS_OUT_OF_MEMORY";
+    case ANEURALNETWORKS_INCOMPLETE:
+      return "ANEURALNETWORKS_INCOMPLETE";
+    case ANEURALNETWORKS_UNEXPECTED_NULL:
+      return "ANEURALNETWORKS_UNEXPECTED_NULL";
+    case ANEURALNETWORKS_BAD_DATA:
+      return "ANEURALNETWORKS_BAD_DATA";
+    case ANEURALNETWORKS_OP_FAILED:
+      return "ANEURALNETWORKS_OP_FAILED";
+    case ANEURALNETWORKS_BAD_STATE:
+      return "ANEURALNETWORKS_BAD_STATE";
+    case ANEURALNETWORKS_UNMAPPABLE:
+      return "ANEURALNETWORKS_UNMAPPABLE";
+    case ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE:
+      return "ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE";
+    case ANEURALNETWORKS_UNAVAILABLE_DEVICE:
+      return "ANEURALNETWORKS_UNAVAILABLE_DEVICE";
+
+    default:
+      return "Unknown error code: " + std::to_string(error_code);
+  }
+}
 
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
     : node_attributes_(node.GetAttributes()) {}
