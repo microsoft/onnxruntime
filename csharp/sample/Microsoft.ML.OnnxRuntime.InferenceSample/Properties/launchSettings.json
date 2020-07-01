@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "Microsoft.ML.OnnxRuntime.InferenceSample": {
-      "commandName": "Project",
-      "nativeDebugging": true
-    }
-  }
-}
