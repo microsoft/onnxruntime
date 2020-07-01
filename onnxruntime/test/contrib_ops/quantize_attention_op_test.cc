@@ -135,11 +135,9 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-#endif
   }
 }
 

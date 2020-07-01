@@ -49,13 +49,11 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
 }
 
 TEST(DynamicQuantizeMatMul, Int8_test) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
   TestDynamicQuantizeMatMul<int8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_int8.onnx");
-#endif
 }
 
 TEST(DynamicQuantizeMatMul, UInt8_test) {
