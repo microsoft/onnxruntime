@@ -108,6 +108,18 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
         }
 
         [Fact]
+        public void ConstructScalarDenseTensorFromPointer()
+        {
+            using (var nativeMemory = NativeMemory<ulong>.Allocate(1))
+            {
+                nativeMemory.GetSpan()[0] = UInt64.MaxValue;
+                var tensor = new DenseTensor<ulong>(nativeMemory.Memory, ReadOnlySpan<int>.Empty);
+
+                Assert.Equal(UInt64.MaxValue, tensor[0]);
+            }
+        }
+
+        [Fact]
         public void ConstructDenseTensorFromPointer()
         {
             using (var nativeMemory = NativeMemoryFromArray(Enumerable.Range(0, 24).ToArray()))
