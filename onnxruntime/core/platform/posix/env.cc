@@ -249,6 +249,22 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+    using namespace common;
+    if (fd < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
+    }
+
+    struct stat buf;
+    int rc = fstat(fd, &buf);
+    if (rc < 0) {
+      return ReportSystemError("fstat", "");
+    }
+
+    file_size = buf.st_size;
+    return Status::OK();
+  }
+
   Status ReadFileIntoBuffer(const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
                             gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);

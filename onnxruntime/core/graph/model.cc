@@ -237,6 +237,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!p_model_proto) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Null model_proto ptr.");
   }
+
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   const bool result = p_model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   if (!result) {
@@ -447,7 +448,13 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  FileInputStream input(fd);
+  size_t file_size = 0;
+  int block_size = -1;
+  Status st = Env::Default().GetFileLength(fd, file_size);
+  if (st.IsOK()) {
+    block_size = static_cast<int>(file_size);
+  }
+  FileInputStream input(fd, block_size);
   const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
