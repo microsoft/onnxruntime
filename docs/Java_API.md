@@ -1,12 +1,14 @@
 # ONNX Runtime Java API
 The ONNX runtime provides a Java binding for running inference on ONNX models on a JVM, using Java 8 or newer.
 
-Release artifacts are published to Maven Central for use as a dependency in most Java build tools:
+Release artifacts are published to Maven Central for use as a dependency in most Java build tools. The artifacts are built with support for some popular plaforms.
 
-* [com.microsoft.onnxruntime:onnxruntime](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime) - cross-platform CPU artifact
-* [com.microsoft.onnxruntime:onnxruntime_gpu](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) - cross-platform GPU (CUDA) artifact
+![Version Shield](https://img.shields.io/maven-central/v/com.microsoft.onnxruntime/onnxruntime)
 
-These artifacts are currently built for common OS/Architecture combinations: Windows x64, Linux x64, MacOS x64.
+| Artifact  | Description | Supported Platforms |
+|-----------|-------------|---------------------|
+| [com.microsoft.onnxruntime:onnxruntime](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime) | CPU | Windows x64, Linux x64, macOS x64 |
+| [com.microsoft.onnxruntime:onnxruntime_gpu](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) | GPU (CUDA) | Windows x64, Linux x64 |
 
 For building locally, please see the [Java API development documentation](../java/README.md) for more details.
 
