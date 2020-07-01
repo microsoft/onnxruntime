@@ -8,20 +8,6 @@ Java Native Interface (JNI) is used to allow for seamless calls to ONNX runtime 
 This document pertains to developing, building, running, and testing the API itself in your local environment.
 For general purpose usage of the publicly distributed API, please see the [general Java API documentation](../docs/Java_API.md).
 
-### Example Implementation
-
-An example implementation is located in
-[src/test/java/sample/ScoreMNIST.java](./src/test/java/sample/ScoreMNIST.java).
-Once compiled the sample code expects the following arguments `ScoreMNIST
-<path-to-mnist-model> <path-to-mnist> <scikit-learn-flag>`.  MNIST is expected
-to be in libsvm format. If the optional scikit-learn flag is supplied the model
-is expected to be produced by skl2onnx (so expects a flat feature vector, and
-produces a structured output), otherwise the model is expected to be a CNN from
-pytorch (expecting a `[1][1][28][28]` input, producing a vector of
-probabilities).  Two example models are provided in [testdata](testdata),
-`cnn_mnist_pytorch.onnx` and `lr_mnist_scikit.onnx`. The first is a LeNet5 style
-CNN trained using PyTorch, the second is a logistic regression trained using scikit-learn.
-
 ### Building
 
 Use the main project's [build instructions](../BUILD.md) with the `--build_java` option.
