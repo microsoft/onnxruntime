@@ -13,6 +13,10 @@ class GatherQuant(QuantOperatorBase):
     def quantize(self):
         node = self.node
         assert (node.op_type == "Gather")
+        if(not self.quantizer.is_valid_quantize_weight(node.input[0])):
+            self.quantizer.nodes += [node]
+            return
+
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0])
 

@@ -131,7 +131,47 @@ class ONNXQuantizer:
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}
 
+    def preprocess(self):
+
+        nodes_to_remove = []
+        nodes_to_add = []
+        for node in self.model.graph.node:
+            if node.op_type == 'Gemm':
+                alpha = 1.0
+                beta = 1.0
+                transA = 0
+                transB = 0
+                for attr in node.attribute:
+                    if attr.name == 'alpha':
+                        alpha = onnx.helper.get_attribute_value(attr)
+                    elif attr.name == 'beta':
+                        beta = onnx.helper.get_attribute_value(attr)
+                    elif attr.name == 'transA':
+                        transA = onnx.helper.get_attribute_value(attr)
+                    elif attr.name == 'transB':
+                        transB = onnx.helper.get_attribute_value(attr)
+                if alpha == 1.0 and beta == 1.0 and transA == 0 and transB == 0:
+                    matmul_node = onnx.helper.make_node(
+                        'MatMul',
+                        [node.input[0], node.input[1]],
+                        [node.output[0]+'_MatMul'],
+                        name=node.output[0]+'_MatMul')
+
+                    add_node = onnx.helper.make_node(
+                        'Add',
+                        inputs=[node.output[0]+'_MatMul', node.input[2]],
+                        outputs=node.output,
+                        name=node.output[0]+'_Add')
+                    
+                    nodes_to_remove.extend([node])
+                    nodes_to_add.extend([matmul_node, add_node])
+
+        self.model.graph.node.extend(nodes_to_add)
+        for node in nodes_to_remove:
+            self.model.graph.node.remove(node)
+
     def quantize_model(self):
+        self.preprocess()
         # Create a new topologically sorted list for quantizing a model
         self.nodes = []
         for node in self.model.graph.node:
@@ -178,6 +218,10 @@ class ONNXQuantizer:
             raise ValueError('Only float type quantization is supported. Weights {} is {}. '.format(
                 initializer.name, type_to_name[initializer.data_type]))
         return weights
+
+    def is_valid_quantize_weight(self, weight_name):
+        weight = find_by_name(weight_name, self.model.graph.initializer)
+        return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
     def _is_valid_quantize_value(self, value_name):
         if value_name in self.value_infos:
