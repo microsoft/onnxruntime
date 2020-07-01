@@ -304,27 +304,33 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
         protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride)
         {
-            if (dimensions.Length == 0)
+            if (dimensions.Length == 0) // Scalar
             {
-                throw new ArgumentException("Dimensions must contain elements.", nameof(dimensions));
+                this.dimensions = new[] { 1 };
+                strides = new[] { 1 };
+                isReversedStride = false;
+                this.length = 1;
             }
-
-            this.dimensions = new int[dimensions.Length];
-            long size = 1;
-            for (int i = 0; i < dimensions.Length; i++)
+            else
             {
-                if (dimensions[i] < 0)
+                this.dimensions = new int[dimensions.Length];
+                long size = 1;
+                for (int i = 0; i < dimensions.Length; i++)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(dimensions), "Dimensions must be non-negative");
+                    if (dimensions[i] < 0)
+                    {
+                        throw new ArgumentOutOfRangeException(nameof(dimensions), "Dimensions must be non-negative");
+                    }
+
+                    this.dimensions[i] = dimensions[i];
+                    size *= dimensions[i];
                 }
-                this.dimensions[i] = dimensions[i];
-                size *= dimensions[i];
+
+                strides = ArrayUtilities.GetStrides(dimensions, reverseStride);
+                isReversedStride = reverseStride;
+
+                length = size;
             }
-
-            strides = ArrayUtilities.GetStrides(dimensions, reverseStride);
-            isReversedStride = reverseStride;
-
-            length = size;
         }
 
         /// <summary>
