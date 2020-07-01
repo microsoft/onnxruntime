@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
@@ -22,7 +23,7 @@
 namespace onnxruntime {
 namespace training {
 
-typedef std::unordered_set<const Node*> NodeSet;
+typedef std::set<const Node*, NodeCompare> NodeSet;
 
 static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {

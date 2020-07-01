@@ -888,7 +888,8 @@ common::Status InferenceSession::Initialize() {
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
         *session_logger_,
-        session_profiler_);
+        session_profiler_,
+        session_options_.use_deterministic_compute);
 
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
