@@ -43,16 +43,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // Need access to model_path_
-  for (const auto& tensor : graph_view.GetAllInitializedTensors()) {
-    if (tensor.second->has_data_location() &&
-        tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(WARNING) << "NNAPI: Initializers with external data"
-                               " location are not currently supported";
-      return result;
-    }
-  }
-
   std::unordered_set<std::string> all_node_inputs;
   for (const auto& node : graph_view.Nodes()) {
     for (auto* input : node.InputDefs()) {

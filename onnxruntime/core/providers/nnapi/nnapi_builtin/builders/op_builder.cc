@@ -276,6 +276,8 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputs(const onnxruntime::Node& node);
 
   virtual void AddToModelBuilderImpl(ModelBuilder& model_builder, const onnxruntime::Node& node) = 0;
+
+  bool HasExternalInitializer(ModelBuilder& model_builder, const onnxruntime::Node& node);
 };
 
 bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
@@ -292,6 +294,10 @@ bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
 #endif
 
   if (!HasSupportedInputs(node))
+    return false;
+
+  // We do not support external initializers for now
+  if (HasExternalInitializer(model_builder, node))
     return false;
 
   return IsOpSupportedImpl(model_builder, node);
@@ -327,6 +333,26 @@ void BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder,
   AddToModelBuilderImpl(model_builder, node);
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
+}
+
+bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder,
+                                           const onnxruntime::Node& node) {
+  const auto& initializers(model_builder.GetOnnxGraph().GetAllInitializedTensors());
+  for (const auto* node_arg : node.InputDefs()) {
+    const auto& input_name(node_arg->Name());
+    if (!Contains(initializers, input_name))
+      continue;
+
+    const auto* tensor = initializers.at(input_name);
+    if (tensor->has_data_location() &&
+        tensor->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      LOGS_DEFAULT(VERBOSE) << "Initializer [" << input_name
+                            << "] with external data location are not currently supported";
+      return true;
+    }
+  }
+
+  return false;
 }
 
 #pragma endregion op_base
