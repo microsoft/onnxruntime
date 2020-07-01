@@ -213,24 +213,24 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
         const size_t step_output_index = 0;
         auto input_type = ctx.getInputType(step_input_index);
         if (input_type != nullptr) {
-            propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
-            if (hasInputShape(ctx, step_input_index)){
-                propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
-            }
+          propagateElemTypeFromInputToOutput(ctx, step_input_index, step_output_index);
+          if (hasInputShape(ctx, step_input_index)) {
+            propagateShapeFromInputToOutput(ctx, step_input_index, step_output_index);
+          }
         }
 
-        // Handle other tensors including new weight, new gradient (update direction), 
+        // Handle other tensors including new weight, new gradient (update direction),
         // new momentums.
         for (size_t i = 0; i < ctx.getNumInputs() - 5; ++i) {
-            const size_t input_index = 5 + i; // The first 5 inputs don't affect output shape.
-            const size_t output_index = 1 + i; // The first output has been processed above.
-            input_type = ctx.getInputType(input_index);
-            if (input_type != nullptr) {
-                propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
-                if (hasInputShape(ctx, input_index)) {
-                    propagateShapeFromInputToOutput(ctx, input_index, output_index);
-                }
+          const size_t input_index = 5 + i;   // The first 5 inputs don't affect output shape.
+          const size_t output_index = 1 + i;  // The first output has been processed above.
+          input_type = ctx.getInputType(input_index);
+          if (input_type != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+            if (hasInputShape(ctx, input_index)) {
+              propagateShapeFromInputToOutput(ctx, input_index, output_index);
             }
+          }
         }
       });
 
@@ -937,7 +937,25 @@ Example 4:
       .TypeConstraint("Tind",
                       {"tensor(int32)", "tensor(int64)"},
                       "Constrain indices to integer types")
-      .SetDoc(R"DOC(SparseSoftmaxCrossEntropy)DOC");
+      .SetDoc(R"DOC(SparseSoftmaxCrossEntropy)DOC")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        std::string reduction = getAttribute(ctx, "reduction", "mean");
+        if (reduction.compare("none") == 0) {
+          if (hasInputShape(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 1, 0);
+          }
+        } else {
+          updateOutputShape(ctx, 0, TensorShapeProto());
+        }
+
+        if(ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropyGrad)
       .SetDomain(kOnnxDomain)
@@ -991,6 +1009,54 @@ Example 4:
                       {"tensor(int32)", "tensor(int64)"},
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("BiasDropout")
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
+      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
+      .Input(3, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of input, which is typically "
+             "the case during training.",
+             "T1",
+             OpSchema::Optional)
+      .Input(4, "training_mode", 
+             "If set to true then it indicates dropout is being used for "
+             "training. It is an optional value hence unless specified explicitly, it is false. "
+             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
+             "will be dropped from the input data and if mask is requested as output it will contain "
+             "all ones.",
+             "T2",
+             OpSchema::Optional)
+      .Output(0, "output", "The output.", "T")
+      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(bool)"},
+          "Constrain output 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        if (ctx.getNumOutputs() == 2) {
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          if (hasNInputShapes(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
@@ -1078,6 +1144,12 @@ Example 4:
              "the case during training.",
              "T1",
              OpSchema::Optional)
+      .Input(3, "training_mode",
+            "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+            "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+            "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+            "T2",
+            OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -1090,7 +1162,7 @@ Example 4:
       .TypeConstraint(
           "T2",
           {"tensor(bool)"},
-          "Constrain 'mask' types to boolean tensors.")
+          "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
@@ -1706,6 +1778,38 @@ Return true if all elements are true and false otherwise.
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGeluGrad_dX)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Computes dX for BiasGeluGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Input(2, "B", "The bias tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasFastGeluGrad_dX)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Computes dX for FastGeluGrad with bias")
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Input(2, "B", "The bias tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(RecordEvent)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1749,6 +1853,10 @@ Return true if all elements are true and false otherwise.
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
+          if (!hasShape(*typeProto)) {
+            continue;
+          }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });
@@ -1798,6 +1906,10 @@ Return true if all elements are true and false otherwise.
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+          auto typeProto = ctx.getInputType(i + 1);
+          if (!hasShape(*typeProto)) {
+            continue;
+          }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
         }
       });

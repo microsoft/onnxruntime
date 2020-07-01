@@ -376,7 +376,14 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
                                        std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
-  // Stag 1: Convert whole graph including forward and backward to FP16
+  // Stage 1: Convert whole graph including forward and backward to FP16
+  // Initialize function body for all function nodes
+  // This is required to make sure after converting inputs\weights to FP16
+  // the new NodeArg updates are correctly propagated to the function body nodes as well.
+  for (auto& node : graph.Nodes()) {
+    graph.InitFunctionBodyForNode(node);
+  }
+
   // Insert Cast node to convert inputs from FP32 to FP16
   for (const NodeArg* input : graph.GetInputs()) {
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -413,6 +420,24 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     Initializer initializer(*tensor_proto, graph.ModelPath());
     ONNX_NAMESPACE::TensorProto weight_tensor_proto = initializer.ToFP16(kv.first);
     graph.AddInitializedTensor(weight_tensor_proto);
+  }
+
+  // Handle pipeline case
+  for (auto& node : graph.Nodes()) {
+    // For send and recv node, if the tensor being sent or received is FP32, update its
+    // attribute and change it to FP16.
+    if (!node.OpType().compare("Send") || !node.OpType().compare("Recv")) {
+      auto& attributes = node.GetMutableAttributes();
+      auto* element_type = &(attributes.find("element_types")->second);
+      int ints_size = element_type->ints_size();
+      for(int i=0;i<ints_size;++i){
+        if(element_type->ints(i) == static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)){
+          element_type->set_ints(i, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+          // Need to resolve and populate the new type through the graph.
+          graph.SetGraphResolveNeeded();
+        }
+      }
+    }
   }
 
   // Handle implicit data type casting nodes such as Cast, ConstantOfShape

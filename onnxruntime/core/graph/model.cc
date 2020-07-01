@@ -24,7 +24,7 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
-using namespace ::onnxruntime::common;
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 Model::Model(const std::string& graph_name,
@@ -447,7 +447,8 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  const bool result = model_proto.ParseFromFileDescriptor(fd);
+  FileInputStream input(fd);
+  const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }

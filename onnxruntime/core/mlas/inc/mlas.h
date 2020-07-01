@@ -147,37 +147,41 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const uint8_t* A,
+    const AType* A,
     size_t lda,
-    uint8_t offa,
-    const int8_t* B,
+    AType offa,
+    const BType* B,
     size_t ldb,
-    int8_t offb,
+    BType offb,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     );
 
+template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const uint8_t* A,
+    const AType* A,
     size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
+    AType offa,
+    const BType* B,
     size_t ldb,
-    uint8_t offb,
-    int32_t* C,
+    BType offb,
+    float* C,
     size_t ldc,
+    const float* Scale,
+    const float* Bias,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -460,4 +464,33 @@ MlasRequantizeOutput(
     size_t N,
     float Scale,
     uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+//
+// LengthA == LengthB, or (LengthA == 1 or LengthB == 1), broadcasting semantic
+//
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t LengthA,
+    size_t LengthB
     );

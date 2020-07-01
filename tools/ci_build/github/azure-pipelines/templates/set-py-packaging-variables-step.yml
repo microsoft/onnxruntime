@@ -1,0 +1,36 @@
+# sets some Python-related variables based on the value of the python.version variable
+
+steps:
+- task: PythonScript@0
+  displayName: 'Set Python packaging variables'
+  inputs:
+    scriptSource: inline
+    script: |
+      version = "$(python.version)"
+
+      if version == "3.5":
+        variables = {
+          "python.manylinux.dir": "/opt/python/cp35-cp35m",
+          "python.manylinux.include.dir": "/opt/python/cp35-cp35m/include/python3.5m",
+        }
+      elif version == "3.6":
+        variables = {
+          "python.manylinux.dir": "/opt/python/cp36-cp36m",
+          "python.manylinux.include.dir": "/opt/python/cp36-cp36m/include/python3.6m",
+        }
+      elif version == "3.7":
+        variables = {
+          "python.manylinux.dir": "/opt/python/cp37-cp37m",
+          "python.manylinux.include.dir": "/opt/python/cp37-cp37m/include/python3.7m",
+        }
+      elif version == "3.8":
+        variables = {
+          "python.manylinux.dir": "/opt/python/cp38-cp38",
+          "python.manylinux.include.dir": "/opt/python/cp38-cp38/include/python3.8",
+        }
+      else:
+        raise ValueError("Unsupported Python version: '{}'".format(version))
+
+      for name, value in variables.items():
+        print("Setting variable: {} = '{}'".format(name, value))
+        print("##vso[task.setvariable variable={}]{}".format(name, value))

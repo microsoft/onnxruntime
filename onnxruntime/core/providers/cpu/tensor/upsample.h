@@ -307,7 +307,20 @@ class UpsampleBase {
                                      const std::vector<int64_t>& input_dims,
                                      std::vector<float>& scales) const {
     for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
-      scales[i] = static_cast<float>(output_dims[i]) / static_cast<float>(input_dims[i]);
+      // Handle corner case to avoid dividing by zero in the next step
+      if (input_dims[i] == 0) {
+        // Enforce that output_dim is 0, given that we cannot scale 0 by any factor to
+        // result in any non-zero value
+        ORT_ENFORCE(output_dims[i] == 0,
+                    "Input dim is zero but required output dim is non-zero. ",
+                    "Cannot scale 0 by any factor to generate a non-zero value. ",
+                    "Dimension: ", i, " Input dim value: ", input_dims[i], " Output dim value: ", output_dims[i]);
+        // Scale can be any arbitrary value as technically scaling 0 by any factor
+        // results in 0. Keeping scale as 1 is more intuitive given that input_dim == output_dim.
+        scales[i] = 1.f;
+      } else {
+        scales[i] = static_cast<float>(output_dims[i]) / static_cast<float>(input_dims[i]);
+      }
     }
     ScalesValidation(scales, mode_);
   }

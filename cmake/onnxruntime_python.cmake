@@ -85,12 +85,16 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_CUDA}
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
+    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
+    ${PROVIDERS_ACL}
+    ${PROVIDERS_ARMNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

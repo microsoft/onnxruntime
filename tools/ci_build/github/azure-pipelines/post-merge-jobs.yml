@@ -1,107 +1,39 @@
 jobs:
-- job: 'build'
-  pool: 'Win-CPU-2019'
-  variables:
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
-    MsbuildArguments: '-maxcpucount'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env.bat
-    buildArch: x64
-    BuildConfig: 'Debug'
-    setVcvars: true
-  timeoutInMinutes: 90
+- job: CodeCoverage
   workspace:
     clean: all
+  timeoutInMinutes:  120
+  pool: 'Linux-CPU'
   steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.7'
-      addToPath: true
-      architecture: $(buildArch)
+    - template: templates/set-version-number-variables-step.yml
 
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          set -e
+          sudo apt-get install -y python3-pip
+          sudo python3 -m pip install mysql-connector-python
+          ln -s /data/models .
+          #Build onnxruntime and run the instrumented program(unitests)
+          LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests
 
-  - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy scipy
-     mkdir $(Build.BinariesDirectory)\$(BuildConfig)
-     echo "Creating hard link $(Build.BinariesDirectory)\$(BuildConfig)\models"
-     mklink /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models C:\local\models
-     echo "$(Build.BinariesDirectory)\models"
-     mklink /D /J $(Build.BinariesDirectory)\models C:\local\models
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
+          cd Debug
+          ./onnxruntime_mlas_test
+          #Run the model tests(It will take long because it is in debug mode)
+          LLVM_PROFILE_FILE="testrunner.profraw" ./onnx_test_runner -j 1 -c 2 /data/models
+          #Merge the mulitple prof data into a single indexed profile data file
+          llvm-profdata merge -sparse -o ort.profdata *.profraw
+          #Create coverage report, output the result to 'report.json'
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnx_test_runner -object onnxruntime_test_all  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+        workingDirectory: $(Build.BinariesDirectory)
 
-  - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
-    inputs:
-      versionSpec: 4.9.4
+    - task: CmdLine@2
+      displayName: 'Post code coverage data to the Dashboard'
+      inputs:
+        script: |
+          python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py  --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
+        workingDirectory: $(Build.BinariesDirectory)
+      env: 
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-  - task: NuGetCommand@2
-    displayName: 'NuGet restore'
-    inputs:
-      command: 'restore'
-      feedsToUse: 'config'
-      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
-      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
-      restoreDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-
-  - task: CMake@1
-    inputs:
-      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      cmakeArgs: $(Build.SourcesDirectory)\cmake -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -Donnxruntime_PREFER_SYSTEM_LIB=ON -Donnxruntime_RUN_ONNX_TESTS=ON -Donnxruntime_DEV_MODE=ON -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_FEATURIZERS=OFF -Donnxruntime_CUDA_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_USE_MIMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_JAVA=OFF -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=OFF -Donnxruntime_USE_FULL_PROTOBUF=OFF -Donnxruntime_DISABLE_CONTRIB_OPS=OFF -Donnxruntime_MSVC_STATIC_RUNTIME=OFF -Donnxruntime_USE_DML=OFF -Donnxruntime_USE_TELEMETRY=OFF -A x64 -T host=x64 -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=$(BuildConfig)
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: 'x64'
-      configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments)
-      msbuildArchitecture: $(buildArch)
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      createLogFile: true
-
-  - template: templates/set-test-data-variables-step.yml
-
-
-  - task: BatchScript@1
-    displayName: 'Setup VS2019 env vars'
-    inputs:
-      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-      arguments: $(buildArch)
-      modifyEnvironment: true
-
-  - script: |
-     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-
-  - task: VSTest@2
-    displayName: 'VsTest - testAssemblies'
-    inputs:
-      testAssemblyVer2: 'onnxruntime_test_all.exe'
-      searchFolder: '$(Build.BinariesDirectory)\Debug\Debug'
-      runSettingsFile: 'cmake\\codeconv.runsettings'
-      pathtoCustomTestAdapters: '$(Build.BinariesDirectory)\Debug\googletestadapter.0.17.1\build\_common'
-      codeCoverageEnabled: true
-      platform: x64
-
-  - task: PublishTestResults@2
-    inputs:
-      searchFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\TestResults'
-      testResultsFormat: 'VSTest'
-      testResultsFiles: '**'
-    condition: succeededOrFailed()
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-
-  - template: templates/clean-agent-build-directory-step.yml
-
+    - template: templates/clean-agent-build-directory-step.yml

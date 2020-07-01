@@ -5,7 +5,6 @@
 struct LearningModelApiTestsApi
 {
   SetupClass LearningModelAPITestsClassSetup;
-  SetupTest LearningModelAPITestsGpuMethodSetup;
   VoidTest CreateModelFromFilePath;
   VoidTest CreateModelFromUnicodeFilePath;
   VoidTest CreateModelFileNotFound;
@@ -23,6 +22,7 @@ struct LearningModelApiTestsApi
   VoidTest CloseModelCheckEval;
   VoidTest CloseModelNoNewSessions;
   VoidTest CheckMetadataCaseInsensitive;
+  VoidTest CreateCorruptModel;
 };
 const LearningModelApiTestsApi& getapi();
 
@@ -44,12 +44,7 @@ WINML_TEST(LearningModelAPITests, EnumerateInputs)
 WINML_TEST(LearningModelAPITests, EnumerateOutputs)
 WINML_TEST(LearningModelAPITests, CloseModelCheckMetadata)
 WINML_TEST(LearningModelAPITests, CloseModelNoNewSessions)
+WINML_TEST(LearningModelAPITests, CloseModelCheckEval)
 WINML_TEST(LearningModelAPITests, CheckMetadataCaseInsensitive)
-WINML_TEST_CLASS_END()
-
-WINML_TEST_CLASS_BEGIN(LearningModelAPITestsGpu)
-WINML_TEST_CLASS_SETUP_CLASS(LearningModelAPITestsClassSetup)
-WINML_TEST_CLASS_SETUP_METHOD(LearningModelAPITestsGpuMethodSetup)
-WINML_TEST_CLASS_BEGIN_TESTS
-WINML_TEST(LearningModelAPITestsGpu, CloseModelCheckEval)
+WINML_TEST(LearningModelAPITests, CreateCorruptModel)
 WINML_TEST_CLASS_END()

@@ -119,8 +119,14 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
 
   if (get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
-    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(CudnnHandle(), hidden_size_, RNN_NUM_LAYERS, cudnn_dropout_desc_,
-                                         cudnn_direction_mode_, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
+    ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(CudnnHandle(),
+                                         hidden_size_,
+                                         RNN_NUM_LAYERS,
+                                         cudnn_dropout_desc_,
+                                         cudnn_direction_mode_,
+                                         rnn_mode_,
+                                         CudnnTensor::GetDataType<CudaT>(),
+                                         GetDeviceProp()));
     if (get_B) {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, B, w_data_cache_, w_desc_cache_, tmp_rnn_desc));
     } else {
@@ -211,8 +217,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
 
   CudnnRNN rnn_desc;
-  ORT_RETURN_IF_ERROR(rnn_desc.Set(CudnnHandle(), hidden_size_, RNN_NUM_LAYERS, cudnn_dropout_desc_,
-                                   cudnn_direction_mode_, rnn_mode_, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(rnn_desc.Set(CudnnHandle(),
+                                   hidden_size_,
+                                   RNN_NUM_LAYERS,
+                                   cudnn_dropout_desc_,
+                                   cudnn_direction_mode_,
+                                   rnn_mode_,
+                                   CudnnTensor::GetDataType<CudaT>(),
+                                   GetDeviceProp()));
 
   // Prepare the weight data
   IAllocatorUniquePtr<void> w_data;
