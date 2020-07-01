@@ -458,7 +458,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 }
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -469,7 +469,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -480,7 +480,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -502,7 +502,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 }
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -523,7 +523,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
 }
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -552,7 +552,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 }
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -581,7 +581,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 }
 
 common::Status InferenceSession::Load() {
-  if (!model_loaded_) {
+  if (!is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has not been parsed yet. "
                            "This API should be called in conjunction with a ctor that takes a model abstraction.");
