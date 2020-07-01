@@ -8,7 +8,7 @@ namespace training {
 
 #define GRADIENT_OP_VERSION 9
 
-void RegisterGradientSchemas();
+void RegisterTrainingOpSchemas();
 
 }  // namespace training
 }  // namespace onnxruntime

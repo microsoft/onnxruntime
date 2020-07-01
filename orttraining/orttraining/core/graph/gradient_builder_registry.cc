@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gradient_schema_defs.h"
-#include "gradient_builder_registry.h"
-#include "gradient_builder.h"
+#include "orttraining/core/graph/training_op_defs.cc"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/gradient_builder.h"
 
 namespace onnxruntime {
 namespace training {
