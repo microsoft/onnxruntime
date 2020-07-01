@@ -89,6 +89,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (!LaunchAttentionKernel(
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
+          nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
@@ -100,8 +101,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           is_unidirectional_,
           past_sequence_length,
           nullptr == past ? nullptr : past->template Data<T>(),
-          nullptr == present ? nullptr : present->template MutableData<T>()
-      )) {
+          nullptr == present ? nullptr : present->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

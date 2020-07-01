@@ -473,6 +473,42 @@ void
 
 typedef MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
+    const int8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const int8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    int8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
+
+typedef MLAS_QLINEAR_BINARY_OP_S8_KERNEL* PMLAS_QLINEAR_BINARY_OP_S8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QLINEAR_BINARY_OP_U8_KERNEL)(
+    const uint8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
+
+typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -560,6 +596,8 @@ extern "C" {
 #endif
 
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
+    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
+    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
@@ -568,6 +606,8 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
+    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
+    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelAvx512F;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernelFma3;
@@ -665,6 +705,8 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ErfKernelRoutine;
+    PMLAS_QLINEAR_BINARY_OP_S8_KERNEL QLinearAddS8Kernel;
+    PMLAS_QLINEAR_BINARY_OP_U8_KERNEL QLinearAddU8Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ComputeExpF32Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL LogisticKernelRoutine;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL TanhKernelRoutine;

@@ -48,26 +48,21 @@ class AttentionCPUBase : public AttentionBase {
     auto attention_probs = allocator->Alloc(attention_probs_bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
-    size_t mask_data_bytes = 0;
-    if (mask_index != nullptr) {
-      mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * all_sequence_length * sizeof(T);
-    } else if (is_unidirectional_) {
-      mask_data_bytes = SafeInt<size_t>(sequence_length) * all_sequence_length * sizeof(T);
-    }
-
     void* mask_data = nullptr;
-    if (mask_data_bytes > 0) {
+    if (mask_index != nullptr || (is_unidirectional_ && sequence_length > 1)) {
+      size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * all_sequence_length * sizeof(T);
       mask_data = allocator->Alloc(mask_data_bytes);
       memset(mask_data, 0, mask_data_bytes);
     }
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
     const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
+    const std::vector<int64_t>* mask_index_dims = mask_index != nullptr ? &(mask_index->Shape().GetDims()) : nullptr;
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             mask_index_data, static_cast<T*>(mask_data),
+                             mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
                              batch_size, sequence_length, past_sequence_length, head_size,
                              past_data, present_data, tp);
 
@@ -89,17 +84,18 @@ class AttentionCPUBase : public AttentionBase {
   //                                    1 x mask_data(B, N, S, S*)
   //  II.attention_probs(B, N, S, S*) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,         // output buffer for the attention probs. Its size is BxNxSxS
-                             const T* Q,                 // Q data. Its size is BxNxSxH
-                             const T* K,                 // k data. Its size is BxNxSxH
-                             const int32_t* mask_index,  // mask index. nullptr if no mask or its size is B
-                             T* mask_data,               // buffer for mask data. Its size is: SxS* if is_unidirectional_; BxSxS* if mask_index; null otherwise
-                             int batch_size,             // batch size of self-attention
-                             int sequence_length,        // sequence length of self-attention
-                             int past_sequence_length,   // sequence length of past state
-                             int head_size,              // head size of self-attention
-                             const T* past,              // past state
-                             T* present,                 // present state
+  void ComputeAttentionProbs(T* attention_probs,                           // output buffer for the attention probs. Its size is BxNxSxS
+                             const T* Q,                                   // Q data. Its size is BxNxSxH
+                             const T* K,                                   // k data. Its size is BxNxSxH
+                             const int32_t* mask_index,                    // mask index. nullptr if no mask or its size is B
+                             const std::vector<int64_t>* mask_index_dims,  // mask index shape
+                             T* mask_data,                                 // buffer for mask data. Its size is: SxS* if is_unidirectional_; BxSxS* if mask_index; null otherwise
+                             int batch_size,                               // batch size of self-attention
+                             int sequence_length,                          // sequence length of self-attention
+                             int past_sequence_length,                     // sequence length of past state
+                             int head_size,                                // head size of self-attention
+                             const T* past,                                // past state
+                             T* present,                                   // present state
                              ThreadPool* tp) const {
     const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * head_size);  // S' x H
@@ -108,7 +104,7 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       if (mask_data != nullptr) {
-        PrepareMask(mask_index, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
+        PrepareMask(mask_index, mask_index_dims, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
       } else {  // no any mask
         memset(attention_probs, 0, batch_size * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
       }
@@ -123,9 +119,9 @@ class AttentionCPUBase : public AttentionBase {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const std::ptrdiff_t batch_index = i / num_heads_;
 
-          // broadcast mask data: SxS* or (Bx)SxS* -> (BxNx)SxS*
+          // broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
           if (mask_data != nullptr) {
-            const T* broadcast_data_src = is_unidirectional_ ? reinterpret_cast<T*>(mask_data) : reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
+            const T* broadcast_data_src = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
             T* broadcast_data_dest = reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i;
             memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * all_sequence_length * sizeof(T));
           }
