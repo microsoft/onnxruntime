@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace training {
 
 struct GradientGraphConfiguration {
-  bool use_invertible_layernorm{false};
+  bool use_invertible_layernorm_grad{false};
 };
 
 }  // namespace training

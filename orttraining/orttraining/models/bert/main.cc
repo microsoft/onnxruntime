@@ -165,8 +165,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
-        cxxopts::value<bool>()->default_value("true"));
-      ("use_invertible_layernorm", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("true"))
+      ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
         cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
@@ -461,7 +461,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
 
-    params.use_invertible_layernorm = flags["use_invertible_layernorm"].as<bool>();
+    params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"

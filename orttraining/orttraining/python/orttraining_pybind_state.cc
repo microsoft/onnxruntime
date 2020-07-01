@@ -47,6 +47,7 @@ struct TrainingParameters {
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
+  bool use_invertible_layernorm_grad = false;
 };
 
 struct TrainingConfigurationResult {
@@ -144,6 +145,9 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.optimizer_config = opt;
   }
 
+  if (parameters.use_invertible_layernorm_grad) {
+    config.gradient_graph_config.use_invertible_layernorm_grad = true;
+  }
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
