@@ -44,6 +44,7 @@ class ModelBuilder {
 
   // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const std::string& output);
+  int32_t FindActivation(const onnxruntime::Node& node, const NodeArg* output);
 
   // Add an NNAPI scalar operand
   uint32_t AddOperandFromScalar(bool value);

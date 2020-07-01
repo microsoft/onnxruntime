@@ -339,6 +339,9 @@ class BaseOpBuilder : public IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */,
                                      const ONNX_NAMESPACE::NodeProto& /* node */) override {}
 
+  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */,
+                                     const onnxruntime::Node& /* node */) override {}
+
   bool IsOpSupported(ModelBuilder& model_builder,
                      const ONNX_NAMESPACE::NodeProto& node) override final;
 
@@ -569,7 +572,7 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
   AddBinaryOperator(op_code, model_builder, input1, input2, fuse_code, output, output_is_nhwc);
 }
 
@@ -643,7 +646,8 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   // skip this relu if it is some op's fuse output
-  if (Contains(model_builder.GetFusedActivations(), node.Name())) {
+  if (Contains(model_builder.GetFusedActivations(), input)) {
+    LOGS_DEFAULT(VERBOSE) << "Relu Node [" << node.Name() << "] fused";
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, output_is_nhwc);
   } else {
     std::vector<uint32_t> input_indices;
@@ -804,6 +808,9 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const onnxruntime::Node& node) override;
+
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
@@ -821,6 +828,11 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
                                              const ONNX_NAMESPACE::NodeProto& node) {
   model_builder.AddInitializerToSkip(node.input(1));
+}
+
+void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                             const onnxruntime::Node& node) {
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
 bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
@@ -988,6 +1000,9 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const onnxruntime::Node& node) override;
+
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
@@ -1009,6 +1024,15 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node.input(2));  // B
   model_builder.AddInitializerToSkip(node.input(3));  // mean
   model_builder.AddInitializerToSkip(node.input(4));  //var
+}
+
+void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                                        const onnxruntime::Node& node) {
+  // skip everything except input0 for BatchNormalization
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // scale
+  model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // B
+  model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // mean
+  model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  //var
 }
 
 bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
@@ -1140,7 +1164,7 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
                     output_is_nhwc);
 
   // Add
-  int32_t fuse_code = model_builder.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
   AddBinaryOperator(ANEURALNETWORKS_ADD,
                     model_builder,
                     tensor_imm_product_name, tensor_b_name,
@@ -1411,7 +1435,7 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                      static_cast<int32_t>(shaper[input][2])};
   }
 
-  int32_t fuse_code = model_builder.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
@@ -1514,6 +1538,9 @@ class ConvOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const onnxruntime::Node& node) override;
+
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
@@ -1532,6 +1559,12 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
                                           const ONNX_NAMESPACE::NodeProto& node) {
   // skip the weight for conv as we need to transpose
   model_builder.AddInitializerToSkip(node.input(1));
+}
+
+void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                          const onnxruntime::Node& node) {
+  // skip the weight for conv as we need to transpose
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
 bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
@@ -1685,7 +1718,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     int32_t depthwiseMultiplier = shaper[weight][3] / group;
     input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
   }
-  int32_t fuse_code = model_builder.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
   // TODO support API 28
   input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
@@ -2126,6 +2159,9 @@ class GemmOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder,
                              const ONNX_NAMESPACE::NodeProto& node) override;
 
+  void AddInitializersToSkip(ModelBuilder& model_builder,
+                             const onnxruntime::Node& node) override;
+
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder,
                          const ONNX_NAMESPACE::NodeProto& node) override;
@@ -2270,6 +2306,19 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
   }
 }
 
+void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
+                                          const onnxruntime::Node& node) {
+  const auto& op = node.OpType();
+  if (op == "MatMul") {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  } else if (op == "Gemm") {
+    GraphNodeAttrHelper helper(node);
+    const auto transB = helper.Get("transB", 0);
+    if (transB == 0)
+      model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
+
 void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                           const onnxruntime::Node& node) {
   const auto& op = node.OpType();
@@ -2314,7 +2363,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
-  int32_t fuse_code = model_builder.FindActivation(output);
+  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
 
   shaper.FC(input1, input2, output);
