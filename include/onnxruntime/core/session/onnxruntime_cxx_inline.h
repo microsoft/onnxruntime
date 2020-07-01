@@ -99,6 +99,26 @@ inline const OrtMemoryInfo* Allocator::GetInfo() const {
   return out;
 }
 
+inline IoBinding::IoBinding(Session& session) {
+  ThrowOnError(Global<void>::api_.CreateIoBinding(session, &p_));
+}
+
+inline void IoBinding::BindInput(const char* name, const Value& value) {
+  ThrowOnError(Global<void>::api_.BindInput(p_, name, value));
+}
+
+inline void IoBinding::BindOutput(const char* name, const Value& value) {
+  ThrowOnError(Global<void>::api_.BindOutput(p_, name, value));
+}
+
+inline void IoBinding::ClearBoundInputs() {
+  Global<void>::api_.ClearBoundInputs(p_);
+}
+
+inline void IoBinding::ClearBoundOutputs() {
+  Global<void>::api_.ClearBoundOutputs(p_);
+}
+
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(default_warning_level, logid, &p_));
 }

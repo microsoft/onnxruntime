@@ -1398,8 +1398,8 @@ std::string InferenceSession::EndProfiling() {
 }
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo* mem_info) const {
-  return execution_providers_.GetAllocator(*mem_info);
-}
+  return session_state_->GetAllocator(mem_info->device);
+ }
 
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {

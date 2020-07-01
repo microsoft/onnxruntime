@@ -205,6 +205,15 @@ ORT_API_STATUS_IMPL(CreateAllocator, const OrtSession* sess, const OrtMemoryInfo
                     _Outptr_ OrtAllocator** out);
 ORT_API(void, ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator);
 
+ORT_API_STATUS_IMPL(CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out);
+ORT_API(void, ReleaseIoBinding, _Frees_ptr_opt_ OrtIoBinding* allocator);
+
+ORT_API_STATUS_IMPL(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+ORT_API_STATUS_IMPL(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+
+ORT_API(void, ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
+ORT_API(void, ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
+
 ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length);
 ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,

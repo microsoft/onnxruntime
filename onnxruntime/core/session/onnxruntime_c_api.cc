@@ -3,6 +3,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_impl.h"
+#include "core/session/IOBinding.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/utils.h"
@@ -520,6 +521,58 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   }
   return nullptr;
   API_IMPL_END
+}
+
+struct OrtIoBinding {
+  std::unique_ptr<::onnxruntime::IOBinding> binding_;
+  explicit OrtIoBinding(std::unique_ptr<::onnxruntime::IOBinding>&& binding) : binding_(std::move(binding)) {}
+  OrtIoBinding(const OrtIoBinding&) = delete;
+  OrtIoBinding& operator=(const OrtIoBinding&) = delete;
+};
+
+ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  std::unique_ptr<::onnxruntime::IOBinding> binding;
+  auto status = session->NewIOBinding(&binding);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
+  }
+  *out = new OrtIoBinding(std::move(binding));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseIoBinding, _Frees_ptr_opt_ OrtIoBinding* binding_ptr) {
+  delete binding_ptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr) {
+  API_IMPL_BEGIN
+  auto st = binding_ptr->binding_->BindInput(name, *val_ptr);
+  if (!st.IsOK()) {
+    return ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr) {
+  API_IMPL_BEGIN
+  auto st = binding_ptr->binding_->BindOutput(name, *val_ptr);
+  if (!st.IsOK()) {
+    return ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+void OrtApis::ClearBoundInputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
+  binding_ptr->binding_->ClearInputs();
+}
+
+void OrtApis::ClearBoundOutputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
+  binding_ptr->binding_->ClearOutputs();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* out) {
@@ -1664,9 +1717,15 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
 
-    // Allocator and Bidning APIs are exposed via C# API , do not move
+    // Allocator and Binding APIs are exposed via C# API , do not move
     &OrtApis::CreateAllocator,
     &OrtApis::ReleaseAllocator,
+    &OrtApis::CreateIoBinding,
+    &OrtApis::ReleaseIoBinding,
+    &OrtApis::BindInput,
+    &OrtApis::BindOutput,
+    &OrtApis::ClearBoundInputs,
+    &OrtApis::ClearBoundOutputs,
 
     // feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,

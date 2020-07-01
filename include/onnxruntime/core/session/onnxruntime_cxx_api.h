@@ -78,6 +78,7 @@ ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
+ORT_DEFINE_RELEASE(IoBinding);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -335,6 +336,13 @@ struct Allocator : public Base<OrtAllocator> {
   const OrtMemoryInfo* GetInfo() const;
 };
 
+struct IoBinding : public Base<OrtIoBinding> {
+  explicit IoBinding(Session& session);
+  void BindInput(const char* name, const Value&);
+  void BindOutput(const char* name, const Value&);
+  void ClearBoundInputs();
+  void ClearBoundOutputs();
+};
 
 //
 // Custom OPs (only needed to implement custom OPs)
