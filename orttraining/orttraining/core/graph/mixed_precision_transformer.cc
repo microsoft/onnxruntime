@@ -376,7 +376,14 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
                                        std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
-  // Stag 1: Convert whole graph including forward and backward to FP16
+  // Stage 1: Convert whole graph including forward and backward to FP16
+  // Initialize function body for all function nodes
+  // This is required to make sure after converting inputs\weights to FP16
+  // the new NodeArg updates are correctly propagated to the function body nodes as well.
+  for (auto& node : graph.Nodes()) {
+    graph.InitFunctionBodyForNode(node);
+  }
+
   // Insert Cast node to convert inputs from FP32 to FP16
   for (const NodeArg* input : graph.GetInputs()) {
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
