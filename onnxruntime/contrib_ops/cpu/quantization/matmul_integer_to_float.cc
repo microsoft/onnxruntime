@@ -14,7 +14,7 @@ namespace contrib {
 
 #define REGISTER_MATMUL_INTEGER_TO_FLOAT(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      MatMulIntegerToFloat,                                           \
+      MatMulIntegerToFloat,                                             \
       kMSDomain,                                                        \
       1,                                                                \
       T,                                                                \
@@ -36,13 +36,13 @@ Status MatMulIntegerToFloat<T1, T2>::Compute(OpKernelContext* ctx) const {
 
   const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),
-              "MatmulInteger : input A scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+              "MatMulIntegerToFloat : input A scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
 
   float a_scale = *a_scale_tensor->template Data<float>();
 
   const Tensor* b_scale_tensor = ctx->Input<Tensor>(3);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
-              "MatmulInteger : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+              "MatMulIntegerToFloat : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
 
   float b_scale = *b_scale_tensor->template Data<float>();
 
@@ -53,7 +53,7 @@ Status MatMulIntegerToFloat<T1, T2>::Compute(OpKernelContext* ctx) const {
   const Tensor* a_zp_tensor = ctx->Input<Tensor>(4);
   if (a_zp_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zp_tensor),
-                "MatmulInteger : input A zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+                "MatMulIntegerToFloat : input A zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
     a_zp = *a_zp_tensor->template Data<T1>();
   }
 
@@ -61,7 +61,7 @@ Status MatMulIntegerToFloat<T1, T2>::Compute(OpKernelContext* ctx) const {
   const Tensor* b_zp_tensor = ctx->Input<Tensor>(5);
   if (b_zp_tensor != nullptr) {
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zp_tensor),
-                "MatmulInteger : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+                "MatMulIntegerToFloat : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
     b_zp = *b_zp_tensor->template Data<T2>();
   }
 
