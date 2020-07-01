@@ -10,7 +10,7 @@ These artifacts are currently built for common OS/Architecture combinations: Win
 
 For building locally, please see the [Java API development documentation](../java/README.md) for more details.
 
-See [here](../java/README.md#Advanced Loading) for customization of the loading mechanism of the shared library.
+See [here](../java/README.md#advanced-loading) for customization of the loading mechanism of the shared library.
 
 ## Sample Code
 
