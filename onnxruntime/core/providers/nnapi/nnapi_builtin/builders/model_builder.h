@@ -8,11 +8,12 @@
 #include <core/graph/graph_viewer.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
-#include "op_builder.h"
 #include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {
+
+class IOpBuilder;
 
 class ModelBuilder {
  public:
@@ -27,7 +28,7 @@ class ModelBuilder {
     CPU_ONLY,      // use CPU only
   };
 
-  ModelBuilder(const ONNX_NAMESPACE::ModelProto& model_proto, const onnxruntime::GraphViewer& graph_view);
+  ModelBuilder(const onnxruntime::GraphViewer& graph_view);
   ~ModelBuilder() = default;
 
   std::vector<std::vector<int>> GetSupportedNodes();
@@ -43,7 +44,6 @@ class ModelBuilder {
                     const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const std::string& output);
   int32_t FindActivation(const onnxruntime::Node& node, const NodeArg* output);
 
   // Add an NNAPI scalar operand
@@ -95,7 +95,6 @@ class ModelBuilder {
                            const ONNX_NAMESPACE::TensorProto&>&
   GetInitializerTensors() const { return initializers_; }
 
-  const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
   const onnxruntime::Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
 
   void RegisterNHWCOperand(const std::string& name);
@@ -112,7 +111,6 @@ class ModelBuilder {
 
  private:
   const NnApi* nnapi_{nullptr};
-  const ONNX_NAMESPACE::ModelProto& model_proto_;
   const onnxruntime::GraphViewer& graph_view_;
   std::unique_ptr<Model> nnapi_model_;
 

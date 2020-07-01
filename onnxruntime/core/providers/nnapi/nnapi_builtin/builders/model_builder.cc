@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include <core/common/logging/logging.h>
+#include <core/graph/graph_viewer.h>
+#include <core/common/safeint.h>
 
-#include "core/common/safeint.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
 #include "model_builder.h"
-#include "node_attr_helper.h"
+#include "op_builder.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -21,9 +22,8 @@ const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
              : tensor.float_data().data();
 }
 
-ModelBuilder::ModelBuilder(const ONNX_NAMESPACE::ModelProto& model_proto,
-                           const onnxruntime::GraphViewer& graph_view)
-    : nnapi_(NnApiImplementation()), model_proto_(model_proto), graph_view_(graph_view) {
+ModelBuilder::ModelBuilder(const onnxruntime::GraphViewer& graph_view)
+    : nnapi_(NnApiImplementation()), graph_view_(graph_view) {
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
 }
@@ -520,43 +520,6 @@ int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node,
                           << "], fused the output [" << output->Name() << "]";
 
     fused_activations_.insert(output->Name());
-  }
-
-  return fuse_code;
-}
-
-int32_t ModelBuilder::FindActivation(const std::string& output) {
-  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
-  const ONNX_NAMESPACE::NodeProto* activationNode{nullptr};
-  std::string node_name;
-  for (const auto& _node : model_proto_.graph().node()) {
-    if (_node.op_type() == "Relu" && output == _node.input(0)) {
-      fuse_code = ANEURALNETWORKS_FUSED_RELU;
-      activationNode = &_node;
-    }
-  }
-
-  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    for (const auto& _node : model_proto_.graph().node()) {
-      if (&_node == activationNode)
-        continue;
-
-      // if there is any other node using the output
-      // will add relu separately
-      for (const auto& node_input : _node.input()) {
-        if (output == node_input)
-          return ANEURALNETWORKS_FUSED_NONE;
-      }
-    }
-
-    // if output is a graph output
-    // will add relu separately
-    for (const auto& model_output : model_proto_.graph().output()) {
-      if (model_output.name() == output)
-        return ANEURALNETWORKS_FUSED_NONE;
-    }
-
-    fused_activations_.insert(activationNode->name());
   }
 
   return fuse_code;
