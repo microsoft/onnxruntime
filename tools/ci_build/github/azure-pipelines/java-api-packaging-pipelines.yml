@@ -45,9 +45,7 @@ jobs:
     - template: templates/set-version-number-variables-step.yml
 
     - script: |
-        export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
-        java --version
-        javac --version
+        export JAVA_HOME=$(java_home -v 11)
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_java --build_shared_lib --config RelWithDebInfo
