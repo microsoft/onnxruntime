@@ -216,6 +216,9 @@ void addObjectMethodsForTraining(py::module& m) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->Load(buffer));
 
+        // std::string model_uri="/bert_ort/liqun/test_out/multiple_choice_fw.onnx";
+        // sess->Save(model_uri, onnxruntime::training::TrainingSession::SaveOption::NO_RELOAD);
+
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};

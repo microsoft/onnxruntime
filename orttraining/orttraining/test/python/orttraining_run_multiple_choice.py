@@ -11,15 +11,12 @@ from numpy.testing import assert_allclose
 
 from transformers import (
     AutoConfig,
-    AutoModelForSequenceClassification,
+    AutoModelForMultipleChoice,
     AutoTokenizer,
     EvalPrediction,
-    GlueDataset,
-    GlueDataTrainingArguments,
+    HfArgumentParser,
+    Trainer,
     TrainingArguments,
-    glue_compute_metrics,
-    glue_output_modes,
-    glue_tasks_num_labels,
     set_seed,
 )
 
@@ -30,7 +27,12 @@ from orttraining_transformer_trainer import ORTTransformerTrainer
 
 import torch
 
+from utils_multiple_choice import MultipleChoiceDataset, Split, processors
+
 logger = logging.getLogger(__name__)
+
+def simple_accuracy(preds, labels):
+    return (preds == labels).mean()
 
 @dataclass
 class ModelArguments:
@@ -51,76 +53,52 @@ class ModelArguments:
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
 
-class ORTGlueTest(unittest.TestCase):
+@dataclass
+class DataTrainingArguments:
+    """
+    Arguments pertaining to what data we are going to input our model for training and eval.
+    """
+
+    task_name: str = field(metadata={"help": "The name of the task to train on: " + ", ".join(processors.keys())})
+    data_dir: str = field(metadata={"help": "Should contain the data files for the task."})
+    max_seq_length: int = field(
+        default=128,
+        metadata={
+            "help": "The maximum total input sequence length after tokenization. Sequences longer "
+            "than this will be truncated, sequences shorter will be padded."
+        },
+    )
+    overwrite_cache: bool = field(
+        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
+    )
+
+class ORTMultipleChoiceTest(unittest.TestCase):
 
     def setUp(self):
         # configurations not to be changed accoss tests
-        self.max_seq_length = 128
-        self.train_batch_size = 8
+        self.max_seq_length = 80
+        self.train_batch_size = 16
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
-        self.data_dir = "/bert_data/hf_data/glue_data/"
-        self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "glue_test_output/")
-        self.cache_dir = '/tmp/glue/'
+        self.data_dir = "/bert_ort/liqun/hf_data/swag/swagaf/data"
+        self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "multiple_choice_test_output/")
+        self.cache_dir = '/tmp/multiple_choice/'
         self.logging_steps = 10
 
-    def test_xlnet_with_mrpc(self):
-        results = self.run_glue(model_name="xlnet-base-cased", task_name="MRPC", fp16=False)
+    def test_roberta_with_swag(self):
+        # results = self.run_multiple_choice(model_name="roberta-base", task_name="swag", fp16=False)
+        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
 
-    def test_roberta_with_mrpc(self):
-        expected_acc = 0.8651960784313726
-        expected_f1 = 0.9019607843137256
-        expected_acc_and_f1 = 0.8835784313725491
-        expected_loss = 0.33745184233959985
+    def test_roberta_fp16_with_swag(self):
+        # results = self.run_multiple_choice(model_name="roberta-base", task_name="swag", fp16=True)
+        results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
 
-        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
-
-    def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.8946078431372549
-        expected_f1 = 0.9233511586452763
-        expected_acc_and_f1 = 0.9089795008912656
-        expected_loss = 0.30228547123717325
-
-        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
-
-    def test_bert_with_mrpc(self):
-        expected_acc = 0.8578431372549019
-        expected_f1 = 0.9003436426116839
-        expected_acc_and_f1 = 0.8790933899332929
-        expected_loss = 0.415903969430456
-
-        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
-
-    def test_bert_fp16_with_mrpc(self):
-        expected_acc = 0.8529411764705882
-        expected_f1 = 0.8951048951048952
-        expected_acc_and_f1 = 0.8740230357877417
-        expected_loss = 0.36075809042827756
-
-        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
-
-    def run_glue(self, model_name, task_name, fp16):
+    def run_multiple_choice(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
-        data_args = GlueDataTrainingArguments(task_name=task_name, data_dir=self.data_dir + "/" + task_name,
+        data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
             max_seq_length=self.max_seq_length)
             
         training_args = TrainingArguments(output_dir=self.output_dir + "/" + task_name, do_train=True, do_eval=True,
@@ -149,8 +127,9 @@ class ORTGlueTest(unittest.TestCase):
         onnxruntime.set_seed(training_args.seed)
 
         try:
-            num_labels = glue_tasks_num_labels[data_args.task_name]
-            output_mode = glue_output_modes[data_args.task_name]
+            processor = processors[data_args.task_name]()
+            label_list = processor.get_labels()
+            num_labels = len(label_list)
         except KeyError:
             raise ValueError("Task not found: %s" % (data_args.task_name))
 
@@ -164,47 +143,58 @@ class ORTGlueTest(unittest.TestCase):
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
         )
-
-        model = AutoModelForSequenceClassification.from_pretrained(
+        model = AutoModelForMultipleChoice.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
         )
 
+        # Get datasets
         train_dataset = (
-            GlueDataset(data_args, tokenizer=tokenizer)
+            MultipleChoiceDataset(
+                data_dir=data_args.data_dir,
+                tokenizer=tokenizer,
+                task=data_args.task_name,
+                max_seq_length=data_args.max_seq_length,
+                overwrite_cache=data_args.overwrite_cache,
+                mode=Split.train,
+            )
             if training_args.do_train
             else None
         )
-
         eval_dataset = (
-            GlueDataset(data_args, tokenizer=tokenizer, mode="dev")
+            MultipleChoiceDataset(
+                data_dir=data_args.data_dir,
+                tokenizer=tokenizer,
+                task=data_args.task_name,
+                max_seq_length=data_args.max_seq_length,
+                overwrite_cache=data_args.overwrite_cache,
+                mode=Split.dev,
+            )
             if training_args.do_eval
             else None
         )
 
         def compute_metrics(p: EvalPrediction) -> Dict:
-            if output_mode == "classification":
-                preds = np.argmax(p.predictions, axis=1)
-            elif output_mode == "regression":
-                preds = np.squeeze(p.predictions)
-            return glue_compute_metrics(data_args.task_name, preds, p.label_ids)
-        if model_name.startswith('bert') or model_name.startswith('xlnet'):
+            preds = np.argmax(p.predictions, axis=1)
+            return {"acc": simple_accuracy(preds, p.label_ids)}
+
+        if model_name.startswith('bert'):
             model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('token_type_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('labels', ['batch',], torch.int64, num_classes=2)], [
+                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
+                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=2),
+                IODescription('token_type_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=2),
+                IODescription('labels', ['batch', num_labels], torch.int64, num_classes=num_labels)], [
                 IODescription('loss', [], torch.float32),
-                IODescription('logits', ['batch', 2], torch.float32)])
-        elif model_name.startswith('roberta'):
+                IODescription('reshaped_logits', ['batch', num_labels], torch.float32)])
+        else:
             model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', ['batch', 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('labels', ['batch',], torch.int64, num_classes=2)], [
+                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
+                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=2),
+                IODescription('labels', ['batch', num_labels], torch.int64, num_classes=num_labels)], [
                 IODescription('loss', [], torch.float32),
-                IODescription('logits', ['batch', 2], torch.float32)])
+                IODescription('reshaped_logits', ['batch', num_labels], torch.float32)])
 
         # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
