@@ -86,7 +86,7 @@ class SymbolicShapeInference:
             'Div'                   : self._infer_symbolic_compute_ops,
             'Expand'                : self._infer_Expand,
             'Equal'                 : self._infer_symbolic_compute_ops,
-            'Floor'                 : self._pass_on_sympy_data,
+            'Floor'                 : self._infer_symbolic_compute_ops,
             'Gather'                : self._infer_Gather,
             'GatherElements'        : self._infer_GatherElements,
             'GatherND'              : self._infer_GatherND,
@@ -564,6 +564,7 @@ class SymbolicShapeInference:
         funcs = {'Add' : lambda l: l[0] + l[1],
                  'Div' : lambda l: l[0] // l[1], # integer div in sympy
                  'Equal' : lambda l : l[0] == l[1],
+                 'Floor' : lambda l : sympy.floor(l[0]),
                  'Max' : lambda l: l[1] if is_literal(l[0]) and int(l[0]) < -self.int_max_ else (l[0] if is_literal(l[1]) and int(l[1]) < -self.int_max_ else sympy.Max(l[0], l[1])),
                  'Min' : lambda l: l[1] if is_literal(l[0]) and int(l[0]) >  self.int_max_ else (l[0] if is_literal(l[1]) and int(l[1]) >  self.int_max_ else sympy.Min(l[0], l[1])),
                  'Mul' : lambda l: l[0] * l[1],
