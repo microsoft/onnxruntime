@@ -158,7 +158,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
-  auto status = FinalizeSessionOptions(session_options, model_proto_, model_loaded_, session_options_);
+  auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
@@ -236,7 +236,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -252,7 +252,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -266,7 +266,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   const bool result = model_proto_.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -278,7 +278,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       insert_cast_transformer_("CastFloat16Transformer") {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
