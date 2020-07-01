@@ -178,7 +178,6 @@ class ORTTransformerTrainer:
             map_optimizer_attributes=map_optimizer_attributes,
             learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
             device=self.args.device,
-            postprocess_model=postprocess_model,
             gradient_accumulation_steps=self.args.gradient_accumulation_steps,
             world_rank=0, world_size=1,     # only support single GPU cases
             use_mixed_precision=self.args.fp16,
@@ -186,7 +185,8 @@ class ORTTransformerTrainer:
             get_lr_this_step=get_lr_this_step,
             loss_scaler=loss_scaler,
             enable_grad_norm_clip=False,
-            _opset_version=12)
+            _opset_version=12,
+            _use_deterministic_compute=True)
 
         # Train!
         logger.info("***** Running training *****")
@@ -221,14 +221,7 @@ class ORTTransformerTrainer:
                     steps_trained_in_current_epoch -= 1
                     continue
 
-                if step == 0:
-                    self.model.eval()
-                    for k, v in inputs.items():
-                        inputs[k] = v.to(self.args.device)
-                    outputs = self.model(**inputs)
-
                 tr_loss += self._training_step(self.model, inputs)
-
 
                 if (step + 1) % self.args.gradient_accumulation_steps == 0 or (
                     len(epoch_iterator) <= self.args.gradient_accumulation_steps
@@ -268,7 +261,6 @@ class ORTTransformerTrainer:
     def _training_step(
         self, model: ORTTrainer, inputs: Dict[str, torch.Tensor]
     ) -> float:
-        model.train()
         for k, v in inputs.items():
             inputs[k] = v.to(self.args.device)
 

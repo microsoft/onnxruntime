@@ -140,6 +140,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count)));
+
     return Status::OK();
   }
 
