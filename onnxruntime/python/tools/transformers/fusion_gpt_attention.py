@@ -20,12 +20,13 @@ class FusionGptAttention(Fusion):
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, "Attention", "LayerNormalization", "with past")
         self.num_heads = num_heads
+        self.utils = FusionUtils(model)
+        self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
 
-    def create_attention_node(self, gemm, gemm_qkv, past, present, input, output):
+    def create_attention_node(self, gemm, gemm_qkv, past, present, input, output, mask=''):
         attention_node_name = self.model.create_node_name('GptAttention')
-        mask_index = ''
         attention_node = helper.make_node('Attention',
-                                          inputs=[input, gemm.input[1], gemm.input[2], mask_index, past],
+                                          inputs=[input, gemm.input[1], gemm.input[2], mask, past],
                                           outputs=[attention_node_name + "_output", present],
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"
@@ -114,6 +115,7 @@ class FusionGptAttention(Fusion):
             logger.debug("Add and LayerNormalization shall have one same input")
             return
 
+        input_mask_nodes = None
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'Mul', 'Div', 'MatMul'], [0, 0, 0, 0, 0])
         if qk_nodes is not None:
             (softmax_qk, sub_qk, mul_qk, div_qk, matmul_qk) = qk_nodes
@@ -122,7 +124,7 @@ class FusionGptAttention(Fusion):
                 ['Mul', 'Sub', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
                 [1,      0,     1,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
             if mask_nodes is None:
-                logger.debug("fuse_attention: failed to match mask path")
+                logger.debug("fuse_attention: failed to match unidirectional mask path")
                 return
             div_mask = mask_nodes[-1]
 
@@ -131,11 +133,27 @@ class FusionGptAttention(Fusion):
                 return
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
-            qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'Div', 'MatMul'], [0, 0, 1, 0])
+            i, qk_nodes, _ = self.model.match_parent_paths(
+                matmul_qkv, [(['Softmax', 'Where', 'Div', 'MatMul'], [0, 0, 1, 0]),
+                             (['Softmax', 'Add', 'Where', 'Div', 'MatMul'], [0, 0, 0, 1, 0])], output_name_to_node)
             if qk_nodes is None:
-                logger.debug("fuse_attention: failed to match qk path")
+                logger.debug("fuse_attention: failed to match qk nodes")
                 return
-            (softmax_qk, where_qk, div_qk, matmul_qk) = qk_nodes
+
+            where_qk = qk_nodes[-3]
+            div_qk = qk_nodes[-2]
+            matmul_qk = qk_nodes[-1]
+
+            if i == 1:
+                add_qk = qk_nodes[1]
+                _, input_mask_nodes, _ = self.model.match_parent_paths(
+                    add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [1, 0, 1, 0, 0, 0]),
+                             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [1, 0, 1, 0, 0])],
+                    output_name_to_node)
+                if input_mask_nodes is None:
+                    logger.debug("fuse_attention: failed to match input attention mask path")
+                    return
+
             mask_nodes = self.model.match_parent_path(
                 where_qk,
                 ['Cast', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
@@ -188,8 +206,20 @@ class FusionGptAttention(Fusion):
             logger.info("expect past to be same")
             return
 
+        attention_mask_input_name = ''
+        if input_mask_nodes is not None:
+            input_name = input_mask_nodes[-1].input[0]
+            if input_name in self.casted_attention_mask:
+                attention_mask_input_name = self.casted_attention_mask[input_name]
+            elif self.model.find_graph_input(input_name):
+                casted, attention_mask_input_name = self.utils.cast_graph_input_to_int32(input_name)
+                self.casted_attention_mask[input_name] = attention_mask_input_name
+            else:
+                attention_mask_input_name, cast_node = self.utils.cast_input_to_int32(input_name)
+                self.casted_attention_mask[input_name] = attention_mask_input_name
+
         self.create_attention_node(gemm, gemm_qkv, past, present, layernorm_before_attention.output[0],
-                                   reshape_qkv.output[0])
+                                   reshape_qkv.output[0], attention_mask_input_name)
 
         # we rely on prune_graph() to clean old subgraph nodes:
         # qk_nodes + q_nodes + k_nodes + v_nodes + mask_nodes + [reshape_qkv, transpose_qkv, matmul_qkv]

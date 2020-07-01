@@ -299,6 +299,9 @@ def parse_arguments():
         "--disable_ml_ops", action='store_true',
         help="Disable traditional ML ops (reduces binary size)")
     parser.add_argument(
+        "--disable_rtti", action='store_true',
+        help="Disable RTTI (reduces binary size)")
+    parser.add_argument(
         "--skip_onnx_tests", action='store_true', help="Explicitly disable "
         "all onnx related tests. Note: Use --skip_tests to skip all tests.")
     parser.add_argument(
@@ -617,6 +620,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + (
             "ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_RTTI=" + (
+            "ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
