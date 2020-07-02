@@ -97,7 +97,6 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
-
   auto rank = static_cast<int32_t>(input_dims.size());
 
   // flatten the adjacent dimensions which are contiguous
@@ -106,9 +105,10 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   std::vector<size_t> new_permutations(permutations);
   std::vector<int64_t> new_input_dims(input_dims);
   std::vector<int64_t> new_output_dims(output_dims);
+
   for (auto i = rank - 1; i > 0; i--) {
-    auto curr = permutations[i];
-    auto prev = permutations[i - 1];
+    auto curr = new_permutations[i];
+    auto prev = new_permutations[i - 1];
     if (prev + 1 == curr) {
       // all dims bigger than curr need to be reduced by 1 due to the merging.
       for (auto j = 0; j < new_rank; j++) {
@@ -120,6 +120,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
         new_permutations[j-1] = new_permutations[j];
       }
 
+      // update input dims
       new_input_dims[prev] *= new_input_dims[curr];
       new_input_dims[curr] = 1;
       for (auto j = static_cast<int32_t>(curr+1); j < new_rank; j++) {
@@ -127,12 +128,14 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       }
       new_input_dims[new_rank-1] = 1;
 
+      // update output dims
       new_output_dims[i-1] *= new_output_dims[i];
       new_output_dims[i] = 1;
       for (auto j = i+1; j < new_rank; j++) {
         new_output_dims[j-1] = new_output_dims[j];
       }
       new_output_dims[new_rank-1] = 1;
+
       new_rank--;
     }
   }
