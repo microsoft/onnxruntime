@@ -972,7 +972,11 @@ if (onnxruntime_ENABLE_TRAINING)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
     if (MPI_FOUND)
-      execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      if(NOT DEFINED onnxruntime_MPI_HOME)
+        execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      else()
+        execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT) 
+      endif(NOT DEFINED onnxruntime_MPI_HOME)
       string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
       message( STATUS "MPI Version: ${MPI_VERSION}")
 
@@ -1002,6 +1006,7 @@ if (onnxruntime_ENABLE_TRAINING)
         NAMES ${NCCL_LIBNAME}
         HINTS
         ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+        ${onnxruntime_NCCL_HOME}/lib
         $ENV{CUDA_ROOT}/lib64)
 
       include(FindPackageHandleStandardArgs)
