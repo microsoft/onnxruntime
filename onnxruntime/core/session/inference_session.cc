@@ -1131,9 +1131,10 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
-Status InferenceSession::Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
-                             const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>* p_fetches) {
+Status InferenceSession::Run(const RunOptions& run_options,
+                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
+                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                             const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1171,6 +1172,16 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
+    if (p_fetches_device_info) {
+      // populate the target device info. ignored if pre-allocated fetches are provided
+      const auto& fetch_device_info = *p_fetches_device_info;
+      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
+
+      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+        fetch_info[i].target_device = fetch_device_info[i];
+      }
+    }
+
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }
@@ -1206,7 +1217,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
-
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
   } catch (...) {
@@ -1270,7 +1280,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
     feeds.push_back(pair.second);
   }
 
-  return Run(run_options, feed_names, feeds, output_names, p_fetches);
+  return Run(run_options, feed_names, feeds, output_names, p_fetches, nullptr);
 }
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
@@ -1341,7 +1351,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
   return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-             &io_binding.GetOutputs());
+             &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {
