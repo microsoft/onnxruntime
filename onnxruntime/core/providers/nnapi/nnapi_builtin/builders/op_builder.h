@@ -13,14 +13,14 @@ class IOpBuilder {
   virtual ~IOpBuilder() = default;
 
   // Check if an operator is supported
-  virtual bool IsOpSupported(ModelBuilder& model_builder, const onnxruntime::Node& node) = 0;
+  virtual bool IsOpSupported(ModelBuilder& model_builder, const Node& node) = 0;
 
   // Check if the initializers of this operator need preprocess
   // which will not be copied
-  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const onnxruntime::Node& node) = 0;
+  virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) = 0;
 
   // Add the operator to NNAPI model
-  virtual void AddToModelBuilder(ModelBuilder& model_builder, const onnxruntime::Node& node) = 0;
+  virtual void AddToModelBuilder(ModelBuilder& model_builder, const Node& node) = 0;
 };
 
 // Generate a lookup table with IOpBuilder delegates

@@ -181,11 +181,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
-    const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
 
+    const Graph& graph_body = func_body->Body();
     {
       onnxruntime::GraphViewer graph_viewer(graph_body);
       nnapi::ModelBuilder builder(graph_viewer);

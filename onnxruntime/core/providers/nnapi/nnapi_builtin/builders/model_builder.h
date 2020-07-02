@@ -28,7 +28,7 @@ class ModelBuilder {
     CPU_ONLY,      // use CPU only
   };
 
-  ModelBuilder(const onnxruntime::GraphViewer& graph_view);
+  ModelBuilder(const GraphViewer& graph_view);
   ~ModelBuilder() = default;
 
   std::vector<std::vector<int>> GetSupportedNodes();
@@ -44,7 +44,7 @@ class ModelBuilder {
                     const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const onnxruntime::Node& node, const NodeArg& output);
+  int32_t FindActivation(const Node& node, const NodeArg& output);
 
   // Add an NNAPI scalar operand
   uint32_t AddOperandFromScalar(bool value);
@@ -94,7 +94,7 @@ class ModelBuilder {
   const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
   GetInitializerTensors() const { return initializers_; }
 
-  const onnxruntime::Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
+  const Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
 
   void RegisterNHWCOperand(const std::string& name);
   bool IsOperandNHWC(const std::string& name);
@@ -110,7 +110,7 @@ class ModelBuilder {
 
  private:
   const NnApi* nnapi_{nullptr};
-  const onnxruntime::GraphViewer& graph_view_;
+  const GraphViewer& graph_view_;
   std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};
@@ -150,7 +150,7 @@ class ModelBuilder {
 
   uint32_t next_index_ = 0;
 
-  bool IsNodeSupported(const onnxruntime::Node& node);
+  bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();
@@ -172,7 +172,7 @@ class ModelBuilder {
                          const android::nn::wrapper::OperandType& operand_type,
                          bool is_nhwc);
 
-  IOpBuilder* GetOpBuilder(const onnxruntime::Node& node);
+  IOpBuilder* GetOpBuilder(const Node& node);
 };
 
 }  // namespace nnapi

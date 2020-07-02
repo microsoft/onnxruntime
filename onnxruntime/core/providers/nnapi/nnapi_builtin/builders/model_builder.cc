@@ -15,7 +15,7 @@ namespace nnapi {
 using namespace android::nn::wrapper;
 using std::vector;
 
-ModelBuilder::ModelBuilder(const onnxruntime::GraphViewer& graph_view)
+ModelBuilder::ModelBuilder(const GraphViewer& graph_view)
     : nnapi_(NnApiImplementation()), graph_view_(graph_view) {
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
@@ -25,8 +25,7 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
 }
 
-bool ModelBuilder::IsNodeSupported(
-    const onnxruntime::Node& node) {
+bool ModelBuilder::IsNodeSupported(const Node& node) {
   if (auto* op_builder = GetOpBuilder(node)) {
     return op_builder->IsOpSupported(*this, node);
   } else {
@@ -34,8 +33,7 @@ bool ModelBuilder::IsNodeSupported(
   }
 }
 
-bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
-                              const onnxruntime::GraphViewer& graph_view) {
+bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_view) {
   if (!supported_node_vec.empty()) {
     if (supported_node_vec.size() == 1) {
       const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
@@ -475,7 +473,7 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
   return std::move(nnapi_model_);
 }
 
-int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node, const NodeArg& output) {
+int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
@@ -508,7 +506,7 @@ int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node, const NodeAr
   return fuse_code;
 }
 
-IOpBuilder* ModelBuilder::GetOpBuilder(const onnxruntime::Node& node) {
+IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
   if (!Contains(op_builders_, node.OpType()))
     return nullptr;
 

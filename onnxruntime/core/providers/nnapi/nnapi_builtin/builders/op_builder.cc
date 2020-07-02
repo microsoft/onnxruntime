@@ -124,9 +124,11 @@ void AddBinaryOperator(int32_t op_type,
   model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
-bool GetType(const ONNX_NAMESPACE::TypeProto* type_proto, int32_t& type) {
+bool GetType(const NodeArg& node_arg, int32_t& type) {
   type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  const auto* type_proto = node_arg.TypeAsProto();
   if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
+    LOGS_DEFAULT(WARNING) << "NodeArg [" << node_arg.Name() << "] has no input type";
     return false;
   }
 
@@ -134,11 +136,14 @@ bool GetType(const ONNX_NAMESPACE::TypeProto* type_proto, int32_t& type) {
   return true;
 }
 
-bool GetShape(const ONNX_NAMESPACE::TensorShapeProto* shape_proto, Shape& shape) {
+bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
+  const auto* shape_proto = node_arg.Shape();
 
-  if (!shape_proto)
+  if (!shape_proto) {
+    LOGS_DEFAULT(WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
     return false;
+  }
 
   // NNAPI uses 0 for dynamic dimension, which is the default value for dim.dim_value()
   for (const auto& dim : shape_proto->dim())
@@ -260,28 +265,26 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
 class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;
-  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */,
-                                     const onnxruntime::Node& /* node */) override {}
+  virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) override {}
 
-  bool IsOpSupported(ModelBuilder& model_builder, const onnxruntime::Node& node) override final;
+  bool IsOpSupported(ModelBuilder& model_builder, const Node& node) override final;
 
-  void AddToModelBuilder(ModelBuilder& model_builder, const onnxruntime::Node& node) override final;
+  void AddToModelBuilder(ModelBuilder& model_builder, const Node& node) override final;
 
  protected:
-  virtual bool IsOpSupportedImpl(ModelBuilder& model_builder, const onnxruntime::Node& node);
+  virtual bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node);
 
   virtual int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                        const onnxruntime::Node& /* node */) const { return 27; }
+                                        const Node& /* node */) const { return 27; }
 
-  virtual bool HasSupportedInputs(const onnxruntime::Node& node);
+  virtual bool HasSupportedInputs(const Node& node);
 
-  virtual void AddToModelBuilderImpl(ModelBuilder& model_builder, const onnxruntime::Node& node) = 0;
+  virtual void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) = 0;
 
-  bool HasExternalInitializer(ModelBuilder& model_builder, const onnxruntime::Node& node);
+  bool HasExternalInitializer(ModelBuilder& model_builder, const Node& node);
 };
 
-bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
-                                  const onnxruntime::Node& node) {
+bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder, const Node& node) {
 #ifdef __ANDROID__
   int32_t android_sdk_ver = model_builder.GetAndroidSdkVer();
   int32_t required_sdk_ver = GetMinSupportedSdkVer(model_builder, node);
@@ -303,14 +306,12 @@ bool BaseOpBuilder::IsOpSupported(ModelBuilder& model_builder,
   return IsOpSupportedImpl(model_builder, node);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const onnxruntime::Node& node) {
+bool BaseOpBuilder::HasSupportedInputs(const Node& node) {
   // We only check the type of input 0 by default
   // specific op builder can override this
   int32_t input_type;
-  if (!GetType(node.InputDefs()[0]->TypeAsProto(), input_type)) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] input 0 has no input type";
+  if (!GetType(*node.InputDefs()[0], input_type))
     return false;
-  }
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
@@ -322,13 +323,11 @@ bool BaseOpBuilder::HasSupportedInputs(const onnxruntime::Node& node) {
   return true;
 }
 
-bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
-                                      const onnxruntime::Node& /* node */) {
+bool BaseOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& /* node */) {
   return true;
 }
 
-void BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder,
-                                      const onnxruntime::Node& node) {
+void BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) {
   ORT_ENFORCE(IsOpSupported(model_builder, node),
               "Unsupported operator " + node.OpType());
 
@@ -337,8 +336,7 @@ void BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder,
                         << "] type: [" << node.OpType() << "] was added";
 }
 
-bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder,
-                                           const onnxruntime::Node& node) {
+bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder, const Node& node) {
   const auto& initializers(model_builder.GetOnnxGraph().GetAllInitializedTensors());
   for (const auto* node_arg : node.InputDefs()) {
     const auto& input_name(node_arg->Name());
@@ -363,16 +361,13 @@ bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder,
 
 class BinaryOpBuilder : public BaseOpBuilder {
  private:
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder,
-                                const onnxruntime::Node& node) const override;
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                               const onnxruntime::Node& node) const {
+int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
   const auto& op(node.OpType());
   if (op == "Sub" || op == "Div") {
     return 28;
@@ -381,8 +376,7 @@ int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */
   return 27;
 }
 
-void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                            const onnxruntime::Node& node) {
+void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   const auto& op(node.OpType());
   int32_t op_code;
   if (op == "Add")
@@ -432,12 +426,10 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class ReluOpBuilder : public BaseOpBuilder {
  private:
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -465,26 +457,19 @@ void ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class TransposeOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                const onnxruntime::Node& /* node */) const override {
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
     return 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
-                                           const onnxruntime::Node& node) {
+bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   Shape input_shape;
-  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
-    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                          << node.OpType() << "] has no shape info";
+  if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
-  }
 
   const auto input_size = input_shape.size();
   if (input_size > 4 || input_size == 0) {
@@ -496,8 +481,7 @@ bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
   return true;
 }
 
-void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                               const onnxruntime::Node& node) {
+void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
 
   auto input = node.InputDefs()[0]->Name();
@@ -536,24 +520,19 @@ void TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class ReshapeOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
-                                             const onnxruntime::Node& node) {
+void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
-                                         const onnxruntime::Node& node) {
+bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   const auto& initializers(model_builder.GetInitializerTensors());
   const auto& perm_name = node.InputDefs()[1]->Name();
   if (!Contains(initializers, perm_name)) {
@@ -562,11 +541,8 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   }
 
   Shape input_shape;
-  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
-    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                          << node.OpType() << "] has no shape info";
+  if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
-  }
 
   if (input_shape.size() > 4 || input_shape.empty()) {
     LOGS_DEFAULT(VERBOSE) << "Reshape only supports up to 1-4d shape, input is "
@@ -589,8 +565,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   return true;
 }
 
-void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                             const onnxruntime::Node& node) {
+void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -641,19 +616,15 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class BatchNormalizationOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
-                                                        const onnxruntime::Node& node) {
+void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   // skip everything except input0 for BatchNormalization
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // scale
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // B
@@ -661,8 +632,7 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  //var
 }
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
-                                                    const onnxruntime::Node& node) {
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   if (node.OutputDefs().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
                              "it in test mode.";
@@ -694,8 +664,7 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   return true;
 }
 
-void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                                        const onnxruntime::Node& node) {
+void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
@@ -771,20 +740,16 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
 class PoolOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                const onnxruntime::Node& /* node */) const override {
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
     return 28;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
-                                      const onnxruntime::Node& node) {
+bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   const auto& op = node.OpType();
   if (op == "AveragePool" || op == "MaxPool") {
     NodeAttrHelper helper(node);
@@ -828,11 +793,8 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
     }
   } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
     Shape input_shape;
-    if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
-      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                            << node.OpType() << "] has no shape info";
+    if (!GetShape(*node.InputDefs()[0], input_shape))
       return false;
-    }
 
     const auto input_size = input_shape.size();
     if (input_size != 4) {
@@ -846,8 +808,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
   return true;
 }
 
-void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -924,25 +885,20 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class ConvOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   // skip the weight for conv as we need to transpose
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
-                                      const onnxruntime::Node& node) {
+bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   NodeAttrHelper helper(node);
   if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
     LOGS_DEFAULT(VERBOSE) << "SAME_LOWER auto_pad is not supported";
@@ -969,8 +925,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   return true;
 }
 
-void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1096,20 +1051,16 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class CastOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                const onnxruntime::Node& /* node */) const override {
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
     return 29;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
-                                      const onnxruntime::Node& node) {
+bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   NodeAttrHelper helper(node);
   auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
@@ -1121,8 +1072,7 @@ bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
   return true;
 }
 
-void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   NodeAttrHelper helper(node);
@@ -1159,26 +1109,19 @@ void CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                const onnxruntime::Node& /* node */) const override {
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
     return 29;
   }
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
-                                         const onnxruntime::Node& node) {
+bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   Shape input_shape;
-  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
-    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                          << node.OpType() << "] has no shape info";
+  if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
-  }
 
   const auto input_size = input_shape.size();
   if (input_size != 2 && input_size != 4) {
@@ -1189,8 +1132,7 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
   return true;
 }
 
-void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                             const onnxruntime::Node& node) {
+void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1226,12 +1168,10 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class IdentityOpBuilder : public BaseOpBuilder {
  private:
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                              const onnxruntime::Node& node) {
+void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
   auto& shaper(model_builder.GetShaper());
@@ -1256,29 +1196,22 @@ void IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class GemmOpBuilder : public BaseOpBuilder {
  public:
-  void AddInitializersToSkip(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
-                                      const onnxruntime::Node& node) {
+bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
   const auto& initializers(model_builder.GetInitializerTensors());
 
   Shape a_shape;
   {
-    if (!GetShape(node.InputDefs()[0]->Shape(), a_shape)) {
-      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                            << node.OpType() << "] has no shape A info";
+    if (!GetShape(*node.InputDefs()[0], a_shape))
       return false;
-    }
 
     if (a_shape.size() != 2) {
       LOGS_DEFAULT(VERBOSE) << "A must be 2D";
@@ -1288,11 +1221,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
 
   Shape b_shape;
   {
-    if (!GetShape(node.InputDefs()[1]->Shape(), b_shape)) {
-      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                            << node.OpType() << "] has no shape B info";
+    if (!GetShape(*node.InputDefs()[1], b_shape))
       return false;
-    }
 
     if (b_shape.size() != 2) {
       LOGS_DEFAULT(VERBOSE) << "B must be 2D";
@@ -1328,11 +1258,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
 
     if (node.InputDefs().size() == 3) {
       Shape c_shape;
-      if (!GetShape(node.InputDefs()[2]->Shape(), c_shape)) {
-        LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                              << node.OpType() << "] has no shape C info";
+      if (!GetShape(*node.InputDefs()[2], c_shape))
         return false;
-      }
 
       if (c_shape.size() != 1 ||
           c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
@@ -1348,8 +1275,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   return true;
 }
 
-void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
   if (op == "MatMul") {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
@@ -1361,8 +1287,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
   }
 }
 
-void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                          const onnxruntime::Node& node) {
+void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -1420,15 +1345,12 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class UnaryOpBuilder : public BaseOpBuilder {
  private:
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder,
-                                const onnxruntime::Node& node) const override;
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
-                                              const onnxruntime::Node& node) const {
+int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
   const auto& op(node.OpType());
   if (op == "Abs" ||
       op == "Exp" ||
@@ -1442,8 +1364,7 @@ int32_t UnaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */,
   return 27;
 }
 
-void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                           const onnxruntime::Node& node) {
+void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1489,21 +1410,15 @@ void UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 class ConcatOpBuilder : public BaseOpBuilder {
  private:
-  bool IsOpSupportedImpl(ModelBuilder& model_builder,
-                         const onnxruntime::Node& node) override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  void AddToModelBuilderImpl(ModelBuilder& model_builder,
-                             const onnxruntime::Node& node) override;
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
-                                        const onnxruntime::Node& node) {
+bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   Shape input_shape;
-  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
-    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
-                          << node.OpType() << "] has no shape info";
+  if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
-  }
 
   const auto input_size = input_shape.size();
   if (input_size > 4 || input_size == 0) {
@@ -1515,8 +1430,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
   return true;
 }
 
-void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                            const onnxruntime::Node& node) {
+void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
