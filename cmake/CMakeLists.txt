@@ -30,8 +30,6 @@ set(CMAKE_CXX_STANDARD 14)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-# Generate build logs listing all flags used
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Enable CTest
 enable_testing()
@@ -295,6 +293,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     #For Mac compliance
     message("Adding flags for Mac builds")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
+    set (CMAKE_VERBOSE_MAKEFILE ON)
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
