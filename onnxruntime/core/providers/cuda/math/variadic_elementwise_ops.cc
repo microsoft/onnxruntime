@@ -141,7 +141,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   const auto element_type = first_input_tensor.GetElementType();
 
   // special case for no broadcasting and few enough inputs
-  if (input_count < k_max_input_batch_size &&
+  if (input_count <= k_max_input_batch_size &&
       std::all_of(
           input_tensors.begin() + 1, input_tensors.end(),
           [&first_input_tensor](InputTensorVector::value_type t) {

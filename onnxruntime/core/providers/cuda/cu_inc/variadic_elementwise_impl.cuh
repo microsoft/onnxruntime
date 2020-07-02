@@ -16,25 +16,6 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
     T* output) {
   const auto base_idx = num_elements_per_thread * blockDim.x * blockIdx.x + threadIdx.x;
 
-#if 1
-#pragma unroll
-  for (size_t element_count = 0; element_count < num_elements_per_thread; ++element_count) {
-    const auto element_idx = base_idx + blockDim.x * element_count;
-    if (element_idx < N) {
-      // first and second inputs
-      output[element_idx] = func(
-          inputs[0][element_idx], inputs[1][element_idx]);
-
-      // remaining inputs
-#pragma unroll
-      for (size_t input_batch_idx = 2; input_batch_idx < max_input_batch_size; ++input_batch_idx) {
-        if (input_batch_idx < inputs.Size()) {
-          output[element_idx] = func(output[element_idx], inputs[input_batch_idx][element_idx]);
-        }
-      }
-    }
-  }
-#else
   T inputs_buffer[num_elements_per_thread][max_input_batch_size];
 
 #pragma unroll
@@ -67,7 +48,6 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
       }
     }
   }
-#endif
 }
 
 // assumptions:
