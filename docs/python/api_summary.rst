@@ -66,3 +66,55 @@ The following functions are supported:
 .. autofunction:: onnxruntime.backend.run
 
 .. autofunction:: onnxruntime.backend.supports_device
+
+IOBinding
+=========
+
+By default, *ONNX Runtime* always places input(s) and output(s) on CPU, which 
+is not optimal if the input or output is consumed and produced on a device
+other than CPU because it introduces data copy between CPU and the device. 
+*ONNX Runtime* provides a feature, *IO Binding*, which addresses this issue by
+enabling users to specify which device to place input(s) and output(s) on. 
+Here are scenarios to use this feature. 
+
+(In the following code snippets, *model.onnx* is the model to execute, 
+*X* is the input data to feed, and *Y* is the output data.)
+
+Scenario 1:
+
+A graph is executed on a deivce other than CPU, for instance CUDA. Users can 
+use IOBinding to put input on CUDA as the follows.
+
+.. code-block:: python
+#X is numpy array on cpu 
+session = onnxruntime.InferenceSession('model.onnx')
+io_binding = session.io_binding()
+io_binding.bind_cpu_input('input', x)
+io_binding.bind_output('output')
+session.run_with_iobinding(io_binding)
+ort_output = io_binding.get_outputs()[0]
+
+Scenario 2:
+
+The input data is on a device, users direclty use the input.
+
+.. code-block:: python
+
+session = onnxruntime.InferenceSession('model.onnx')
+io_binding = session.io_binding()
+io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
+io_binding.bind_output('output')
+session.run_with_iobinding(io_binding)
+ort_output = io_binding.get_outputs()[0]
+
+Scenario 3:
+
+The input data on a dveice, users directly use the input and also place output on the device:
+
+.. code-block:: python
+
+session = onnxruntime.InferenceSession('model.onnx')
+io_binding = session.io_binding()
+io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
+io_binding.bind_output('output', Y.device.type, 0, np.float32, list(Y.size()), Y.data_ptr())
+session.run_with_iobinding(io_binding)
