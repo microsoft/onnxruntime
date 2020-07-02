@@ -75,7 +75,8 @@ def pytorch_inference(model, inputs, total_runs=100):
     input_ids, past, attention_mask, position_ids = inputs
 
     # Convert it back to fp32 as the PyTroch model cannot deal with half input.
-    attention_mask = attention_mask.to(dtype=torch.float32) if attention_mask else None
+    if attention_mask is not None:
+        attention_mask = attention_mask.to(dtype=torch.float32)
     past = [p.to(dtype=torch.float32) for p in past]
 
     latency = []
@@ -120,29 +121,37 @@ def onnxruntime_inference(ort_session, inputs, total_runs=100):
     return ort_outputs, average_latency
 
 
-def get_dummy_inputs(batch_size, past_sequence_length, num_attention_heads, hidden_size, num_layer, vocab_size, device,
-                     use_attention_mask, float16):
+def get_dummy_inputs(batch_size, past_sequence_length, sequence_length, num_attention_heads, hidden_size, num_layer,
+                     vocab_size, device, use_attention_mask, float16):
     float_type = torch.float16 if float16 else torch.float32
     past_shape = [2, batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
     dummy_past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
-    dummy_input_ids = torch.randint(low=0, high=vocab_size - 1, size=(batch_size, 1), dtype=torch.int64, device=device)
+    dummy_input_ids = torch.randint(low=0,
+                                    high=vocab_size - 1,
+                                    size=(batch_size, sequence_length),
+                                    dtype=torch.int64,
+                                    device=device)
     if use_attention_mask:
-        dummy_attention_mask = torch.ones([batch_size, 1], dtype=float_type, device=device)
-        dummy_position_ids = torch.ones([batch_size, 1], dtype=torch.int64, device=device) * past_sequence_length
+        dummy_attention_mask = torch.ones([batch_size, past_sequence_length + sequence_length],
+                                          dtype=float_type,
+                                          device=device)
+        dummy_position_ids = torch.ones([batch_size, sequence_length], dtype=torch.int64,
+                                        device=device) * past_sequence_length
         return dummy_input_ids, dummy_past, dummy_attention_mask, dummy_position_ids
 
     return dummy_input_ids, dummy_past, None, None
 
 
-def get_output_shapes(batch_size, past_sequence_length, config, use_LMHead):
+def get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead):
     num_attention_heads = config.num_attention_heads
     hidden_size = config.hidden_size
     num_layer = config.n_layer
     vocab_size = config.vocab_size
 
-    last_state_shape = [batch_size, 1, vocab_size] if use_LMHead else [batch_size, 1, hidden_size]
+    last_state_shape = [batch_size, sequence_length, vocab_size
+                        ] if use_LMHead else [batch_size, sequence_length, hidden_size]
     present_state_shape = [
-        2, batch_size, num_attention_heads, past_sequence_length + 1,
+        2, batch_size, num_attention_heads, past_sequence_length + sequence_length,
         int(hidden_size / num_attention_heads)
     ]
 
@@ -327,7 +336,7 @@ def parse_arguments():
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
     parser.add_argument('-s',
-                        '--sequence_lengths',
+                        '--past_sequence_lengths',
                         nargs='+',
                         type=int,
                         default=[8, 16, 32, 64, 128, 256],
@@ -375,23 +384,24 @@ def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_at
     # Shape of input tensors:
     #    input_ids: (batch_size, seq_len)
     #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
-    #    attention_mask: (batch_size, seq_len)
+    #    attention_mask: (batch_size, past_seq_len + seq_len)
     # Shape of output tensors:
     #    last_state: (batch_size, seq_len, hidden_size)
     #      or prediction_scores: (batch_size, seq_len, vocab_size)
-    #    present_{i}:  (2, batch_size, num_heads, all_seq_len, hidden_size/num_heads)
+    #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
     dynamic_axes = {'input_ids': {0: 'batch_size', 1: 'seq_len'}, output_names[0]: {0: 'batch_size', 1: 'seq_len'}}
     for name in past_names:
         dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len'}
     for name in present_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'all_seq_len'}
+        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len+seq_len'}
 
     if use_attention_mask:
-        dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'all_seq_len'}
+        dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'past_seq_len+seq_len'}
         dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
 
     dummy_inputs = get_dummy_inputs(batch_size=1,
                                     past_sequence_length=1,
+                                    sequence_length=1,
                                     num_attention_heads=config.num_attention_heads,
                                     hidden_size=config.hidden_size,
                                     num_layer=num_layer,
@@ -469,17 +479,15 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    use_torchscript = False
-
     model_class = MyGPT2LMHeadModel if args.model_class == 'GPT2LMHeadModel' else MyGPT2Model
     use_LMHead = (args.model_class == 'GPT2LMHeadModel')
 
     model_name = args.model_name
-    config = AutoConfig.from_pretrained(model_name, torchscript=use_torchscript, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(model_name, torchscript=False, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    #if use_torchscript:
-    #    model = torch.jit.trace(model, (input_ids, past))
+    
+    # This scirpt does not support float16 for PyTorch.
     #if args.float16:
     #    model.half()
 
@@ -521,10 +529,14 @@ def main():
     if session is None:
         return
 
+    # One word is generated for each inference. This length does not include that of past state.
+    sequence_length = 1
+
     # Allocate output buffers for IO Binding
     output_buffers = {}
     if not args.disable_ort_io_binding:
-        max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.sequence_lengths), config, use_LMHead)
+        max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths), sequence_length,
+                                              config, use_LMHead)
         output_buffers = get_output_buffers(max_output_shapes, device, args.float16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -537,12 +549,12 @@ def main():
         csv_writer.writeheader()
 
         for batch_size in args.batch_sizes:
-            for past_sequence_length in args.sequence_lengths:
+            for past_sequence_length in args.past_sequence_lengths:
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-                dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, config.num_attention_heads,
-                                                config.hidden_size, config.n_layer, config.vocab_size, device,
-                                                args.use_attention_mask, args.float16)
-                output_shapes = get_output_shapes(batch_size, past_sequence_length, config, use_LMHead)
+                dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
+                                                config.num_attention_heads, config.hidden_size, config.n_layer,
+                                                config.vocab_size, device, args.use_attention_mask, args.float16)
+                output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead)
 
                 try:
                     latencies = inference(model,

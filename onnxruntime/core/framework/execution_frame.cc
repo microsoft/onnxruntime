@@ -562,7 +562,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
-  return utils::GetAllocator(session_state_, info);
+  return session_state_.GetAllocator(info);
 }
 
 // This method is not thread safe!
