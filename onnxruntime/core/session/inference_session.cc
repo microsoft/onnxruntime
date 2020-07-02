@@ -1540,9 +1540,8 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   return Status::OK();
 }
 
-SessionIOBinding::SessionIOBinding(InferenceSession* session) {
+SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
   ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
-  sess_ = session;
 }
 
 InferenceSession* SessionIOBinding::GetInferenceSession() {

@@ -228,7 +228,7 @@ class IOBinding:
         :param shape: output shape
         :param buffer_ptr: memory pointer to output data
         '''
-        if device_type == 'cpu':
+        if buffer_ptr is None:
             self._iobinding.bind_output(name)
         else:
             self._iobinding.bind_output(name,

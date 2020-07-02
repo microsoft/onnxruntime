@@ -33,7 +33,8 @@ class TestIOBinding(unittest.TestCase):
         
         # Run Pytorch
         touch_input = torch.randn(batch_size, channels, sample_dim, sample_dim).to(device)
-        torch_output = model(touch_input).cpu().detach().numpy()
+        torch_output = model(touch_input)
+        torch_output_vals = torch_output.cpu().detach().numpy()
         
         # Run ORT
         input_names = [ "input" ]
@@ -42,22 +43,22 @@ class TestIOBinding(unittest.TestCase):
                           input_names=input_names, output_names=output_names,
                           dynamic_axes={"input":{0:"batch_size"}, "output":{0:"batch_size"}})
         
-        return touch_input, torch_output
+        return touch_input, torch_output, torch_output_vals
 
     def test_bind_input_only(self):
-        x, torch_output = self.create_model_and_input()
+        torch_input, torch_output, torch_output_vals = self.create_model_and_input()
 
         session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
-        io_binding.bind_input('input', x.device.type, 0, np.float32, list(x.size()), x.data_ptr())
+        io_binding.bind_input('input', torch_input.device.type, 0, np.float32, list(torch_input.size()), torch_input.data_ptr())
         io_binding.bind_output('output')
         session.run_with_iobinding(io_binding)
         ort_output = io_binding.get_outputs()[0]
     
-        self.assertTrue(np.array_equal(torch_output, ort_output))
+        self.assertTrue(np.array_equal(torch_output_vals, ort_output))
 
     def test_bind_input_to_cpu_arr(self):
-        torch_input, torch_output = self.create_model_and_input()
+        torch_input, torch_outpu, torch_output_vals = self.create_model_and_input()
 
         session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
@@ -66,7 +67,19 @@ class TestIOBinding(unittest.TestCase):
         session.run_with_iobinding(io_binding)
         ort_output = io_binding.get_outputs()[0]
     
-        self.assertTrue(np.array_equal(torch_output, ort_output))
+        self.assertTrue(np.array_equal(torch_output_vals, ort_output))
+
+    def test_bind_input_output(self):
+        torch_input, torch_output, torch_output_vals = self.create_model_and_input()
+
+        session = onnxruntime.InferenceSession('model.onnx')
+        io_binding = session.io_binding()
+        io_binding.bind_input('input', torch_input.device.type, 0, np.float32, list(torch_input.size()), torch_input.data_ptr())
+        ort_output = torch.empty(list(torch_output.size())).cuda()
+        io_binding.bind_output('output', torch_output.device.type, 0, np.float32, list(torch_output.size()), ort_output.data_ptr())
+        session.run_with_iobinding(io_binding)
+        ort_output_vals = ort_output.cpu().detach().numpy()
+        self.assertTrue(np.array_equal(torch_output_vals, ort_output_vals))
     
 if __name__ == '__main__':
     unittest.main()
