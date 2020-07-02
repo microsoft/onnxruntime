@@ -52,7 +52,6 @@ template <typename T>
 Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
   auto* a = ctx->Input<Tensor>(0);
   auto* b = ctx->Input<Tensor>(1);
-  ORT_ENFORCE(a != nullptr && b != nullptr);
 
   auto* b_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
@@ -88,6 +87,8 @@ Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
 
   const auto* b_data = b->template Data<T>();
 
+  const Tensor* bias_tensor = ctx->Input<Tensor>(4);
+
   Tensor* y = ctx->Output(0, helper.OutputShape());
   auto* y_data = y->template MutableData<float>();
 
@@ -107,7 +108,7 @@ Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
           y_data + helper.OutputOffsets()[i],
           static_cast<int>(helper.N()),
           &multiplier,
-          nullptr,
+          nullptr != bias_tensor ? bias_tensor->Data<float>() : nullptr,
           thread_pool);
   }
 
