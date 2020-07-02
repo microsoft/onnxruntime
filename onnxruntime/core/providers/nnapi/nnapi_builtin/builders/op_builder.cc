@@ -188,7 +188,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   const float* src = GetTensorFloatData(tensor);
   float* buffer = new float[Product(shape)];
-  const OperandType operandType(type, dest_shape);
+  const OperandType operand_type(type, dest_shape);
   for (uint32_t out = 0; out < out_t; out++) {
     for (uint32_t in = 0; in < in_t; in++) {
       for (uint32_t h = 0; h < h_t; h++) {
@@ -217,7 +217,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
 
-  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
   delete[] buffer;
   return operand_idx;
 }
@@ -244,7 +244,7 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
 
   auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
-  const OperandType operandType(type, dest_shape);
+  const OperandType operand_type(type, dest_shape);
   const float* src = GetTensorFloatData(tensor);
   float* buffer = new float[Product(shape)];
   for (uint32_t x = 0; x < x_t; x++) {
@@ -252,7 +252,7 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
       buffer[y * x_t + x] = src[x * y_t + y];
     }
   }
-  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operandType);
+  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 
   delete[] buffer;
   return operand_idx;
@@ -572,7 +572,6 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& initializers(model_builder.GetInitializerTensors());
 
   auto input = node.InputDefs()[0]->Name();
-
   if (model_builder.IsOperandNHWC(input)) {
     // We want to transpose nhwc operand back to nchw before reshape
     const auto& nhwc_input = node.InputDefs()[0]->Name();
@@ -711,10 +710,10 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
-  const OperandType operandType_a(operand_types.at(input).type, tensor_a_dimen);
-  model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), operandType_a);
-  const OperandType operandType_b(operand_types.at(input).type, tensor_a_dimen);
-  model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), operandType_b);
+  const OperandType a_operand_type(operand_types.at(input).type, tensor_a_dimen);
+  model_builder.AddOperandFromPersistMemoryBuffer(tensor_a_name, a.data(), a_operand_type);
+  const OperandType b_operand_type(operand_types.at(input).type, tensor_a_dimen);
+  model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type);
 
   // Mul
   AddBinaryOperator(ANEURALNETWORKS_MUL,
@@ -1000,9 +999,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       for (uint32_t i = 0; i < buffer.size(); i++) {
         buffer[i] = 0.f;
       }
-      OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
+      OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
       bias_idx_val = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, buffer.data(), operandType);
+          bias, buffer.data(), bias_operand_type);
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
@@ -1316,9 +1315,9 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       for (uint32_t i = 0; i < bias_dimen[0]; i++) {
         buffer[i] = 0.f;
       }
-      OperandType operandType(Type::TENSOR_FLOAT32, bias_dimen);
+      OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
       bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, &buffer[0], operandType);
+          bias, &buffer[0], bias_operand_type);
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(B_type));
     }
@@ -1502,6 +1501,78 @@ void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 #pragma endregion
 
+#pragma region op_squeeze
+
+class SqueezeOpBuilder : public BaseOpBuilder {
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
+    return 28;
+  }
+
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+};
+
+bool SqueezeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
+  Shape input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size > 4 || input_size == 0) {
+    LOGS_DEFAULT(VERBOSE) << "Squeeze only supports 1-4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
+
+void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  auto input = node.InputDefs()[0]->Name();
+  if (model_builder.IsOperandNHWC(input)) {
+    // We want to transpose nhwc operand back to nchw before squeeze
+    const auto& nhwc_input = node.InputDefs()[0]->Name();
+    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
+      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+    }
+  }
+
+  NodeAttrHelper helper(node);
+  vector<int32_t> axes = helper.Get("axes", vector<int32_t>());
+  auto input_dims = shaper[input].size();
+  for (auto& axis : axes) {
+    if (axis < 0)
+      axis += input_dims;
+  }
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));  // input
+
+  if (!axes.empty()) {
+    const auto axes_name = model_builder.GetUniqueName(node.Name() + input + "_axes");
+    Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+    shaper.AddShape(axes_name, axes_dimen);
+    const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+    model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type);
+    input_indices.push_back(operand_indices.at(axes_name));  // axes
+  }
+
+  const auto& output = node.OutputDefs()[0]->Name();
+  shaper.Squeeze(input, axes, output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices, {output},
+                             {output_operand_type}, {false});
+}
+
+#pragma endregion
+
 #pragma region CreateOpBuilders
 
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
@@ -1554,6 +1625,7 @@ CreateOpBuilders() {
   }
 
   op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
+  op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
 
   return op_map;
 }
