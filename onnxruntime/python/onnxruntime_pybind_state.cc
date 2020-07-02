@@ -733,8 +733,8 @@ void addObjectMethods(py::module& m, Environment& env) {
       });
 
   py::class_<SessionOptions>
-      session_options(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
-  session_options
+      sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
+  sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
                      R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
@@ -815,7 +815,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                                                                                                                         dim_value}); }, "TODO")
       .def(
           "clone", [](SessionOptions* options) -> SessionOptions { SessionOptions cloned = *options;  
-                                                                    return cloned; }, "TODO");
+                                                                    return cloned; }, "TODO")
+      .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
+                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
