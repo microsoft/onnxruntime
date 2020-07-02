@@ -32,6 +32,25 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()}),
     DynamicQuantizeMatMul);
 
+class MatMulIntegerToFloat final : public OpKernel {
+ public:
+  MatMulIntegerToFloat(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulIntegerToFloat,
+    kMSDomain,
+    1,
+    uint8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>()),
+    MatMulIntegerToFloat);
+
 static void GetQuantizationParameter(const float* data, int64_t num_of_elements, float& scale, uint8_t& zp) {
   // find input range min and max
   float min, max;
@@ -50,49 +69,22 @@ static void GetQuantizationParameter(const float* data, int64_t num_of_elements,
   zp = static_cast<uint8_t>(RoundHalfToEven(std::max(float(qmin), std::min(float(qmax), initial_zero_point))));
 }
 
-Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
-  const auto* a = ctx->Input<Tensor>(0);
-  const auto* b = ctx->Input<Tensor>(1);
-
-  const auto* b_scale_tensor = ctx->Input<Tensor>(2);
-  ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
-              "MatmulInteger : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-
-  float b_scale = *b_scale_tensor->template Data<float>();
-
-  const auto* b_zp_tensor = ctx->Input<Tensor>(3);
-  uint8_t b_zp = 0;
-  if (b_zp_tensor != nullptr) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(b_zp_tensor),
-                "MatmulInteger : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
-    b_zp = *static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
-  }
-
-  // calculate quantization parameter of a
-  const auto* a_data = a->template Data<float>();
-  int64_t num_of_elements = a->Shape().Size();
-
-  float a_scale;
-  uint8_t a_zp;
-  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zp);
-
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
-  uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
-  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
-  // quantize the data
-  MlasQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zp);
-
+static Status MatMulIntegerToFloatCommon(OpKernelContext* ctx,
+                                         const uint8_t* a_data,
+                                         const TensorShape& a_shape,
+                                         uint8_t a_zero_point,
+                                         const Tensor* b,
+                                         uint8_t b_zero_point,
+                                         float multiplier,
+                                         const Tensor* bias_tensor) {
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
+  ORT_RETURN_IF_ERROR(helper.Compute(a_shape, b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
   const bool b_is_signed = b->IsDataType<int8_t>();
   auto* y_data = y->template MutableData<float>();
-  const float multiplier = a_scale * b_scale;
-
-  const auto* bias_tensor = ctx->Input<Tensor>(4);
+  const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
@@ -100,21 +92,105 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     QGemm(static_cast<int>(helper.M()),
           static_cast<int>(helper.N()),
           static_cast<int>(helper.K()),
-          a_data_quant + helper.LeftOffsets()[i],
+          a_data + helper.LeftOffsets()[i],
           static_cast<int>(helper.K()),
-          a_zp,
+          a_zero_point,
           b_data + helper.RightOffsets()[i],
           static_cast<int>(helper.N()),
-          b_zp,
+          b_zero_point,
           b_is_signed,
           y_data + helper.OutputOffsets()[i],
           static_cast<int>(helper.N()),
           &multiplier,
-          bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr,
+          bias_data,
           thread_pool);
   }
 
   return Status::OK();
+}
+
+Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
+  const auto* a = ctx->Input<Tensor>(0);
+  const auto* b = ctx->Input<Tensor>(1);
+
+  const auto* b_scale_tensor = ctx->Input<Tensor>(2);
+  ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
+              "DynamicQuantizeMatMul : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+
+  float b_scale = *b_scale_tensor->template Data<float>();
+
+  const auto* b_zero_point_tensor = ctx->Input<Tensor>(3);
+  uint8_t b_zero_point = 0;
+  if (b_zero_point_tensor != nullptr) {
+    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
+                "DynamicQuantizeMatMul : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+    b_zero_point = *static_cast<const uint8_t*>(b_zero_point_tensor->DataRaw());
+  }
+
+  // calculate quantization parameter of a
+  const auto* a_data = a->template Data<float>();
+  int64_t num_of_elements = a->Shape().Size();
+
+  float a_scale;
+  uint8_t a_zero_point;
+  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point);
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+  uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
+  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
+  // quantize the data
+  MlasQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point);
+
+  return MatMulIntegerToFloatCommon(ctx,
+                                    a_data_quant,
+                                    a->Shape(),
+                                    a_zero_point,
+                                    b,
+                                    b_zero_point,
+                                    a_scale * b_scale,
+                                    ctx->Input<Tensor>(4));
+}
+
+Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
+  const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* b = ctx->Input<Tensor>(1);
+
+  const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
+  ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),
+              "MatMulIntegerToFloat : input A scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+  float a_scale = *a_scale_tensor->template Data<float>();
+
+  const Tensor* b_scale_tensor = ctx->Input<Tensor>(3);
+  ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
+              "MatMulIntegerToFloat : input B scale must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+  float b_scale = *b_scale_tensor->template Data<float>();
+
+  // validate zero points
+  uint8_t a_zero_point = 0;
+  const Tensor* a_zero_point_tensor = ctx->Input<Tensor>(4);
+  if (a_zero_point_tensor != nullptr) {
+    ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point_tensor),
+                "MatMulIntegerToFloat : input A zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+    a_zero_point = *a_zero_point_tensor->Data<uint8_t>();
+  }
+
+  uint8_t b_zero_point = 0;
+  const Tensor* b_zero_point_tensor = ctx->Input<Tensor>(5);
+  if (b_zero_point_tensor != nullptr) {
+    ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point_tensor),
+                "MatMulIntegerToFloat : input B zero point must be a scalar or 1D tensor of size 1. Per-Channel is not supported yet.");
+    b_zero_point = *static_cast<const uint8_t*>(b_zero_point_tensor->DataRaw());
+  }
+
+  return MatMulIntegerToFloatCommon(ctx,
+                                    a->Data<uint8_t>(),
+                                    a->Shape(),
+                                    a_zero_point,
+                                    b,
+                                    b_zero_point,
+                                    a_scale * b_scale,
+                                    ctx->Input<Tensor>(6));
 }
 
 }  // namespace contrib
