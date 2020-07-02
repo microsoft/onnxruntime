@@ -70,6 +70,7 @@ The following functions are supported:
 IOBinding
 =========
 
+
 By default, *ONNX Runtime* always places input(s) and output(s) on CPU, which 
 is not optimal if the input or output is consumed and produced on a device
 other than CPU because it introduces data copy between CPU and the device. 
@@ -86,13 +87,14 @@ A graph is executed on a deivce other than CPU, for instance CUDA. Users can
 use IOBinding to put input on CUDA as the follows.
 
 .. code-block:: python
-#X is numpy array on cpu 
-session = onnxruntime.InferenceSession('model.onnx')
-io_binding = session.io_binding()
-io_binding.bind_cpu_input('input', x)
-io_binding.bind_output('output')
-session.run_with_iobinding(io_binding)
-ort_output = io_binding.get_outputs()[0]
+
+	#X is numpy array on cpu 
+	session = onnxruntime.InferenceSession('model.onnx')
+	io_binding = session.io_binding()
+	io_binding.bind_cpu_input('input', x)
+	io_binding.bind_output('output')
+	session.run_with_iobinding(io_binding)
+	ort_output = io_binding.get_outputs()[0]
 
 Scenario 2:
 
@@ -100,12 +102,12 @@ The input data is on a device, users direclty use the input.
 
 .. code-block:: python
 
-session = onnxruntime.InferenceSession('model.onnx')
-io_binding = session.io_binding()
-io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
-io_binding.bind_output('output')
-session.run_with_iobinding(io_binding)
-ort_output = io_binding.get_outputs()[0]
+	session = onnxruntime.InferenceSession('model.onnx')
+	io_binding = session.io_binding()
+	io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
+	io_binding.bind_output('output')
+	session.run_with_iobinding(io_binding)
+	ort_output = io_binding.get_outputs()[0]
 
 Scenario 3:
 
@@ -113,8 +115,9 @@ The input data on a dveice, users directly use the input and also place output o
 
 .. code-block:: python
 
-session = onnxruntime.InferenceSession('model.onnx')
-io_binding = session.io_binding()
-io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
-io_binding.bind_output('output', Y.device.type, 0, np.float32, list(Y.size()), Y.data_ptr())
-session.run_with_iobinding(io_binding)
+	session = onnxruntime.InferenceSession('model.onnx')
+	io_binding = session.io_binding()
+	io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
+	io_binding.bind_output('output', Y.device.type, 0, np.float32, list(Y.size()), Y.data_ptr())
+	session.run_with_iobinding(io_binding)
+
