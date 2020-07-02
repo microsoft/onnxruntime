@@ -794,7 +794,15 @@ const DataTransferManager& TrainingSession::GetDataTransferManager() const {
 bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) const {
   auto output_producer_node = model_->MainGraph().GetProducerNode(output_name);
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
-  return IsFP32Node(output_producer_node);
+
+  for (auto output : output_producer_node->OutputDefs()) {
+    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type()
+        && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
