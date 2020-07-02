@@ -3,7 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "gradient_schema_defs.h"
+#include "orttraining/core/graph/training_op_defs.h"
 #include "onnx/defs/function.h"
 #include <math.h>
 
@@ -319,7 +319,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   return op_schema;
 }
 
-void RegisterGradientSchemas() {
+void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
       .SinceVersion(9)
       .Input(0, "dY", "Gradient of output Y", "T")

@@ -38,9 +38,33 @@ struct MLAS_GEMM_U8X8_WORK_BLOCK {
     const float* BiasFloat;
     uint8_t offa;
     uint8_t offb;
-    bool BTypeIsSigned;
-    bool CTypeIsFloat;
+    bool BIsSigned;
+    bool CIsFloat;
 };
+
+void
+MlasGemmU8X8ScaleSumBuffer(
+    int32_t* D,
+    const int32_t* S,
+    size_t N,
+    int32_t Scale
+    )
+{
+    for (size_t n = 0; n < N; n++) {
+        D[n] = S[n] * Scale;
+    }
+}
+
+MLAS_FORCEINLINE
+void
+MlasGemmU8X8ScaleSumBuffer(
+    int32_t* SumBuffer,
+    size_t N,
+    int32_t Scale
+    )
+{
+    return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
+}
 
 template<typename KernelType>
 MLAS_FORCEINLINE
@@ -68,8 +92,8 @@ Return Value:
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[KernelType::StrideM * KernelType::StrideK], 64);
     MLAS_DECLSPEC_ALIGN(typename KernelType::PackedBType PanelB[KernelType::StrideN * KernelType::StrideK], 64);
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[KernelType::StrideM], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[KernelType::StrideN], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[KernelType::StrideM], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[KernelType::StrideN], 64);
 
     const uint8_t* A = WorkBlock->A;
     const uint8_t* B = WorkBlock->B;
@@ -79,16 +103,18 @@ Return Value:
     const size_t ldb = WorkBlock->ldb;
     const size_t ldc = WorkBlock->ldc;
 
+    int32_t offa = WorkBlock->offa;
+    int32_t offb = typename KernelType::OffsetBType(WorkBlock->offb);
+
     //
     // Flip the sign bit of the zero point offset of matrix B if the kernel uses
     // signed types and the matrix B data is unsigned.
     //
 
-    int16_t offa = WorkBlock->offa;
-    int16_t offb = typename KernelType::OffsetBType(WorkBlock->offb);
-
-    if (std::is_signed<typename KernelType::OffsetBType>::value && !WorkBlock->BTypeIsSigned) {
-        offb = typename KernelType::OffsetBType(offb ^ 0x80);
+    if (std::is_signed<typename KernelType::OffsetBType>::value) {
+        if (!WorkBlock->BIsSigned) {
+            offb = typename KernelType::OffsetBType(offb ^ 0x80);
+        }
     }
 
     //
@@ -119,7 +145,9 @@ Return Value:
             //
 
             KernelType::CopyPackB(PanelB, B + n, ldb, CountN, CountK,
-                ColumnSumVector, -offa, WorkBlock->BTypeIsSigned);
+                ColumnSumBuffer, WorkBlock->BIsSigned);
+
+            MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, CountN, -offa);
 
             //
             // Step through each slice of matrix A along the M dimension.
@@ -141,14 +169,16 @@ Return Value:
                 //
 
                 KernelType::CopyPackA(PanelA, A + m * lda, lda, CountM, CountK,
-                    RowSumVector, -offb);
+                    RowSumBuffer);
+
+                MlasGemmU8X8ScaleSumBuffer(RowSumBuffer, CountM, -offb);
 
                 //
                 // Step through the rows of the local packed buffer.
                 //
 
                 typename KernelType::PackedAType* pa = PanelA;
-                int32_t* RowSums = RowSumVector;
+                int32_t* RowSums = RowSumBuffer;
                 size_t RowsRemaining = CountM;
 
                 bool ZeroMode = (k == 0);
@@ -159,10 +189,10 @@ Return Value:
                     size_t RowsHandled;
 
                     RowsHandled = KernelType::Kernel(pa, PanelB, c, PackedCountK,
-                        RowsRemaining, CountN, ldc, RowSums, ColumnSumVector,
+                        RowsRemaining, CountN, ldc, RowSums, ColumnSumBuffer,
                         DepthValue, ZeroMode);
 
-                    if (PostProcess && WorkBlock->CTypeIsFloat) {
+                    if (PostProcess && WorkBlock->CIsFloat) {
                         KernelType::OutputFloat(WorkBlock, c, n, RowsHandled, CountN);
                     }
 
@@ -188,8 +218,7 @@ MlasGemmU8X8CopyPackASse(
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumVector,
-    int16_t offb
+    int32_t* RowSumBuffer
     )
 /*++
 
@@ -210,12 +239,8 @@ Arguments:
 
     CountK - Supplies the number of columns of the source matrix to copy.
 
-    RowSumVector - Supplies the address of the buffer to receive the sums of
-        the elements from each of the rows. Each sum has also been multiplied
-        by the zero point offset.
-
-    offb - Supplies the zero point offset for the other source matrix of the
-        matrix multiplication.
+    RowSumBuffer - Supplies the address of the buffer to receive the sums of
+        the elements along each of the rows.
 
 Return Value:
 
@@ -224,7 +249,7 @@ Return Value:
 --*/
 {
     const __m128i ZeroVector = _mm_setzero_si128();
-    const __m128i OffsetBroadcast = _mm_set1_epi16(offb);
+    const __m128i OnesWordBroadcast = _mm_set1_epi16(1);
     uint8_t PaddedMatrixAData[8] = { 0 };
 
     //
@@ -235,7 +260,7 @@ Return Value:
 
         const uint8_t* a = A;
         size_t k = CountK;
-        __m128i RowSum = ZeroVector;
+        __m128i ReductionVector = ZeroVector;
 
         //
         // Zero extend the source bytes to 16-bits and write to the packed
@@ -255,7 +280,7 @@ Return Value:
             __m128i Bytes = _mm_loadl_epi64((__m128i*)&a[0]);
             __m128i Words = _mm_unpacklo_epi8(Bytes, ZeroVector);
 
-            RowSum = _mm_add_epi16(RowSum, Words);
+            ReductionVector = _mm_add_epi16(ReductionVector, Words);
 
             _mm_storeu_si128((__m128i*)&D[0], Words);
 
@@ -282,7 +307,7 @@ Return Value:
             __m128i Bytes = _mm_loadl_epi64((__m128i*)PaddedMatrixAData);
             __m128i Words = _mm_unpacklo_epi8(Bytes, ZeroVector);
 
-            RowSum = _mm_add_epi16(RowSum, Words);
+            ReductionVector = _mm_add_epi16(ReductionVector, Words);
 
             //
             // Copy pairs of 16-bit values from the vector to the packed
@@ -297,15 +322,16 @@ Return Value:
         }
 
         //
-        // Reduce the sum for the single row of output and multiply by the
-        // zero point offset of the other source matrix.
+        // Reduce the partial accumulators.
         //
 
-        RowSum = _mm_madd_epi16(RowSum, OffsetBroadcast);
-        RowSum = _mm_add_epi32(RowSum, _mm_shuffle_epi32(RowSum, _MM_SHUFFLE(3, 2, 3, 2)));
-        RowSum = _mm_add_epi32(RowSum, _mm_shuffle_epi32(RowSum, _MM_SHUFFLE(0, 1, 0, 1)));
+        ReductionVector = _mm_madd_epi16(ReductionVector, OnesWordBroadcast);
+        ReductionVector = _mm_add_epi32(ReductionVector,
+            _mm_shuffle_epi32(ReductionVector, _MM_SHUFFLE(3, 2, 3, 2)));
+        ReductionVector = _mm_add_epi32(ReductionVector,
+            _mm_shuffle_epi32(ReductionVector, _MM_SHUFFLE(0, 1, 0, 1)));
 
-        *RowSumVector++ = _mm_cvtsi128_si32(RowSum);
+        *RowSumBuffer++ = _mm_cvtsi128_si32(ReductionVector);
 
         A += lda;
         CountM -= 1;
@@ -342,9 +368,8 @@ MlasGemmU8X8CopyPackBSse(
     size_t ldb,
     size_t CountN,
     size_t CountK,
-    int32_t* ColumnSumVector,
-    int16_t offa,
-    bool BTypeIsSigned
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned
     )
 /*++
 
@@ -365,12 +390,11 @@ Arguments:
 
     CountK - Supplies the number of rows of the source matrix to copy.
 
-    ColumnSumVector - Supplies the address of the buffer to receive the sums of
-        the elements from each of the columns. Each sum has also been multiplied
-        by the zero point offset.
+    ColumnSumBuffer - Supplies the address of the buffer to receive the sums of
+        the elements along each of the columns.
 
-    offa - Supplies the zero point offset for the other source matrix of the
-        matrix multiplication.
+    BIsSigned - Supplies true if the source matrix is signed data, else false
+        if the source matrix is unsigned data.
 
 Return Value:
 
@@ -378,8 +402,8 @@ Return Value:
 
 --*/
 {
-    const __m128i OffsetBroadcast = _mm_set1_epi16(offa);
-    const __m128i BitFlipVector = _mm_set1_epi32(BTypeIsSigned ? 0 : 0x80808080);
+    const __m128i OnesWordBroadcast = _mm_set1_epi16(1);
+    const __m128i BitFlipVector = _mm_set1_epi32(BIsSigned ? 0 : 0x80808080);
 
     //
     // Process 8 columns of matrix B in a loop.
@@ -424,17 +448,16 @@ Return Value:
         }
 
         //
-        // Reduce the sum for the packed columns and multiply by the zero point
-        // offset of the other source matrix.
+        // Reduce the partial accumulators.
         //
 
-        ColumnSums[0] = _mm_madd_epi16(ColumnSums[0], OffsetBroadcast);
-        ColumnSums[1] = _mm_madd_epi16(ColumnSums[1], OffsetBroadcast);
+        ColumnSums[0] = _mm_madd_epi16(ColumnSums[0], OnesWordBroadcast);
+        ColumnSums[1] = _mm_madd_epi16(ColumnSums[1], OnesWordBroadcast);
 
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSums[0]);
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSums[1]);
+        _mm_storeu_si128((__m128i*)&ColumnSumBuffer[0], ColumnSums[0]);
+        _mm_storeu_si128((__m128i*)&ColumnSumBuffer[4], ColumnSums[1]);
 
-        ColumnSumVector += 8;
+        ColumnSumBuffer += 8;
 
         B += 8;
         CountN -= 8;
@@ -506,11 +529,11 @@ Return Value:
         // offset of the other source matrix.
         //
 
-        ColumnSums[0] = _mm_madd_epi16(ColumnSums[0], OffsetBroadcast);
-        ColumnSums[1] = _mm_madd_epi16(ColumnSums[1], OffsetBroadcast);
+        ColumnSums[0] = _mm_madd_epi16(ColumnSums[0], OnesWordBroadcast);
+        ColumnSums[1] = _mm_madd_epi16(ColumnSums[1], OnesWordBroadcast);
 
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[0], ColumnSums[0]);
-        _mm_storeu_si128((__m128i*)&ColumnSumVector[4], ColumnSums[1]);
+        _mm_storeu_si128((__m128i*)&ColumnSumBuffer[0], ColumnSums[0]);
+        _mm_storeu_si128((__m128i*)&ColumnSumBuffer[4], ColumnSums[1]);
     }
 }
 
@@ -536,8 +559,8 @@ MlasGemmU8X8KernelSse(
     int32_t* C,
     size_t PackedCountK,
     size_t CountN,
-    const int32_t* RowSumVector,
-    const int32_t* ColumnSumVector,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
     int32_t DepthValue,
     bool ZeroMode
     )
@@ -564,11 +587,11 @@ Arguments:
     CountN - Supplies the number of columns from matrix B and matrix C to iterate
         over.
 
-    RowSumVector - Supplies the sum of each row from matrix A multiplied by the
+    RowSumBuffer - Supplies the sum of each row from matrix A multiplied by the
         zero point offset of matrix B. These values are accumulated into every
         row of matrix C.
 
-    ColumnSumVector - Supplies the sum of each column from matrix B multiplied
+    ColumnSumBuffer - Supplies the sum of each column from matrix B multiplied
         by the zero point offset of matrix A. These values are accumulated into
         every column of matrix C.
 
@@ -595,11 +618,11 @@ Return Value:
         //
 
         Accumulators[0] = _mm_set1_epi32(DepthValue);
-        Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_set1_epi32(RowSumVector[0]));
+        Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_set1_epi32(RowSumBuffer[0]));
         Accumulators[1] = Accumulators[0];
-        Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_loadu_si128((__m128i*)&ColumnSumVector[0]));
-        Accumulators[1] = _mm_add_epi32(Accumulators[1], _mm_loadu_si128((__m128i*)&ColumnSumVector[4]));
-        ColumnSumVector += 8;
+        Accumulators[0] = _mm_add_epi32(Accumulators[0], _mm_loadu_si128((__m128i*)&ColumnSumBuffer[0]));
+        Accumulators[1] = _mm_add_epi32(Accumulators[1], _mm_loadu_si128((__m128i*)&ColumnSumBuffer[4]));
+        ColumnSumBuffer += 8;
 
         //
         // Broadcast each pair of 16-bit values from the matrix A and multiply
@@ -832,11 +855,10 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
         size_t lda,
         size_t CountM,
         size_t CountK,
-        int32_t* RowSumVector,
-        int16_t offb
+        int32_t* RowSumBuffer
         )
     {
-        MlasGemmU8X8CopyPackASse(D, A, lda, CountM, CountK, RowSumVector, offb);
+        MlasGemmU8X8CopyPackASse(D, A, lda, CountM, CountK, RowSumBuffer);
     }
 
     MLAS_FORCEINLINE
@@ -848,13 +870,12 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
         size_t ldb,
         size_t CountN,
         size_t CountK,
-        int32_t* ColumnSumVector,
-        int16_t offa,
-        bool BTypeIsSigned
+        int32_t* ColumnSumBuffer,
+        bool BIsSigned
         )
     {
-        MlasGemmU8X8CopyPackBSse(D, B, ldb, CountN, CountK, ColumnSumVector, offa,
-            BTypeIsSigned);
+        MlasGemmU8X8CopyPackBSse(D, B, ldb, CountN, CountK, ColumnSumBuffer,
+            BIsSigned);
     }
 
     MLAS_FORCEINLINE
@@ -868,8 +889,8 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
         size_t CountM,
         size_t CountN,
         size_t ldc,
-        const int32_t* RowSumVector,
-        const int32_t* ColumnSumVector,
+        const int32_t* RowSumBuffer,
+        const int32_t* ColumnSumBuffer,
         int32_t DepthValue,
         bool ZeroMode
         )
@@ -877,8 +898,8 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
         MLAS_UNREFERENCED_PARAMETER(CountM);
         MLAS_UNREFERENCED_PARAMETER(ldc);
 
-        MlasGemmU8X8KernelSse(A, B, C, PackedCountK, CountN, RowSumVector,
-            ColumnSumVector, DepthValue, ZeroMode);
+        MlasGemmU8X8KernelSse(A, B, C, PackedCountK, CountN, RowSumBuffer,
+            ColumnSumBuffer, DepthValue, ZeroMode);
 
         return 1;
     }
@@ -955,8 +976,7 @@ extern "C" {
         size_t lda,
         size_t CountM,
         size_t CountK,
-        int32_t* RowSumVector,
-        int16_t offb
+        int32_t* RowSumBuffer
         );
 
     void
@@ -967,9 +987,8 @@ extern "C" {
         size_t ldb,
         size_t CountN,
         size_t CountK,
-        int32_t* ColumnSumVector,
-        int16_t offa,
-        bool BTypeIsSigned
+        int32_t* ColumnSumBuffer,
+        bool BIsSigned
         );
 
     void
@@ -980,8 +999,7 @@ extern "C" {
         size_t lda,
         size_t CountM,
         size_t CountK,
-        int32_t* RowSumVector,
-        int16_t offb
+        int32_t* RowSumBuffer
         );
 
     void
@@ -992,8 +1010,7 @@ extern "C" {
         size_t ldb,
         size_t CountN,
         size_t CountK,
-        int32_t* ColumnSumVector,
-        int16_t offa
+        int32_t* ColumnSumBuffer
         );
 }
 
@@ -1017,11 +1034,10 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
         size_t lda,
         size_t CountM,
         size_t CountK,
-        int32_t* RowSumVector,
-        int16_t offb
+        int32_t* RowSumBuffer
         )
     {
-        MlasGemmU8S8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumVector, offb);
+        MlasGemmU8S8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
     }
 
     MLAS_FORCEINLINE
@@ -1033,13 +1049,12 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
         size_t ldb,
         size_t CountN,
         size_t CountK,
-        int32_t* ColumnSumVector,
-        int16_t offa,
-        bool BTypeIsSigned
+        int32_t* ColumnSumBuffer,
+        bool BIsSigned
         )
     {
-        MlasGemmU8S8CopyPackBAvx2(D, B, ldb, CountN, CountK, ColumnSumVector, offa,
-            BTypeIsSigned);
+        MlasGemmU8S8CopyPackBAvx2(D, B, ldb, CountN, CountK, ColumnSumBuffer,
+            BIsSigned);
     }
 
     MLAS_FORCEINLINE
@@ -1053,14 +1068,14 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
         size_t CountM,
         size_t CountN,
         size_t ldc,
-        const int32_t* RowSumVector,
-        const int32_t* ColumnSumVector,
+        const int32_t* RowSumBuffer,
+        const int32_t* ColumnSumBuffer,
         int32_t DepthValue,
         bool ZeroMode
         )
     {
         return MlasPlatform.GemmU8S8Kernel(A, B, C, PackedCountK, CountM, CountN,
-            ldc, RowSumVector, ColumnSumVector, DepthValue, ZeroMode);
+            ldc, RowSumBuffer, ColumnSumBuffer, DepthValue, ZeroMode);
     }
 
     MLAS_FORCEINLINE
@@ -1107,7 +1122,7 @@ Return Value:
 
 --*/
 {
-    if ((WorkBlock->M == 1) && WorkBlock->BTypeIsSigned && !WorkBlock->CTypeIsFloat &&
+    if ((WorkBlock->M == 1) && WorkBlock->BIsSigned && !WorkBlock->CIsFloat &&
         (WorkBlock->offa == 0) && (WorkBlock->offb == 0)) {
 
         if (MlasPlatform.GemvU8S8Kernel != nullptr) {
@@ -1140,11 +1155,10 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
         size_t lda,
         size_t CountM,
         size_t CountK,
-        int32_t* RowSumVector,
-        int16_t offb
+        int32_t* RowSumBuffer
         )
     {
-        MlasGemmU8U8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumVector, offb);
+        MlasGemmU8U8CopyPackAAvx2(D, A, lda, CountM, CountK, RowSumBuffer);
     }
 
     MLAS_FORCEINLINE
@@ -1156,14 +1170,13 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
         size_t ldb,
         size_t CountN,
         size_t CountK,
-        int32_t* ColumnSumVector,
-        int16_t offa,
-        bool BTypeIsSigned
+        int32_t* ColumnSumBuffer,
+        bool BIsSigned
         )
     {
-        MLAS_UNREFERENCED_PARAMETER(BTypeIsSigned);
+        MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
-        MlasGemmU8U8CopyPackBAvx2(D, B, ldb, CountN, CountK, ColumnSumVector, offa);
+        MlasGemmU8U8CopyPackBAvx2(D, B, ldb, CountN, CountK, ColumnSumBuffer);
     }
 
     MLAS_FORCEINLINE
@@ -1177,14 +1190,14 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
         size_t CountM,
         size_t CountN,
         size_t ldc,
-        const int32_t* RowSumVector,
-        const int32_t* ColumnSumVector,
+        const int32_t* RowSumBuffer,
+        const int32_t* ColumnSumBuffer,
         int32_t DepthValue,
         bool ZeroMode
         )
     {
         return MlasPlatform.GemmU8U8Kernel(A, B, C, PackedCountK, CountM, CountN,
-            ldc, RowSumVector, ColumnSumVector, DepthValue, ZeroMode);
+            ldc, RowSumBuffer, ColumnSumBuffer, DepthValue, ZeroMode);
     }
 
     MLAS_FORCEINLINE
@@ -1319,7 +1332,7 @@ Return Value:
     }
 
 #if defined(MLAS_TARGET_AMD64)
-    if (WorkBlock->BTypeIsSigned) {
+    if (LocalWorkBlock.BIsSigned) {
         MlasPlatform.GemmU8S8Operation(&LocalWorkBlock);
     } else {
         MlasPlatform.GemmU8U8Operation(&LocalWorkBlock);
@@ -1488,7 +1501,7 @@ Return Value:
     WorkBlock.ldc = ldc;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
-    WorkBlock.BTypeIsSigned = std::is_signed<BType>::value;
+    WorkBlock.BIsSigned = std::is_signed<BType>::value;
 
     //
     // Schedule the operation across a set of worker threads.
@@ -1614,8 +1627,8 @@ Return Value:
     WorkBlock.BiasFloat = Bias;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
-    WorkBlock.BTypeIsSigned = std::is_signed<BType>::value;
-    WorkBlock.CTypeIsFloat = true;
+    WorkBlock.BIsSigned = std::is_signed<BType>::value;
+    WorkBlock.CIsFloat = true;
 
     //
     // Schedule the operation across a set of worker threads.
