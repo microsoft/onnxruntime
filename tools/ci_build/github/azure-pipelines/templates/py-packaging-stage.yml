@@ -60,7 +60,7 @@ stages:
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
     - job: Linux_py_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 110
       workspace:
         clean: all
       pool: Linux-CPU
