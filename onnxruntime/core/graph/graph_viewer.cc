@@ -11,6 +11,11 @@
 #include "core/graph/graph_utils.h"
 
 namespace onnxruntime {
+
+bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
+  return n1->Index() < n2->Index();
+}
+
 GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;
   std::vector<const Node*> leaf_nodes;

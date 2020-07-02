@@ -152,10 +152,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-// Enable TRACE_EXECUTION compile flag to dump execution plan
-// #if defined(TRACE_EXECUTION)
-//  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-// #endif
+  // Enable TRACE_EXECUTION compile flag to dump execution plan
+  // #if defined(TRACE_EXECUTION)
+  // std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+  // #endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 
@@ -445,12 +445,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     session_state.Profiler().EndTimeAndRecordEvent(profiling::SESSION_EVENT, "SequentialExecutor::Execute", tp);
   }
 
-  for (auto i: frame.GetStaticMemorySizeInfo()) {
+  for (auto i : frame.GetStaticMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame statically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }
 
-  for (auto i: frame.GetDynamicMemorySizeInfo()) {
+  for (auto i : frame.GetDynamicMemorySizeInfo()) {
     LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
                        << i.second << " bytes for " << i.first << std::endl;
   }

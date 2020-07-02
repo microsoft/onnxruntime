@@ -169,7 +169,7 @@ Status TrainingRunner::Initialize() {
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
     gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
     gt_config.gelu_checkpoint = params_.gelu_checkpoint;
-    
+
     config.graph_transformer_config = gt_config;
   }
 
@@ -658,8 +658,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
   Status status = Status::OK();
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-                                                             const size_t worker_id, const size_t step) {
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -745,8 +744,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
   // Async launch of a session.
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
-                                                             const size_t worker_id, const size_t step) {
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
