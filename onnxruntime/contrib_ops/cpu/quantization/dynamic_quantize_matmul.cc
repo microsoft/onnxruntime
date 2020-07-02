@@ -92,6 +92,8 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   auto* y_data = y->template MutableData<float>();
   const float multiplier = a_scale * b_scale;
 
+  const auto* bias_tensor = ctx->Input<Tensor>(4);
+
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
@@ -108,7 +110,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
           y_data + helper.OutputOffsets()[i],
           static_cast<int>(helper.N()),
           &multiplier,
-          nullptr,
+          bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr,
           thread_pool);
   }
 
