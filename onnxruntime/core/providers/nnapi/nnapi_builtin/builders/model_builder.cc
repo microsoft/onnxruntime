@@ -40,7 +40,6 @@ bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
     if (supported_node_vec.size() == 1) {
       const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
       const auto* node(graph_view.GetNode(node_indices[supported_node_vec[0]]));
-      ORT_ENFORCE(nullptr != node, "node should not be null");
       const auto& op = node->OpType();
       // It is not worth it to perform a single Reshape/Dropout/Identity operator
       // which is only copying the data in NNAPI
@@ -72,7 +71,6 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_view_.GetNode(node_indices[i]));
-    ORT_ENFORCE(nullptr != node, "node should not be null");
     bool supported = IsNodeSupported(*node);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << i
@@ -176,7 +174,6 @@ void ModelBuilder::GetTargetDevices() {
 
 void ModelBuilder::GetAllInitializers() {
   for (const auto& pair : graph_view_.GetAllInitializedTensors()) {
-    ORT_ENFORCE(pair.second != nullptr, "Initializer is null for: " + pair.first);
     initializers_.emplace(pair.first, *pair.second);
   }
 }
@@ -185,9 +182,8 @@ void ModelBuilder::PreprocessInitializers() {
   const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_view_.GetNode(node_indices[i]));
-    ORT_ENFORCE(nullptr != node, "node should not be null");
-    if (auto* opBuilder = GetOpBuilder(*node)) {
-      opBuilder->AddInitializersToSkip(*this, *node);
+    if (auto* op_builder = GetOpBuilder(*node)) {
+      op_builder->AddInitializersToSkip(*this, *node);
     }
   }
 }
@@ -263,7 +259,6 @@ void ModelBuilder::RegisterInitializers() {
 
 void ModelBuilder::RegisterModelInputs() {
   for (const auto* node_arg : graph_view_.GetInputs()) {
-    ORT_ENFORCE(node_arg != nullptr, "input cannot be null");
     const auto& input_name = node_arg->Name();
 
     {  // input should not be an initializer
@@ -312,7 +307,6 @@ void ModelBuilder::RegisterModelInputs() {
 
 void ModelBuilder::RegisterModelOutputs() {
   for (const auto* node_arg : graph_view_.GetOutputs()) {
-    ORT_ENFORCE(node_arg != nullptr, "input cannot be null");
     const auto& output_name = node_arg->Name();
 
     if (!Contains(operands_, output_name)) {
@@ -410,12 +404,10 @@ void ModelBuilder::AddOperations() {
   const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_view_.GetNode(node_indices[i]));
-    ORT_ENFORCE(nullptr != node, "node should not be null");
-    if (auto* opBuilder = GetOpBuilder(*node)) {
-      opBuilder->AddToModelBuilder(*this, *node);
+    if (auto* op_builder = GetOpBuilder(*node)) {
+      op_builder->AddToModelBuilder(*this, *node);
     } else {
-      throw std::invalid_argument(
-          "Node not supported" + node->Name());
+      ORT_THROW("Node [" + node->Name() + "], type [" + node->OpType() + "] is not supported");
     }
   }
 }
@@ -483,21 +475,19 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
   return std::move(nnapi_model_);
 }
 
-int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node,
-                                     const NodeArg* output) {
-  ORT_ENFORCE(output != nullptr, "output cannot be null");
+int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node, const NodeArg& output) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
     if (dst_node.OpType() == "Relu") {
-      if (output == dst_input) {
+      if (&output == dst_input) {
         fuse_code = ANEURALNETWORKS_FUSED_RELU;
       }
     } else {
       // if there is any other non-relu node using the output
       // will add relu separately
-      if (output == dst_input)
+      if (&output == dst_input)
         return ANEURALNETWORKS_FUSED_NONE;
     }
   }
@@ -505,14 +495,14 @@ int32_t ModelBuilder::FindActivation(const onnxruntime::Node& node,
   // if output is a graph output, will add relu separately
   if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
     for (const auto* graph_output : graph_view_.GetOutputs()) {
-      if (output == graph_output)
+      if (&output == graph_output)
         return ANEURALNETWORKS_FUSED_NONE;
     }
 
     LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
-                          << "], fused the output [" << output->Name() << "]";
+                          << "], fused the output [" << output.Name() << "]";
 
-    fused_activations_.insert(output->Name());
+    fused_activations_.insert(output.Name());
   }
 
   return fuse_code;

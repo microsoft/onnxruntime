@@ -14,6 +14,7 @@ namespace nnapi {
 
 using namespace android::nn::wrapper;
 using std::vector;
+using Shape = Shaper::Shape;
 
 #pragma region helpers
 
@@ -42,7 +43,7 @@ void AddTransposeOperator(ModelBuilder& model_builder,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));  // input
 
-  ModelBuilder::Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
+  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
   OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
   uint32_t perm_idx = model_builder.AddOperandFromPersistMemoryBuffer(
       perm_name, perm.data(), perm_operand_type);
@@ -123,11 +124,9 @@ void AddBinaryOperator(int32_t op_type,
   model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
-bool GetType(const onnxruntime::Node& node, int32_t& type) {
+bool GetType(const ONNX_NAMESPACE::TypeProto* type_proto, int32_t& type) {
   type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  auto* type_proto = node.InputDefs()[0]->TypeAsProto();
-  if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] has no input type";
+  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
     return false;
   }
 
@@ -135,16 +134,17 @@ bool GetType(const onnxruntime::Node& node, int32_t& type) {
   return true;
 }
 
-Shaper::Shape GetShape(const ONNX_NAMESPACE::TensorShapeProto* shape_proto) {
-  Shaper::Shape shape;
-  if (!shape_proto)
-    return shape;
+bool GetShape(const ONNX_NAMESPACE::TensorShapeProto* shape_proto, Shape& shape) {
+  shape.clear();
 
+  if (!shape_proto)
+    return false;
+
+  // NNAPI uses 0 for dynamic dimension, which is the default value for dim.dim_value()
   for (const auto& dim : shape_proto->dim())
-    // NNAPI uses 0 for dynamic dimension, which is the default value for dim.dim_value()
     shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
 
-  return shape;
+  return true;
 }
 
 enum DataLayout {
@@ -157,7 +157,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
                                    const std::string& name,
                                    DataLayout new_layout) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
-  ModelBuilder::Shape shape;
+  Shape shape;
   for (auto dim : tensor.dims())
     shape.push_back(SafeInt<uint32_t>(dim));
 
@@ -175,7 +175,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   auto out_t = shape[0], in_t = shape[1],
        h_t = shape[2], w_t = shape[3];
-  ModelBuilder::Shape dest_shape;
+  Shape dest_shape;
   if (new_layout == L_0231)
     dest_shape = {out_t, h_t, w_t, in_t};  // L_0231
   else
@@ -221,7 +221,7 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
 uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
                                   const std::string& name) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
-  ModelBuilder::Shape shape;
+  Shape shape;
   for (auto dim : tensor.dims())
     shape.push_back(SafeInt<uint32_t>(dim));
 
@@ -238,7 +238,7 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
   }
 
   auto x_t = shape[0], y_t = shape[1];
-  ModelBuilder::Shape dest_shape = {y_t, x_t};
+  Shape dest_shape = {y_t, x_t};
   const OperandType operandType(type, dest_shape);
   const float* src = GetTensorFloatData(tensor);
   float* buffer = new float[Product(shape)];
@@ -307,8 +307,10 @@ bool BaseOpBuilder::HasSupportedInputs(const onnxruntime::Node& node) {
   // We only check the type of input 0 by default
   // specific op builder can override this
   int32_t input_type;
-  if (!GetType(node, input_type))
+  if (!GetType(node.InputDefs()[0]->TypeAsProto(), input_type)) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] input 0 has no input type";
     return false;
+  }
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
@@ -420,7 +422,7 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   AddBinaryOperator(op_code, model_builder, input1, input2, fuse_code, output, output_is_nhwc);
 }
 
@@ -477,7 +479,14 @@ class TransposeOpBuilder : public BaseOpBuilder {
 
 bool TransposeOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
                                            const onnxruntime::Node& node) {
-  const auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+  Shape input_shape;
+  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
+    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                          << node.OpType() << "] has no shape info";
+    return false;
+  }
+
+  const auto input_size = input_shape.size();
   if (input_size > 4 || input_size == 0) {
     LOGS_DEFAULT(VERBOSE) << "Transpose only supports 1-4d shape, input is "
                           << input_size << "d shape";
@@ -552,7 +561,13 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
     return false;
   }
 
-  const auto input_shape = GetShape(node.InputDefs()[0]->Shape());
+  Shape input_shape;
+  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
+    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                          << node.OpType() << "] has no shape info";
+    return false;
+  }
+
   if (input_shape.size() > 4 || input_shape.empty()) {
     LOGS_DEFAULT(VERBOSE) << "Reshape only supports up to 1-4d shape, input is "
                           << input_shape.size() << "d shape";
@@ -600,7 +615,7 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const int64_t* rawShape = GetTensorInt64Data(shape_tensor);
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
-  ModelBuilder::Shape input_shape = shaper[input];
+  Shape input_shape = shaper[input];
   std::vector<int32_t> shape(size);
   for (uint32_t i = 0; i < size; i++) {
     int32_t dim = SafeInt<int32_t>(rawShape[i]);
@@ -608,7 +623,7 @@ void ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     shape[i] = dim == 0 ? input_shape[i] : dim;
   }
 
-  ModelBuilder::Shape shape_dimen = {size};
+  Shape shape_dimen = {size};
   std::string shape_name = model_builder.GetUniqueName(node.Name() + input + "newshape");
   OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
   uint32_t shape_idx = model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type);
@@ -716,7 +731,7 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   const auto tensor_a_name = model_builder.GetUniqueName(node.Name() + input + "_imm_a");
   const auto tensor_b_name = model_builder.GetUniqueName(node.Name() + input + "_imm_b");
   const auto tensor_imm_product_name = model_builder.GetUniqueName(node.Name() + input + "_imm_mul");
-  ModelBuilder::Shape tensor_a_dimen;
+  Shape tensor_a_dimen;
 
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
@@ -741,7 +756,7 @@ void BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
                     output_is_nhwc);
 
   // Add
-  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   AddBinaryOperator(ANEURALNETWORKS_ADD,
                     model_builder,
                     tensor_imm_product_name, tensor_b_name,
@@ -812,7 +827,14 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
       return false;
     }
   } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
-    const auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+    Shape input_shape;
+    if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
+      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                            << node.OpType() << "] has no shape info";
+      return false;
+    }
+
+    const auto input_size = input_shape.size();
     if (input_size != 4) {
       LOGS_DEFAULT(VERBOSE)
           << "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in "
@@ -874,7 +896,7 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                      static_cast<int32_t>(shaper[input][2])};
   }
 
-  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
@@ -1011,7 +1033,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     bias_idx_val = operand_indices.at(bias);
   } else {
     const auto weight_dimen = shaper[weight];
-    ModelBuilder::Shape bias_dimen;
+    Shape bias_dimen;
     if (conv2d)
       bias_dimen = {weight_dimen[0]};
     else
@@ -1042,7 +1064,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     int32_t depthwiseMultiplier = shaper[weight][3] / group;
     input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
   }
-  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
   // TODO support API 28
   input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
@@ -1151,7 +1173,14 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
 
 bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
                                          const onnxruntime::Node& node) {
-  const auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+  Shape input_shape;
+  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
+    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                          << node.OpType() << "] has no shape info";
+    return false;
+  }
+
+  const auto input_size = input_shape.size();
   if (input_size != 2 && input_size != 4) {
     LOGS_DEFAULT(VERBOSE) << "SoftMax only support 2d/4d shape, input is "
                           << input_size << "d shape";
@@ -1243,14 +1272,32 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
   const auto& op = node.OpType();
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  if (GetShape(node.InputDefs()[0]->Shape()).size() != 2) {
-    LOGS_DEFAULT(VERBOSE) << "A must be 2D";
-    return false;
+  Shape a_shape;
+  {
+    if (!GetShape(node.InputDefs()[0]->Shape(), a_shape)) {
+      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                            << node.OpType() << "] has no shape A info";
+      return false;
+    }
+
+    if (a_shape.size() != 2) {
+      LOGS_DEFAULT(VERBOSE) << "A must be 2D";
+      return false;
+    }
   }
 
-  if (GetShape(node.InputDefs()[1]->Shape()).size() != 2) {
-    LOGS_DEFAULT(VERBOSE) << "B must be 2D";
-    return false;
+  Shape b_shape;
+  {
+    if (!GetShape(node.InputDefs()[1]->Shape(), b_shape)) {
+      LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                            << node.OpType() << "] has no shape B info";
+      return false;
+    }
+
+    if (b_shape.size() != 2) {
+      LOGS_DEFAULT(VERBOSE) << "B must be 2D";
+      return false;
+    }
   }
 
   if (op == "MatMul") {  // Only support A*B B is an initializer
@@ -1280,8 +1327,13 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder,
     }
 
     if (node.InputDefs().size() == 3) {
-      const auto b_shape = GetShape(node.InputDefs()[1]->Shape());
-      const auto c_shape = GetShape(node.InputDefs()[2]->Shape());
+      Shape c_shape;
+      if (!GetShape(node.InputDefs()[2]->Shape(), c_shape)) {
+        LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                              << node.OpType() << "] has no shape C info";
+        return false;
+      }
+
       if (c_shape.size() != 1 ||
           c_shape[0] != (transB == 0 ? b_shape[1] : b_shape[0])) {
         LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector of b_shape[0]"
@@ -1333,7 +1385,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (node.InputDefs().size() == 2) {
     std::string bias = node.Name() + op + "_bias";
     const auto& B_type = operand_types.at(input2).type;
-    ModelBuilder::Shape bias_dimen = {shaper[input2][0]};
+    Shape bias_dimen = {shaper[input2][0]};
     if (B_type == Type::TENSOR_FLOAT32) {
       float buffer[bias_dimen[0]];
       for (uint32_t i = 0; i < bias_dimen[0]; i++) {
@@ -1353,7 +1405,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
-  int32_t fuse_code = model_builder.FindActivation(node, node.OutputDefs()[0]);
+  int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
 
   shaper.FC(input1, input2, output);
@@ -1446,7 +1498,14 @@ class ConcatOpBuilder : public BaseOpBuilder {
 
 bool ConcatOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */,
                                         const onnxruntime::Node& node) {
-  auto input_size = GetShape(node.InputDefs()[0]->Shape()).size();
+  Shape input_shape;
+  if (!GetShape(node.InputDefs()[0]->Shape(), input_shape)) {
+    LOGS_DEFAULT(WARNING) << "Node [" << node.Name() << "] type ["
+                          << node.OpType() << "] has no shape info";
+    return false;
+  }
+
+  const auto input_size = input_shape.size();
   if (input_size > 4 || input_size == 0) {
     LOGS_DEFAULT(VERBOSE) << "Concat only supports up to 1-4d shape, input is "
                           << input_size << "d shape";

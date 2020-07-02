@@ -44,7 +44,7 @@ class ModelBuilder {
                     const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const onnxruntime::Node& node, const NodeArg* output);
+  int32_t FindActivation(const onnxruntime::Node& node, const NodeArg& output);
 
   // Add an NNAPI scalar operand
   uint32_t AddOperandFromScalar(bool value);
