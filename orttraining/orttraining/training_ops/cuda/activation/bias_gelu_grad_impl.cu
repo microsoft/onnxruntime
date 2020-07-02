@@ -22,26 +22,34 @@ __global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X,
   T reg_X[num_elements_per_thread];
   T reg_B[num_elements_per_thread];
 
+  {
+    auto input_idx = input_base_idx;
+    auto bias_idx = bias_base_idx;
 #pragma unroll
-  for (int element_idx = 0; element_idx < num_elements_per_thread; ++element_idx) {
-    const auto offset = element_stride * element_idx;
-    const auto input_idx = input_base_idx + offset;
-    const auto bias_idx = bias_base_idx + offset;
-    if (bias_idx < bias_size) {
-      reg_dY[element_idx] = dY[input_idx];
-      reg_X[element_idx] = X[input_idx];
-      reg_B[element_idx] = B[bias_idx];
+    for (int element_idx = 0; element_idx < num_elements_per_thread; ++element_idx) {
+      if (bias_idx < bias_size) {
+        reg_dY[element_idx] = dY[input_idx];
+        reg_X[element_idx] = X[input_idx];
+        reg_B[element_idx] = B[bias_idx];
+
+        input_idx += element_stride;
+        bias_idx += element_stride;
+      }
     }
   }
 
+  {
+    auto input_idx = input_base_idx;
+    auto bias_idx = bias_base_idx;
 #pragma unroll
-  for (int element_idx = 0; element_idx < num_elements_per_thread; ++element_idx) {
-    const auto offset = element_stride * element_idx;
-    const auto input_idx = input_base_idx + offset;
-    const auto bias_idx = bias_base_idx + offset;
-    if (bias_idx < bias_size) {
-      dX[input_idx] = ComputeGeluGradScalar(
-          reg_dY[element_idx], reg_X[element_idx] + reg_B[element_idx], GeluComputationMode{});
+    for (int element_idx = 0; element_idx < num_elements_per_thread; ++element_idx) {
+      if (bias_idx < bias_size) {
+        dX[input_idx] = ComputeGeluGradScalar(
+            reg_dY[element_idx], reg_X[element_idx] + reg_B[element_idx], GeluComputationMode{});
+
+        input_idx += element_stride;
+        bias_idx += element_stride;
+      }
     }
   }
 }
