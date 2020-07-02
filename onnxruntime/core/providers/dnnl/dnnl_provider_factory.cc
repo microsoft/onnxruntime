@@ -31,10 +31,8 @@ std::unique_ptr<Provider_IExecutionProvider> DnnlProviderFactory::CreateProvider
 }
 
 struct Dnnl_Provider : Provider {
-  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
-    //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
-    // Will be fixed by PR #2850
-    return std::make_shared<DnnlProviderFactory>(device_id);
+  std::shared_ptr<Provider_IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
+    return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
   void SetProviderHost(ProviderHost& host) {

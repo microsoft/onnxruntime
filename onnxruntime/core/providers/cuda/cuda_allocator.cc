@@ -23,7 +23,7 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    ORT_ENFORCE(current_device == info_.id);
+    ORT_ENFORCE(current_device == Info().id);
   } else if (throw_when_fail) {
     CUDA_CALL_THROW(cuda_err);
   }
@@ -47,10 +47,6 @@ void CUDAAllocator::Free(void* p) {
   cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
 }
 
-const OrtMemoryInfo& CUDAAllocator::Info() const {
-  return info_;
-}
-
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
   return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }
@@ -65,10 +61,6 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
 
 void CUDAPinnedAllocator::Free(void* p) {
   CUDA_CALL_THROW(cudaFreeHost(p));
-}
-
-const OrtMemoryInfo& CUDAPinnedAllocator::Info() const {
-  return info_;
 }
 
 FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {

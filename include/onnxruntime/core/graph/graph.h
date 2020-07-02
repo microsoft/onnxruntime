@@ -101,7 +101,21 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
 
-  /** Gets the function body if the #NodeType is fused, or nullptr if not. */
+  /** 
+  Gets the function body if applicable otherwise nullptr
+  @param try_init_func_body If not already intialized, initialize the function body
+  (only applicable to operators which are defined as function in ONNX spec).
+  Function body can be initialized in 2 cases : 
+  1. For nodes of type "Fused" 
+  2. For nodes which are defined as functions in ONNX spec (example: DynamicQuantizeLinear)
+  For all other cases this will always return nullptr.
+  Nodes of type "Fused" are created during partitioning and the function body 
+  initialization for such nodes also happens during node creation. Therefore, 
+  initialization of function body will happen via this method only in case 2 mentioned above.
+  */ 
+  const Function* GetFunctionBody(bool try_int_func_body = true) noexcept;
+
+  /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
@@ -779,7 +793,10 @@ class Graph {
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
-  Status InlineFunction(Node& node);
+  Status InlineFunction(Node& node); 
+
+  /** Initialize function body for the given node */
+  void InitFunctionBodyForNode(Node& node);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..

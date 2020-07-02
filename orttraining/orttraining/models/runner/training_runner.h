@@ -88,7 +88,7 @@ class TrainingRunner {
     // Whether to use NCCL for distributed training.
     bool use_nccl = false;
     // Whether to partition the optimizer state across nodes for distributed training.
-    bool partition_optimizer = false;
+    ZeROConfig deepspeed_zero{};
     // Use Adasum for allreduce.
     bool use_adasum = false;
     // Use Gist on CPU.
@@ -151,6 +151,7 @@ class TrainingRunner {
     size_t checkpoint_period = 0;
     // upper limit on number of checkpoint files to keep
     size_t max_num_checkpoints = 1;
+
     int data_parallel_size = 1;
     int horizontal_parallel_size = 1;
     // pipeline_parallel_size > 1 means pipeline is enabled.
@@ -165,6 +166,9 @@ class TrainingRunner {
     VectorString pipeline_stage_paths;
     // Enable gradient clipping.
     bool enable_grad_norm_clip = true;
+
+    // Enable GELU approximation
+    bool enable_gelu_approximation = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);

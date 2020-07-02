@@ -77,6 +77,13 @@ std::vector<MatMulTestData<T>> GenerateTestCases()
     {2, 2, 4},
     {20, 23, 26, 29, 56, 68, 80, 92, 92, 113, 134, 155, 128, 158, 188, 218}});
 
+  test_cases.push_back(
+    {"test 2D special 3",
+    {2, 6},
+    {1, 1, 6, 1},
+    {1, 1, 2, 1},
+    {55, 145}});
+
   return test_cases;
 }
 

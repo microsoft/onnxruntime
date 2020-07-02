@@ -66,9 +66,9 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
-  if (params.partition_optimizer)
+  if (params.deepspeed_zero.stage != 0)
     ORT_ENFORCE(params.use_nccl,
-                "Optimizer partitioning is only supported with NCCL distributed training.");
+                "DeepSpeed ZeRO partitioning is only supported with NCCL distributed training.");
   ORT_ENFORCE(params.num_train_steps % params.gradient_accumulation_steps == 0,
               "Number of training steps must be a multiple of number of gradient accumulation step.");
 }
@@ -128,7 +128,7 @@ Status TrainingRunner::Initialize() {
     opt.use_fp16_moments = params_.use_fp16_moments;
     opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
     opt.use_nccl = params_.use_nccl;
-    opt.partition_optimizer = params_.partition_optimizer;
+    opt.deepspeed_zero = params_.deepspeed_zero;
     opt.adasum_reduction_type = params_.GetAdasumReductionType();
     opt.enable_grad_norm_clip = params_.enable_grad_norm_clip;
     config.optimizer_config = opt;
@@ -162,6 +162,8 @@ Status TrainingRunner::Initialize() {
     // Do not assign value to config.pipeline_config if pipeline is not used.
     config.pipeline_config = pipe;
   }
+
+  config.enable_gelu_approximation = params_.enable_gelu_approximation;
 
   TrainingSession::TrainingConfigurationResult config_result{};
 
