@@ -70,7 +70,6 @@ The following functions are supported:
 IOBinding
 =========
 
-
 By default, *ONNX Runtime* always places input(s) and output(s) on CPU, which 
 is not optimal if the input or output is consumed and produced on a device
 other than CPU because it introduces data copy between CPU and the device. 
@@ -120,4 +119,3 @@ The input data on a dveice, users directly use the input and also place output o
 	io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
 	io_binding.bind_output('output', Y.device.type, 0, np.float32, list(Y.size()), Y.data_ptr())
 	session.run_with_iobinding(io_binding)
-
