@@ -32,7 +32,6 @@ template <typename T1, typename T2>
 Status MatMulIntegerToFloat<T1, T2>::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = ctx->Input<Tensor>(1);
-  ORT_ENFORCE(a != nullptr && b != nullptr);
 
   const Tensor* a_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale_tensor),

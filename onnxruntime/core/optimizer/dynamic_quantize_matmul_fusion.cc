@@ -12,14 +12,11 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-inline int64_t GetLastDimOfTensorShapeProto(const TensorShapeProto& shape) {
-  return shape.dim(shape.dim_size() - 1).dim_value();
-}
-
 // Check if bias is a 1-D tensor, or N-D tensor with the prior N-1 dimension equal to 1.
 // And its last dimension equal to MatMul's last dimension
-bool CheckBiasShape(const TensorShapeProto* bias_shape, const TensorShapeProto* matmul_shape) {
-  if (nullptr == matmul_shape || nullptr == bias_shape) {
+static bool CheckBiasShape(const TensorShapeProto* bias_shape, const TensorShapeProto* matmul_shape) {
+  if (nullptr == matmul_shape || matmul_shape->dim_size() <= 1 ||
+      nullptr == bias_shape || bias_shape->dim_size() < 1) {
     return false;
   }
 
@@ -30,7 +27,9 @@ bool CheckBiasShape(const TensorShapeProto* bias_shape, const TensorShapeProto* 
     }
   }
 
-  return GetLastDimOfTensorShapeProto(*bias_shape) == GetLastDimOfTensorShapeProto(*matmul_shape);
+  int64_t bias_last_dim = bias_shape->dim(bias_shape->dim_size() - 1).dim_value();
+  int64_t matmul_last_dim = matmul_shape->dim(matmul_shape->dim_size() - 1).dim_value();
+  return bias_last_dim == matmul_last_dim && bias_last_dim > 0;
 }
 
 /**
