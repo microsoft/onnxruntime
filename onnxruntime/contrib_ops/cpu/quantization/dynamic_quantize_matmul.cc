@@ -52,7 +52,6 @@ template <typename T>
 Status DynamicQuantizeMatMul<T>::Compute(OpKernelContext* ctx) const {
   auto* a = ctx->Input<Tensor>(0);
   auto* b = ctx->Input<Tensor>(1);
-  ORT_ENFORCE(a != nullptr && b != nullptr);
 
   auto* b_scale_tensor = ctx->Input<Tensor>(2);
   ORT_ENFORCE(IsScalarOr1ElementVector(b_scale_tensor),
