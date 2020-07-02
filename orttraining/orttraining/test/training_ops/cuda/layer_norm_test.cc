@@ -100,7 +100,8 @@ TEST(CudaKernelTest, LayerNormGrad_LargeSizeTensor) {
 static void TestInvertibleLayerNormGrad(
     const std::vector<int64_t>& x_dims,
     int64_t axis = -1,
-    double error_tolerance = 1e-4) {
+    double error_tolerance = 1e-4,
+    bool test_fp16=false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -149,21 +150,47 @@ static void TestInvertibleLayerNormGrad(
     Y = (Y.colwise() * scale).colwise() + bias;
   }
 
-  test.AddInput("Y_grad", n_x_m_dims, Y_grad_data);
-  test.AddInput("Y", n_x_m_dims, Y_data);
-  test.AddInput("scale", m_dims, scale_data, true);
-  test.AddInput("bias", m_dims, bias_data);
-  test.AddInput("inv_std_var", n_dims, inv_std_var_data);
+  if (test_fp16) {
+    std::vector<MLFloat16> Y_grad_data_half(Y_grad_data.size());
+    std::vector<MLFloat16> Y_data_half(Y_data.size());
+    std::vector<MLFloat16> scale_data_half(scale_data.size());
+    std::vector<MLFloat16> bias_data_half(bias_data.size());
+    ConvertFloatToMLFloat16(Y_grad_data.data(),Y_grad_data_half.data(), int(Y_grad_data.size()));
+    ConvertFloatToMLFloat16(Y_data.data(),Y_data_half.data(), int(Y_data.size()));
+    ConvertFloatToMLFloat16(scale_data.data(), scale_data_half.data(), int(scale_data.size()));
+    ConvertFloatToMLFloat16(bias_data.data(), bias_data_half.data(), int(bias_data.size()));
 
-  const auto X_grad_data = FillZeros<float>(n_x_m_dims);
-  const auto scale_grad_data = FillZeros<float>(m_dims);
-  const auto bias_grad_data = FillZeros<float>(m_dims);
+    test.AddInput<MLFloat16>("Y_grad", n_x_m_dims, Y_grad_data_half);
+    test.AddInput<MLFloat16>("Y", n_x_m_dims, Y_data_half);
+    test.AddInput<MLFloat16>("scale", m_dims, scale_data_half, true);
+    test.AddInput<MLFloat16>("bias", m_dims, bias_data_half);
 
-  test.AddOutput("X_grad", n_x_m_dims, X_grad_data);
-  test.AddOutput("scale_grad_data", m_dims, scale_grad_data);
-  test.AddOutput("bias_grad_data", m_dims, bias_grad_data);
+    const auto X_grad_data = FillZeros<MLFloat16>(n_x_m_dims);
+    const auto scale_grad_data = FillZeros<MLFloat16>(m_dims);
+    const auto bias_grad_data = FillZeros<MLFloat16>(m_dims);
+    test.AddOutput("X_grad", n_x_m_dims, X_grad_data);
+    test.AddOutput("scale_grad_data", m_dims, scale_grad_data);
+    test.AddOutput("bias_grad_data", m_dims, bias_grad_data);
+  } else {
+    test.AddInput("Y_grad", n_x_m_dims, Y_grad_data);
+    test.AddInput("Y", n_x_m_dims, Y_data);
+    test.AddInput("scale", m_dims, scale_data, true);
+    test.AddInput("bias", m_dims, bias_data);
 
-  test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+    const auto X_grad_data = FillZeros<float>(n_x_m_dims);
+    const auto scale_grad_data = FillZeros<float>(m_dims);
+    const auto bias_grad_data = FillZeros<float>(m_dims);
+    test.AddOutput("X_grad", n_x_m_dims, X_grad_data);
+    test.AddOutput("scale_grad_data", m_dims, scale_grad_data);
+    test.AddOutput("bias_grad_data", m_dims, bias_grad_data);
+  }
+  test.AddInput<float>("inv_std_var", n_dims, inv_std_var_data);
+
+  if (test_fp16) {
+    test.CompareWithCPU(kCudaExecutionProvider, error_tolerance, error_tolerance);
+  } else {
+    test.CompareWithCPU(kCudaExecutionProvider, error_tolerance);
+  }
 }
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor) {
@@ -185,6 +212,27 @@ TEST(CudaKernelTest, InvertibleLayerNormGrad_MidSizeTensor) {
 TEST(CudaKernelTest, InvertibleLayerNormGrad_LargeSizeTensor) {
   const std::vector<int64_t> X_dims{16, 512, 1024};
   TestInvertibleLayerNormGrad(X_dims, -1, 5e-3);
+}
+
+TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_FP16) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestInvertibleLayerNormGrad(X_dims, -1, 2e-3, true);
+}
+
+TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_IntermediateAxis_FP16) {
+  const std::vector<int64_t> X_dims{4, 20, 16, 8};
+  const int64_t axis = -2;
+  TestInvertibleLayerNormGrad(X_dims, axis, 2e-3, true);
+}
+
+TEST(CudaKernelTest, InvertibleLayerNormGrad_MidSizeTensor_FP16) {
+  const std::vector<int64_t> X_dims{8, 80, 768};
+  TestInvertibleLayerNormGrad(X_dims, -1, 2e-3, true);
+}
+
+TEST(CudaKernelTest, InvertibleLayerNormGrad_LargeSizeTensor_FP16) {
+  const std::vector<int64_t> X_dims{16, 512, 1024};
+  TestInvertibleLayerNormGrad(X_dims, -1, 2e-3, true);
 }
 
 }  // namespace test
