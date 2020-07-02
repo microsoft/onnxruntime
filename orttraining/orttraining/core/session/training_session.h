@@ -173,8 +173,16 @@ class TrainingSession : public InferenceSession {
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
 
-    // Whether to enable GELU approximation which is faster but produces different results.
-    bool enable_gelu_approximation{false};
+    struct GraphTransformerConfiguration {
+      // Whether to enable GELU approximation which is faster but produces different results.
+      bool enable_gelu_approximation{false};
+      // Enable checkpointing of attention dropout to save memory
+      bool attn_dropout_checkpoint{false};
+      // Enable checkpointing of Gelu activation output to save memory
+      bool gelu_checkpoint{false};
+    };
+
+    GraphTransformerConfiguration graph_transformer_config{};
   };
 
   /**
@@ -298,7 +306,7 @@ class TrainingSession : public InferenceSession {
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
   /** Override Run function in InferenceSession to inject some training-specific logics **/
-  using InferenceSession::Run; // For overload resolution.
+  using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
   common::Status Run(IOBinding& io_binding) override;
@@ -387,13 +395,13 @@ class TrainingSession : public InferenceSession {
                                    std::string& backward_waited_event_after_recv_name,
                                    std::string& backward_recorded_event_before_send_name);
 
-  common::Status ApplyTransformationsToMainGraph(
-      const std::unordered_set<std::string>& weights_to_train, bool enable_gelu_approximation);
+  common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
+                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
 
   /** configure initial transformers for training */
   void AddPreTrainingTransformers(GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
-                                  bool enable_gelu_approximation,
+                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel,
                                   const std::vector<std::string>& custom_list = {});
 
@@ -436,7 +444,7 @@ class TrainingSession : public InferenceSession {
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
   @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
   */
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights,
                                                                 const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;

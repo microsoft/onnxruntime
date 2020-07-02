@@ -165,7 +165,12 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
-        cxxopts::value<bool>()->default_value("true"));
+        cxxopts::value<bool>()->default_value("true"))
+      ("attn_dropout_checkpoint", "Enable checkpointing of attention dropout to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
+      ("gelu_checkpoint", "Enable checkpointing of Gelu activation output to save memory.",
+        cxxopts::value<bool>()->default_value("false"));
+        
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -450,6 +455,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
 
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
+    params.attn_dropout_checkpoint = flags["attn_dropout_checkpoint"].as<bool>();
+    params.gelu_checkpoint = flags["gelu_checkpoint"].as<bool>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
@@ -502,8 +509,8 @@ float GetLossValue(const Tensor& loss_tensor) {
 // batch is not part of the initial tensor shape vector till later
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
-  {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
+    {"input1", {"SeqLen", 0}},                   // int64[batch,sequence]    "sequence" -> "SeqLen", 0
+    {"masked_lm_ids", {"PredictionsPerSeq", 0}}  // int64[batch,dynamic_prediction_count]
 };
 
 // generic properties for storing perf metrics
