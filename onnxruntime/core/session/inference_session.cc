@@ -158,7 +158,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
-  auto status = FinalizeSessionOptions(session_options, model_proto_, model_loaded_, session_options_);
+  auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
@@ -236,7 +236,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -252,7 +252,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -265,7 +265,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       insert_cast_transformer_("CastFloat16Transformer") {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -277,7 +277,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       insert_cast_transformer_("CastFloat16Transformer") {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -457,7 +457,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 }
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -468,7 +468,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -479,7 +479,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -501,7 +501,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 }
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -522,7 +522,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
 }
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -548,7 +548,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 }
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -577,7 +577,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 }
 
 common::Status InferenceSession::Load() {
-  if (!model_loaded_) {
+  if (!is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has not been parsed yet. "
                            "This API should be called in conjunction with a ctor that takes a model abstraction.");
@@ -771,7 +771,8 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
-      auto& control_flow_kernel = dynamic_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
+      // Downcast is safe, since only control flow nodes have subgraphs (node.GetAttributeNameToMutableSubgraphMap() is non-empty)
+      auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           control_flow_kernel.SetupSubgraphExecutionInfo(session_state, name, *subgraph_session_state));
 
@@ -884,7 +885,8 @@ common::Status InferenceSession::Initialize() {
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
         *session_logger_,
-        session_profiler_);
+        session_profiler_,
+        session_options_.use_deterministic_compute);
 
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL &&
         execution_providers_.Get(onnxruntime::kCudaExecutionProvider)) {
@@ -1028,10 +1030,14 @@ static common::Status CheckTypes(MLDataType actual, MLDataType expected) {
   if (actual == expected) {
     return Status::OK();
   }
+#ifdef ORT_NO_RTTI
+  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unexpected input data type");
+#else
   auto actual_name = std::string(typeid(*actual).name());
   auto expected_name = std::string(typeid(*expected).name());
   return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                 "Unexpected input data type. Actual: (" + actual_name + ") , expected: (" + expected_name + ")");
+#endif
 }
 
 common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& feed_names,
