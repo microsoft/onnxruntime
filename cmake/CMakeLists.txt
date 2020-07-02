@@ -126,6 +126,7 @@ option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model 
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
+option(onnxruntime_USE_MPI "Build with MPI support, required by HOROVOD and NCCL" ON)
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
@@ -210,7 +211,7 @@ endif()
 if(onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
   add_compile_definitions(ENABLE_ORT_FORMAT_LOAD)
-  
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -1141,7 +1142,7 @@ if (onnxruntime_ENABLE_TRAINING)
     include(FindPackageHandleStandardArgs)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
-    if (MPI_FOUND)
+    if (MPI_FOUND AND onnxruntime_USE_MPI)
       if(NOT DEFINED onnxruntime_MPI_HOME)
         execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
       else()
@@ -1157,6 +1158,7 @@ if (onnxruntime_ENABLE_TRAINING)
 
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     else ()
+      set(onnxruntime_USE_MPI OFF)
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_HOROVOD OFF)
       message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL or HOROVOD will be disabled." )
@@ -1221,6 +1223,10 @@ if (onnxruntime_ENABLE_TRAINING)
         message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
       endif()
     endif()
+  endif()
+
+  if (onnxruntime_USE_MPI AND MPI_FOUND)
+    add_definitions(-DUSE_MPI=1)
   endif()
 
   if (onnxruntime_USE_HOROVOD AND MPI_FOUND)

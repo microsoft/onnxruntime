@@ -222,7 +222,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<PyTrainingSession>(env, GetDefaultCPUSessionOptions());
       }))
       .def("finalize", [](py::object) {
-#if defined(USE_NCCL)
+#if defined(USE_MPI)
 #ifdef _WIN32
         // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
         // shutdown_mpi() is not called within MPIContext destructor because of DllMain's restriction

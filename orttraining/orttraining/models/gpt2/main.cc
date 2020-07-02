@@ -478,6 +478,7 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
+<<<<<<< HEAD
 #if defined(USE_NCCL)
 #ifdef _WIN32
   // https://docs.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
@@ -485,6 +486,10 @@ int main(int argc, char* argv[]) {
   // call shutdown_mpi() here instead.
   MPIContext::shutdown_mpi();
 #endif
+=======
+#if defined(USE_MPI)
+  shutdown_mpi();
+>>>>>>> cdeb6e5... Add USE_MPI distinct from USE_NCCL/USE_HOROVOD
 #endif
   return 0;
 }
