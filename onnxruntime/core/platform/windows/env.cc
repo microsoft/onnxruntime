@@ -205,7 +205,15 @@ class WindowsEnv : public Env {
       return Status(SYSTEM, errno);
     }
 
-    file_size = buf.st_size;
+    if (buf.st_size < 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+    }
+
+    if (buf.st_size > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    }
+
+    file_size = static_cast<size_t>(buf.st_size);
     return Status::OK();
   }
 

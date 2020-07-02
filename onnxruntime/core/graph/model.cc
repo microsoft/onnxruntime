@@ -26,6 +26,8 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 
+static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
+
 namespace onnxruntime {
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
@@ -452,7 +454,7 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   int block_size = -1;
   Status st = Env::Default().GetFileLength(fd, file_size);
   if (st.IsOK()) {
-    block_size = static_cast<int>(file_size);
+    block_size = std::min(DEFAULT_PROTOBUF_BLOCK_SIZE, static_cast<int>(file_size));
   }
   FileInputStream input(fd, block_size);
   const bool result = model_proto.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
