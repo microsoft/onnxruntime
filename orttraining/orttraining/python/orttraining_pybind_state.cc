@@ -69,7 +69,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
               << data_group_size << std::endl;
     parameters.data_parallel_size = data_group_size;
   }
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
   // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
   // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
@@ -198,7 +198,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
         training::shutdown_mpi();
 #endif
       })

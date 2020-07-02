@@ -516,7 +516,7 @@ void setup_training_params(BertParameters& params) {
   params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
   params.mpi_context = setup_mpi();
 
   if (params.pipeline_parallel_size > 1) {
@@ -800,7 +800,7 @@ int main(int argc, char* argv[]) {
     RETURN_IF_FAIL(RunTraining(params, *env));
   }
 
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_MPI)
   shutdown_mpi();
 #endif
 
