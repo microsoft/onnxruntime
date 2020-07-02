@@ -12,13 +12,13 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 typedef std::function<Status(Graph&, Node&, Node&)> Handler;
 
-static const int GATHERND_BATCH_DIM = 1;
+constexpr int GATHERND_BATCH_DIM = 1;
 
 static bool IsLeadingDimsEqual(const TensorShapeProto* input_shape, const TensorShapeProto* output_shape,
-                               int num_dim_to_check) {
+                               const int num_dim_to_check) {
   ORT_ENFORCE(output_shape->dim_size() >= num_dim_to_check && input_shape->dim_size() >= num_dim_to_check);
 
-  for (int i = 0; i < num_dim_to_check; i++) {
+  for (int i = 0; i < num_dim_to_check; ++i) {
     auto& output_dim = output_shape->dim(i);
     auto& input_dim = input_shape->dim(i);
     if (output_dim.has_dim_value() && input_dim.has_dim_value()) {
@@ -38,13 +38,14 @@ static bool IsLeadingDimsEqual(const TensorShapeProto* input_shape, const Tensor
 }
 
 static int GetValidInputForGatherND(const Node& target_node) {
-  // If target_node's some input tensor have exactly same shape with
+  // target_node is the producer of GatherND's input.
+  // If target_node's some input tensors have exactly same shape with
   // target_node output tensor shape, then it is safe to gather using
   // original slice ranges.
   int candidate_input_index = -1;
   auto output_shape = target_node.OutputDefs()[0]->Shape();
   const int output_rank = output_shape->dim_size();
-  for (size_t i = 0; i < target_node.InputDefs().size(); i++) {
+  for (size_t i = 0; i < target_node.InputDefs().size(); ++i) {
     auto input_shape = target_node.InputDefs()[i]->Shape();
     const int input_rank = input_shape->dim_size();
     if (input_rank != output_rank) {
@@ -60,11 +61,11 @@ static int GetValidInputForGatherND(const Node& target_node) {
   return candidate_input_index;
 }
 
-static TensorShapeProto ReplaceSymbolicDimValue(const TensorShapeProto* shape, int replacement_axis,
-                                                std::string replacement_dim_value) {
+static TensorShapeProto ReplaceSymbolicDimValue(const TensorShapeProto* shape, const int replacement_axis,
+                                                const std::string& replacement_dim_value) {
   ORT_ENFORCE(replacement_axis >= 0 && replacement_axis < shape->dim_size());
   TensorShapeProto output_shape;
-  for (int i = 0; i < shape->dim_size(); i++) {
+  for (int i = 0; i < shape->dim_size(); ++i) {
     auto& dim = shape->dim(i);
     if (i == replacement_axis) {
       output_shape.add_dim()->set_dim_param(replacement_dim_value);
@@ -84,13 +85,18 @@ static TensorShapeProto ReplaceSymbolicDimValue(const TensorShapeProto* shape, i
 }
 
 static Status SwapGatherNDWithTargetNode(Graph& graph, Node& gathernd_node, Node& target_node,
-                                         int target_node_input_index = 0) {
+                                         const int target_node_input_index = 0) {
   auto new_input_arg_for_gathernd = target_node.MutableInputDefs()[target_node_input_index];
   auto target_node_out_arg = target_node.MutableOutputDefs()[0];
   auto gathernd_out_arg = gathernd_node.MutableOutputDefs()[0];
   auto gathernd_old_consumers = graph.GetConsumerNodes(gathernd_out_arg->Name());
+  const auto& graph_outputs = graph.GetOutputs();
+  bool need_update_graph_output = false;
+  if (std::find(graph_outputs.begin(), graph_outputs.end(), gathernd_out_arg) != graph_outputs.end()) {
+    need_update_graph_output = true;
+  }
 
-  const std::string gathered_dim_param = gathernd_out_arg->Shape()->dim(GATHERND_BATCH_DIM).dim_param();
+  const std::string& gathered_dim_param = gathernd_out_arg->Shape()->dim(GATHERND_BATCH_DIM).dim_param();
   TensorShapeProto new_output_shape_for_gathernd =
       ReplaceSymbolicDimValue(new_input_arg_for_gathernd->Shape(), GATHERND_BATCH_DIM, gathered_dim_param);
 
@@ -101,22 +107,45 @@ static Status SwapGatherNDWithTargetNode(Graph& graph, Node& gathernd_node, Node
   int output_index = optimizer_utils::IndexOfNodeOutput(target_node, *gathernd_node.MutableInputDefs()[0]);
   graph.RemoveEdge(target_node.Index(), gathernd_node.Index(), output_index, 0);
   const Node* target_node_input_node = graph.GetProducerNode(new_input_arg_for_gathernd->Name());
-  output_index = optimizer_utils::IndexOfNodeOutput(*target_node_input_node, *new_input_arg_for_gathernd);
-  graph.AddEdge(target_node_input_node->Index(), gathernd_node.Index(), output_index, 0);
+  if (target_node_input_node != nullptr) {
+    output_index = optimizer_utils::IndexOfNodeOutput(*target_node_input_node, *new_input_arg_for_gathernd);
+    graph.AddEdge(target_node_input_node->Index(), gathernd_node.Index(), output_index, 0);
+  } else {
+    // new_input_arg_for_gathernd is graph input
+    graph_utils::ReplaceNodeInput(gathernd_node, 0, *new_input_arg_for_gathernd);
+  }
 
   graph_utils::ReplaceDownstreamNodeInput(graph, gathernd_node, 0 /*output_idx*/,
                                           target_node, 0 /*replacement_output_idx*/);
 
-  graph.RemoveEdge(target_node_input_node->Index(), target_node.Index(), output_index, target_node_input_index);
+  if (target_node_input_node != nullptr) {
+    graph.RemoveEdge(target_node_input_node->Index(), target_node.Index(), output_index, target_node_input_index);
+  }
   graph.AddEdge(gathernd_node.Index(), target_node.Index(), 0, target_node_input_index);
 
   // update consumer relation ship
-  graph.UpdateConsumerNodes(target_node_out_arg->Name(), {const_cast<Node*>(gathernd_old_consumers[0])});
+  if (!gathernd_old_consumers.empty()) {
+    graph.UpdateConsumerNodes(target_node_out_arg->Name(), {const_cast<Node*>(gathernd_old_consumers[0])});
+  }
   graph.UpdateConsumerNodes(gathernd_out_arg->Name(), {&target_node});
 
   // update shapes
   gathernd_out_arg->SetShape(new_output_shape_for_gathernd);
   target_node_out_arg->SetShape(new_output_shape_for_target_node);
+
+  if (need_update_graph_output) {
+    std::vector<const NodeArg*> graph_new_outputs;
+    for (auto out_arg : graph_outputs) {
+      if (out_arg->Name().compare(gathernd_out_arg->Name()) == 0) {
+        graph_new_outputs.push_back(target_node_out_arg);
+      } else {
+        graph_new_outputs.push_back(out_arg);
+      }
+    }
+    graph.SetOutputs(graph_new_outputs);
+    graph.SetGraphResolveNeeded();
+    graph.SetGraphProtoSyncNeeded();
+  }
 
   return Status::OK();
 }
@@ -156,7 +185,7 @@ static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& 
     Before:
       input_1[b,s,h]    weight_2[h, 2h]
                   \         /
-                  Gemm[b,s,2h]    indices[b,p_s,1]
+                  MatMul[b,s,2h]    indices[b,p_s,1]
                       |            /
                   GatherND[b,p_s,2h]
                       |
@@ -166,12 +195,12 @@ static Status BinaryElementwiseHandler(Graph& graph, Node& gathernd_node, Node& 
                        |            /
                     GatherND[b,p_s,h]    weight_2[h,2h]
                               \              /
-                              Gemm[b,p_s,2h]
+                              MatMul[b,p_s,2h]
                                     |
                             <subsquent graphs>
   Note: b: batch, s: sequence_length, h: hidden_size, p_s: dynamic_prediction_count
 */
-static Status GemmHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
+static Status MatMulHandler(Graph& graph, Node& gathernd_node, Node& target_node) {
   int target_node_input_index = GetValidInputForGatherND(target_node);
   ORT_RETURN_IF_NOT(target_node_input_index == 0);
   return SwapGatherNDWithTargetNode(graph, gathernd_node, target_node, target_node_input_index);
@@ -181,11 +210,11 @@ static std::unordered_map<std::string, Handler> handlers = {
     {"Add", BinaryElementwiseHandler},
     {"Div", BinaryElementwiseHandler},
     {"Gelu", SimpleHandler},
-    {"Gemm", GemmHandler},
     {"LayerNormalization", SimpleHandler},
-    {"MatMul", GemmHandler}};
+    {"MatMul", MatMulHandler}};
 
-static Status Delegate(std::string op_type, Graph& graph, Node& gathernd_node, Node& target_node) {
+static Status Delegate(Graph& graph, Node& gathernd_node, Node& target_node) {
+  const std::string& op_type = target_node.OpType();
   if (handlers.count(op_type)) {
     return handlers[op_type](graph, gathernd_node, target_node);
   } else {
@@ -211,7 +240,7 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     // Todo: let's review the real cases to make the logic more generic.
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1, 12, 13}, kOnnxDomain) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
-        node.GetOutputEdgesCount() != 1) {
+        node.GetOutputEdgesCount() > 1) {  // allow GatherND have no out edges in case it is graph output.
       continue;
     }
 
@@ -238,14 +267,18 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     // than inputs, we should NOT probably bring it ahead.
     bool stop = false;
     while (!stop) {
-      Node* input_node = const_cast<Node*>(graph.GetProducerNode(node.MutableInputDefs()[0]->Name()));
+      const Node* gathernd_data_producer = graph.GetProducerNode(node.MutableInputDefs()[0]->Name());
+      if (gathernd_data_producer == nullptr) {
+        break;
+      }
+      Node* input_node = const_cast<Node*>(gathernd_data_producer);
       if (graph.GetConsumerNodes(input_node->MutableOutputDefs()[0]->Name()).size() > 1) {
         LOGS_DEFAULT(WARNING) << "node " << node.Name() << " stopped at node "
                               << input_node->Name();
         break;
       }
 
-      auto ret = Delegate(input_node->OpType(), graph, node, *input_node);
+      auto ret = Delegate(graph, node, *input_node);
       if (ret.IsOK()) {
         LOGS_DEFAULT(WARNING) << "node " << node.Name() << " up across node "
                               << input_node->Name() << std::endl;

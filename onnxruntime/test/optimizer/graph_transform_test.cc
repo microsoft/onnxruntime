@@ -2356,18 +2356,20 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
 // LayerNormalization implementation is in contrib namespace (OnnxDomain 1), so
 // Without contib_ops enabled, we cannot parse the graph correctly.
 #ifndef DISABLE_CONTRIB_OPS
-
 // We used Opset 12 for testing to make sure we are not using GatherND OnnxDomain Opset 1.
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
-  auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
+static void GatherNDComputationReductionTest(const std::string& op_type, logging::Logger& logger) {
+  std::string op_type_lower = op_type;
+  std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
+  const std::string& file_name = "gathernd_" + op_type_lower + ".onnx";
+  auto model_uri = MODEL_FOLDER "computation_reduction/" + file_name;
   std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
   graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -2378,21 +2380,78 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_BasicCheck) {
     ASSERT_FALSE(p_node == nullptr);
     if (p_node->OpType().compare("GatherND") == 0) {
       gathernd_node = p_node;
-      const Node* layer_norm_node = graph.GetProducerNode(gathernd_node->MutableInputDefs()[0]->Name());
-      EXPECT_EQ(layer_norm_node->OpType(), "LayerNormalization");
-      EXPECT_EQ(layer_norm_node->Name(), "layer_norm_1");
+      EXPECT_EQ(gathernd_node->MutableInputDefs()[0]->Name(), "input");
       const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
-      EXPECT_EQ(consumers[0]->OpType(), "MatMul");
-      EXPECT_EQ(consumers[0]->Name(), "matmul_1");
-      break;
+      EXPECT_EQ(consumers[0]->OpType(), op_type);
     }
   }
 
   ASSERT_FALSE(gathernd_node == nullptr);
 }
 
-TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) {
-  auto model_uri = MODEL_FOLDER "computation_reduction_transformer.onnx";
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_Gelu) {
+  GatherNDComputationReductionTest("Gelu", *logger_);
+}
+
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_Add) {
+  GatherNDComputationReductionTest("Add", *logger_);
+}
+
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_LayerNormalization) {
+  GatherNDComputationReductionTest("LayerNormalization", *logger_);
+}
+
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_MatMul) {
+  GatherNDComputationReductionTest("MatMul", *logger_);
+}
+
+static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const std::string& model_uri,
+                                const std::string& session_log_id, const std::string& provider_type,
+                                const std::vector<int64_t>& dims_input,
+                                const std::vector<float>& input_values,
+                                const std::vector<int64_t>& dims_unsqueezed_masked_lm_positions,
+                                const std::vector<int64_t>& values_unsqueezed_masked_lm_positions) {
+  SessionOptions so;
+  // we don't want any transformation here.
+  so.graph_optimization_level = TransformerLevel::Default;
+  so.session_logid = session_log_id;
+
+  InferenceSession session_object{so, GetEnvironment()};
+  std::unique_ptr<IExecutionProvider> execution_provider;
+  if (provider_type == onnxruntime::kCpuExecutionProvider)
+    execution_provider = DefaultCpuExecutionProvider();
+  else if (provider_type == onnxruntime::kCudaExecutionProvider)
+    execution_provider = DefaultCudaExecutionProvider();
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  Status st;
+  ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+
+  OrtValue input1;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
+  OrtValue input2;
+  CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
+                         values_unsqueezed_masked_lm_positions, &input2);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input", input1));
+  feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  output_names.push_back("gather_output");
+
+  // Now run
+  RunOptions run_options;
+  st = session_object.Run(run_options, feeds, output_names, &run_results);
+
+  EXPECT_TRUE(st.IsOK());
+}
+
+TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
+  auto model_uri = MODEL_FOLDER "computation_reduction/e2e.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
@@ -2402,6 +2461,31 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
   graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
+  // check the expected node orders.
+  {
+    GraphViewer graph_viewer(graph);
+    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+    Node* gathernd_node = nullptr;
+    for (auto node_index : node_topology_list) {
+      Node* p_node = graph.GetNode(node_index);
+      ASSERT_FALSE(p_node == nullptr);
+      if (p_node->OpType().compare("GatherND") == 0) {
+        gathernd_node = p_node;
+        const Node* layer_norm_node = graph.GetProducerNode(gathernd_node->MutableInputDefs()[0]->Name());
+        EXPECT_EQ(layer_norm_node->OpType(), "LayerNormalization");
+        EXPECT_EQ(layer_norm_node->Name(), "layer_norm_1");
+        const auto& consumers = graph.GetConsumerNodes(gathernd_node->MutableOutputDefs()[0]->Name());
+        EXPECT_EQ(consumers[0]->OpType(), "MatMul");
+        EXPECT_EQ(consumers[0]->Name(), "matmul_1");
+        break;
+      }
+    }
+
+    ASSERT_FALSE(gathernd_node == nullptr);
+  }
+
+  // check result diff after the re-order
   auto new_model_uri = "computation_reduction_transformer_after.onnx";
   Model::Save(*model, new_model_uri);
 
@@ -2415,12 +2499,12 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
   int sequence = 128;
   int hidden_size = 128;
   int dynamic_predict_count = 20;
-  std::vector<int64_t> dims_input = {batch_size, sequence, hidden_size};
+  const std::vector<int64_t> dims_input = {batch_size, sequence, hidden_size};
   std::vector<float> input_values(TensorShape(dims_input).Size());
   std::for_each(input_values.begin(), input_values.end(),
                 [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
 
-  std::vector<int64_t> dims_unsqueezed_masked_lm_positions = {batch_size, dynamic_predict_count, 1};
+  const std::vector<int64_t> dims_unsqueezed_masked_lm_positions = {batch_size, dynamic_predict_count, 1};
   std::vector<int64_t> values_unsqueezed_masked_lm_positions(TensorShape(dims_unsqueezed_masked_lm_positions).Size());
 
   std::random_device rd;                                   // obtain a random number from hardware
@@ -2438,87 +2522,14 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_ResultCompare) 
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    {
-      SessionOptions so;
-      // we don't want any transformation here.
-      so.graph_optimization_level = TransformerLevel::Default;
-      so.session_logid = "RawGraphRun";
-
-      InferenceSession session_object{so, GetEnvironment()};
-      std::unique_ptr<IExecutionProvider> execution_provider;
-      if (provider_type == onnxruntime::kCpuExecutionProvider)
-        execution_provider = DefaultCpuExecutionProvider();
-      else if (provider_type == onnxruntime::kCudaExecutionProvider)
-        execution_provider = DefaultCudaExecutionProvider();
-
-      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-
-      Status st;
-      ASSERT_TRUE((st = session_object.Load(model_uri)).IsOK()) << st;
-      ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
-
-      OrtValue input1;
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
-      OrtValue input2;
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
-                             values_unsqueezed_masked_lm_positions, &input2);
-
-      NameMLValMap feeds;
-      feeds.insert(std::make_pair("input", input1));
-      feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
-
-      // prepare outputs
-      std::vector<std::string> output_names;
-      output_names.push_back("output");
-      output_names.push_back("gather_output");
-
-      // Now run
-      RunOptions run_options;
-      st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
-
-      EXPECT_TRUE(st.IsOK());
-    }
+    RunGatherNDE2EGraph(expected_ort_values, model_uri, "RawGraphRun", provider_type,
+                        dims_input, input_values, dims_unsqueezed_masked_lm_positions,
+                        values_unsqueezed_masked_lm_positions);
 
     std::vector<OrtValue> actual_ort_values;
-    {
-      SessionOptions so;
-      // we don't want any transformation here.
-      so.graph_optimization_level = TransformerLevel::Default;
-      so.session_logid = "OptimizedGraphRun";
-
-      InferenceSession session_object{so, GetEnvironment()};
-      std::unique_ptr<IExecutionProvider> execution_provider;
-      if (provider_type == onnxruntime::kCpuExecutionProvider)
-        execution_provider = DefaultCpuExecutionProvider();
-      else if (provider_type == onnxruntime::kCudaExecutionProvider)
-        execution_provider = DefaultCudaExecutionProvider();
-      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-
-      Status st;
-      ASSERT_TRUE((st = session_object.Load(new_model_uri)).IsOK()) << st;
-      ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
-
-      OrtValue input1;
-      CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_input, input_values, &input1);
-      OrtValue input2;
-      CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
-                             values_unsqueezed_masked_lm_positions, &input2);
-
-      NameMLValMap feeds;
-      feeds.insert(std::make_pair("input", input1));
-      feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
-
-      // prepare outputs
-      std::vector<std::string> output_names;
-      output_names.push_back("output");
-      output_names.push_back("gather_output");
-
-      // Now run
-      RunOptions run_options;
-      st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
-
-      EXPECT_TRUE(st.IsOK());
-    }
+    RunGatherNDE2EGraph(actual_ort_values, new_model_uri, "OptimizedGraphRun", provider_type,
+                        dims_input, input_values, dims_unsqueezed_masked_lm_positions,
+                        values_unsqueezed_masked_lm_positions);
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
     const double per_sample_tolerance = 1e-4;
