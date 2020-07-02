@@ -30,6 +30,8 @@ set(CMAKE_CXX_STANDARD 14)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Generate build logs listing all flags used
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Enable CTest
 enable_testing()
