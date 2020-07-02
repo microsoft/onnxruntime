@@ -138,6 +138,33 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseMapTypeInfo;
         public IntPtr ReleaseSequenceTypeInfo;
         public IntPtr SessionEndProfiling;
+        public IntPtr SessionGetModelMetadata;
+        public IntPtr ModelMetadataGetProducerName;
+        public IntPtr ModelMetadataGetGraphName;
+        public IntPtr ModelMetadataGetDomain;
+        public IntPtr ModelMetadataGetDescription;
+        public IntPtr ModelMetadataLookupCustomMetadataMap;
+        public IntPtr ModelMetadataGetVersion;
+        public IntPtr ReleaseModelMetadata;
+        // End of Version 2
+
+        public IntPtr CreateEnvWithGlobalThreadPools;
+        public IntPtr DisablePerSessionThreads;
+        public IntPtr CreateThreadingOptions;
+        public IntPtr ReleaseThreadingOptions;
+        public IntPtr ModelMetadataGetCustomMetadataMapKeys;
+        public IntPtr AddFreeDimensionOverrideByName;
+        // End of Version 3 - DO NOT MODIFY ABOVE (see above text for more information)
+
+        public IntPtr CreateAllocator;
+        public IntPtr ReleaseAllocator;
+        public IntPtr RunWithBinding;
+        public IntPtr CreateIoBinding;
+        public IntPtr ReleaseIoBinding;
+        public IntPtr BindInput;
+        public IntPtr BindOutput;
+        public IntPtr ClearBoundInputs;
+        public IntPtr ClearBoundOutputs;
     }
 
     internal static class NativeMethods
@@ -154,7 +181,7 @@ namespace Microsoft.ML.OnnxRuntime
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(1 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
             OrtReleaseEnv = (DOrtReleaseEnv)Marshal.GetDelegateForFunctionPointer(api_.ReleaseEnv, typeof(DOrtReleaseEnv));
@@ -213,9 +240,19 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateCpuMemoryInfo = (DOrtCreateCpuMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateCpuMemoryInfo, typeof(DOrtCreateCpuMemoryInfo));
             OrtReleaseMemoryInfo = (DOrtReleaseMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMemoryInfo, typeof(DOrtReleaseMemoryInfo));
             OrtGetAllocatorWithDefaultOptions = (DOrtGetAllocatorWithDefaultOptions)Marshal.GetDelegateForFunctionPointer(api_.GetAllocatorWithDefaultOptions, typeof(DOrtGetAllocatorWithDefaultOptions));
+            OrtCreateAllocator = (DOrtCreateAllocator)Marshal.GetDelegateForFunctionPointer(api_.CreateAllocator, typeof(DOrtCreateAllocator));
+            OrtReleaseAllocator = (DOrtReleaseAllocator)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAllocator, typeof(DOrtReleaseAllocator));
+            OrtAllocatorAlloc = (DOrtAllocatorAlloc)Marshal.GetDelegateForFunctionPointer(api_.AllocatorAlloc, typeof(DOrtAllocatorAlloc));
             OrtAllocatorFree = (DOrtAllocatorFree)Marshal.GetDelegateForFunctionPointer(api_.AllocatorFree, typeof(DOrtAllocatorFree));
             OrtAllocatorGetInfo = (DOrtAllocatorGetInfo)Marshal.GetDelegateForFunctionPointer(api_.AllocatorGetInfo, typeof(DOrtAllocatorGetInfo));
             OrtAddFreeDimensionOverride = (DOrtAddFreeDimensionOverride)Marshal.GetDelegateForFunctionPointer(api_.AddFreeDimensionOverride, typeof(DOrtAddFreeDimensionOverride));
+
+            OrtCreateIoBinding = (DOrtCreateIoBinding)Marshal.GetDelegateForFunctionPointer(api_.CreateIoBinding, typeof(DOrtCreateIoBinding));
+            OrtReleaseIoBinding = (DOrtReleaseIoBinding)Marshal.GetDelegateForFunctionPointer(api_.ReleaseIoBinding, typeof(DOrtReleaseIoBinding));
+            OrtBindInput = (DOrtBindInput)Marshal.GetDelegateForFunctionPointer(api_.BindInput, typeof(DOrtBindInput));
+            OrtBindOutput = (DOrtBindOutput)Marshal.GetDelegateForFunctionPointer(api_.BindOutput, typeof(DOrtBindOutput));
+            OrtClearBoundInputs = (DOrtClearBoundInputs)Marshal.GetDelegateForFunctionPointer(api_.ClearBoundInputs, typeof(DOrtClearBoundInputs));
+            OrtClearBoundOutputs = (DOrtClearBoundOutputs)Marshal.GetDelegateForFunctionPointer(api_.ClearBoundOutputs, typeof(DOrtClearBoundOutputs));
 
             OrtGetValue = (DOrtGetValue)Marshal.GetDelegateForFunctionPointer(api_.GetValue, typeof(DOrtGetValue));
             OrtGetValueType = (DOrtGetValueType)Marshal.GetDelegateForFunctionPointer(api_.GetValueType, typeof(DOrtGetValueType));
@@ -529,7 +566,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                        );
         public static DOrtCreateMemoryInfo OrtCreateMemoryInfo;
 
-        //ORT_API_STATUS(OrtCreateCpuMemoryInfo, enum OrtAllocatorType type, enum OrtMemType mem_type1, _Out_ OrtMemoryInfo** out)
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateCpuMemoryInfo(
                                                             AllocatorType allocatorType,
                                                             MemoryType memoryType,
@@ -543,18 +579,104 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/DOrtGetAllocatorWithDefaultOptions(out IntPtr /*(OrtAllocator**)*/ allocator);
         public static DOrtGetAllocatorWithDefaultOptions OrtGetAllocatorWithDefaultOptions;
 
-        /// <summary>
-        /// Release any object allocated by an allocator
-        /// </summary>
-        /// <param name="allocator"></param>
-        /// <param name="memory"></param>
-        public delegate IntPtr /*(OrtStatus*)*/DOrtAllocatorFree(IntPtr allocator, IntPtr memory);
-        public static DOrtAllocatorFree OrtAllocatorFree;
-
         public delegate IntPtr /*(OrtStatus*)*/DOrtAllocatorGetInfo(IntPtr /*(const OrtAllocator*)*/ ptr, out IntPtr /*(const struct OrtMemoryInfo**)*/info);
         public static DOrtAllocatorGetInfo OrtAllocatorGetInfo;
 
+        /// <summary>
+        /// Create an instance of allocator according to mem_info
+        /// </summary>
+        /// <param name="session">Session that this allocator should be used with</param>
+        /// <param name="info">memory allocator specs</param>
+        /// <param name="allocator">out pointer to a new allocator instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreateAllocator(IntPtr /*(const OrtSession*)*/ session, IntPtr /*(const OrtMemoryInfo*)*/ info, out IntPtr /*(OrtAllocator**)*/ allocator);
+        public static DOrtCreateAllocator OrtCreateAllocator;
+
+        /// <summary>
+        /// Destroy an instance of an allocator created by OrtCreateAllocator
+        /// </summary>
+        /// <param name="allocator">instance to be destroyed</param>
+        public delegate void DOrtReleaseAllocator(IntPtr /*(OrtAllocator*)*/ allocator);
+        public static DOrtReleaseAllocator OrtReleaseAllocator;
+
+        /// <summary>
+        /// Allocate  a chunk of native memory
+        /// </summary>
+        /// <param name="allocator">allocator instance</param>
+        /// <param name="size">bytes to allocate</param>
+        /// <param name="p">out pointer to the allocated memory. Must be freed by OrtAllocatorFree</param>
+        public delegate IntPtr DOrtAllocatorAlloc(IntPtr /*(OrtAllocator*)*/ allocator, UIntPtr /*size_t*/ size, out IntPtr /*(void**)*/ p);
+        public static DOrtAllocatorAlloc OrtAllocatorAlloc;
+
+        /// <summary>
+        /// Release native memory allocated by an allocator
+        /// </summary>
+        /// <param name="allocator">allocator instance</param>
+        /// <param name="p">pointer to native memory allocated by the allocator instance</param>
+        public delegate IntPtr DOrtAllocatorFree(IntPtr /*(OrtAllocator*)*/ allocator, IntPtr /*(void*)*/ p);
+        public static DOrtAllocatorFree OrtAllocatorFree;
+
         #endregion Allocator/MemoryInfo API
+
+        #region IoBinding API
+        /// <summary>
+        /// Create OrtIoBinding instance that is used to bind memory that is allocated
+        /// either by a 3rd party allocator or an ORT device allocator. Such memory should be wrapped by
+        /// a native OrtValue of Tensor type. By binding such named values you will direct ORT to read model inputs
+        /// and write model outputs to the supplied memory.
+        /// </summary>
+        /// <param name="session">session to create OrtIoBinding instance</param>
+        /// <param name="io_bidning">out a new instance of OrtIoBinding</param>
+        public delegate IntPtr DOrtCreateIoBinding(IntPtr /*(const OrtSession*)*/ session, out IntPtr /*(OrtIoBinding)*/ io_binding);
+        public static DOrtCreateIoBinding OrtCreateIoBinding;
+
+        /// <summary>
+        /// Destroy OrtIoBinding instance created by OrtCreateIoBinding
+        /// </summary>
+        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        public delegate void DOrtReleaseIoBinding(IntPtr /*(OrtIoBinding)*/ io_binding);
+        public static DOrtReleaseIoBinding OrtReleaseIoBinding;
+
+        /// <summary>
+        /// Bind OrtValue to the model input with the specified name
+        /// If binding with the specified name already exists, it will be replaced
+        /// </summary>
+        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="name">model input name (utf-8)</param>
+        /// <param name="ort_value">OrtValue that is used for input (may wrap arbitrary memory). 
+        ///      The param instance is copied internally so this argument may be released.
+        /// </param>
+        public delegate IntPtr DOrtBindInput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*)*/ name, IntPtr /*const OrtValue**/ ort_value);
+        public static DOrtBindInput OrtBindInput;
+
+        /// <summary>
+        /// Bind OrtValue to the model output with the specified name
+        /// If binding with the specified name already exists, it will be replaced
+        /// </summary>
+        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="name">model output name (utf-8)</param>
+        /// <param name="ort_value">OrtValue that is used for output (may wrap arbitrary memory). 
+        ///      The param instance is copied internally so this argument may be released.
+        /// </param>
+        public delegate IntPtr DOrtBindOutput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*) */ name, IntPtr /*const OrtValue**/ ort_value);
+        public static DOrtBindOutput OrtBindOutput;
+
+        /// <summary>
+        /// Clears Input bindings. This is a convenience method.
+        /// Releasing IoBinding instance would clear all bound inputs.
+        /// </summary>
+        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        public delegate void DOrtClearBoundInputs(IntPtr /*(OrtIoBinding)*/ io_binding);
+        public static DOrtClearBoundInputs OrtClearBoundInputs;
+
+        /// <summary>
+        /// Clears Output bindings. This is a convenience method.
+        /// Releasing IoBinding instance would clear all bound outputs.
+        /// </summary>
+        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        public delegate void DOrtClearBoundOutputs(IntPtr /*(OrtIoBinding)*/ io_binding);
+        public static DOrtClearBoundOutputs OrtClearBoundOutputs;
+
+        #endregion IoBinding API
 
         #region Tensor/OnnxValue API
 
