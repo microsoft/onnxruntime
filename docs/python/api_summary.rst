@@ -66,3 +66,43 @@ The following functions are supported:
 .. autofunction:: onnxruntime.backend.run
 
 .. autofunction:: onnxruntime.backend.supports_device
+
+IOBinding
+=========
+
+By default, *ONNX Runtime* always places input and output on CPU, which 
+is not optimal if the input and output is consumed and produced on a device
+other than CPU because it introduces data copy between CPU and the device. 
+*ONNX Runtime* provides a feature, *IO Binding*, which addresses this issue by
+enabling users to specify which device the input and output are placed on. 
+There are three scenarios to use this feature. 
+
+(In the following code snippets, *model.onnx* is the model to execute, 
+*X* is the input data to feed, and *Y* is the output data.)
+
+Scenario 1:
+
+A graph is executed on a deivce other than CPU, for instance CUDA. Users can 
+use IOBinding to put input on CUDA as the follows.
+
+"
+%X is numpy array on cpu 
+session = onnxruntime.InferenceSession('model.onnx')
+io_binding = session.io_binding()
+io_binding.bind_cpu_input('input', x)
+io_binding.bind_output('output')
+session.run_with_iobinding(io_binding)
+ort_output = io_binding.get_outputs()[0]
+"
+
+Scenario 2:
+
+If the input data already on a device, users direclty use the input on device.
+"
+session = onnxruntime.InferenceSession('model.onnx')
+io_binding = session.io_binding()
+io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
+io_binding.bind_output('output')
+session.run_with_iobinding(io_binding)
+ort_output = io_binding.get_outputs()[0]
+"
