@@ -34,30 +34,30 @@ stages:
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
-      - task: CmdLine@2
-        inputs:
-          script: |
-            sudo --preserve-env docker run \
-              --gpus all \
-              --rm \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              -e NVIDIA_VISIBLE_DEVICES=all \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-              $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                --build_dir /build \
-                --config Release \
-                --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                --skip_submodule_sync \
-                --parallel \
-                --build_wheel \
-                --enable_onnx_tests \
-                --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
-                ${{ variables.actual_extra_build_py_parameters }}
-          workingDirectory: $(Build.SourcesDirectory)
+      # - task: CmdLine@2
+      #   inputs:
+      #     script: |
+      #       sudo --preserve-env docker run \
+      #         --gpus all \
+      #         --rm \
+      #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+      #         --volume $(Build.BinariesDirectory):/build \
+      #         --volume /data/models:/build/models:ro \
+      #         -e NVIDIA_VISIBLE_DEVICES=all \
+      #         -e NIGHTLY_BUILD \
+      #         -e BUILD_BUILDNUMBER \
+      #         ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+      #         $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+      #           --build_dir /build \
+      #           --config Release \
+      #           --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+      #           --skip_submodule_sync \
+      #           --parallel \
+      #           --build_wheel \
+      #           --enable_onnx_tests \
+      #           --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+      #           ${{ variables.actual_extra_build_py_parameters }}
+      #     workingDirectory: $(Build.SourcesDirectory)
       
       - task: AzureKeyVault@1
         inputs:
@@ -69,7 +69,9 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            docker login -u jingywatest -p $(DockerPassword) jingywatest.azurecr.io\
+            docker version
+            echo $(DockerPassword) > password.txt
+            cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
             docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) jingywatest.azurecr.io/test/onnxruntime-training-1p:latest \
             docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
 
