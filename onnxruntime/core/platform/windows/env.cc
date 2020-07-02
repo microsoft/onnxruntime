@@ -209,7 +209,7 @@ class WindowsEnv : public Env {
       return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
     }
 
-    if (buf.st_size > std::numeric_limits<size_t>::max()) {
+    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
       return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
     }
 
