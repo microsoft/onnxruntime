@@ -58,16 +58,24 @@ class IOBinding {
     */
   common::Status SynchronizeInputs();
   common::Status SynchronizeOutputs();
+
   /**
-    * This simply provides the names and optionally allocated output containers.
+    * Bind an output name to a provided OrtValue. 
+    * If the output is pre-allocated, the value in 'device' is not used.
+    * If the output is not pre-allocated, information on the device it should be allocated on can be provided.
+    * 
+    * @param device Device to allocate on if not pre-allocated. Default is CPU. 
     */
-  common::Status BindOutput(const std::string& name, const OrtValue& ml_value);
+  common::Status BindOutput(const std::string& name, const OrtValue& ml_value, OrtDevice device = {});
 
   /**
     * This simply collects the outputs obtained after calling Run() inside the @param outputs.
     */
   const std::vector<std::string>& GetOutputNames() const;
   std::vector<OrtValue>& GetOutputs();
+
+  // device info for outputs that are not pre-allocated
+  const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;
 
   const std::vector<std::string>& GetInputNames() const;
   const std::vector<OrtValue>& GetInputs() const;
@@ -94,6 +102,7 @@ class IOBinding {
   std::vector<OrtValue> feeds_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> outputs_;
+  std::vector<OrtDevice> outputs_device_info_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
 };

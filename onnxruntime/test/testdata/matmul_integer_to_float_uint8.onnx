@@ -1,10 +1,8 @@
-:è
-M
-Aa_quantizeda_scalea_zpDynamicQuantizeLinear"DynamicQuantizeLinear
-W
-a_quantized
+:Ê
+U
+A
 B
-a_zp
+a_zero_point
 b_zero_pointmatmul_output_int32MatMulInteger"MatMulInteger
 .
 a_scale
@@ -19,7 +17,7 @@ A
 multiplierY
 mul_bottom"MulDynamicQuantizeMatMul_fusionZ
 A
-
+
 
 M
 KZ
@@ -28,9 +26,17 @@ mul_bottom"MulDynamicQuantizeMatMul_fusionZ
 
 K
 NZ
+a_scale
+
+
+Z
 b_scale
 
 
+Z
+a_zero_point
+
+
 Z
 b_zero_point
 
