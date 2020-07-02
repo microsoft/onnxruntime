@@ -59,53 +59,11 @@ class GradientBuilderBase {
     ORT_ENFORCE(i < node_->InputDefs().size());
 
     const std::string& name = node_->InputDefs()[i]->Name();
-    Node* producer_node = graph_->GetMutableProducerNode(name);
-
-    if (producer_node) {
-      if (producer_node->OpType() == "Gelu") {
-        std::cout << "Recomputing " << producer_node->OpType() << " for the gradient of " + node_->Name() + "\n";
-
-        const auto& output = producer_node->OutputDefs()[0];
-
-        auto& duplicated_output = graph_->GetOrCreateNodeArg(output->Name() + "_recompute",
-                                                             output->TypeAsProto());
-
-        graph_->AddNode(producer_node->Name() + "_recompute",
-                        producer_node->OpType(),
-                        "Recompute of " + producer_node->Name(),
-                        {producer_node->MutableInputDefs()[0]},
-                        {&duplicated_output},
-                        &producer_node->GetAttributes(),
-                        producer_node->Domain());
-
-        return ArgDef(duplicated_output.Name(), duplicated_output.TypeAsProto());
-      }
-
-      if (node_->OpType() == "MatMul" &&
-          producer_node->OpType() == "TrainableDropout" &&
-          graph_->GetNode(producer_node->InputNodesBegin()->Index())->OpType() == "Softmax") {
-
-        std::cout << "Recomputing " << producer_node->OpType() << " for the gradient of " + node_->Name() + "\n";
-
-        const auto& output = producer_node->OutputDefs()[0];
-
-        auto& duplicated_output = graph_->GetOrCreateNodeArg(output->Name() + "_recompute",
-                                                             output->TypeAsProto());
-
-        graph_->AddNode(producer_node->Name() + "_recompute",
-                        "TrainableDropoutGrad",
-                        "Recompute of " + producer_node->Name(),
-                        {
-                            producer_node->MutableInputDefs()[0],   // X
-                            producer_node->MutableOutputDefs()[1],  // mask
-                            producer_node->MutableInputDefs()[1]    // ratio
-                        },
-                        {&duplicated_output},
-                        {},
-                        kMSDomain);
-
-        return ArgDef(duplicated_output.Name(), duplicated_output.TypeAsProto());
-      }
+    NodeArg* recomputed_nodearg = graph_->GetNodeArg(name + "_recompute");
+    if (recomputed_nodearg) {
+      const Node* producer_node = graph_->GetProducerNode(name);
+      std::cout << "Recomputed node arg found for " << producer_node->Name() << "\n";
+      return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
