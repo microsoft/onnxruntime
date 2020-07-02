@@ -51,7 +51,7 @@ static NodeDef& GetGlobalHorovodBarrierNode(
   return *std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
 }
 
-static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs, int64_t reduce_op) {
+static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs, int64_t reduce_op, AdasumReductionType adasum_reduction_type) {
   const std::string& gradient_name = gradient_argdef.name;
   ArgDef reduce_output(gradient_name + "_AllReduce_Out", gradient_argdef.type_proto);
   ArgDef reduce_ready(gradient_name + "_AllReduce_Ready");
@@ -62,7 +62,8 @@ static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugm
   graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce",
                                   {gradient_argdef},
                                   {reduce_output, reduce_ready},
-                                  {ONNX_NAMESPACE::MakeAttribute("reduce_op", static_cast<int64_t>(reduce_op))},
+                                  std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("reduce_op", static_cast<int64_t>(reduce_op)),
+                                      ONNX_NAMESPACE::MakeAttribute("reduce_algo", static_cast<int64_t>(adasum_reduction_type))}),
                                   gradient_name + "_AllReduce")});
 
   // Add ready check to global horovod barrier.
@@ -85,7 +86,7 @@ Status AllreduceOptimizerGraphBuilder::AddHorovodAllReduceForGradients(std::vect
                                                                        GraphAugmenter::GraphDefs& graph_defs,
                                                                        const int64_t horovod_reduce_op) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs, horovod_reduce_op);
+    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs, horovod_reduce_op, opt_graph_config_.adasum_reduction_type);
   }
   return Status::OK();
 }

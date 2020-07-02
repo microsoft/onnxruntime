@@ -840,6 +840,7 @@ Example 4:
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .Attr("reduce_op", "Reduce operation supported by Horovod. Valid values are: AVERAGE(0), SUM(1) or ADASUM(2)", AttributeProto::INT, int64_t(1))
+      .Attr("reduce_algo", "Algorithms for Adasum. Valid values are: None(0), CpuReduction(1) or GpuHierarchical(2)", AttributeProto::INT, int64_t(0))
       .Input(0, "input", "tensor to be reduced", "T")
       .Output(0, "output", "reduced tensor", "T")
       .Output(1, "ready", "true when reduced tensor is ready", "B")

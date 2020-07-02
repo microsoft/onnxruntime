@@ -25,10 +25,28 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
 
   auto device_id = context->GetDeviceId();
   auto allocator = Info().GetAllocator(device_id, OrtMemTypeDefault);
-
+ 
   const Tensor* input_tensor = context->Input<Tensor>(0);
+
+  std::shared_ptr<ORTTensor> hvd_input = nullptr;
+  //bugbug
+  if (adasum_type_ == training::AdasumReductionType::CpuReduction) {
+    allocator = Info().GetAllocator(0, OrtMemTypeDefault);
+    IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
+        static_cast<size_t>(input_tensor->SizeInBytes()));
+    ORT_ENFORCE(cudaMemcpy(buffer.get(), input_tensor->DataRaw(),
+                           input_tensor->SizeInBytes(), cudaMemcpyDeviceToHost) == cudaSuccess);
+    const auto data_type = input_tensor->DataType();
+    const auto shape = input_tensor->Shape();
+    OrtMemoryInfo cpuinfo{onnxruntime::CPU, OrtDeviceAllocator};
+    auto cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, (void*)(buffer.get()), cpuinfo);
+    hvd_input = std::make_shared<ORTTensor>(cpu_tensor.get());
+  }
+  else {
+    hvd_input = std::make_shared<ORTTensor>(input_tensor);
+  }
+
   auto hvd_ready_event = std::make_shared<ORTReadyEvent>(device_id);
-  auto hvd_input = std::make_shared<ORTTensor>(input_tensor);
   auto hvd_context = std::make_shared<ORTOpContext>(allocator);
   auto hvd_output = std::make_shared<ORTTensor>(context->Output(0, input_tensor->Shape()));
   Tensor* ready_tensor = context->Output(1, {});
@@ -39,9 +57,14 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
           EnqueueTensorAllreduce(
               hvd_context, hvd_input, hvd_output, hvd_ready_event,
               unique_name, device_id,
-              [ready](const horovod::common::Status& /*status*/) {
+              [ready, hvd_input, hvd_output, this, device_id](const horovod::common::Status& /*status*/) {
                 // TODO: handle failures during Allreduce
                 // https://aiinfra.visualstudio.com/Lotus/_workitems/edit/3936
+                // bugbug
+                if(adasum_type_ == training::AdasumReductionType::CpuReduction) {
+                  ORT_ENFORCE(cudaMemcpy(hvd_output->mutable_data(), hvd_input->data(),
+                              hvd_output->size(), cudaMemcpyHostToDevice) == cudaSuccess); 
+                }
                 *ready = true;
               },
               reduce_op_)));

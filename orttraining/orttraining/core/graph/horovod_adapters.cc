@@ -88,6 +88,10 @@ const void* ORTTensor::data() const {
   return tensor_->DataRaw();
 }
 
+void* ORTTensor::mutable_data() {
+  return (const_cast<onnxruntime::Tensor*>(tensor_))->MutableDataRaw();
+}
+
 int64_t ORTTensor::size() const {
   return (int64_t)tensor_->SizeInBytes();
 }
