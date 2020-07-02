@@ -81,13 +81,11 @@ def pytorch_inference(model, inputs, total_runs=100):
         attention_mask = attention_mask.to(dtype=torch.float32)
     past = [p.to(dtype=torch.float32) for p in past]
 
-    inference = torch.jit.trace(model, input_ids,  past=past, attention_mask=attention_mask, position_ids=position_ids)
-
     latency = []
     with torch.no_grad():
         for _ in range(total_runs):
             start = time.time()
-            outputs = inference(input_ids=input_ids, past=past, attention_mask=attention_mask, position_ids=position_ids)
+            outputs = model(input_ids=input_ids, past=past, attention_mask=attention_mask, position_ids=position_ids)
             latency.append(time.time() - start)
 
     average_latency = sum(latency) * 1000 / len(latency)
@@ -521,7 +519,7 @@ def main():
     use_LMHead = (args.model_class == 'GPT2LMHeadModel')
 
     model_name = args.model_name
-    config = AutoConfig.from_pretrained(model_name, torchscript=True, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(model_name, torchscript=False, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     
@@ -563,12 +561,12 @@ def main():
                                                "fp16" if args.float16 else "fp32"))
         m.save_model_to_file(onnx_model_path)
 
-    if quantize:
+    if args.quantize:
         print("quantizing model")
         quantize_onnx_model(onnx_model_path, onnx_model_path)
         conv1d_to_linear(model)
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-        print("finished quantizing")
+        print("finished")
 
     session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose)
     if session is None:
