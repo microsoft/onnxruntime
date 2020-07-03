@@ -78,32 +78,35 @@ common::Status IOBinding::SynchronizeOutputs() {
   return Status::OK();
 }
 
-common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
+common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
   auto rc = Contains(output_names_, name);
   if (rc.first) {
     outputs_[rc.second] = ml_value;
-    return Status::OK();
+    outputs_device_info_[rc.second] = device;
+  } else {
+    output_names_.push_back(name);
+    outputs_.push_back(ml_value);
+    outputs_device_info_.push_back(device);
   }
 
-  output_names_.push_back(name);
-  outputs_.push_back(ml_value);
   return Status::OK();
 }
 
 void IOBinding::ClearOutputs() {
   output_names_.clear();
   outputs_.clear();
+  outputs_device_info_.clear();
 }
 
-const std::vector<std::string>& IOBinding::GetOutputNames() const {
-  return output_names_;
-}
+const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
 
 std::vector<OrtValue>& IOBinding::GetOutputs() { return outputs_; }
 
-const std::vector<std::string>& IOBinding::GetInputNames() const {
-  return feed_names_;
+const std::vector<OrtDevice>& IOBinding::GetOutputsDeviceInfo() const {
+  return outputs_device_info_;
 }
+
+const std::vector<std::string>& IOBinding::GetInputNames() const { return feed_names_; }
 
 const std::vector<OrtValue>& IOBinding::GetInputs() const { return feeds_; }
 

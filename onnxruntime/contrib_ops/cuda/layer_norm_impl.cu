@@ -376,7 +376,7 @@ void HostApplyLayerNorm(
 
 LAYERNORM_LINEAR_IMPL(float, float)
 LAYERNORM_LINEAR_IMPL(half, float)
-LAYERNORM_LINEAR_IMPL(double, float)
+LAYERNORM_LINEAR_IMPL(double, double)
 //LAYERNORM_LINEAR_IMPL(half, half)
 
 }  // namespace cuda

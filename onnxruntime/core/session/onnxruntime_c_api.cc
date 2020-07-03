@@ -503,9 +503,9 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
-    status = session->Run(op, feed_names, feeds, output_names, &fetches);
+    status = session->Run(op, feed_names, feeds, output_names, &fetches, nullptr);
   } else {
-    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches);
+    status = session->Run(*run_options, feed_names, feeds, output_names, &fetches, nullptr);
   }
 
   if (!status.IsOK())
