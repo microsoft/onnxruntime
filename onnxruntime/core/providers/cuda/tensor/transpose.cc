@@ -139,6 +139,9 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
       new_rank--;
     }
   }
+  new_permutations.resize(new_rank);
+  new_input_dims.resize(new_rank);
+  new_output_dims.resize(new_rank);
 
   TensorPitches new_input_strides(new_input_dims);
   TensorPitches new_output_strides(new_output_dims);

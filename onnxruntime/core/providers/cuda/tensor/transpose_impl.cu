@@ -11,8 +11,8 @@ constexpr int TILE_DIM = 16;
 
 template <typename T>
 __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
-                                   const TArray<int64_t> input_strides,
-                                   const T* input_data, T* output_data) {
+                                  const TArray<int64_t> input_strides,
+                                  const T* input_data, T* output_data) {
   __shared__ T tile[TILE_DIM * (TILE_DIM+1)];
 
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
@@ -79,10 +79,10 @@ Status Transpose3DImpl(size_t element_size,
   return Status::OK();
 }
 
-template <typename T, int element_size>
-__global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const T* input_data,
-                                   const TArray<int64_t> output_strides, T* output_data,
-                                   CUDA_LONG N) {
+template <int element_size>
+__global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const void* input_data,
+                                  const TArray<int64_t> output_strides, void* output_data,
+                                  CUDA_LONG N) {
   // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
   CUDA_LONG input_index = (blockIdx.y * input_strides[0] +
                            blockIdx.x * input_strides[1] +
@@ -136,24 +136,24 @@ Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, 
 
   switch (element_size) {
     case sizeof(int8_t):
-      Transpose4DKernel<int8_t, sizeof(int8_t)><<<grid_size, block_size, 0>>>(
-          input_strides, reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
-          output_strides, reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data), N/num_elements_per_thread);
+      Transpose4DKernel<sizeof(int8_t)><<<grid_size, block_size, 0>>>(
+          input_strides, input_data,
+          output_strides, output_data, N/num_elements_per_thread);
       break;
     case sizeof(int16_t):
-      Transpose4DKernel<int16_t, sizeof(int16_t)><<<grid_size, block_size, 0>>>(
-          input_strides, reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
-          output_strides, reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data), N/num_elements_per_thread);
+      Transpose4DKernel<sizeof(int16_t)><<<grid_size, block_size, 0>>>(
+          input_strides, input_data,
+          output_strides, output_data, N/num_elements_per_thread);
       break;
     case sizeof(int32_t):
-      Transpose4DKernel<int32_t, sizeof(int32_t)><<<grid_size, block_size, 0>>>(
-          input_strides, reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
-          output_strides, reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data), N/num_elements_per_thread);
+      Transpose4DKernel<sizeof(int32_t)><<<grid_size, block_size, 0>>>(
+          input_strides, input_data,
+          output_strides, output_data, N/num_elements_per_thread);
       break;
     case sizeof(int64_t):
-      Transpose4DKernel<int64_t, sizeof(int64_t)><<<grid_size, block_size, 0>>>(
-          input_strides, reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
-          output_strides, reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data), N/num_elements_per_thread);
+      Transpose4DKernel<sizeof(int64_t)><<<grid_size, block_size, 0>>>(
+          input_strides, input_data,
+          output_strides, output_data, N/num_elements_per_thread);
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
@@ -164,8 +164,8 @@ Status Transpose4DImpl(size_t element_size, const TArray<int64_t>& input_shape, 
 }
 
 template <typename T>
-__global__ void _TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_strides,
-                                 const T* input_data, const TArray<fast_divmod> output_strides, T* output_data, CUDA_LONG N) {
+__global__ void TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_strides,
+                                const T* input_data, const TArray<fast_divmod> output_strides, T* output_data, CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
@@ -188,7 +188,7 @@ Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (element_size) {
     case sizeof(int8_t):
-      _TransposeKernel<int8_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      TransposeKernel<int8_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           shape_rank, input_strides,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           fdm_output_strides,
@@ -196,7 +196,7 @@ Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64
           N);
       break;
     case sizeof(int16_t):
-      _TransposeKernel<int16_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      TransposeKernel<int16_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           shape_rank, input_strides,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           fdm_output_strides,
@@ -204,7 +204,7 @@ Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64
           N);
       break;
     case sizeof(int32_t):
-      _TransposeKernel<int32_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      TransposeKernel<int32_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           shape_rank, input_strides,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           fdm_output_strides,
@@ -212,7 +212,7 @@ Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64
           N);
       break;
     case sizeof(int64_t):
-      _TransposeKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      TransposeKernel<int64_t><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           shape_rank, input_strides,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           fdm_output_strides,
