@@ -2562,7 +2562,8 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 static void GatherNDComputationReductionTest(const std::string op_type, logging::Logger& logger) {
   std::string op_type_lower = op_type;
   std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
-  const PathString model_uri = ORT_TSTR("testdata/transform/computation_reduction/gathernd_" + op_type_lower + ".onnx");
+  std::string file_path = std::string("testdata/transform/computation_reduction/gathernd_") + op_type_lower + std::string(".onnx");
+  const PathString& model_uri = ORT_TSTR(file_path.c_str());
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
   Graph& graph = model->MainGraph();
@@ -2723,12 +2724,12 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
 
   for (auto& provider_type : all_provider_types) {
     std::vector<OrtValue> expected_ort_values;
-    RunGatherNDE2EGraph(expected_ort_values, model_uri, "RawGraphRun", provider_type,
+    RunGatherNDE2EGraph(expected_ort_values, model_uri, std::string("RawGraphRun"), provider_type,
                         dims_input, input_values, dims_unsqueezed_masked_lm_positions,
                         values_unsqueezed_masked_lm_positions);
 
     std::vector<OrtValue> actual_ort_values;
-    RunGatherNDE2EGraph(actual_ort_values, new_model_uri, "OptimizedGraphRun", provider_type,
+    RunGatherNDE2EGraph(actual_ort_values, new_model_uri, std::string"OptimizedGraphRun"), provider_type,
                         dims_input, input_values, dims_unsqueezed_masked_lm_positions,
                         values_unsqueezed_masked_lm_positions);
 
