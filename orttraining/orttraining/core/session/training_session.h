@@ -302,7 +302,7 @@ class TrainingSession : public InferenceSession {
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
   /** Override Run function in InferenceSession to inject some training-specific logics **/
-  using InferenceSession::Run; // For overload resolution.
+  using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
   common::Status Run(IOBinding& io_binding) override;
@@ -441,7 +441,7 @@ class TrainingSession : public InferenceSession {
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
   @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
   */
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights,
                                                                 const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;
