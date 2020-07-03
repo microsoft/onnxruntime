@@ -1424,19 +1424,19 @@ Return Value:
     MlasExecuteThreaded(MlasGemmU8X8Threaded, WorkBlock, TargetThreadCount, ThreadPool);
 }
 
-template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const AType* A,
+    const uint8_t* A,
     size_t lda,
-    AType offa,
-    const BType* B,
+    uint8_t offa,
+    const uint8_t* B,
     size_t ldb,
-    BType offb,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
@@ -1469,6 +1469,9 @@ Arguments:
 
     offb - Supplies the zero point offset of matrix B.
 
+    BIsSigned - Supplies true if matrix B is signed data, else false if matrix
+        B is unsigned data.
+
     C - Supplies the address of matrix C.
 
     ldc - Supplies the first dimension of matrix C.
@@ -1495,13 +1498,13 @@ Return Value:
     WorkBlock.K = K;
     WorkBlock.A = A;
     WorkBlock.lda = lda;
-    WorkBlock.B = (const uint8_t*)B;
+    WorkBlock.B = B;
     WorkBlock.ldb = ldb;
     WorkBlock.C = C;
     WorkBlock.ldc = ldc;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
-    WorkBlock.BIsSigned = std::is_signed<BType>::value;
+    WorkBlock.BIsSigned = BIsSigned;
 
     //
     // Schedule the operation across a set of worker threads.
@@ -1510,25 +1513,6 @@ Return Value:
     MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
 
-template
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const int8_t* B,
-    size_t ldb,
-    int8_t offb,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
-template
 void
 MLASCALL
 MlasGemm(
@@ -1541,24 +1525,7 @@ MlasGemm(
     const uint8_t* B,
     size_t ldb,
     uint8_t offb,
-    int32_t* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
-template<typename AType, typename BType>
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const AType* A,
-    size_t lda,
-    AType offa,
-    const BType* B,
-    size_t ldb,
-    BType offb,
+    bool BIsSigned,
     float* C,
     size_t ldc,
     const float* Scale,
@@ -1593,9 +1560,19 @@ Arguments:
 
     offb - Supplies the zero point offset of matrix B.
 
+    BIsSigned - Supplies true if matrix B is signed data, else false if matrix
+        B is unsigned data.
+
     C - Supplies the address of matrix C.
 
     ldc - Supplies the first dimension of matrix C.
+
+    Scale - Supplies the scale multiplier to apply to each element of matrix C.
+        Used to scale the integer output of the QGEMM back to a floating point
+        number.
+
+    Bias - Supplies the bias vector to apply to element of matrix C. The vector
+        is of length N.
 
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
@@ -1619,7 +1596,7 @@ Return Value:
     WorkBlock.K = K;
     WorkBlock.A = A;
     WorkBlock.lda = lda;
-    WorkBlock.B = (const uint8_t*)B;
+    WorkBlock.B = B;
     WorkBlock.ldb = ldb;
     WorkBlock.C = (int32_t*)C;
     WorkBlock.ldc = ldc;
@@ -1627,7 +1604,7 @@ Return Value:
     WorkBlock.BiasFloat = Bias;
     WorkBlock.offa = offa;
     WorkBlock.offb = offb;
-    WorkBlock.BIsSigned = std::is_signed<BType>::value;
+    WorkBlock.BIsSigned = BIsSigned;
     WorkBlock.CIsFloat = true;
 
     //
@@ -1636,45 +1613,5 @@ Return Value:
 
     MlasGemmU8X8Schedule(&WorkBlock, ThreadPool);
 }
-
-template
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const int8_t* B,
-    size_t ldb,
-    int8_t offb,
-    float* C,
-    size_t ldc,
-    const float* Scale,
-    const float* Bias,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
-template
-void
-MLASCALL
-MlasGemm(
-    size_t M,
-    size_t N,
-    size_t K,
-    const uint8_t* A,
-    size_t lda,
-    uint8_t offa,
-    const uint8_t* B,
-    size_t ldb,
-    uint8_t offb,
-    float* C,
-    size_t ldc,
-    const float* Scale,
-    const float* Bias,
-    MLAS_THREADPOOL* ThreadPool
-    );
 
 #endif

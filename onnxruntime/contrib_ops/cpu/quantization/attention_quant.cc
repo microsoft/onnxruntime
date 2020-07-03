@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "attention_quant.h"
-#include "contrib_ops/cpu/bert/attention_helper.h"
+#include "core/framework/op_kernel.h"
+#include "contrib_ops/cpu/bert/attention_cpu_base.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/qmath.h"
@@ -15,30 +15,35 @@ using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 namespace contrib {
+
+template <typename T>
+class QAttention : public OpKernel, public AttentionCPUBase {
+ public:
+  QAttention(const OpKernelInfo& info);
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T, QInput, QWeight)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      QAttention,                                                        \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      T##_##QInput##_##QWeight,                                          \
-      kCpuExecutionProvider,                                             \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<QInput>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<QWeight>())  \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
-      QAttention<T, QInput, QWeight>);
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QAttention,
+    kMSDomain,
+    1,
+    float,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QAttention<float>);
 
-REGISTER_KERNEL_TYPED(float, uint8_t, int8_t)
-REGISTER_KERNEL_TYPED(float, uint8_t, uint8_t)
-
-template <typename T, typename QInput, typename QWeight>
-QAttention<T, QInput, QWeight>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
+template <typename T>
+QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
-template <typename T, typename QInput, typename QWeight>
-Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
+template <typename T>
+Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Input and output shapes:
   //   Input  0 - input             : (batch_size, sequence_length, hidden_size)
   //   Input  1 - weights           : (hidden_size, 3 * hidden_size)
@@ -74,19 +79,18 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   T dequant_scale = input_scale * weight_scale;
 
-  QInput input_zero_point = 0;
+  uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
                       "input zero point must be a scalar or 1D tensor of size 1.");
-    input_zero_point = *i_zp_tensor->template Data<QInput>();
+    input_zero_point = *i_zp_tensor->template Data<uint8_t>();
   }
 
-  QWeight weight_zero_point = 0;
+  uint8_t weight_zero_point = 0;
   if (w_zp_tensor != nullptr) {
-    // CUDA only support symmetric quantization for Attention
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(w_zp_tensor),
                       "weight zero point must be a scalar or 1D tensor of size 1.");
-    weight_zero_point = *w_zp_tensor->template Data<QWeight>();
+    weight_zero_point = *static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
   }
 
   const auto& shape = input->Shape();
@@ -114,9 +118,10 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
-    const auto input_data = input->template Data<QInput>();
-    const auto weights_data = weights->template Data<QWeight>();
-    const auto bias_data = bias->template Data<T>();
+    const auto* input_data = input->template Data<uint8_t>();
+    const auto* weights_data = static_cast<const uint8_t*>(weights->DataRaw());
+    const bool weights_is_signed = weights->IsDataType<int8_t>();
+    const auto* bias_data = bias->template Data<T>();
 
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(hidden_size);
@@ -144,6 +149,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
               weights_data + weights_offset,  // B
               3 * hidden_size,                // ldb    = 3NH
               weight_zero_point,              // weight zero point
+              weights_is_signed,              // weight data type
               qkv_dest + qkv_offset,          // C
               head_size,                      // ldc
               &dequant_scale,                 // output scale
