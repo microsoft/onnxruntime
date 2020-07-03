@@ -87,41 +87,23 @@ inline std::vector<std::vector<int64_t>> Session::GetOverridableInitializerShape
 }
 
 template <typename T>
-T Value::At(const std::initializer_list<size_t>& location) {
-  std::vector<size_t> location_ = location;
-  std::vector<int64_t> shape = this->GetTensorTypeAndShapeInfo().GetShape();
-  size_t offset = 0;
-  for (int i = 0; i < shape.size(); i++) {
-    int sum = 1;
-    for (int j = i + 1; j <= shape.size(); j++) sum *= shape[j];
-    offset += location_[i] * sum;
-  }
-  T* data_ptr = this->GetTensorMutableData<T>();
-  return data_ptr[offset];
-}
-
-template <typename T>
-inline Value Value::CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape) {
+inline Ort::Value Value::CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape) {
   return CreateTensor(p_data, p_data_element_count * sizeof(T), shape, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
+inline Ort::Value Value::CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   Ort::MemoryInfo info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  OrtValue* out;
-  ThrowOnError(Global<void>::api_.CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape.data(), shape.size(), type, &out));
-  return Value{out};
+  return Ort::Value::CreateTensor(info, p_data, p_data_byte_count, shape.data(), shape.size(), type);
 }
 
 template <typename T>
-inline Value Value::CreateTensor(const std::vector<int64_t>& shape) {
+inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape) {
   return CreateTensor(shape, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
+inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
   Ort::AllocatorWithDefaultOptions allocator;
-  OrtValue* out;
-  ThrowOnError(Global<void>::api_.CreateTensorAsOrtValue(allocator, shape.data(), shape.size(), type, &out));
-  return Value{out};
+  return Ort::Value::CreateTensor(allocator, shape.data(), shape.size(), type);
 }
 
 }  // namespace Ort::Experimental
