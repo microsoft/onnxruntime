@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -192,6 +193,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateSession = (DOrtCreateSession)Marshal.GetDelegateForFunctionPointer(api_.CreateSession, typeof(DOrtCreateSession));
             OrtCreateSessionFromArray = (DOrtCreateSessionFromArray)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArray, typeof(DOrtCreateSessionFromArray));
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
+            OrtRunWithBinding = (DOrtRunWithBinding)Marshal.GetDelegateForFunctionPointer(api_.RunWithBinding, typeof(DOrtRunWithBinding));
             OrtSessionGetInputCount = (DOrtSessionGetInputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputCount, typeof(DOrtSessionGetInputCount));
             OrtSessionGetOutputCount = (DOrtSessionGetOutputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOutputCount, typeof(DOrtSessionGetOutputCount));
             OrtSessionGetOverridableInitializerCount = (DOrtSessionGetOverridableInitializerCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetOverridableInitializerCount, typeof(DOrtSessionGetOverridableInitializerCount));
@@ -239,6 +241,10 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateMemoryInfo = (DOrtCreateMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateMemoryInfo, typeof(DOrtCreateMemoryInfo));
             OrtCreateCpuMemoryInfo = (DOrtCreateCpuMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CreateCpuMemoryInfo, typeof(DOrtCreateCpuMemoryInfo));
             OrtReleaseMemoryInfo = (DOrtReleaseMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMemoryInfo, typeof(DOrtReleaseMemoryInfo));
+            OrtCompareMemoryInfo = (DOrtCompareMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.CompareMemoryInfo, typeof(DOrtCompareMemoryInfo));
+            OrtMemoryInfoGetName = (DOrtMemoryInfoGetName)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetName, typeof(DOrtMemoryInfoGetName));
+            OrtMemoryInfoGetId = (DOrtMemoryInfoGetId)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetId, typeof(DOrtMemoryInfoGetId));
+            OrtMemoryInfoGetMemType = (DOrtMemoryInfoGetMemType)Marshal.GetDelegateForFunctionPointer(api_.MemoryInfoGetType, typeof(DOrtMemoryInfoGetMemType));
             OrtGetAllocatorWithDefaultOptions = (DOrtGetAllocatorWithDefaultOptions)Marshal.GetDelegateForFunctionPointer(api_.GetAllocatorWithDefaultOptions, typeof(DOrtGetAllocatorWithDefaultOptions));
             OrtCreateAllocator = (DOrtCreateAllocator)Marshal.GetDelegateForFunctionPointer(api_.CreateAllocator, typeof(DOrtCreateAllocator));
             OrtReleaseAllocator = (DOrtReleaseAllocator)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAllocator, typeof(DOrtReleaseAllocator));
@@ -333,6 +339,13 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr[] outputValues /* An array of output value pointers. Array must be allocated by the caller */
                                                 );
         public static DOrtRun OrtRun;
+
+        public delegate IntPtr /*(ONNStatus*)*/ DOrtRunWithBinding(
+                                                IntPtr /*(OrtSession*)*/ session,
+                                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions, // can not be null
+                                                IntPtr /*(const OrtIoBinding*)*/ io_binding
+                                                );
+        public static DOrtRunWithBinding OrtRunWithBinding;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionGetInputCount(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -540,23 +553,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Allocator/MemoryInfo API
 
-        //TODO: consider exposing them publicly, when allocator API is exposed
-        public enum AllocatorType
-        {
-            DeviceAllocator = 0,
-            ArenaAllocator = 1
-        }
-
-        //TODO: consider exposing them publicly when allocator API is exposed
-        public enum MemoryType
-        {
-            CpuInput = -2,                      // Any CPU memory used by non-CPU execution provider
-            CpuOutput = -1,                     // CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
-            Cpu = CpuOutput,                    // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
-            Default = 0,                        // the default allocator for execution provider
-        }
-
-
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateMemoryInfo(
                                                             IntPtr /*(const char*) */name,
                                                             AllocatorType allocatorType,
@@ -575,6 +571,31 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate void DOrtReleaseMemoryInfo(IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo);
         public static DOrtReleaseMemoryInfo OrtReleaseMemoryInfo;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCompareMemoryInfo(
+                                               IntPtr /*(const OrtMemoryInfo*)*/ info1,
+                                               IntPtr /*(const OrtMemoryInfo*)*/ info2,
+                                               out int /*(int* out)*/ result);
+        public static DOrtCompareMemoryInfo OrtCompareMemoryInfo;
+        /**
+        * Do not free the returned value
+        */
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtMemoryInfoGetName(IntPtr /*(const OrtMemoryInfo* ptr)*/ mem_info, out IntPtr /*(const char**)*/ name);
+        public static DOrtMemoryInfoGetName OrtMemoryInfoGetName;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtMemoryInfoGetId(IntPtr /*(const OrtMemoryInfo* ptr)*/ mem_info, out int /*(int* out)*/ id);
+        public static DOrtMemoryInfoGetId OrtMemoryInfoGetId;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtMemoryInfoGetMemType(
+                                                IntPtr /*(const OrtMemoryInfo* ptr)*/ mem_info,
+                                                out MemoryType /*(OrtMemType*)*/ mem_type);
+        public static DOrtMemoryInfoGetMemType OrtMemoryInfoGetMemType;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtMemoryInfoGetType(
+                                                IntPtr /*(const OrtMemoryInfo* ptr)*/ mem_info,
+                                                out AllocatorType /*(OrtAllocatorType*)*/ alloc_type
+                                                );
+        public static DOrtMemoryInfoGetType OrtMemoryInfoGetType;
 
         public delegate IntPtr /*(OrtStatus*)*/DOrtGetAllocatorWithDefaultOptions(out IntPtr /*(OrtAllocator**)*/ allocator);
         public static DOrtGetAllocatorWithDefaultOptions OrtGetAllocatorWithDefaultOptions;

@@ -1,7 +1,9 @@
-﻿using Microsoft.ML.OnnxRuntime.Tensors;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -143,7 +145,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                        NativeMemoryInfo.DefaultInstance.Handle,
+                        MemoryInfo.DefaultInstance.Handle,
                         dataBufferPointer,
                         (UIntPtr)(dataBufferLength),
                         longShape,
