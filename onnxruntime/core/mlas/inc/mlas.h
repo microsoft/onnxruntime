@@ -147,37 +147,37 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const AType* A,
+    const uint8_t* A,
     size_t lda,
-    AType offa,
-    const BType* B,
+    uint8_t offa,
+    const uint8_t* B,
     size_t ldb,
-    BType offb,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     );
 
-template<typename AType, typename BType>
 void
 MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
     size_t K,
-    const AType* A,
+    const uint8_t* A,
     size_t lda,
-    AType offa,
-    const BType* B,
+    uint8_t offa,
+    const uint8_t* B,
     size_t ldb,
-    BType offb,
+    uint8_t offb,
+    bool BIsSigned,
     float* C,
     size_t ldc,
     const float* Scale,
