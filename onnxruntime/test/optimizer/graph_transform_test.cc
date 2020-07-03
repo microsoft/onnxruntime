@@ -2729,7 +2729,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
                         values_unsqueezed_masked_lm_positions);
 
     std::vector<OrtValue> actual_ort_values;
-    RunGatherNDE2EGraph(actual_ort_values, new_model_uri, std::string"OptimizedGraphRun"), provider_type,
+    RunGatherNDE2EGraph(actual_ort_values, new_model_uri, std::string("OptimizedGraphRun"), provider_type,
                         dims_input, input_values, dims_unsqueezed_masked_lm_positions,
                         values_unsqueezed_masked_lm_positions);
 
