@@ -10,8 +10,6 @@ using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-
-
     /// <summary>
     /// Represents an Inference Session on an ONNX Model
     /// </summary>
