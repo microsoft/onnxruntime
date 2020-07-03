@@ -14,13 +14,14 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
     size_t N,
     TArray<const T*, max_input_batch_size> inputs,
     T* output) {
-  const auto base_idx = num_elements_per_thread * blockDim.x * blockIdx.x + threadIdx.x;
+  const size_t base_idx = num_elements_per_thread * blockDim.x * blockIdx.x + threadIdx.x;
 
   T inputs_buffer[num_elements_per_thread][max_input_batch_size];
 
 #pragma unroll
-  for (size_t element_count = 0; element_count < num_elements_per_thread; ++element_count) {
-    const auto element_idx = base_idx + blockDim.x * element_count;
+  for (size_t element_count = 0, element_idx = base_idx;
+       element_count < num_elements_per_thread;
+       ++element_count, element_idx += blockDim.x) {
     if (element_idx < N) {
 #pragma unroll
       for (size_t input_batch_idx = 0; input_batch_idx < max_input_batch_size; ++input_batch_idx) {
@@ -32,8 +33,9 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
   }
 
 #pragma unroll
-  for (size_t element_count = 0; element_count < num_elements_per_thread; ++element_count) {
-    const auto element_idx = base_idx + blockDim.x * element_count;
+  for (size_t element_count = 0, element_idx = base_idx;
+       element_count < num_elements_per_thread;
+       ++element_count, element_idx += blockDim.x) {
     if (element_idx < N) {
       // first and second inputs
       output[element_idx] = func(

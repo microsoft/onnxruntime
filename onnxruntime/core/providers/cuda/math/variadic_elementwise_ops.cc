@@ -148,6 +148,15 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
             return first_input_tensor.Shape() == t.get().Shape();
           })) {
     auto& output_tensor = context->RequiredOutput(0, first_input_tensor.Shape());
+
+    // special case for no broadcasting and 2 inputs
+    if (input_count == 2) {
+      utils::MLTypeCallDispatcherRet<Status, BinaryImplDispatchTarget, SupportedElementTypes...> dispatcher(element_type);
+      ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors[0], input_tensors[1], output_tensor));
+
+      return Status::OK();
+    }
+
     utils::MLTypeCallDispatcherRet<Status, NoBroadcastBatchImplDispatchTarget, SupportedElementTypes...> dispatcher(
         element_type);
     ORT_RETURN_IF_ERROR(dispatcher.Invoke(input_tensors, output_tensor));
