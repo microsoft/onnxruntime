@@ -2481,11 +2481,11 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
 // Without contib_ops enabled, we cannot parse the graph correctly.
 #ifndef DISABLE_CONTRIB_OPS
 // We used Opset 12 for testing to make sure we are not using GatherND OnnxDomain Opset 1.
-static void GatherNDComputationReductionTest(const std::string& op_type, logging::Logger& logger) {
+static void GatherNDComputationReductionTest(const std::string op_type, logging::Logger& logger) {
   std::string op_type_lower = op_type;
   std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
-  std::string file_name = "gathernd_" + op_type_lower + ".onnx";
-  auto model_uri = MODEL_FOLDER "computation_reduction/" + file_name;
+  std::string file_name = "computation_reduction/gathernd_" + op_type_lower + ".onnx";
+  auto model_uri = MODEL_FOLDER file_name.c_str();
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
   Graph& graph = model->MainGraph();
