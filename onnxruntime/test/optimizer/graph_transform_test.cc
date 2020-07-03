@@ -2562,7 +2562,7 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatTest) {
 static void GatherNDComputationReductionTest(const std::string op_type, logging::Logger& logger) {
   std::string op_type_lower = op_type;
   std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
-  auto model_uri = "testdata/transform/computation_reduction/gathernd_" + op_type_lower + ".onnx";
+  const PathString model_uri = ORT_TSTR("testdata/transform/computation_reduction/gathernd_" + op_type_lower + ".onnx");
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
   Graph& graph = model->MainGraph();
@@ -2606,7 +2606,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_MatMul
   GatherNDComputationReductionTest("MatMul", *logger_);
 }
 
-static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const std::string& model_uri,
+static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const std::string model_uri,
                                 const std::string session_log_id, const std::string& provider_type,
                                 const std::vector<int64_t>& dims_input,
                                 const std::vector<float>& input_values,
