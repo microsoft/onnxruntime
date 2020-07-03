@@ -2484,7 +2484,7 @@ TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
 static void GatherNDComputationReductionTest(const std::string& op_type, logging::Logger& logger) {
   std::string op_type_lower = op_type;
   std::transform(op_type_lower.begin(), op_type_lower.end(), op_type_lower.begin(), [](unsigned char c) { return std::tolower(c); });
-  const std::string& file_name = "gathernd_" + op_type_lower + ".onnx";
+  std::string& file_name = "gathernd_" + op_type_lower + ".onnx";
   auto model_uri = MODEL_FOLDER "computation_reduction/" + file_name;
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
@@ -2530,7 +2530,7 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_MatMul
 }
 
 static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const std::string& model_uri,
-                                const std::string& session_log_id, const std::string& provider_type,
+                                const std::string session_log_id, const std::string& provider_type,
                                 const std::vector<int64_t>& dims_input,
                                 const std::vector<float>& input_values,
                                 const std::vector<int64_t>& dims_unsqueezed_masked_lm_positions,
