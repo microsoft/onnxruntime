@@ -10,6 +10,7 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
+#include "orttraining/core/graph/gradient_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -41,6 +42,9 @@ class TrainingSession : public InferenceSession {
 
     // The immutable weights specification.
     ImmutableWeights immutable_weights;
+
+    // Gradient graph configuration
+    GradientGraphConfiguration gradient_graph_config{};
 
     // Whether to set the gradients as graph outputs.
     bool set_gradients_as_graph_outputs{false};
@@ -409,6 +413,7 @@ class TrainingSession : public InferenceSession {
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
+                                    const GradientGraphConfiguration& gradient_graph_config,
                                     const bool set_gradient_as_graph_output = false);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
@@ -469,6 +474,8 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
+
+  GradientGraphConfiguration gradient_graph_config_;
 };
 }  // namespace training
 }  // namespace onnxruntime
