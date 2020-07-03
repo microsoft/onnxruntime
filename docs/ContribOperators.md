@@ -11,6 +11,7 @@
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
+  * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
   * <a href="#com.microsoft.ExpandDims">com.microsoft.ExpandDims</a>
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
@@ -23,6 +24,7 @@
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
+  * <a href="#com.microsoft.QLinearLeakyRelu">com.microsoft.QLinearLeakyRelu</a>
   * <a href="#com.microsoft.QLinearMul">com.microsoft.QLinearMul</a>
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
@@ -504,6 +506,42 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.</dd>
 <dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DynamicQuantizeMatMul"></a><a name="com.microsoft.dynamicquantizematmul">**com.microsoft.DynamicQuantizeMatMul**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>N-dimensional matrix A</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>N-dimensional matrix B</dd>
+<dt><tt>b_scale</tt> : T1</dt>
+<dd>Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>b_zero_point</tt> (optional) : T2</dt>
+<dd>Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Matrix multiply results from A * B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float)</dt>
+<dd>Constrain input A, b_scale and output Y data type as float tensor.</dd>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input B data type to 8-bit integer tensor.</dd>
 </dl>
 
 
@@ -1100,6 +1138,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.QLinearLeakyRelu"></a><a name="com.microsoft.qlinearleakyrelu">**com.microsoft.QLinearLeakyRelu**</a>
+
+  QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
+  and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
+  `f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Coefficient of leakage.</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor</dd>
+<dt><tt>X_scale</tt> : tensor(float)</dt>
+<dd>Input X's scale. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>X_zero_point</tt> (optional) : T</dt>
+<dd>Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>Y_scale</tt> : tensor(float)</dt>
+<dd>Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>Y_zero_point</tt> (optional) : T</dt>
+<dd>Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input and output types to 8 bit tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.QLinearMul"></a><a name="com.microsoft.qlinearmul">**com.microsoft.QLinearMul**</a>
 
   Performs element-wise binary multiplication on 8 bit data types (with Numpy-style broadcasting support).
@@ -1568,9 +1653,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <sub>experimental</sub> <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
-  Multi-Head Self Attention that can be either unidirectional (like GPT2) or bidirectional (like BERT).
-  The mask_index input is optional. Unidirectional and mask_index input are mutually exclusive. When unidirectional is 1, the
-  mask_index shall not be provided.
+  Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+  The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
+  we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+  where value of each element is the end position, or valid length of actual sequence excluding padding. When input has 
+  left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by 
+  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
+  and present state are optional. Present state could appear in output even when past state is not in input.
 
 #### Version
 
@@ -1584,7 +1673,7 @@ No versioning maintained for experimental ops.
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (3 - 5)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -1594,14 +1683,18 @@ No versioning maintained for experimental ops.
 <dt><tt>bias</tt> : T</dt>
 <dd>1D input tensor with shape (3 * hidden_size)</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask index with shape (batch_size).</dd>
+<dd>Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dt><tt>past</tt> (optional) : T</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dt><tt>present</tt> (optional) : T</dt>
+<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints
@@ -1807,9 +1900,11 @@ No versioning maintained for experimental ops.
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>unidirectional</tt> : int</dt>
+<dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (5 - 8)
+#### Inputs (5 - 9)
 
 <dl>
 <dt><tt>input</tt> : T1</dt>
@@ -1828,13 +1923,17 @@ No versioning maintained for experimental ops.
 <dd>zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.</dd>
 <dt><tt>weight_zero_point</tt> (optional) : T2</dt>
 <dd>zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dt><tt>past</tt> (optional) : T3</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T3</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>present</tt> (optional) : T3</dt>
+<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints

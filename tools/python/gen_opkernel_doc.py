@@ -18,8 +18,9 @@ def format_version_range(v):
     else:
         if (v[0] == v[1]):
             return str(v[0])
-        else:    
-            return '['+str(v[0])+', '+str(v[1])+']'    
+        else:
+            return '['+str(v[0])+', '+str(v[1])+']'
+
 
 def format_type_constraints(tc):
     counter = 0
@@ -107,19 +108,19 @@ def main(args):  # type: (Type[Args]) -> None
                 fout.write('|**Operator Domain:** *'+domain+'*||||\n')
                 for name, ops in sorted(namemap.items()):
                     version_type_index = defaultdict(lambda: defaultdict(set))
-                    for op in ops: 
-                        for tname,tclist in op.type_constraints.items():
+                    for op in ops:
+                        for tname, tclist in op.type_constraints.items():
                             for c in tclist:
                                 version_type_index[op.version_range][tname].add(c)
 
                     namefirsttime = True
-                    for version_range, typemap in sorted(version_type_index.items(), key=lambda x:x[0], reverse=True):
+                    for version_range, typemap in sorted(version_type_index.items(), key=lambda x: x[0], reverse=True):
                         if (namefirsttime):
                             params = paramdict.get(domain+'.'+name, None)
-                            fout.write('|'+name+'|'+format_param_strings(params) +'|')
+                            fout.write('|' + name + '|' + format_param_strings(params) + '|')
                             namefirsttime = False
                         else:
-                            fout.write('|||')    
+                            fout.write('|||')
                         fout.write(format_version_range(version_range) + '|')
                         tnameindex = 0
                         for tname, tcset in sorted(typemap.items()):
@@ -129,9 +130,9 @@ def main(args):  # type: (Type[Args]) -> None
                                 tclist.append(tc)
                             fout.write('**'+tname+'** = '+format_type_constraints(tclist))
                             if (tnameindex < len(typemap)):
-                                fout.write('<br/> ') 
-                        fout.write('|\n');    
-                          
+                                fout.write('<br/> ')
+                        fout.write('|\n')
+
                 fout.write('| |\n| |\n')
 
 
