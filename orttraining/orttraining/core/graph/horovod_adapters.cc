@@ -38,6 +38,7 @@ ORTTensor::ORTTensor(const onnxruntime::Tensor* tensor) : tensor_(tensor) {}
 
 const hvd::DataType ORTTensor::dtype() const {
   auto type = tensor_->DataType();
+
   if (type == DataTypeImpl::GetType<uint8_t>()) {
     return hvd::HOROVOD_UINT8;
   } else if (type == DataTypeImpl::GetType<int8_t>()) {

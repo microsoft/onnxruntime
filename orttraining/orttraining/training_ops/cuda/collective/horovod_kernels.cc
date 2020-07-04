@@ -31,31 +31,37 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
   std::shared_ptr<ORTTensor> hvd_input = nullptr;
   //bugbug
   if (adasum_type_ == training::AdasumReductionType::CpuReduction) {
-    allocator = Info().GetAllocator(0, OrtMemTypeDefault);
-    IAllocatorUniquePtr<char> buffer = AllocateBufferOnCPUPinned<char>(
-        static_cast<size_t>(input_tensor->SizeInBytes()));
-    ORT_ENFORCE(cudaMemcpy(buffer.get(), input_tensor->DataRaw(),
-                           input_tensor->SizeInBytes(), cudaMemcpyDeviceToHost) == cudaSuccess);
+    allocator = Info().GetAllocator(0, OrtMemTypeCPUInput);
+    //IAllocatorUniquePtr<uint8_t> buffer = AllocateBufferOnCPUPinned<uint8_t>(
+    //    static_cast<size_t>(input_tensor->SizeInBytes()));
+    //ORT_ENFORCE(cudaMemcpy(buffer.get(), input_tensor->DataRaw(),
+    //                       input_tensor->SizeInBytes(), cudaMemcpyDeviceToHost) == cudaSuccess);
     const auto data_type = input_tensor->DataType();
     const auto shape = input_tensor->Shape();
-    OrtMemoryInfo cpuinfo{onnxruntime::CPU, OrtDeviceAllocator};
-    auto cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, (void*)(buffer.get()), cpuinfo);
-    hvd_input = std::make_shared<ORTTensor>(cpu_tensor.get());
+    //OrtMemoryInfo cpuinfo{onnxruntime::CPU, OrtDeviceAllocator};
+    //auto cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, (void*)(buffer.release()), cpuinfo);
+    std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, allocator);
+    ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(*input_tensor, *cpu_tensor));
+
+    hvd_input = std::make_shared<ORTTensor>(cpu_tensor.release());
   }
   else {
     hvd_input = std::make_shared<ORTTensor>(input_tensor);
   }
 
-  auto hvd_ready_event = std::make_shared<ORTReadyEvent>(device_id);
+  auto hvd_ready_event = (adasum_type_ == training::AdasumReductionType::CpuReduction) ? nullptr : std::make_shared<ORTReadyEvent>(device_id);
   auto hvd_context = std::make_shared<ORTOpContext>(allocator);
   auto hvd_output = std::make_shared<ORTTensor>(context->Output(0, input_tensor->Shape()));
   Tensor* ready_tensor = context->Output(1, {});
   bool* ready = ready_tensor->MutableData<bool>();
   *ready = false;
+  if (adasum_type_ == training::AdasumReductionType::CpuReduction) {
+    device_id = -1;
+  }
   ORT_RETURN_IF_ERROR(
       ConvertStatus(
           EnqueueTensorAllreduce(
-              hvd_context, hvd_input, hvd_output, hvd_ready_event,
+              hvd_context, hvd_input, hvd_input, hvd_ready_event,
               unique_name, device_id,
               [ready, hvd_input, hvd_output, this, device_id](const horovod::common::Status& /*status*/) {
                 // TODO: handle failures during Allreduce
@@ -63,7 +69,7 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
                 // bugbug
                 if(adasum_type_ == training::AdasumReductionType::CpuReduction) {
                   ORT_ENFORCE(cudaMemcpy(hvd_output->mutable_data(), hvd_input->data(),
-                              hvd_output->size(), cudaMemcpyHostToDevice) == cudaSuccess); 
+                             static_cast<size_t>(hvd_output->size()), cudaMemcpyHostToDevice) == cudaSuccess);
                 }
                 *ready = true;
               },
