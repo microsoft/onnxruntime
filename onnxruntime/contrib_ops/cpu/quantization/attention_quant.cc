@@ -22,6 +22,14 @@ class QAttention : public OpKernel, public AttentionCPUBase {
   QAttention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  void TryPackWeights(const OpKernelInfo& info);
+
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  BufferUniquePtr packed_weights_;
+  size_t packed_weights_size_;
+#endif
 };
 
 // These ops are internal-only, so register outside of onnx
@@ -40,6 +48,53 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 template <typename T>
 QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
+  TryPackWeights(info);
+}
+
+template <typename T>
+void QAttention<T>::TryPackWeights(const OpKernelInfo& info) {
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  // Check if the weights tensor is constant.
+  const Tensor* weights;
+  if (!info.TryGetConstantInput(1, &weights)) {
+    return;
+  }
+
+  const auto& weights_dims = weights->Shape().GetDims();
+  if (weights_dims.size() != 2) {
+    return;
+  }
+
+  const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
+  const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
+  const size_t head_size = hidden_size / num_heads_;
+
+  // Bail out if the weights shape has an expected shape.
+  if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
+    return;
+  }
+
+  const auto* weights_data = static_cast<const uint8_t*>(weights->DataRaw());
+  const bool weights_is_signed = weights->IsDataType<int8_t>();
+
+  packed_weights_size_ = MlasGemmPackBSize(head_size, hidden_size, weights_is_signed);
+  if (packed_weights_size_ == 0) {
+    return;
+  }
+
+  const size_t loop_len = 3 * num_heads_;
+  auto alloc = info.GetAllocator(0, OrtMemTypeDefault);
+  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
+  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+
+  for (size_t i = 0; i < loop_len; i++) {
+    MlasGemmPackB(head_size, hidden_size, weights_data, hidden_size_x3, weights_is_signed, packed_weights_data);
+    packed_weights_data += packed_weights_size_;
+    weights_data += head_size;
+  }
+#else
+  ORT_UNUSED_PARAMETER(info);
+#endif
 }
 
 template <typename T>
@@ -140,6 +195,28 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxNxH)          (B.)S x NH            S x NH
         // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+        if (packed_weights_) {
+          const auto* packed_weight =
+            static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+          MlasGemm(
+              sequence_length,                // M      = S
+              head_size,                      // N      = H
+              hidden_size,                    // K      = NH
+              input_data + input_offset,      // A
+              hidden_size,                    // lda    = NH
+              input_zero_point,               // input zero point
+              packed_weight,                  // B
+              weight_zero_point,              // weight zero point
+              weights_is_signed,              // weight data type
+              qkv_dest + qkv_offset,          // C
+              head_size,                      // ldc
+              &dequant_scale,                 // output scale
+              bias_data + weights_offset,     // bias
+              nullptr);                       // use single-thread
+          continue;
+        }
+#endif
         QGemm(sequence_length,                // M      = S
               head_size,                      // N      = H
               hidden_size,                    // K      = NH
