@@ -1,0 +1,25 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_pytorch_export
+
+  timeoutInMinutes: 90
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/set-version-number-variables-step.yml
+  - task: CmdLine@2
+    displayName: 'Build onnxruntime'
+    inputs:
+      script: |
+        sudo docker build --pull -t onnxruntime-ubuntu16.04 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.ubuntu .
+      workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+
+  - task: CmdLine@2
+    displayName: 'Run export tests'
+    inputs:
+      script: sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build onnxruntime-ubuntu16.04 /bin/bash /onnxruntime_src/tools/ci_build/github/linux/test_custom_ops_pytorch_export.sh
+    condition: succeededOrFailed() # ensure all tests are run
