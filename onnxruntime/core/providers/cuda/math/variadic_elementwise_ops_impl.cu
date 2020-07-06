@@ -121,20 +121,24 @@ void Impl_NoBroadcastInputBatch(
 // D: double
 // O: bool
 
+#define SPECIALIZE_IMPL_HFD(VariadicElementwiseOpTag) \
+  SPECIALIZE_IMPL(half, VariadicElementwiseOpTag)     \
+  SPECIALIZE_IMPL(float, VariadicElementwiseOpTag)    \
+  SPECIALIZE_IMPL(double, VariadicElementwiseOpTag)
+
 #define SPECIALIZE_IMPL_UZILHFD(VariadicElementwiseOpTag) \
   SPECIALIZE_IMPL(uint32_t, VariadicElementwiseOpTag)     \
   SPECIALIZE_IMPL(uint64_t, VariadicElementwiseOpTag)     \
   SPECIALIZE_IMPL(int32_t, VariadicElementwiseOpTag)      \
   SPECIALIZE_IMPL(int64_t, VariadicElementwiseOpTag)      \
-  SPECIALIZE_IMPL(half, VariadicElementwiseOpTag)         \
-  SPECIALIZE_IMPL(float, VariadicElementwiseOpTag)        \
-  SPECIALIZE_IMPL(double, VariadicElementwiseOpTag)
+  SPECIALIZE_IMPL_HFD(VariadicElementwiseOpTag)
 
-SPECIALIZE_IMPL_UZILHFD(variadic_elementwise_ops::Sum)
+SPECIALIZE_IMPL_HFD(variadic_elementwise_ops::Sum)
 SPECIALIZE_IMPL_UZILHFD(variadic_elementwise_ops::Min)
 SPECIALIZE_IMPL_UZILHFD(variadic_elementwise_ops::Max)
 
 #undef SPECIALIZE_IMPL_UZILHFD
+#undef SPECIALIZE_IMPL_HFD
 #undef SPECIALIZE_IMPL
 
 }  // namespace cuda
