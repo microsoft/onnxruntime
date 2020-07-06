@@ -142,9 +142,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
       if (all_node_inputs.find(it->first->Name()) != all_node_inputs.end()) {
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-      }
-
-      if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
+      } else if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }
     }

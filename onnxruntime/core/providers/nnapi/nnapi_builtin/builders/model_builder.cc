@@ -268,7 +268,7 @@ void ModelBuilder::RegisterModelInputs() {
     }
 
     const auto* shape_proto = node_arg->Shape();
-    ORT_ENFORCE(shape_proto != nullptr, "shape_proto cannot be null");
+    ORT_ENFORCE(shape_proto != nullptr, "shape_proto cannot be null for input: " + input_name);
     Shaper::Shape shape;
 
     for (const auto& dim : shape_proto->dim()) {
@@ -279,8 +279,7 @@ void ModelBuilder::RegisterModelInputs() {
     Type type = Type::TENSOR_FLOAT32;
     const auto* type_proto = node_arg->TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      ORT_THROW("The input of graph doesn't have elem_type: " +
-                input_name);
+      ORT_THROW("The input of graph doesn't have elem_type: " + input_name);
     } else {
       switch (type_proto->tensor_type().elem_type()) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -331,9 +330,7 @@ void ModelBuilder::RegisterModelShaper() {
 uint32_t ModelBuilder::AddNewOperand(const std::string& name,
                                      const OperandType& operand_type,
                                      bool is_nhwc) {
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
-      nnapi_model_->model_, &operand_type.operandType));
-  auto idx = next_index_++;
+  auto idx = AddNewNNAPIOperand(operand_type);
   RegisterOperand(name, idx, operand_type, is_nhwc);
   return idx;
 }
