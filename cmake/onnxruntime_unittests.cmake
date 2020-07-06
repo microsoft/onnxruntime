@@ -882,3 +882,5 @@ if (onnxruntime_BUILD_JAVA)
     endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
+
+include(onnxruntime_fuzz_test.cmake)
