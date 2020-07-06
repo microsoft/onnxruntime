@@ -24,7 +24,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
   InputBatchArray<CudaT> input_data_batch{static_cast<int32_t>(inputs.size())};
   for (size_t i = 0; i < inputs.size(); ++i) {
-    input_data_batch[i] = reinterpret_cast<const CudaT*>(inputs[i].get().template Data<T>());
+    input_data_batch[static_cast<int32_t>(i)] = reinterpret_cast<const CudaT*>(inputs[i].get().template Data<T>());
   }
 
   CudaT* output_data = reinterpret_cast<CudaT*>(output.template MutableData<T>());
