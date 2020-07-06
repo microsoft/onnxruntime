@@ -48,6 +48,7 @@ Status AttentionBase::CheckInputs(const Tensor* input,
                            dims.size());
   }
   int batch_size = static_cast<int>(dims[0]);
+  int sequence_length = static_cast<int>(dims[1]);
   int hidden_size = static_cast<int>(dims[2]);
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -74,25 +75,10 @@ Status AttentionBase::CheckInputs(const Tensor* input,
   }
   if (bias_dims[0] != weights_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 2 dimension 0 should have same length as dimension 1 of input 1");
+                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
   }
 
-  if (mask_index != nullptr) {  // mask_index is optional
-    // unidirectional (like GPT2) does not need mask input. Here we do not allowed the input for unidirectional.
-    if (is_unidirectional_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is not allowed for unidirectional");
-    }
-
-    const auto& mask_dims = mask_index->Shape().GetDims();
-    if (mask_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 dimension, got ",
-                             mask_dims.size());
-    }
-    if (static_cast<int>(mask_dims[0]) != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' and 'input' shall have same length at dimension 0");
-    }
-  }
-
+  int past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
     if (!is_unidirectional_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' is only allowed for unidirectional");
@@ -115,8 +101,24 @@ Status AttentionBase::CheckInputs(const Tensor* input,
     if (static_cast<int>(past_dims[4]) != hidden_size / num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'past' dimension 2 shall have length of ", hidden_size / num_heads_);
     }
+    past_sequence_length = static_cast<int>(past_dims[3]);
   }
 
+  if (mask_index != nullptr) {  // mask_index is optional
+    const auto& mask_dims = mask_index->Shape().GetDims();
+    if (mask_dims.size() == 1) {
+      if (static_cast<int>(mask_dims[0]) != batch_size && static_cast<int>(mask_dims[0]) != 2 * batch_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' dimension 0 shall have length of batch_size or 2 * batch_size");
+      }
+    } else if (mask_dims.size() == 2) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || static_cast<int>(mask_dims[1]) != past_sequence_length + sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with raw attention mask shall have shape batch_size x (past_sequence_length + sequence_length)");
+      }
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1 or 2 dimensions, got ",
+                             mask_dims.size());
+    }
+  }
   return Status::OK();
 }
 
@@ -174,7 +176,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   auto* tp = context->GetOperatorThreadPool();
-
   // Compute Q, K, V
   // gemm_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);

@@ -23,7 +23,9 @@ namespace test {
 template <typename T>
 void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
                                std::vector<int64_t> B_dims,
-                               const std::string& reference_model) {
+                               const std::string& reference_model,
+                               bool has_zp = true,
+                               bool has_bias = false) {
   // create rand inputs
   RandomValueGenerator random{};
 
@@ -38,23 +40,44 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
   std::vector<float> B_scale = random.Uniform<float>({1}, -0.1f, 0.1f);
   std::vector<T> B_zero_point = {static_cast<T>(random.Uniform<int32_t>({1}, std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0])};
 
+  std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+
   OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("A", A_dims, A_data);
   test.AddInput<T>("B", B_dims, B_data);
   test.AddInput<float>("b_scale", {1}, B_scale);
-  test.AddInput<T>("b_zero_point", {1}, B_zero_point);
+
+  if (has_zp) {
+    test.AddInput<T>("b_zero_point", {1}, B_zero_point);
+  } else {
+    test.AddMissingOptionalInput<T>();
+  }
+
+  if (has_bias) {
+    test.AddInput<float>("bias", {B_dims.back()}, Bias);
+  } else {
+    test.AddMissingOptionalInput<float>();
+  }
 
   test.AddReferenceOutputs(reference_model);
   test.Run();
 }
 
 TEST(DynamicQuantizeMatMul, Int8_test) {
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
   TestDynamicQuantizeMatMul<int8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_int8.onnx");
+}
+
+TEST(DynamicQuantizeMatMul, Int8_test_bias) {
+#ifdef MLAS_SUPPORTS_GEMM_U8X8
+  std::vector<int64_t> A_dims{4, 128};
+  std::vector<int64_t> B_dims{128, 128};
+  std::vector<int64_t> Y_dims{4, 128};
+
+  TestDynamicQuantizeMatMul<int8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_int8_bias.onnx", false, true);
 #endif
 }
 
@@ -64,6 +87,14 @@ TEST(DynamicQuantizeMatMul, UInt8_test) {
   std::vector<int64_t> Y_dims{4, 128};
 
   TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8.onnx");
+}
+
+TEST(DynamicQuantizeMatMul, UInt8_test_bias) {
+  std::vector<int64_t> A_dims{4, 128};
+  std::vector<int64_t> B_dims{128, 128};
+  std::vector<int64_t> Y_dims{4, 128};
+
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8_bias.onnx", false, true);
 }
 
 }  // namespace test

@@ -102,7 +102,7 @@ class Test_PostPasses(unittest.TestCase):
         count_layer_norm = self.count_nodes(onnx_model, "LayerNormalization")
         count_nodes = self.count_all_nodes(onnx_model)
 
-        assert count_layer_norm == 1
+        assert count_layer_norm == 0
         assert count_nodes == 3
 
     def test_expand(self):
@@ -199,7 +199,7 @@ class Test_PostPasses(unittest.TestCase):
     def _bert_helper(self, onnx_model):
         # count layer_norm
         count_layer_norm = self.count_nodes(onnx_model, "LayerNormalization")
-        assert count_layer_norm == 12
+        assert count_layer_norm == 0
 
         # get expand node and check output shape
         expand_nodes = self.find_nodes(onnx_model, "Expand")

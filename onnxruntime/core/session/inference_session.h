@@ -238,7 +238,8 @@ class InferenceSession {
 
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                     std::vector<OrtValue>* p_fetches,
+                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -552,7 +553,8 @@ class InferenceSession {
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
   ONNX_NAMESPACE::ModelProto model_proto_;
 
-  bool model_loaded_ = false;
+  // Flag indicating if ModelProto has been parsed in an applicable ctor
+  bool is_model_proto_parsed_ = false;
 };
 
 struct SessionIOBinding {

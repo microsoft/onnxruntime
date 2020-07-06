@@ -15,7 +15,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
+          sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
         workingDirectory: $(Build.SourcesDirectory)
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -69,7 +69,7 @@ jobs:
     - script: |
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo
       displayName: 'Build and Test MacOS'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -141,9 +141,8 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
-
  
     - task: VSBuild@1
       displayName: 'Build'
@@ -161,7 +160,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
@@ -225,7 +224,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -245,7 +244,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
+        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml

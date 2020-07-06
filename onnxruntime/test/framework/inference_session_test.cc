@@ -24,12 +24,14 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
+#include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
@@ -37,9 +39,9 @@
 #include "test/test_environment.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
+#include "test/util/include/default_providers.h"
+
 #include "gtest/gtest.h"
-#include "core/session/environment.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -246,7 +248,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                const RunOptions& run_options,
                                ProviderType bind_provider_type,
                                bool is_preallocate_output_vec,
-                               ProviderType allocation_provider) {
+                               ProviderType allocation_provider,
+                               OrtDevice* output_device) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
@@ -303,7 +306,13 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     }
   }
 
-  io_binding->BindOutput("Y", output_ml_value);
+  if (output_device) {
+    // output should be allocated on specified device (if not preallocated here)
+    io_binding->BindOutput("Y", output_ml_value, *output_device);
+  } else {
+    io_binding->BindOutput("Y", output_ml_value);
+  }
+
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
 
   // prepare expected inputs and outputs
@@ -315,8 +324,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   ASSERT_TRUE(st.IsOK());
 
-  if (is_preallocate_output_vec &&
-      allocation_provider == kCudaExecutionProvider) {
+  if ((is_preallocate_output_vec && allocation_provider == kCudaExecutionProvider) ||
+      (output_device && output_device->Type() == OrtDevice::GPU)) {
 #ifdef USE_CUDA
     // in this case we need to copy the tensor from cuda to cpu
     vector<OrtValue>& outputs = io_binding->GetOutputs();
@@ -787,7 +796,8 @@ static void TestBindHelper(const std::string& log_str,
                            ProviderType bind_provider_type,
                            ProviderType run_provider_type,
                            bool preallocate_output,
-                           ProviderType allocation_provider = kCpuExecutionProvider) {
+                           ProviderType allocation_provider = kCpuExecutionProvider,
+                           OrtDevice* output_device = nullptr) {
   SessionOptions so;
 
   so.session_logid = "InferenceSessionTests." + log_str;
@@ -815,11 +825,13 @@ static void TestBindHelper(const std::string& log_str,
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
+
   RunModelWithBindingMatMul(session_object,
                             run_options,
                             bind_provider_type,
                             preallocate_output,
-                            allocation_provider);
+                            allocation_provider,
+                            output_device);
 }
 
 TEST(InferenceSessionTests, TestBindCpu) {
@@ -936,6 +948,17 @@ TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu2) {
                  kCpuExecutionProvider,
                  true /* preallocate output on CPU */,
                  kCpuExecutionProvider);
+}
+
+TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
+  OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
+
+  TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
+                 kCudaExecutionProvider,
+                 kCudaExecutionProvider,
+                 false /* preallocate output on GPU */,
+                 kCudaExecutionProvider,
+                 &device /* specify output device */);
 }
 
 #endif
@@ -1814,7 +1837,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
     RunOptions run_options;
     run_options.run_tag = "run:" + std::to_string(run_num);
 
-    common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches);
+    common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches, nullptr);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
     VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);

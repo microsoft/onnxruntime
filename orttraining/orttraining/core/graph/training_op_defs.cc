@@ -3,7 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "gradient_schema_defs.h"
+#include "orttraining/core/graph/training_op_defs.h"
 #include "onnx/defs/function.h"
 #include <math.h>
 
@@ -319,7 +319,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
   return op_schema;
 }
 
-void RegisterGradientSchemas() {
+void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
       .SinceVersion(9)
       .Input(0, "dY", "Gradient of output Y", "T")
@@ -1010,6 +1010,54 @@ Example 4:
                       "Constrain indices to integer types")
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("BiasDropout")
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
+      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
+      .Input(3, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of input, which is typically "
+             "the case during training.",
+             "T1",
+             OpSchema::Optional)
+      .Input(4, "training_mode", 
+             "If set to true then it indicates dropout is being used for "
+             "training. It is an optional value hence unless specified explicitly, it is false. "
+             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
+             "will be dropped from the input data and if mask is requested as output it will contain "
+             "all ones.",
+             "T2",
+             OpSchema::Optional)
+      .Output(0, "output", "The output.", "T")
+      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(bool)"},
+          "Constrain output 'mask' types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        if (ctx.getNumOutputs() == 2) {
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+          if (hasNInputShapes(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
@@ -1371,6 +1419,32 @@ Example 4:
       .Input(1, "X", "Input data tensor from the forward path", "T")
       .Input(2, "scale", "Scale tensor.", "T")
       .Input(3, "mean", "mean of X.", "U")
+      .Input(4, "inv_std_var", "inverse std variance of X.", "U")
+      .Output(0, "X_grad", "Gradient of the input.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain mean and inv_std_var to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InvertibleLayerNormalizationGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("LayerNormalizationGrad")
+      .Attr("axis",
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
+            AttributeProto::INT, static_cast<int64_t>(-1))
+      .AllowUncheckedAttributes()
+      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(1, "Y", "Output data tensor from the forward path", "T")
+      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(3, "bias", "Bias tensor.", "T")
       .Input(4, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
       .Output(1, "scale_grad", "Gradient of the scale.", "T")

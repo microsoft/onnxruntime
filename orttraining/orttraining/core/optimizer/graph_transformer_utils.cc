@@ -6,6 +6,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
+#include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
@@ -35,6 +36,7 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/graph_transformer_utils.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -84,7 +86,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
             training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
             horizontal_parallel_size, compatible_eps));
       }
-
+      transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
     } break;
 
     case TransformerLevel::Level2: {
@@ -143,6 +145,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasDropoutFusion>(l1_execution_providers));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
