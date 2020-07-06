@@ -33,6 +33,15 @@ class Session:
         self._providers = None
         self._sess = None
 
+        # At this point, _sess object is still referenced by _sess_options,
+        # because of previously _sess_options = _sess.sess_options being executed in _load_model(). 
+        # Therefore, _sess reference count is not zero and not being released by python gc yet.
+        # 
+        # In order to make _sess reference count become 0 and being destroyed by python gc before creating new session object, 
+        # we need to reset _sess_options as well.
+        self._sess_options = None 
+        self._sess_options = self._sess_options_initial
+
     def get_session_options(self):
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
@@ -175,6 +184,7 @@ class InferenceSession(Session):
         """
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
+        self._sess_options_initial = sess_options
         self._load_model(providers or [])
         self._enable_fallback = True
         Session.__init__(self, self._sess)
