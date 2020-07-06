@@ -23,5 +23,3 @@ jobs:
     inputs:
       script: sudo --preserve-env docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build onnxruntime-ubuntu16.04 /bin/bash /onnxruntime_src/tools/ci_build/github/linux/test_custom_ops_pytorch_export.sh
     condition: succeededOrFailed() # ensure all tests are run
-
-  - template: templates/clean-agent-build-directory-step.yml
