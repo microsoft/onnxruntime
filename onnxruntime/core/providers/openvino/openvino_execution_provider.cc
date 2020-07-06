@@ -38,9 +38,13 @@ constexpr const char* OpenVINO = "OpenVINO";
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider}, info_(info) {
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                               [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(OpenVINO, OrtDeviceAllocator)); },
-                                               std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return std::make_unique<CPUAllocator>(OrtMemoryInfo(OpenVINO, OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -57,7 +61,7 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
   return count;
 }
 
-bool IsDimensionSupported(const Node* node, std::string device) {
+bool IsDimensionSupported(const Node* node) {
   auto node_inputs = node->InputDefs();
   size_t input_dims = 0;
   if (node_inputs[0]->Shape() == nullptr) {
@@ -81,12 +85,6 @@ bool IsDimensionSupported(const Node* node, std::string device) {
       auto axis = attributes["axis"].i();
       if (input_dims - axis != 1)
         return false;
-
-      //3D input not supported on GPU, MYRIAD and HDDL
-      if (device == "GPU" || device == "MYRIAD" || device == "HDDL") {
-        if (input_dims == 3)
-          return false;
-      }
     }
   }
   return true;
@@ -182,7 +180,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
 }
 
 // Returns true only if op is in a mode that is not currently supported
-static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer, const std::string& device_id) {
+static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
@@ -213,7 +211,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
-    if (!IsDimensionSupported(node, device_id))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
     for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -234,12 +232,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-
     if (GetInputCount(node, initializers) == 1)
       return true;
-    if(optype == "Max" || optype == "Min"){
-
-      for (size_t i = 0; i < node->InputDefs().size(); i++){
+    if (optype == "Max" || optype == "Min") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
         auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
         if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
             dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
@@ -276,7 +272,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Pow") {
-
     //Only supported if the data type of both inputs is same
     auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
@@ -296,10 +291,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
     return true;
   } else if (optype == "Softmax") {
-    if (!IsDimensionSupported(node, device_id))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Unsqueeze") {
-    if (!IsDimensionSupported(node, device_id))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Pad") {
     // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
@@ -391,7 +386,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-    if (!IsDimensionSupported(node, device_id))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
@@ -598,7 +593,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   }
 
   //Check 3a
-  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer, device_id)) {
+  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Failed in unsupported op mode" << std::endl;
@@ -889,20 +884,16 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     auto connected_clusters = GetConnectedClusters(graph_viewer, ng_clusters);
 
     //Myriad plugin can only load 10 subgraphs
-    if(info_.device_id_ == "MYRIAD" && connected_clusters.size() > 10){
-
+    if (info_.device_id_ == "MYRIAD" && connected_clusters.size() > 10) {
       std::sort(connected_clusters.begin(), connected_clusters.end(),
-        [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) ->bool
-        {
-          return v1.size() > v2.size();
-        });
+                [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
+                  return v1.size() > v2.size();
+                });
     }
     int no_of_clusters = 0;
 
     for (const auto& this_cluster : connected_clusters) {
-
-
-      if(info_.device_id_ == "MYRIAD" && no_of_clusters == 10){
+      if (info_.device_id_ == "MYRIAD" && no_of_clusters == 10) {
         break;
       }
       std::vector<std::string> cluster_inputs, const_inputs, cluster_outputs;

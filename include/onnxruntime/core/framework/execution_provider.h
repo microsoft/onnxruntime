@@ -53,7 +53,7 @@ class IExecutionProvider {
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+  const std::vector<AllocatorPtr>& GetAllocators() const {
     return allocator_list_;
   }
 
@@ -197,7 +197,7 @@ class IExecutionProvider {
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
-  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
+  std::vector<AllocatorPtr> allocator_list_;
   // It will be set when constructor is being called
   UnorderedMapStringToString provider_options_;
 };

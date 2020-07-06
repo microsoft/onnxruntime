@@ -8,15 +8,12 @@
 namespace onnxruntime {
 class AllocatorWrapper : public IAllocator {
  public:
-  AllocatorWrapper(OrtAllocator* impl) : impl_(impl) {}
+  AllocatorWrapper(OrtAllocator* impl) : IAllocator(*impl->Info(impl)), impl_(impl) {}
   void* Alloc(size_t size) override {
     return impl_->Alloc(impl_, size);
   }
   void Free(void* p) override {
     return impl_->Free(impl_, p);
-  }
-  const OrtMemoryInfo& Info() const override {
-    return *impl_->Info(impl_);
   }
 
  private:

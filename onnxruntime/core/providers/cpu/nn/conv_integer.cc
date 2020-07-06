@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/conv_integer.h"
-
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
@@ -10,6 +10,15 @@
 #include "core/util/qmath.h"
 
 namespace onnxruntime {
+
+class ConvInteger : public OpKernel {
+ public:
+  explicit ConvInteger(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+
+  ConvAttributes conv_attrs_;
+};
 
 ONNX_OPERATOR_KERNEL_EX(
     ConvInteger,
@@ -158,6 +167,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
             col_buffer_data == nullptr ? Xdata : col_buffer_data,
             static_cast<int>(output_image_size),
             input_offset,
+            false,
             Ydata,
             static_cast<int>(output_image_size),
             thread_pool);
@@ -169,4 +179,5 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

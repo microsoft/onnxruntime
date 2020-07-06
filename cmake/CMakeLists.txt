@@ -51,6 +51,7 @@ option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI_DNNLIBRARY "Build with DNNLibrary for Android NNAPI support" OFF)
+option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
@@ -83,6 +84,8 @@ option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF
 option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
+option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
+option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
@@ -180,6 +183,19 @@ if(onnxruntime_ENABLE_LTO)
     endif()
 endif()
 
+if(onnxruntime_USE_NNAPI_BUILTIN AND onnxruntime_USE_NNAPI_DNNLIBRARY)
+  message(FATAL_ERROR "Please use only one of onnxruntime_USE_NNAPI_BUILTIN, onnxruntime_USE_NNAPI_DNNLIBRARY")
+endif()
+
+if(onnxruntime_DISABLE_RTTI)
+  add_compile_definitions(ORT_NO_RTTI GOOGLE_PROTOBUF_NO_RTTI)
+  if(MSVC)
+    # Disable RTTI and turn usage of dynamic_cast and typeid into errors
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
+  else()
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
+  endif()
+endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -377,7 +393,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
   set(protobuf_MODULE_COMPATIBLE ON)
-  find_package(protobuf)
+  find_package(Protobuf)
 endif()
 
 
@@ -434,6 +450,10 @@ endif()
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
   add_definitions(-DDISABLE_CONTRIB_OPS)
+endif()
+
+if (onnxruntime_DISABLE_ML_OPS)
+  add_definitions(-DDISABLE_ML_OPS)
 endif()
 
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
@@ -825,9 +845,8 @@ if (onnxruntime_USE_CUDA)
     string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
   endif()
   enable_language(CUDA)
-  string(REGEX REPLACE "([0-9]+)\\.([0-9]+).*" "\\1" CUDA_VERSION_MAJOR "${CMAKE_CUDA_COMPILER_VERSION}")
-  message( STATUS "CUDA_VERSION_MAJOR: ${CUDA_VERSION_MAJOR}")
-  if (CUDA_VERSION_MAJOR EQUAL 11)
+  message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
     set(CMAKE_CUDA_STANDARD 14)
   else()
     set(CMAKE_CUDA_STANDARD 11)
@@ -840,7 +859,7 @@ if (onnxruntime_USE_CUDA)
   else()
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
-  
+
   if (WIN32)
     link_directories(${onnxruntime_CUDNN_HOME}/lib/x64)
 
@@ -858,13 +877,16 @@ if (onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
 
   # the following compute capabilities are deprecated in CUDA 11 Toolkit
-  if (CUDA_VERSION_MAJOR LESS 11)
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
   endif()
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+  endif()
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
@@ -950,7 +972,11 @@ if (onnxruntime_ENABLE_TRAINING)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
     if (MPI_FOUND)
-      execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      if(NOT DEFINED onnxruntime_MPI_HOME)
+        execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      else()
+        execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT) 
+      endif(NOT DEFINED onnxruntime_MPI_HOME)
       string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
       message( STATUS "MPI Version: ${MPI_VERSION}")
 
@@ -980,6 +1006,7 @@ if (onnxruntime_ENABLE_TRAINING)
         NAMES ${NCCL_LIBNAME}
         HINTS
         ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+        ${onnxruntime_NCCL_HOME}/lib
         $ENV{CUDA_ROOT}/lib64)
 
       include(FindPackageHandleStandardArgs)

@@ -324,11 +324,13 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "size overflow");
   }
 
-  auto alloc = GetAllocator(location);
-
+  // Lazily get the allocator only if needed.
+  AllocatorPtr alloc = nullptr;
+  
   // create fence if needed
   if (create_fence) {
     ORT_ENFORCE(ort_value.Fence() == nullptr);
+    alloc = GetAllocator(location);
     FencePtr f = alloc->CreateFence(&session_state_);
     // it is OK to have fence been nullptr if the execution provider has no async execution,
     // and allocator::CreateFence returns nullptr
@@ -370,6 +372,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   }
 
   //no memory pattern, or the pattern is not correct.
+  if (!alloc) alloc = GetAllocator(location);
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
   {
@@ -559,7 +562,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 }
 
 AllocatorPtr ExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
-  return utils::GetAllocator(session_state_, info);
+  return session_state_.GetAllocator(info);
 }
 
 // This method is not thread safe!

@@ -373,9 +373,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                map_optimizer_attributes, world_rank=-1, world_size=1,
                                                gradient_accumulation_steps=1, bind_parameters=False,
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
-                                               partition_optimizer=False,
+                                               deepspeed_zero_stage=0,
                                                enable_grad_norm_clip=True,
-                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
+                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
+                                               use_deterministic_compute=False,
+                                               use_invertible_layernorm_grad=False):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -383,11 +385,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.world_rank = world_rank
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
-    ort_parameters.use_mixed_precision = use_mixed_precision
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
-    ort_parameters.partition_optimizer = partition_optimizer
+    ort_parameters.deepspeed_zero_stage = deepspeed_zero_stage
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
+    ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
     output_types = {}
     for output in model.graph.output:
@@ -439,7 +441,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-    session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
+    sessionOptions = ort.SessionOptions()
+    sessionOptions.use_deterministic_compute = use_deterministic_compute
+    session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 
@@ -464,7 +468,7 @@ def save_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", c
 
     assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
 
-    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.partition_optimizer_, model.world_rank, model.world_size)
+    checkpoint_name = get_checkpoint_name(checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size)
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if os.path.exists(checkpoint_file):
@@ -515,7 +519,7 @@ def load_checkpoint(model, checkpoint_dir, checkpoint_prefix="ORT_checkpoint", s
         warnings.warn(f"Found more than one file with prefix {checkpoint_prefix} in directory {checkpoint_dir}." +
             "Attempting to load ZeRO checkpoint.")
         is_partitioned = True
-    if (not model.partition_optimizer_) and is_partitioned:
+    if (not model.deepspeed_zero_stage_) and is_partitioned:
         return _load_multi_checkpoint(model, checkpoint_dir, checkpoint_prefix, strict)
     else:
         return _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
@@ -525,9 +529,10 @@ class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1,
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
-                 global_step=0, get_lr_this_step=None, loss_scaler=None, partition_optimizer=False,
+                 global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
-                 _enable_internal_postprocess=True, _extra_postprocess=None):
+                 _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
+                 use_invertible_layernorm_grad=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -586,8 +591,8 @@ class ORTTrainer():
             loss_scaler: updates loss scale automatically when 'use_mixed_precision'
                is specified.
                Defaults to None.
-            partition_optimizer: controls whether to partition the optimizer state.
-               Defaults to False.
+            deepspeed_zero_stage: controls whether to partition state using the DeepSpeed ZeRO technique.  Stages 0 and 1 are supported.
+               Defaults to 0 (disabled).
             enable_grad_norm_clip: enables gradient norm clipping.
                Defaults to True.
             frozen_weights: list of model parameters to be frozen (not trained).
@@ -596,6 +601,8 @@ class ORTTrainer():
                Defaults to True
             _extra_postprocess: a callable to postprocess the ONNX model that is converted from PyTorch.
                Defaults to None
+            use_invertible_layernorm_grad: use invertible layernorm grad
+               Defaults to False
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -641,12 +648,14 @@ class ORTTrainer():
         self.learning_rate_description_ = learning_rate_description
         self.map_optimizer_attributes_ = map_optimizer_attributes
         self.allreduce_post_accumulation_ = allreduce_post_accumulation
-        self.partition_optimizer_ = partition_optimizer
+        self.deepspeed_zero_stage_ = deepspeed_zero_stage
         self.enable_grad_norm_clip_ = enable_grad_norm_clip
         self.frozen_weights_ = frozen_weights
         self.opset_version_ = _opset_version
         self.state_dict_ = None
         self._enable_internal_postprocess = _enable_internal_postprocess
+        self._use_deterministic_compute = _use_deterministic_compute
+        self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -672,9 +681,11 @@ class ORTTrainer():
                 self.world_rank, self.world_size,
                 self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
-                partition_optimizer=self.partition_optimizer_,
+                deepspeed_zero_stage=self.deepspeed_zero_stage_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
+                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
+                use_deterministic_compute=self._use_deterministic_compute,
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -720,9 +731,6 @@ class ORTTrainer():
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
-
-            if self._extra_postprocess:
-                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 
@@ -789,6 +797,10 @@ class ORTTrainer():
         self.state_dict_ = None
         self._init_session()
 
+        # load training state
+        session_state = {name:state_dict[name].numpy() for name in state_dict}
+        self.session.load_state(session_state, strict)
+
     def save_as_onnx(self, path):
         if not self.session:
             warnings.warn("ONNXRuntime training session is not initialized yet. "
@@ -829,6 +841,7 @@ class ORTTrainer():
             fetches = kwargs['fetches']
 
         return input, fetches
+
 
     def train_step(self, *args, **kwargs):
         """

@@ -67,6 +67,43 @@ void TestBatchParallelFor(const std::string& name, int num_threads, int num_task
   ValidateTestData(*test_data);
 }
 
+void TestMultipleParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks) {
+  // Test running multiple concurrent loops over the same thread pool.  This aims to provoke a
+  // more diverse mix of interleavings than with a single loop running at a time.
+  for (int rep = 0; rep < 5; rep++) {
+    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
+      std::vector<std::unique_ptr<TestData>> td;
+      onnxruntime::Barrier b(num_concurrent - 1);
+
+      // Each concurrent tests runs with its own set of counters
+      for (int c = 0; c < num_concurrent; c++) {
+        td.push_back(CreateTestData(num_tasks));
+      }
+
+      // For a range of scenarios, run some tests via the thread pool, and one directly
+      for (int c = 0; c < num_concurrent - 1; c++) {
+        tp->Schedule([&, c]() {
+          tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+            IncrementElement(*td[c], i);
+          });
+          b.Notify();
+        });
+      }
+
+      tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+        IncrementElement(*td[num_concurrent - 1], i);
+      });
+
+      // Validate all outputs
+      b.Wait();
+      for (int c = 0; c < num_concurrent; c++) {
+        ValidateTestData(*td[c]);
+      }
+      td.clear();
+    });
+  }
+}
+
 }  // namespace
 
 namespace onnxruntime {
@@ -102,6 +139,69 @@ TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_81_Task_20_Batch) {
   TestBatchParallelFor("TestBatchParallelFor_2_Thread_81_Task_20_Batch", 2, 81, 20);
 }
 
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_0Tasks", 1, 1, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_1Tasks", 1, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_8Tasks", 1, 1, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_1MTasks", 1, 1, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_0Tasks", 1, 4, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_1Tasks", 1, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_8Tasks", 1, 4, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_1MTasks", 1, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_0Tasks", 4, 1, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1Tasks", 4, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_8Tasks", 4, 1, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 1, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_0Tasks", 4, 4, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1Tasks", 4, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_8Tasks", 4, 4, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 4, 1000000);
+}
 #ifdef _WIN32
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;

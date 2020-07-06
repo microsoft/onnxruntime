@@ -563,6 +563,91 @@ Return Value:
 
 void
 MLASCALL
+MlasReduceMinimumMaximumF32Kernel(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    )
+{
+    float tmp_min = std::numeric_limits<float>::max();
+    float tmp_max = std::numeric_limits<float>::lowest();
+
+    if (N >= 4) {
+
+        MLAS_FLOAT32X4 MaximumVector0 = MlasBroadcastFloat32x4(tmp_max);
+        MLAS_FLOAT32X4 MinimumVector0 = MlasBroadcastFloat32x4(tmp_min);
+
+        if (N >= 16) {
+
+            MLAS_FLOAT32X4 MaximumVector1 = MaximumVector0;
+            MLAS_FLOAT32X4 MaximumVector2 = MaximumVector0;
+            MLAS_FLOAT32X4 MaximumVector3 = MaximumVector0;
+
+            MLAS_FLOAT32X4 MinimumVector1 = MinimumVector0;
+            MLAS_FLOAT32X4 MinimumVector2 = MinimumVector0;
+            MLAS_FLOAT32X4 MinimumVector3 = MinimumVector0;
+
+            while (N >= 16) {
+
+                MLAS_FLOAT32X4 InputVector0 = MlasLoadFloat32x4(Input);
+                MLAS_FLOAT32X4 InputVector1 = MlasLoadFloat32x4(Input + 4);
+                MLAS_FLOAT32X4 InputVector2 = MlasLoadFloat32x4(Input + 8);
+                MLAS_FLOAT32X4 InputVector3 = MlasLoadFloat32x4(Input + 12);
+
+                MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, InputVector0);
+                MaximumVector1 = MlasMaximumFloat32x4(MaximumVector1, InputVector1);
+                MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, InputVector2);
+                MaximumVector3 = MlasMaximumFloat32x4(MaximumVector3, InputVector3);
+
+                MinimumVector0 = MlasMinimumFloat32x4(MinimumVector0, InputVector0);
+                MinimumVector1 = MlasMinimumFloat32x4(MinimumVector1, InputVector1);
+                MinimumVector2 = MlasMinimumFloat32x4(MinimumVector2, InputVector2);
+                MinimumVector3 = MlasMinimumFloat32x4(MinimumVector3, InputVector3);
+
+                Input += 16;
+                N -= 16;
+            }
+
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector1);
+            MaximumVector2 = MlasMaximumFloat32x4(MaximumVector2, MaximumVector3);
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, MaximumVector2);
+
+            MinimumVector0 = MlasMinimumFloat32x4(MinimumVector0, MinimumVector1);
+            MinimumVector2 = MlasMinimumFloat32x4(MinimumVector2, MinimumVector3);
+            MinimumVector0 = MlasMinimumFloat32x4(MinimumVector0, MinimumVector2);
+        }
+
+        while (N >= 4) {
+
+            MLAS_FLOAT32X4 InputVector0 = MlasLoadFloat32x4(Input);
+            MaximumVector0 = MlasMaximumFloat32x4(MaximumVector0, InputVector0);
+
+            MinimumVector0 = MlasMinimumFloat32x4(MinimumVector0, InputVector0);
+
+            Input += 4;
+            N -= 4;
+        }
+
+        tmp_min = MlasReduceMinimumFloat32x4(MinimumVector0);
+        tmp_max = MlasReduceMaximumFloat32x4(MaximumVector0);
+    }
+
+    while (N > 0) {
+
+        tmp_max = std::max(tmp_max, *Input);
+        tmp_min = std::min(tmp_min, *Input);
+
+        Input += 1;
+        N -= 1;
+    }
+
+    *Min = tmp_min;
+    *Max = tmp_max;
+}
+
+void
+MLASCALL
 MlasComputeSoftmaxOutputF32Kernel(
     float* Output,
     size_t N,

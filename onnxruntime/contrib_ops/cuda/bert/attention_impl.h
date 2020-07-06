@@ -16,20 +16,21 @@ size_t GetAttentionWorkspaceSize(
     int past_sequence_length);
 
 bool LaunchAttentionKernel(
-    const void* input,         // Input tensor
-    const int* mask_index,     // Mask index (length of each sequence). NULL means no mask.
-    void* output,              // Output tensor
-    int batch_size,            // Batch size (B)
-    int sequence_length,       // Sequence length (S)
-    int num_heads,             // Number of attention heads (N)
-    int head_size,             // Hidden layer size per head (H)
-    void* workspace,           // Temporary buffer
-    cublasHandle_t& cublas,    // Cublas handle
-    const size_t element_size, // Element size of input tensor
-    bool is_unidirectional,    // Whether there is unidirecitonal mask.
-    int past_sequence_length,  // Sequence length in past state
-    const void* past,          // Past state input
-    void* present              // Present state output
+    const void* input,                            // Input tensor
+    const int* mask_index,                        // Attention mask raw data or index (end position of each sequence, or end positions and start positions). NULL means no mask.
+    const std::vector<int64_t>* mask_index_dims,  // Mask index shape
+    void* output,                                 // Output tensor
+    int batch_size,                               // Batch size (B)
+    int sequence_length,                          // Sequence length (S)
+    int num_heads,                                // Number of attention heads (N)
+    int head_size,                                // Hidden layer size per head (H)
+    void* workspace,                              // Temporary buffer
+    cublasHandle_t& cublas,                       // Cublas handle
+    const size_t element_size,                    // Element size of input tensor
+    bool is_unidirectional,                       // Whether there is unidirecitonal mask.
+    int past_sequence_length,                     // Sequence length in past state
+    const void* past,                             // Past state input
+    void* present                                 // Present state output
 );
 
 }  // namespace cuda
