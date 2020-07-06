@@ -281,6 +281,8 @@ struct Value : Base<OrtValue> {
   Value& operator=(Value&&) = default;
 
   bool IsTensor() const;
+  template <typename T>
+  T At(const std::initializer_list<size_t>& location);
   size_t GetCount() const;  // If a non tensor, returns 2 for map and N for sequence, where N is the number of elements
   Value GetValue(int index, OrtAllocator* allocator) const;
 

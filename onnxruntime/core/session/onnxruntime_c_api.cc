@@ -1418,6 +1418,32 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::At, _In_ const OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ OrtValue* out) {
+  TENSOR_READ_API_BEGIN
+  //TODO: test if it's a string tensor
+  if (location_values_length != tensor.Shape().NumDimensions())
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location dimensions was requested");
+  std::vector<int64_t> location(location_values_length);
+  for(size_t i=0; i<location_values_length; i++) {
+    if(location_values[i] < 0 || location_values[i] >= tensor.Shape()[i])
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range requested");
+    location[i] = location_values[i];
+  }
+  size_t offset = 0;
+  for(size_t i=1; i<=tensor.Shape().NumDimensions(); i++) {
+    int sum=1;
+    for(size_t j=i+1; j<=tensor.Shape().NumDimensions(); j++) {
+      sum *= tensor.Shape()[j-1];
+    }
+    offset += location[i-1] * sum;
+  }
+  // const OrtValue* ovfirst = value[0];
+  auto data = reinterpret_cast<const OrtValue*>(tensor.DataRaw());
+  *out = data[offset];
+  return nullptr;
+  API_IMPL_END
+}
+
 // End support for non-tensor types
 
 static constexpr OrtApiBase ort_api_base = {
@@ -1614,6 +1640,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     // Version 4 - In development, feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,
     &OrtApis::ReleaseAvailableProviders,
+    &OrtApis::At
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

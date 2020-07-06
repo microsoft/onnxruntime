@@ -455,6 +455,13 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
+template <typename T>
+inline T Value::At(const std::initializer_list<size_t>& location) {
+  OrtValue* out;
+  ThrowOnError(Global<void>::api_.At(p_, &location, location.size(), &out));
+  return out;
+}
+
 inline size_t Value::GetCount() const {
   size_t out;
   ThrowOnError(Global<void>::api_.GetValueCount(p_, &out));
