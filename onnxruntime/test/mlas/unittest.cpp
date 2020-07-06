@@ -45,6 +45,10 @@ Abstract:
 #define MLAS_HAS_QGEMM_U8X8
 #endif
 
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_HAS_PACKED_QGEMM_U8X8
+#endif
+
 MLAS_THREADPOOL* threadpool = nullptr;
 
 template<typename T>
@@ -468,11 +472,129 @@ public:
 
 #ifdef MLAS_HAS_QGEMM_U8X8
 
-template<typename xint8_t, typename OutputType>
+template<bool Packed>
+class MlasQgemmU8X8U8X8TestBase;
+
+template<>
+class MlasQgemmU8X8U8X8TestBase<false> : public MlasTestBase
+{
+protected:
+    void
+    TestGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        uint8_t offb,
+        bool BIsSigned,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, threadpool);
+    }
+
+    void
+    TestGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        uint8_t offb,
+        bool BIsSigned,
+        float* C,
+        size_t ldc,
+        float CScale,
+        const float* Bias
+        )
+    {
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+    }
+};
+
+#ifdef MLAS_HAS_PACKED_QGEMM_U8X8
+
+template<>
+class MlasQgemmU8X8U8X8TestBase<true> : public MlasTestBase
+{
+private:
+    void*
+    PackB(
+        size_t N,
+        size_t K,
+        const uint8_t* B,
+        size_t ldb,
+        bool BIsSigned
+        )
+    {
+        size_t PackedBSize = MlasGemmPackBSize(N, K, BIsSigned);
+        void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
+        MlasGemmPackB(N, K, B, ldb, BIsSigned, PackedB);
+        return PackedB;
+    }
+
+protected:
+    void
+    TestGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        uint8_t offb,
+        bool BIsSigned,
+        int32_t* C,
+        size_t ldc
+        )
+    {
+        const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
+        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, threadpool);
+    }
+
+    void
+    TestGemm(
+        size_t M,
+        size_t N,
+        size_t K,
+        const uint8_t* A,
+        size_t lda,
+        uint8_t offa,
+        const uint8_t* B,
+        size_t ldb,
+        uint8_t offb,
+        bool BIsSigned,
+        float* C,
+        size_t ldc,
+        float CScale,
+        const float* Bias
+        )
+    {
+        const void* PackedB = PackB(N, K, B, ldb, BIsSigned);
+        MlasGemm(M, N, K, A, lda, offa, PackedB, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+    }
+
+private:
+    MatrixGuardBuffer<uint8_t> BufferBPacked;
+};
+
+#endif
+
+template<typename xint8_t, typename OutputType, bool Packed>
 class MlasQgemmU8X8Test;
 
-template<typename xint8_t>
-class MlasQgemmU8X8Test<xint8_t, int32_t> : public MlasTestBase
+template<typename xint8_t, bool Packed>
+class MlasQgemmU8X8Test<xint8_t, int32_t, Packed> : public MlasQgemmU8X8U8X8TestBase<Packed>
 {
 private:
     void
@@ -511,7 +633,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, threadpool);
+        this->TestGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc);
         ReferenceQgemm(M, N, K, A, lda, offa, (const xint8_t*)B, ldb, (xint8_t)offb, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -572,6 +694,9 @@ public:
         for (size_t b = 1; b < 16; b++) {
             Test(b, b, b, 14, 211);
         }
+        for (size_t b = 1; b < 16; b++) {
+            Test(b, b, b, 14, 211);
+        }
         for (size_t b = 16; b <= 256; b <<= 1) {
             Test(b, b, b, 34, 1);
         }
@@ -583,7 +708,8 @@ public:
             Test(1, 32, b, 0, 0);
             Test(1, b, b, 0, 0);
         }
-        Test(1024, 1024, 1024, 5, 8);
+        Test(43, 500, 401, 183, 223);
+        Test(1023, 1023, 1023, 5, 8);
     }
 
     void
@@ -651,8 +777,8 @@ public:
     }
 };
 
-template<typename xint8_t>
-class MlasQgemmU8X8Test<xint8_t, float> : public MlasTestBase
+template<typename xint8_t, bool Packed>
+class MlasQgemmU8X8Test<xint8_t, float, Packed> : public MlasQgemmU8X8U8X8TestBase<Packed>
 {
 private:
     void
@@ -714,7 +840,7 @@ private:
             }
         }
 
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
+        this->TestGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, CScale, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
@@ -767,6 +893,7 @@ public:
         for (size_t b = 1; b < 96; b++) {
             Test(1, b, 32, 0, 0);
         }
+        Test(43, 503, 401, 183, 223);
         Test(1024, 1024, 256, 13, 15);
     }
 };
@@ -2435,25 +2562,40 @@ RunThreadedTests(
 
 #ifdef MLAS_HAS_QGEMM_U8X8
     printf("QGEMM U8S8=int32_t tests.\n");
-    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t>>()->ExecuteShort();
-    printf("QGEMM U8U8=int32_t tests.\n");
-    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8S8=float tests.\n");
-    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, float>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, float, false>>()->ExecuteShort();
+    printf("QGEMM U8U8=int32_t tests.\n");
+    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t, false>>()->ExecuteShort();
     printf("QGEMM U8U8=float tests.\n");
-    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float>>()->ExecuteShort();
+    onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, false>>()->ExecuteShort();
+#endif
+
+#ifdef MLAS_HAS_PACKED_QGEMM_U8X8
+    if (MlasGemmPackBSize(128, 128, true) > 0) {
+        printf("QGEMM U8S8=int32_t packed tests.\n");
+        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, int32_t, true>>()->ExecuteShort();
+        printf("QGEMM U8S8=float packed tests.\n");
+        onnxruntime::make_unique<MlasQgemmU8X8Test<int8_t, float, true>>()->ExecuteShort();
+    }
+    if (MlasGemmPackBSize(128, 128, false) > 0) {
+        printf("QGEMM U8U8=int32_t packed tests.\n");
+        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, int32_t, true>>()->ExecuteShort();
+        printf("QGEMM U8U8=float packed tests.\n");
+        onnxruntime::make_unique<MlasQgemmU8X8Test<uint8_t, float, true>>()->ExecuteShort();
+    }
 #endif
 
     printf("Conv2D tests.\n");
     onnxruntime::make_unique<MlasConv2DTest>()->ExecuteShort();
     if (MlasNchwcGetBlockSize() > 1) {
-      onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasNchwcConv2DTest>()->ExecuteShort();
     }
 
     printf("Pool2D tests.\n");
     onnxruntime::make_unique<MlasPool2DTest>()->ExecuteShort();
     if (MlasNchwcGetBlockSize() > 1) {
-      onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasNchwcPool2DTest>()->ExecuteShort();
     }
 
     printf("Pool3D tests.\n");
