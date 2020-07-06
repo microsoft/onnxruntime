@@ -235,11 +235,13 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
 
 
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
-                        fp16, overwrite):
+                        fp16, use_raw_attention_mask, overwrite):
     if overwrite or not os.path.exists(optimized_model_path):
         from optimizer import optimize_model
         from onnx_model_bert import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
+        if use_raw_attention_mask:
+            optimization_options.use_raw_attention_mask()
         if fp16:
             optimization_options.enable_gelu_approximation = True
 
@@ -264,7 +266,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
 
 
 def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx,
-                      overwrite):
+                      use_raw_attention_mask, overwrite):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
@@ -310,7 +312,7 @@ def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, fp1
         model_type = MODELS[model_name][3]
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, fp16, False)
         optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
-                            config.hidden_size, use_gpu, fp16, overwrite)
+                            config.hidden_size, use_gpu, fp16, use_raw_attention_mask, overwrite)
 
         onnx_model_path = optimized_model_path
         if validate_onnx:
@@ -390,7 +392,8 @@ def allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, 
 
 
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
-                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, disable_ort_io_binding):
+                    optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, disable_ort_io_binding,
+                    use_raw_attention_mask):
     import onnxruntime
 
     results = []
@@ -414,7 +417,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
             with torch.no_grad():
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model(
                     model_name, cache_dir, onnx_dir, input_names, use_gpu, fp16, optimize_onnx, validate_onnx,
-                    overwrite)
+                    use_raw_attention_mask, overwrite)
             if not is_valid_onnx_model:
                 continue
 
@@ -691,6 +694,12 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
+    parser.add_argument('--use_raw_attention_mask',
+                        required=False,
+                        action='store_true',
+                        help='Use raw attention mask in Attention operator for Bert models.')
+    parser.set_defaults(use_raw_attention_mask=False)
+
     args = parser.parse_args()
     return args
 
@@ -742,7 +751,7 @@ def main():
             results += run_onnxruntime(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
                                        args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
                                        args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
-                                       args.disable_ort_io_binding)
+                                       args.disable_ort_io_binding, args.use_raw_attention_mask)
         except:
             logger.error(f"Exception", exc_info=True)
 
