@@ -96,7 +96,8 @@ static Status AddNcclAllReduceForGradients(
     GraphAugmenter::GraphDefs& graph_defs,
     ArgDef& fused_allreduce_output) {
   fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
-
+  bool keep_looping = false;
+  while(keep_looping);
   // Add NCCL Allreduce node.
   graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclAllReduce", kMSDomain, 1},
                                   {fused_gradient_argdef},

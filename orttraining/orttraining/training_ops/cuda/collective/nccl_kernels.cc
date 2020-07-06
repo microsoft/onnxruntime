@@ -6,6 +6,32 @@
 namespace onnxruntime {
 namespace cuda {
 
+static Status VerifyTensorsAllocatedContiguously(OpKernelContext* context) {
+  const Tensor* prev_input = context->Input<Tensor>(0);
+  Tensor* prev_output = context->Output(0, prev_input->Shape());
+  prev_output->SetByteOffset(prev_input->ByteOffset());
+  for (int i = 1; i < context->InputCount(); i++) {
+    const Tensor* curr_input = context->Input<Tensor>(i);
+    Tensor* curr_output = context->Output(i, curr_input->Shape());
+    curr_output->SetByteOffset(curr_input->ByteOffset());
+    size_t input_element_count = prev_input->Shape().Size();
+    size_t input_element_size = prev_input->DataType()->Size();
+    size_t input_aligned_bytes = 0;
+    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size, &input_aligned_bytes));
+    ORT_RETURN_IF_NOT(curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + input_aligned_bytes ||
+                      curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + prev_input->SizeInBytes());
+    size_t output_element_count = prev_output->Shape().Size();
+    size_t output_element_size = prev_output->DataType()->Size();
+    size_t output_aligned_bytes = 0;
+    ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(output_element_count, output_element_size, &output_aligned_bytes));
+    ORT_RETURN_IF_NOT(curr_output->DataRaw() == static_cast<const int8_t*>(prev_output->DataRaw()) + output_aligned_bytes ||
+                      curr_output->DataRaw() == static_cast<const int8_t*>(prev_output->DataRaw()) + prev_output->SizeInBytes());
+    prev_input = curr_input;
+    prev_output = curr_output;
+  }
+  return Status::OK();
+}
+
 NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
 }
 
@@ -42,6 +68,8 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   auto onnx_type = context->Input<Tensor>(0)->DataType();
   const size_t element_size = onnx_type->Size();
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
+
+  //ORT_RETURN_IF_ERROR(VerifyTensorsAllocatedContiguously(context));
 
   // Count total number of elements to AllGather.
   int64_t total_count = 0;
@@ -131,6 +159,8 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   auto onnx_type = context->Input<Tensor>(0)->DataType();
   const size_t element_size = onnx_type->Size();
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
+
+  //ORT_RETURN_IF_ERROR(VerifyTensorsAllocatedContiguously(context));
 
   // Count total number of elements to ReduceScatter.
   int64_t total_count = 0;

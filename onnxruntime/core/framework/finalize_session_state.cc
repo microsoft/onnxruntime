@@ -32,6 +32,7 @@ template <typename T>
 static common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                              const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                             const std::vector<OrtValueIndex>& allocation_order,
                                              ITensorAllocator& planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
                                              const DataTransferManager& data_transfer_mgr);
@@ -84,10 +85,11 @@ Status FinalizeSessionState(SessionState& session_state,
 
   // lambda to save initialized tensors into SessionState directly
   const Env& env = Env::Default();
+  const auto& allocation_order = exec_plan_ptr->allocation_order;
   ORT_RETURN_IF_ERROR(SaveInitializedTensors(
       env, graph_location, graph_viewer,
       session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo(),
-      ort_value_name_idx_map, *tensor_allocator_,
+      ort_value_name_idx_map, allocation_order, *tensor_allocator_,
       [&session_state](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
         return session_state.AddInitializedTensor(idx, value, &d, constant);
       },
@@ -167,8 +169,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 template <typename T>
 common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                       const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
-                                      const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
-                                      const T& save_tensor_func, const logging::Logger& logger,
+                                      const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& allocation_order,
+                                      ITensorAllocator& planner, const T& save_tensor_func, const logging::Logger& logger,
                                       const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
@@ -180,6 +182,15 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
     id_to_initialized_tensor[ort_value_index] = entry.second;
+  }
+  
+  // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
+  auto initialized_tensors_to_allocate = id_to_initialized_tensor;
+  for (int ort_value_index : allocation_order) {
+    const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
+    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end());
+    ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    initialized_tensors_to_allocate.erase(entry);
   }
 
   for (const auto& entry : id_to_initialized_tensor) {

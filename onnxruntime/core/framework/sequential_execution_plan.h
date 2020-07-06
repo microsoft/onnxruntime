@@ -46,6 +46,9 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // The following vector is indexed by OrtValueIndex
   std::vector<AllocPlanPerValue> allocation_plan;
 
+  // The following vector contains any initializer tensors that must be allocated sequentially.
+  std::vector<OrtValueIndex> allocation_order;
+
   // The following indicates the order in which nodes should be executed and the
   // ml-values to be free after each node's execution:
 

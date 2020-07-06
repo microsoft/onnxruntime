@@ -640,6 +640,43 @@ class PlannerImpl {
     return Status::OK();
   }
 
+  bool AllocateInputsContiguously(const Node& node) const {
+    const KernelCreateInfo* ci = nullptr;
+    Status st = kernel_registry_.SearchKernelRegistry(node, &ci);
+    if (!st.IsOK() || ci == nullptr || ci->kernel_def == nullptr) {
+      return false;
+    }
+    return ci->kernel_def->AllocateInputsContiguously();
+  }
+
+  // Compute allocation order for tensors that are required to be allocated contiguously.
+  Status ComputeAllocationOrder() {
+    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
+    std::vector<OrtValueIndex>& allocation_order(plan_.allocation_order);
+    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
+      SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
+      const auto* pnode = graph_viewer_.GetNode(step.node_index);
+      if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step.node_index);
+      if (!AllocateInputsContiguously(*pnode)) continue;
+      // This node has requested inputs be allocated contiguously.
+      const auto& input_defs = pnode->InputDefs();
+      for (int input_arg_def_index = 0; static_cast<size_t>(input_arg_def_index) < input_defs.size(); ++input_arg_def_index) {
+        const auto& node_input = input_defs[input_arg_def_index];
+        if (!node_input->Exists()) continue;
+        const auto current_idx = Index(node_input->Name());
+        const auto& current_plan = AllocPlan(current_idx);
+        const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
+        const auto& actual_plan = AllocPlan(actual_idx);
+        // Currently, only initializers can be allocated contiguously and can only be specified once.
+        if (actual_plan.alloc_kind != AllocKind::kAllocateStatically)
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() currently can only be used on initializers.");
+        if (std::find(allocation_order.begin(), allocation_order.end(), actual_idx) == allocation_order.end())
+          allocation_order.push_back(actual_idx);
+      }
+    }
+    return Status::OK();
+  }
+
   // Whether a given NodeArg has fence or not.
   // If the buffer is reused, need to check whether original OrtValue has fence or not.
   bool HasFence(const onnxruntime::NodeArg* arg) {
@@ -743,9 +780,13 @@ Status PlannerImpl::CreatePlan() {
   // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
+  // Determine allocation order for weights. This needs to be done after ComputeReusePlan.
+  //ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
+
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
-
+  bool keep_looping = true;
+  while(keep_looping);
   return Status::OK();
 }
 
