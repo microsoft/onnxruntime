@@ -10,6 +10,7 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
+#include "orttraining/core/graph/gradient_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -41,6 +42,9 @@ class TrainingSession : public InferenceSession {
 
     // The immutable weights specification.
     ImmutableWeights immutable_weights;
+
+    // Gradient graph configuration
+    GradientGraphConfiguration gradient_graph_config{};
 
     // Whether to set the gradients as graph outputs.
     bool set_gradients_as_graph_outputs{false};
@@ -298,7 +302,7 @@ class TrainingSession : public InferenceSession {
    */
   std::unordered_set<std::string> GetDropoutEvalFeeds() const { return dropout_eval_feeds_; }
   /** Override Run function in InferenceSession to inject some training-specific logics **/
-  using InferenceSession::Run; // For overload resolution.
+  using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
   common::Status Run(IOBinding& io_binding) override;
@@ -409,6 +413,7 @@ class TrainingSession : public InferenceSession {
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
+                                    const GradientGraphConfiguration& gradient_graph_config,
                                     const bool set_gradient_as_graph_output = false);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
@@ -436,7 +441,7 @@ class TrainingSession : public InferenceSession {
   @param immutable_weights do not include initializers matching an (op_type, input_index, value) entry from this table
   @param backprop_source_name reverse DFS back propagation source name (i.e. loss name or pipeline send output name)
   */
-  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights, 
+  std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights,
                                                                 const std::string& backprop_source_name) const;
 
   std::unordered_set<std::string> GetStateTensorNames() const;
@@ -444,6 +449,9 @@ class TrainingSession : public InferenceSession {
   common::Status SetDropoutEvalFeedNames();
 
   NameMLValMap GetWeights() const;
+
+  void FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
+                           std::unordered_set<std::string>& filtered_weight_names_to_train);
 
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
                                 const Node* node,
@@ -469,6 +477,8 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
+
+  GradientGraphConfiguration gradient_graph_config_;
 };
 }  // namespace training
 }  // namespace onnxruntime

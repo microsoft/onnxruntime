@@ -62,7 +62,7 @@ bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
 
 std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   std::vector<std::vector<int>> supported_node_vecs;
-  int32_t android_sdk_ver = nnapi_ ? nnapi_->android_sdk_version : 0;
+  int32_t android_sdk_ver = GetAndroidSdkVer();
 #ifdef __ANDROID__
   if (android_sdk_ver < 27) {
     LOGS_DEFAULT(VERBOSE) << "Android API level "
@@ -126,6 +126,7 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 void ModelBuilder::Prepare() {
   nnapi_model_ = std::unique_ptr<Model>(new Model());
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
+  GetTargetDevices();
   PreprocessInitializers();
   RegisterInitializers();
   RegisterModelInputs();
@@ -144,9 +145,40 @@ static size_t GetPaddedByteSize(size_t size) {
   return (size + kDefaultByteAlignmentForNNAPI - 1) & ~(kDefaultByteAlignmentForNNAPI - 1);
 }
 
+void ModelBuilder::GetTargetDevices() {
+  // GetTargetDevices is only supported on API 29+
+  if (GetAndroidSdkVer() < 29)
+    return;
+
+  if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
+    return;
+
+  const std::string nnapi_cpu("nnapi-reference");
+  uint32_t num_devices = 0;
+  THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDeviceCount(&num_devices),
+                           "Getting list of available devices");
+
+  for (uint32_t i = 0; i < num_devices; i++) {
+    ANeuralNetworksDevice* device = nullptr;
+    const char* device_name = nullptr;
+    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDevice(i, &device),
+                             "Getting list of available devices");
+
+    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
+                             "Getting list of available devices");
+
+    bool device_is_cpu = nnapi_cpu == device_name;
+    if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
+        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
+      nnapi_target_devices_.push_back(device);
+      LOGS_DEFAULT(VERBOSE) << "Target device [" << device_name << "] added";
+    }
+  }
+}
+
 void ModelBuilder::GetAllInitializers() {
   for (const auto& tensor : model_proto_.graph().initializer()) {
-    initializers_.insert({tensor.name(), tensor});
+    initializers_.emplace(tensor.name(), tensor);
   }
 }
 
@@ -190,7 +222,7 @@ void ModelBuilder::RegisterInitializers() {
     OperandType operand_type(type, shape);
     shaper_.AddShape(name, operand_type.dimensions);
 
-    auto index = AddNewOperand(name, operand_type);
+    auto index = AddNewOperand(name, operand_type, false /* is_nhwc */);
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
@@ -264,7 +296,7 @@ void ModelBuilder::RegisterModelInputs() {
     OperandType operand_type(type, shape);
     shaper_.AddShape(input_name, operand_type.dimensions);
 
-    auto index = AddNewOperand(input_name, operand_type);
+    auto index = AddNewOperand(input_name, operand_type, false /* is_nhwc */);
 
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
@@ -279,8 +311,15 @@ void ModelBuilder::RegisterModelOutputs() {
       ORT_THROW("The output of graph is not registered" + output_name);
     }
 
-    output_index_vec_.push_back(operand_indices_[output_name]);
-    nnapi_model_->AddOutput(output_name, operand_types_.at(output_name));
+    std::string nnapi_output_name = output_name;
+    if (IsOperandNHWC(output_name)) {
+      // We need to transpose the output still in nhwc back to nchw
+      nnapi_output_name = GetUniqueName(output_name + "_nhwc_to_nchw");
+      TransposeNHWCToNCHW(*this, output_name, nnapi_output_name);
+    }
+
+    output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
+    nnapi_model_->AddOutput(output_name, nnapi_output_name, operand_types_.at(nnapi_output_name));
   }
 }
 
@@ -290,11 +329,12 @@ void ModelBuilder::RegisterModelShaper() {
 }
 
 uint32_t ModelBuilder::AddNewOperand(const std::string& name,
-                                     const android::nn::wrapper::OperandType& operand_type) {
+                                     const OperandType& operand_type,
+                                     bool is_nhwc) {
   THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
       nnapi_model_->model_, &operand_type.operandType));
   auto idx = next_index_++;
-  RegisterOperand(name, idx, operand_type);
+  RegisterOperand(name, idx, operand_type, is_nhwc);
   return idx;
 }
 
@@ -304,12 +344,14 @@ uint32_t ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type) {
   return next_index_++;
 }
 
-void ModelBuilder::RegisterOperand(const std::string& name,
-                                   uint32_t index,
-                                   const OperandType& operand_type) {
+void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
+                                   const OperandType& operand_type, bool is_nhwc) {
   operand_indices_[name] = index;
-  operand_types_.insert({name, operand_type});
+  operand_types_.emplace(name, operand_type);
   operands_.insert(name);
+
+  if (is_nhwc)
+    RegisterNHWCOperand(name);
 }
 
 void ModelBuilder::SetOperandValue(uint32_t index,
@@ -334,7 +376,7 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer,
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
-  auto index = AddNewOperand(name, operand_type);
+  auto index = AddNewOperand(name, operand_type, false /* is_nhwc */);
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -369,10 +411,11 @@ void ModelBuilder::AddOperations() {
 
 void ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                 const std::vector<std::string>& output_names,
-                                const std::vector<android::nn::wrapper::OperandType>& types) {
+                                const std::vector<OperandType>& types,
+                                const std::vector<bool>& is_nhwc_vec) {
   std::vector<uint32_t> output_indices;
   for (size_t i = 0; i < types.size(); i++) {
-    output_indices.push_back(AddNewOperand(output_names[i], types[i]));
+    output_indices.push_back(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i]));
   }
 
   THROW_ON_ERROR_WITH_NOTE(
@@ -393,7 +436,8 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
           &output_index_vec_[0]),
       "on identifyInputsAndOutputs");
 
-  if (use_fp16_) {
+  // relax fp32tofp16 is only available on API 28+
+  if (use_fp16_ && GetAndroidSdkVer() > 27) {
     THROW_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),
@@ -404,9 +448,17 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
       nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
       "on model finish");
 
-  THROW_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
-      "on create");
+  if (!nnapi_target_devices_.empty()) {
+    THROW_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksCompilation_createForDevices(
+            nnapi_model_->model_, nnapi_target_devices_.data(),
+            nnapi_target_devices_.size(), &nnapi_model_->compilation_),
+        "on createForDevices");
+  } else {
+    THROW_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksCompilation_create(nnapi_model_->model_, &nnapi_model_->compilation_),
+        "on create");
+  }
 
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksCompilation_setPreference(
@@ -473,6 +525,42 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   } while (Contains(unique_names_, unique_name));
 
   return unique_name;
+}
+
+void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
+  nhwc_operands_.insert(name);
+}
+
+bool ModelBuilder::IsOperandNHWC(const std::string& name) {
+  return Contains(nhwc_operands_, name);
+}
+
+bool ModelBuilder::GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name) {
+  if (Contains(nhwc_to_nchw_map_, nhwc_name)) {
+    nchw_name = nhwc_to_nchw_map_[nhwc_name];
+    return true;
+  }
+  return false;
+}
+
+bool ModelBuilder::GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name) {
+  if (Contains(nchw_to_nhwc_map_, nchw_name)) {
+    nhwc_name = nchw_to_nhwc_map_[nchw_name];
+    return true;
+  }
+  return false;
+}
+
+void ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
+                                           const std::string& nchw_name) {
+  ORT_ENFORCE(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
+  nhwc_to_nchw_map_[nhwc_name] = nchw_name;
+}
+
+void ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
+                                           const std::string& nhwc_name) {
+  ORT_ENFORCE(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
+  nchw_to_nhwc_map_[nchw_name] = nhwc_name;
 }
 
 }  // namespace nnapi

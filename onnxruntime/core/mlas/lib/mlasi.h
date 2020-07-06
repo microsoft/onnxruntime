@@ -473,6 +473,42 @@ void
 
 typedef MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* PMLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL;
 
+typedef
+void
+(MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
+    const int8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const int8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    int8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
+
+typedef MLAS_QLINEAR_BINARY_OP_S8_KERNEL* PMLAS_QLINEAR_BINARY_OP_S8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_QLINEAR_BINARY_OP_U8_KERNEL)(
+    const uint8_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const uint8_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    uint8_t* OutputC,
+    size_t LengthA,
+    size_t LengthB
+    );
+
+typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -507,10 +543,6 @@ extern "C" {
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE MlasSgemmTransposePackB16x4Avx;
 #endif
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-    MLAS_GEMM_U8X8_OPERATION MlasGemmU8X8OperationSse;
-    MLAS_GEMM_U8X8_OPERATION MlasGemmU8S8OperationAvx2;
-    MLAS_GEMM_U8X8_OPERATION MlasGemmU8U8OperationAvx2;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_GEMM_U8S8_KERNEL MlasGemmU8S8KernelAvx2;
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx2;
@@ -520,7 +552,6 @@ extern "C" {
     MLAS_GEMV_U8S8_KERNEL MlasGemvU8S8KernelAvx512Vnni;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx2;
     MLAS_GEMM_U8U8_KERNEL MlasGemmU8U8KernelAvx512Core;
-#endif
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -566,6 +597,8 @@ extern "C" {
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32Kernel;
+    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8Kernel;
+    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
@@ -576,15 +609,14 @@ extern "C" {
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelAvx512F;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelAvx;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelAvx;
+    MLAS_QLINEAR_BINARY_OP_S8_KERNEL MlasQLinearAddS8KernelAvx2;
+    MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
-#if defined(MLAS_TARGET_AMD64)
-    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
-#endif
-
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
 #endif
 
@@ -638,6 +670,28 @@ MlasSgemmOperation(
     );
 
 //
+// Quantized integer matrix/matrix multiply operation.
+//
+
+struct MLAS_GEMM_U8X8_KERNEL_SSE;
+struct MLAS_GEMM_U8S8_KERNEL_AVX2;
+struct MLAS_GEMM_U8U8_KERNEL_AVX2;
+
+template<typename KernelType>
+void
+MLASCALL
+MlasGemmU8X8Operation(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
+    );
+
+template<typename KernelType>
+void
+MLASCALL
+MlasGemmU8X8PackedOperation(
+    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock
+    );
+
+//
 // Environment information class.
 //
 
@@ -647,8 +701,6 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
     PMLAS_GEMM_FLOAT_KERNEL GemmFloatKernel;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8S8Operation;
-    PMLAS_GEMM_U8X8_OPERATION GemmU8U8Operation;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -656,8 +708,12 @@ struct MLAS_PLATFORM {
     PMLAS_SGEMM_KERNEL_M1_ROUTINE KernelM1TransposeBRoutine;
     PMLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE TransposePackB16x4Routine;
     PMLAS_GEMM_DOUBLE_KERNEL GemmDoubleKernel;
+    PMLAS_GEMM_U8X8_OPERATION GemmU8S8Operation;
+    PMLAS_GEMM_U8X8_OPERATION GemmU8S8PackedOperation;
     PMLAS_GEMM_U8S8_KERNEL GemmU8S8Kernel;
     PMLAS_GEMV_U8S8_KERNEL GemvU8S8Kernel;
+    PMLAS_GEMM_U8X8_OPERATION GemmU8U8Operation;
+    PMLAS_GEMM_U8X8_OPERATION GemmU8U8PackedOperation;
     PMLAS_GEMM_U8U8_KERNEL GemmU8U8Kernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwFloatKernel;
     PMLAS_CONV_FLOAT_KERNEL ConvNchwcFloatKernel;
@@ -665,6 +721,8 @@ struct MLAS_PLATFORM {
     PMLAS_CONV_POINTWISE_FLOAT_KERNEL ConvPointwiseFloatKernel;
     PMLAS_POOL_FLOAT_KERNEL PoolFloatKernel[MlasPoolingKindCount];
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ErfKernelRoutine;
+    PMLAS_QLINEAR_BINARY_OP_S8_KERNEL QLinearAddS8Kernel;
+    PMLAS_QLINEAR_BINARY_OP_U8_KERNEL QLinearAddU8Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL ComputeExpF32Kernel;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL LogisticKernelRoutine;
     PMLAS_COMPUTE_UNARY_FLOAT_KERNEL TanhKernelRoutine;

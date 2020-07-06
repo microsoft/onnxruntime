@@ -77,7 +77,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_java --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_lto --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_java --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_lto --disable_rtti --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -97,7 +97,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --build_java --test --cmake_generator "Visual Studio 16 2019" --enable_lto --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --build_java --test --cmake_generator "Visual Studio 16 2019" --enable_lto --disable_rtti --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/java-api-artifacts-package-and-publish-steps-windows.yml

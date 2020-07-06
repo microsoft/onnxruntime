@@ -216,7 +216,7 @@ static Status ConcatenateCpuOutput(std::vector<OrtValue>& per_iteration_output,
   return Status::OK();
 }
 
-Loop::Loop(const OpKernelInfo& info) : OpKernel(info) {
+Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.

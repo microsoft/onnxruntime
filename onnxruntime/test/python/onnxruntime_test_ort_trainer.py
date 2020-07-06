@@ -655,9 +655,7 @@ class TestOrtTrainer(unittest.TestCase):
             assert np.array_equal(state_dict[key], loaded_state_dict[key])
 
     def testBertTrainingBasic(self):
-        expected_losses = [
-            11.02906322479248, 11.094074249267578, 11.00899887084961, 11.06129264831543,
-            11.029067039489746, 11.040265083312988, 11.046793937683105, 10.993699073791504]
+        expected_losses = [11.034271, 11.125311, 11.006095, 11.046938, 11.027476, 11.015745, 11.060884, 10.971851]
         expected_eval_loss = [10.95898914]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -669,14 +667,12 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-04
+        rtol = 1e-03
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
     def testBertTrainingGradientAccumulation(self):
-        expected_losses = [
-            11.02906322479248, 11.094074249267578, 11.008995056152344, 11.061283111572266,
-            11.029059410095215, 11.04024887084961, 11.04680347442627, 10.993708610534668]
+        expected_losses = [11.034271, 11.125311, 11.006093, 11.046929, 11.027471, 11.015731, 11.060894, 10.971855]
         expected_eval_loss = [10.959011]
 
         actual_losses, actual_eval_loss = runBertTrainingTest(
@@ -689,7 +685,7 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-04
+        rtol = 1e-03
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 

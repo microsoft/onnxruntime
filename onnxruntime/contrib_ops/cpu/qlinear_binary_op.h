@@ -3,17 +3,20 @@
 
 #pragma once
 
+#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-class QLinearConv : public OpKernel {
+namespace contrib {
+
+template <typename T>
+class QLinearAdd final : public OpKernel {
  public:
-  explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
-  }
+  QLinearAdd(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* context) const override;
-
-  ConvAttributes conv_attrs_;
 };
+
+}  // namespace contrib
 }  // namespace onnxruntime

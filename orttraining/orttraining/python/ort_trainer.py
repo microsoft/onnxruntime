@@ -375,7 +375,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                use_mixed_precision=False, allreduce_post_accumulation=False,
                                                deepspeed_zero_stage=0,
                                                enable_grad_norm_clip=True,
-                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION):
+                                               frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
+                                               use_deterministic_compute=False,
+                                               use_invertible_layernorm_grad=False):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -383,11 +385,11 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.world_rank = world_rank
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
-    ort_parameters.use_mixed_precision = use_mixed_precision
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
     ort_parameters.deepspeed_zero_stage = deepspeed_zero_stage
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
+    ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
     output_types = {}
     for output in model.graph.output:
@@ -439,7 +441,9 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-    session = ort.TrainingSession(model.SerializeToString(), ort_parameters)
+    sessionOptions = ort.SessionOptions()
+    sessionOptions.use_deterministic_compute = use_deterministic_compute
+    session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 
@@ -527,7 +531,8 @@ class ORTTrainer():
                  world_rank=0, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False,
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
-                 _enable_internal_postprocess=True, _extra_postprocess=None):
+                 _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
+                 use_invertible_layernorm_grad=False):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -596,6 +601,8 @@ class ORTTrainer():
                Defaults to True
             _extra_postprocess: a callable to postprocess the ONNX model that is converted from PyTorch.
                Defaults to None
+            use_invertible_layernorm_grad: use invertible layernorm grad
+               Defaults to False
         """
         warnings.warn('DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it')
         self.is_train = True
@@ -647,6 +654,8 @@ class ORTTrainer():
         self.opset_version_ = _opset_version
         self.state_dict_ = None
         self._enable_internal_postprocess = _enable_internal_postprocess
+        self._use_deterministic_compute = _use_deterministic_compute
+        self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
@@ -674,7 +683,9 @@ class ORTTrainer():
                 use_mixed_precision=self.use_mixed_precision, allreduce_post_accumulation=self.allreduce_post_accumulation_,
                 deepspeed_zero_stage=self.deepspeed_zero_stage_,
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
-                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_)
+                frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
+                use_deterministic_compute=self._use_deterministic_compute,
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -830,6 +841,7 @@ class ORTTrainer():
             fetches = kwargs['fetches']
 
         return input, fetches
+
 
     def train_step(self, *args, **kwargs):
         """
