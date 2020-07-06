@@ -12,7 +12,7 @@ def register_custom_op():
 
     # Symbolic definition
     def inverse(g, self):
-        return g.op("com.microsoft::Inverse", self)
+        return g.op("com.microsoft::Inversetest", self)
 
     def gelu(g, self):
         return g.op("com.microsoft::Gelu", self)
