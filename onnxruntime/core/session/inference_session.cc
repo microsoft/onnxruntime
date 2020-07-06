@@ -830,6 +830,8 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 }
 
 common::Status InferenceSession::Initialize() {
+  bool keep_looping = true;
+  while(keep_looping);
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {

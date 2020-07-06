@@ -785,8 +785,7 @@ Status PlannerImpl::CreatePlan() {
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
-  bool keep_looping = true;
-  while(keep_looping);
+  
   return Status::OK();
 }
 
@@ -796,6 +795,7 @@ Status SequentialPlanner::CreatePlan(const Node* parent_node, const onnxruntime:
                                      const OrtValueNameIdxMap& ort_value_name_idx_map,
                                      const ISequentialPlannerContext& context,
                                      std::unique_ptr<SequentialExecutionPlan>& plan) {
+
   // allocate/reset here so we know it's clean
   plan = onnxruntime::make_unique<SequentialExecutionPlan>();
 
