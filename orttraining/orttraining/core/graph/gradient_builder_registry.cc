@@ -3,11 +3,13 @@
 
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/gradient_builder.h"
+#include "orttraining/core/graph/gradient_config.h"
 
 namespace onnxruntime {
 namespace training {
 
-GradientDef GetGradientForOp(const Node* node,
+GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
+                             const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
                                
@@ -16,6 +18,7 @@ GradientDef GetGradientForOp(const Node* node,
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
 
   auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
+                                                                            gradient_graph_config,
                                                                             node,
                                                                             output_args_need_grad,
                                                                             input_args_need_grad);

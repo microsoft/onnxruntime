@@ -133,7 +133,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool: Linux-GPU-CUDA10
