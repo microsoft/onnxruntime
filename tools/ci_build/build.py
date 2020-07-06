@@ -1172,11 +1172,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
-            if args.use_cuda:
-                run_subprocess(
-                    [sys.executable, 'onnxruntime_test_python_ep_options.py'],
-                    cwd=cwd, dll_path=dll_path)
-
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
