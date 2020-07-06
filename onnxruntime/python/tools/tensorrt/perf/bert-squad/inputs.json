@@ -1,0 +1,27 @@
+{
+  "version": "1.4",
+  "data": [
+    {
+      "paragraphs": [
+        {
+          "context": "In its early years, the new convention center failed to meet attendance and revenue expectations.[12] By 2002, many Silicon Valley businesses were choosing the much larger Moscone Center in San Francisco over the San Jose Convention Center due to the latter's limited space. A ballot measure to finance an expansion via a hotel tax failed to reach the required two-thirds majority to pass. In June 2005, Team San Jose built the South Hall, a $6.77 million, blue and white tent, adding 80,000 square feet (7,400 m2) of exhibit space",
+          "qas": [
+            {
+              "question": "where is the businesses choosing to go?",
+              "id": "1"
+            },
+            {
+              "question": "how may votes did the ballot measure need?",
+              "id": "2"
+            },
+            {
+              "question": "By what year many Silicon Valley businesses were choosing the Moscone Center?",
+              "id": "3"
+            }
+          ]
+        }
+      ],
+      "title": "Conference Center"
+    }
+  ]
+}
