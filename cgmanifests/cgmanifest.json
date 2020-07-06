@@ -305,6 +305,16 @@
             },
             "comments": "used by onnxruntime"
          }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "7a2ed51a6b682a83e345ff49fc4cfd7ca47550db",
+               "repositoryUrl": "https://github.com/google/libprotobuf-mutator"
+            },
+            "comments": "used by onnxruntime for fuzzing"
+         }
       }
    ],
    "Version": 1
