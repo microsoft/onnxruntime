@@ -24,7 +24,7 @@ bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vect
   ORT_ENFORCE(input_indices.size() == expected_values.size() && input_indices.size() > 0);
 
   // Here assumes that the last element of input_indices is the maximum one.
-  if (slice.InputDefs().size() <= input_indices[input_indices.size() - 1]) {
+  if (slice.InputDefs().size() <= static_cast<size_t>(input_indices[input_indices.size() - 1])) {
     DEBUG_LOG("Slice does not have enough number of inputs");
     return false;
   }
@@ -251,10 +251,11 @@ bool ValidateGemmInitializer(const Graph& graph, const Node& gemm, int64_t hidde
 }
 
 struct MatchUnidirMaskResult {
+  const Node* div_node;                 // the root node (Div) of the subgraph
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
-/**  Match Unidirectional Mask subgraph, and returns the root node (Div). 
+/**  Match Unidirectional Mask subgraph. 
      In the below graph, ':' is followed by variable name in code. * means the input on the left side.
 
 
@@ -274,7 +275,7 @@ struct MatchUnidirMaskResult {
       |      :shape2   :slice2         :squeeze2                                                       v condition
       +----------------------------------------------------------------------------------------->Where( ,*,-10000)--->[Add]
 */
-const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnidirMaskResult& result, const logging::Logger& logger) {
+bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnidirMaskResult& result, const logging::Logger& logger) {
   DEBUG_LOG("Start MatchUnidirMaskSubgraph");
   std::vector<graph_utils::EdgeEndToMatch> root_path{
       {0, 0, "Where", {9}, kOnnxDomain},
@@ -283,7 +284,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_node, true, root_path, edges, logger)) {
     DEBUG_LOG("Faild to match the path (Div-->Where-->Add) for unidirectional mask");
-    return nullptr;
+    return false;
   }
 
   const Node& where_node = edges[0]->GetNode();
@@ -291,7 +292,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
 
   const float expected_value = -10000.0f;
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where_node.InputDefs()[2]), expected_value, true)) {
-    return nullptr;
+    return false;
   }
 
   std::vector<graph_utils::EdgeEndToMatch> path1{
@@ -306,7 +307,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
 
   if (!graph_utils::FindPath(where_node, true, path1, edges, logger)) {
     DEBUG_LOG("Faild to match path 1 for unidirectional mask");
-    return nullptr;
+    return false;
   }
 
   const Node& cast = edges[0]->GetNode();
@@ -334,17 +335,17 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
 
   if (div_node.OutputDefs()[0]->Name() != shape1.InputDefs()[0]->Name()) {
     DEBUG_LOG("Div and Shape1 does not have edge");
-    return nullptr;
+    return false;
   }
 
   if (!CheckSliceParameters(graph, last_slice, {1, 3, 4}, {0, 3, 1}, logger)) {
     DEBUG_LOG("CheckSliceParameters returns false for last_slice");
-    return nullptr;
+    return false;
   }
 
   if (!CheckSliceParameters(graph, mask_slice, {3, 4}, {2, 1}, logger)) {
     DEBUG_LOG("CheckSliceParameters returns false for mask_slice");
-    return nullptr;
+    return false;
   }
 
   if (!CheckSliceParameters(graph, slice1, {1, 2, 3}, {-1, INT_MAX, 0}, logger)) {
@@ -359,7 +360,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
   if (!graph_utils::FindPath(last_slice, true, slice_ends_path, edges, logger) ||
       edges[1]->GetNode().Index() != squeeze1.Index()) {
     DEBUG_LOG("Faild to match path 2 for unidirectional mask");
-    return nullptr;
+    return false;
   }
 
   const Node& unsqueeze2 = edges[0]->GetNode();
@@ -371,7 +372,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
   if (!graph_utils::FindPath(mask_slice, true, slice_ends_path, edges, logger) ||
       edges[1]->GetNode().Index() != squeeze1.Index()) {
     DEBUG_LOG("Faild to match path 3 for unidirectional mask");
-    return nullptr;
+    return false;
   }
 
   const Node& unsqueeze3 = edges[0]->GetNode();
@@ -387,12 +388,12 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
 
   if (!graph_utils::FindPath(sub, true, path4, edges, logger)) {
     DEBUG_LOG("Faild to match path 4 for unidirectional mask");
-    return nullptr;
+    return false;
   }
 
   if (div_node.OutputDefs()[0]->Name() != edges[2]->GetNode().InputDefs()[0]->Name()) {
     DEBUG_LOG("Div and Shape does not have edge");
-    return nullptr;
+    return false;
   }
 
   const Node& squeeze2 = edges[0]->GetNode();
@@ -410,6 +411,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
     return false;
   }
 
+  result.div_node = &div_node;
   result.node_indices = {
       where_node.Index(),
       cast.Index(),
@@ -427,7 +429,7 @@ const Node* MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, Ma
       shape2.Index()};
 
   DEBUG_LOG("Pass MatchUnidirMaskSubgraph");
-  return &div_node;
+  return true;
 }
 
 struct AttentionMaskNodes {
@@ -456,7 +458,7 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
   }
 }
 
-/**  Match Unidirectional Mask subgraph, and returns the root node (Div):
+/**  Match Input Mask subgraph:
                                                                                                        {UnidirMask Subgraph}
                                                                                                                    |
                                                                   (optional)                                       v
@@ -1003,8 +1005,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   }
 
   MatchUnidirMaskResult unidir_mask_result;
-  const Node* qk_div = MatchUnidirMaskSubgraph(graph, *(mask_nodes.add), unidir_mask_result, logger);
-  if (nullptr == qk_div) {
+  if (!MatchUnidirMaskSubgraph(graph, *(mask_nodes.add), unidir_mask_result, logger)) {
     DEBUG_LOG("MatchUnidirMaskSubgraph returns NULL");
     return false;
   }
@@ -1016,6 +1017,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       {0, 0, "Reshape", {5, 13}, kOnnxDomain},
       {0, 0, "Split", {2, 11, 13}, kOnnxDomain}};
 
+  const Node* qk_div = unidir_mask_result.div_node;
   if (!graph_utils::FindPath(*qk_div, true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
     return false;
