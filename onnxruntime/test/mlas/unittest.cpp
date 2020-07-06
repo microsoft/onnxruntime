@@ -485,11 +485,11 @@ private:
         )
     {
         const uint8_t* A = BufferA.GetBuffer(K * M);
-        const xint8_t* B = BufferB.GetBuffer(N * K);
+        const uint8_t* B = BufferB.GetBuffer(N * K);
         int32_t* C = BufferC.GetBuffer(N * M);
         int32_t* CReference = BufferCReference.GetBuffer(N * M);
 
-        Test(M, N, K, A, K, offa, B, N, xint8_t(offb), C, CReference, N);
+        Test(M, N, K, A, K, offa, B, N, offb, C, CReference, N);
     }
 
     void
@@ -500,9 +500,9 @@ private:
         const uint8_t* A,
         size_t lda,
         uint8_t offa,
-        const xint8_t* B,
+        const uint8_t* B,
         size_t ldb,
-        xint8_t offb,
+        uint8_t offb,
         int32_t* C,
         int32_t* CReference,
         size_t ldc
@@ -511,12 +511,13 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, threadpool);
-        ReferenceQgemm(M, N, K, A, lda, offa, B, ldb, offb, CReference, ldc);
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, threadpool);
+        ReferenceQgemm(M, N, K, A, lda, offa, (const xint8_t*)B, ldb, (xint8_t)offb, CReference, ldc);
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, (int)offa, (int)offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                break;
             }
         }
     }
@@ -557,9 +558,10 @@ private:
     }
 
     MatrixGuardBuffer<uint8_t> BufferA;
-    MatrixGuardBuffer<xint8_t> BufferB;
+    MatrixGuardBuffer<uint8_t> BufferB;
     MatrixGuardBuffer<int32_t> BufferC;
     MatrixGuardBuffer<int32_t> BufferCReference;
+    const bool BIsSigned = std::is_signed<xint8_t>::value;
 
 public:
     void
@@ -581,6 +583,7 @@ public:
             Test(1, 32, b, 0, 0);
             Test(1, b, b, 0, 0);
         }
+        Test(1024, 1024, 1024, 5, 8);
     }
 
     void
@@ -662,7 +665,7 @@ private:
         )
     {
         const uint8_t* A = BufferA.GetBuffer(K * M);
-        const xint8_t* B = BufferB.GetBuffer(N * K);
+        const uint8_t* B = BufferB.GetBuffer(N * K);
         float* C = BufferC.GetBuffer(N * M);
         float* CReference = BufferCReference.GetBuffer(N * M);
         const float* Bias = BufferBias.GetBuffer(N);
@@ -673,12 +676,12 @@ private:
 
         const float BScale = 0.25f;
         float* BFloat = BufferBFloat.GetBuffer(N * K);
-        DequantizeLinear(B, BFloat, N * K, BScale, xint8_t(offb));
+        DequantizeLinear((xint8_t*)B, BFloat, N * K, BScale, xint8_t(offb));
 
         const float CScale = AScale * BScale;
 
-        Test(M, N, K, A, AFloat, K, offa, B, BFloat, N, xint8_t(offb), C, CReference, N, CScale, nullptr);
-        Test(M, N, K, A, AFloat, K, offa, B, BFloat, N, xint8_t(offb), C, CReference, N, CScale, Bias);
+        Test(M, N, K, A, AFloat, K, offa, B, BFloat, N, offb, C, CReference, N, CScale, nullptr);
+        Test(M, N, K, A, AFloat, K, offa, B, BFloat, N, offb, C, CReference, N, CScale, Bias);
     }
 
     void
@@ -690,10 +693,10 @@ private:
         const float* AFloat,
         size_t lda,
         uint8_t offa,
-        const xint8_t* B,
+        const uint8_t* B,
         const float* BFloat,
         size_t ldb,
-        xint8_t offb,
+        uint8_t offb,
         float* C,
         float* CReference,
         size_t ldc,
@@ -711,12 +714,13 @@ private:
             }
         }
 
-        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, C, ldc, &CScale, Bias, threadpool);
+        MlasGemm(M, N, K, A, lda, offa, B, ldb, offb, BIsSigned, C, ldc, &CScale, Bias, threadpool);
 
         for (size_t f = 0; f < M * N; f++) {
             // Sensitive to comparing positive/negative zero.
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, (int)offa, (int)offb, C[f], CReference[f]);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d! %f %f\n", M, N, K, offa, offb, C[f], CReference[f]);
+                break;
             }
         }
     }
@@ -737,12 +741,13 @@ private:
     }
 
     MatrixGuardBuffer<uint8_t> BufferA;
-    MatrixGuardBuffer<xint8_t> BufferB;
+    MatrixGuardBuffer<uint8_t> BufferB;
     MatrixGuardBuffer<float> BufferAFloat;
     MatrixGuardBuffer<float> BufferBFloat;
     MatrixGuardBuffer<float> BufferC;
     MatrixGuardBuffer<float> BufferCReference;
     MatrixGuardBuffer<float> BufferBias;
+    const bool BIsSigned = std::is_signed<xint8_t>::value;
 
 public:
     void
