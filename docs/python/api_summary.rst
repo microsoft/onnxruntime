@@ -119,4 +119,3 @@ The following functions are supported:
 .. autofunction:: onnxruntime.backend.run
 
 .. autofunction:: onnxruntime.backend.supports_device
-
