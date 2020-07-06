@@ -450,6 +450,9 @@ class TrainingSession : public InferenceSession {
 
   NameMLValMap GetWeights() const;
 
+  void FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
+                           std::unordered_set<std::string>& filtered_weight_names_to_train);
+
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
                                 const Node* node,
                                 const TensorProto* weight_tensor,

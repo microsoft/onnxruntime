@@ -109,6 +109,19 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
+
+void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
+  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+  filtered_weight_names_to_train.clear();
+  for (const auto& name: weight_names_to_train) {
+    auto nodes = model_->MainGraph().GetConsumerNodes(name);
+    if (!nodes.empty())
+      filtered_weight_names_to_train.insert(name);
+    else
+      LOGS(*session_logger_, WARNING) << "Couldn't find any consumer node for weight " << name << ", exclude it from training.";
+  }
+}
+
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
   ORT_RETURN_IF(
@@ -116,6 +129,9 @@ Status TrainingSession::ConfigureForTraining(
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
 
   if (is_configured_) return Status::OK();
+
+  std::unordered_set<std::string> filtered_config_weight_names_to_train;
+  FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
 
   TrainingConfigurationResult config_result{};
 
@@ -186,8 +202,8 @@ Status TrainingSession::ConfigureForTraining(
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
   std::unordered_set<std::string> trainable_initializers =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   if (config.weight_names_to_not_train.size() > 0) {
     LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:";
@@ -201,8 +217,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     weight_names_to_train.erase(weight_name_to_not_train);
