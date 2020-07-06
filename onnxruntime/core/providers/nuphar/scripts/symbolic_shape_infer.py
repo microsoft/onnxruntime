@@ -898,11 +898,15 @@ class SymbolicShapeInference:
             if sizes is not None:
                 new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
                 self._update_computed_dims(new_sympy_shape)
-            elif roi is not None and scales is not None:
+            elif scales is not None:
                 rank = len(scales)
-                assert len(roi) == 2*rank
-                roi_start = list(roi)[:rank]
-                roi_end = list(roi)[rank:]
+                if get_attribute(node, 'coordinate_transformation_mode') == 'tf_crop_and_resize':
+                    assert len(roi) == 2*rank
+                    roi_start = list(roi)[:rank]
+                    roi_end = list(roi)[rank:]
+                else:
+                    roi_start = [0]*rank
+                    roi_end = [1]*rank
                 scales = list(scales)
                 new_sympy_shape = [sympy.simplify(sympy.floor(d * (end - start) * scale)) for d, start, end, scale in zip(input_sympy_shape, roi_start, roi_end, scales)]
                 self._update_computed_dims(new_sympy_shape)

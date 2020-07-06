@@ -91,6 +91,7 @@ Status TrainingRunner::Initialize() {
   config.weight_names_to_not_train = params_.weights_not_to_train;
   config.immutable_weights = params_.immutable_weights;
 
+  config.gradient_graph_config.use_invertible_layernorm_grad = params_.use_invertible_layernorm_grad;
   config.set_gradients_as_graph_outputs = false;
 
   config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
@@ -658,7 +659,8 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
   Status status = Status::OK();
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
+                                                             const size_t worker_id, const size_t step) {
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.
@@ -744,7 +746,8 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
   pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
 
   // Async launch of a session.
-  pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
+  pipeline_worker_pool_.workers[worker_id] = std::thread([&](
+                                                             const size_t worker_id, const size_t step) {
 #ifdef ENABLE_NVTX_PROFILE
     // Store the tag for the thread which runs session_.Run(...).
     // It will be used to name range in Nvidia's visual profiler.

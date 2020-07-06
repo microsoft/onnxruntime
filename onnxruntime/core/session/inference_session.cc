@@ -158,7 +158,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
-  auto status = FinalizeSessionOptions(session_options, model_proto_, model_loaded_, session_options_);
+  auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
 
@@ -236,7 +236,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -252,7 +252,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -263,10 +263,9 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       logging_manager_(session_env.GetLoggingManager()),
       insert_cast_transformer_("CastFloat16Transformer") {
-  google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-  const bool result = model_proto_.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-  ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_loaded_ = true;
+  Status st = Model::Load(model_istream, &model_proto_);
+  ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -278,7 +277,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       insert_cast_transformer_("CastFloat16Transformer") {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
-  model_loaded_ = true;
+  is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -458,7 +457,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 }
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -469,7 +468,7 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -480,7 +479,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const ModelProto& model_proto) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -502,7 +501,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
 }
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -523,7 +522,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
 }
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -531,12 +530,9 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 
   auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
-
-    google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-    if (!result) {
-      return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
-                    "Failed to load model because protobuf parsing failed.");
+    Status st = Model::Load(model_istream, &model_proto);
+    if (!st.IsOK()) {
+      return st;
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
@@ -552,7 +548,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 }
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
-  if (model_loaded_) {
+  if (is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
@@ -581,7 +577,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 }
 
 common::Status InferenceSession::Load() {
-  if (!model_loaded_) {
+  if (!is_model_proto_parsed_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has not been parsed yet. "
                            "This API should be called in conjunction with a ctor that takes a model abstraction.");
@@ -1131,9 +1127,10 @@ common::Status InferenceSession::ValidateOutputs(const std::vector<std::string>&
   return common::Status::OK();
 }
 
-Status InferenceSession::Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
-                             const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                             std::vector<OrtValue>* p_fetches) {
+Status InferenceSession::Run(const RunOptions& run_options,
+                             const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
+                             const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
+                             const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.StartTime();
@@ -1171,6 +1168,16 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
     FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
+    if (p_fetches_device_info) {
+      // populate the target device info. ignored if pre-allocated fetches are provided
+      const auto& fetch_device_info = *p_fetches_device_info;
+      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
+
+      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+        fetch_info[i].target_device = fetch_device_info[i];
+      }
+    }
+
     if (!run_options.run_tag.empty()) {
       LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
     }
@@ -1206,7 +1213,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
                                                  run_options.only_execute_path_to_fetches));
-
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
   } catch (...) {
@@ -1270,7 +1276,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
     feeds.push_back(pair.second);
   }
 
-  return Run(run_options, feed_names, feeds, output_names, p_fetches);
+  return Run(run_options, feed_names, feeds, output_names, p_fetches, nullptr);
 }
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
@@ -1341,7 +1347,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
   // TODO should Run() call io_binding.SynchronizeInputs() or should it let the callers do it?
   // io_binding.SynchronizeInputs();
   return Run(run_options, io_binding.GetInputNames(), io_binding.GetInputs(), io_binding.GetOutputNames(),
-             &io_binding.GetOutputs());
+             &io_binding.GetOutputs(), &io_binding.GetOutputsDeviceInfo());
 }
 
 common::Status InferenceSession::Run(IOBinding& io_binding) {

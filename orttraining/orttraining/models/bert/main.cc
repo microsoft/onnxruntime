@@ -170,7 +170,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("false"))
       ("gelu_checkpoint", "Enable checkpointing of Gelu activation output to save memory.",
         cxxopts::value<bool>()->default_value("false"));
-        
+      ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+        cxxopts::value<bool>()->default_value("false"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -334,6 +335,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -465,12 +467,15 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
+
+    params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
          << options.help() << "\n";
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
   }
+
   return Status::OK();
 }
 
