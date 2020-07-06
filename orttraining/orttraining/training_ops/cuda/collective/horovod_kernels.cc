@@ -29,7 +29,7 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
 
   std::shared_ptr<ORTTensor> hvd_input;
-  void* data;
+  void* data = nullptr;
   //bugbug
   if (adasum_type_ == training::AdasumReductionType::CpuReduction) {
     allocator = Info().GetAllocator(0, OrtMemTypeCPUInput);
