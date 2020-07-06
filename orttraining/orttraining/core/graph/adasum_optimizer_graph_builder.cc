@@ -218,6 +218,15 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // Perform allreduce on deltas after step() for Adasum
   ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
 
+  // bugbug
+  // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
+  float adasum_scale = 1.0f / 16384.0f;
+  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
+    adasum_scale /= opt_graph_config_.local_size;
+  }
+
+  ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
+
   //bugbug
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
@@ -227,15 +236,6 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
         "adasum_all_deltas_finite"));
     optimizer_graph_outputs[OptimizerOutputKey::DeltaAllIsFinite] = adasum_global_grad_finite_argdef.name;
   }
-
-  // bugbug
-  // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
-  float adasum_scale = 1.0f / 16384.0f;
-  if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
-    adasum_scale /= opt_graph_config_.local_size;
-  }
-
-  ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
 
   // //Add weight update.
   std::vector<ArgDef> output_weight_args;
