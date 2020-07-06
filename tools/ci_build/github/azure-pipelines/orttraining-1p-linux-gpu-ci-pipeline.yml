@@ -69,10 +69,8 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            docker version
-            echo $(DockerPassword) > password.txt
             cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
-            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) jingywatest.azurecr.io/test/onnxruntime-training-1p:latest \
+            docker tag ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
             docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
 
       - task: CopyFiles@2
