@@ -185,6 +185,65 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+//
+// Buffer packing routines.
+//
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool BIsSigned
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool BIsSigned,
+    void* PackedB
+    );
+
 //
 // Convolution routines.
 //
