@@ -53,7 +53,7 @@ class MemPatternPlanner {
         size_t gap = 0;
         
         if (allocs_[*it].block_.offset_ >= current) {
-          allocs_[*it].block_.offset_ - current;
+          gap = allocs_[*it].block_.offset_ - current;
         }
 
         if (allocs_[*it].program_counter_start_ > program_counter_end) {
@@ -142,9 +142,9 @@ class MemPatternPlanner {
     size_t program_counter_start_;
     size_t program_counter_end_;
     OrtValueAllocationBlock() = default;
-    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block) {program_counter_start_ = program_counter_end = 1;}
-    OrtValueAllocationBlock(int index, size_t program_counter_start, program_counter_end, const MemoryBlock& block) :
-      program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), index_(index), block_(block) {}
+    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block) {}
+    OrtValueAllocationBlock(int index, size_t program_counter_start, size_t program_counter_end, const MemoryBlock& block) :
+      index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end) {}
   };
 
   std::vector<OrtValueAllocationBlock> allocs_;

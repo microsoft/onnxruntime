@@ -271,6 +271,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   auto& node_index_info = GetNodeIndexInfo();
 
   // Contigiously allocate activations.
+  // TODO(codemzs): Refacor this code.
   for (auto ml_value_idx : exe_plan->activation_allocation_order) {
 
     const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
@@ -325,7 +326,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-          !(std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) == allocation_order.end())
+          !(std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) == exe_plan->activation_allocation_order.end()))
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
@@ -364,7 +365,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         }
         mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start, 
           exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
-          
+
       }
     }
 

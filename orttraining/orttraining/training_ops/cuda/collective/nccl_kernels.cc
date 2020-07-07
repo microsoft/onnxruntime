@@ -69,7 +69,7 @@ Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
   const size_t element_size = onnx_type->Size();
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
 
-  //ORT_RETURN_IF_ERROR(VerifyTensorsAllocatedContiguously(context));
+  ORT_RETURN_IF_ERROR(VerifyTensorsAllocatedContiguously(context));
 
   // Count total number of elements to AllGather.
   int64_t total_count = 0;
@@ -160,7 +160,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   const size_t element_size = onnx_type->Size();
   ncclDataType_t dtype = GetNcclDataType(onnx_type);
 
-  //ORT_RETURN_IF_ERROR(VerifyTensorsAllocatedContiguously(context));
+  ORT_RETURN_IF_ERROR(VerifyTensorsAllocatedContiguously(context));
 
   // Count total number of elements to ReduceScatter.
   int64_t total_count = 0;
@@ -249,6 +249,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
+        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
 
@@ -259,6 +260,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
+        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllGather);
 
@@ -269,6 +271,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
+        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
 

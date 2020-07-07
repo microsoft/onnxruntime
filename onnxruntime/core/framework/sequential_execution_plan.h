@@ -7,6 +7,7 @@
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.

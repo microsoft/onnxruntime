@@ -767,9 +767,9 @@ class PlannerImpl {
       plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
 
     int program_counter = 0;
-    for (auto& node_plan : exe_plan->execution_plan) {
+    for (auto& node_plan : plan_.execution_plan) {
         for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
-          auto ml_value_idx = exe_plan->to_be_freed[index];
+          auto ml_value_idx = plan_.to_be_freed[index];
           // TODO(codemzs): Assert program_counter_start is not equal to -1.
           AllocPlan(ml_value_idx).program_counter_end = program_counter;
         }
@@ -809,7 +809,7 @@ Status PlannerImpl::CreatePlan() {
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
   // Determine allocation order for weights. This needs to be done after ComputeReusePlan.
-  //ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
+  ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
