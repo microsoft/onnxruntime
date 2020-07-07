@@ -1125,11 +1125,11 @@ def run_training_python_frontend_e2e_tests(cwd):
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess(
-        [sys.executable, 'orttraining_run_multiple_choice.py', 'ORTMultipleChoiceTest.test_bert_with_mrpc', '-v'],
+        [sys.executable, 'orttraining_run_multiple_choice.py', 'ORTMultipleChoiceTest.test_bert_with_swag', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess(
-        [sys.executable, 'orttraining_run_multiple_choice.py', 'ORTMultipleChoiceTest.test_bert_fp16_with_mrpc', '-v'],
+        [sys.executable, 'orttraining_run_multiple_choice.py', 'ORTMultipleChoiceTest.test_bert_fp16_with_swag', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
