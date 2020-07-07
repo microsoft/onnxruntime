@@ -232,14 +232,14 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value) {
     auto stringArray = Napi::Array::New(env, size);
     if (size > 0) {
       auto tempBufferLength = value.GetStringTensorDataLength();
-      auto tempBuffer = std::make_unique<char[]>(tempBufferLength);
+      std::vector<char> tempBuffer(tempBufferLength);
       std::vector<size_t> tempOffsets;
       tempOffsets.resize(size);
-      value.GetStringTensorContent(tempBuffer.get(), tempBufferLength, &tempOffsets[0], size);
+      value.GetStringTensorContent(&tempBuffer[0], tempBufferLength, &tempOffsets[0], size);
 
       for (uint32_t i = 0; i < size; i++) {
         stringArray[i] =
-            Napi::String::New(env, tempBuffer.get() + tempOffsets[i],
+            Napi::String::New(env, &tempBuffer[0] + tempOffsets[i],
                               i == size - 1 ? tempBufferLength - tempOffsets[i] : tempOffsets[i + 1] - tempOffsets[i]);
       }
     }
