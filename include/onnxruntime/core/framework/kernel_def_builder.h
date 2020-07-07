@@ -211,6 +211,11 @@ class KernelDefBuilder {
     return *this;
   }
 
+  KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) {
+    kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
+    return *this;
+  }
+
   /**
      Specify that this kernel requires input arguments
      in certain memory type (instead of the default, device memory).
@@ -230,6 +235,11 @@ class KernelDefBuilder {
   template <OrtMemType T>
   KernelDefBuilder& OutputMemoryType(int output_index) {
     kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
+    return *this;
+  }
+
+  KernelDefBuilder& OutputMemoryType(OrtMemType type, int output_index) {
+    kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, type));
     return *this;
   }
 

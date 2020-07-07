@@ -87,6 +87,10 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
+  return g_host->DataTypeImpl_AllFixedSizeTensorTypes();
+}
+
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
     : std::vector<int64_t>(dimension_count) {
   for (size_t i = 0; i < dimension_count; ++i) {
@@ -164,8 +168,24 @@ std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Pr
   return g_host->CreateCPUAllocator(std::move(info));
 }
 
+std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAAllocator(device_id, name);
+}
+
+std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+}
+
 Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) {
   return g_host->CreateDummyArenaAllocator(std::move(resource_allocator));
+}
+
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
+}
+
+std::string GetEnvironmentVar(const std::string& var_name) {
+  return g_host->GetEnvironmentVar(var_name);
 }
 
 Provider_IExecutionProvider::Provider_IExecutionProvider(const std::string& type) {

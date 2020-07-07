@@ -13,6 +13,14 @@ enum OperatorStatus : int;
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
 
+struct Provider_TypeProto_Tensor {
+  virtual int32_t elem_type() const = 0;
+};
+
+struct Provider_TypeProto {
+  virtual const Provider_TypeProto_Tensor& tensor_type() const = 0;
+};
+
 struct Provider_TensorProto {
   virtual ~Provider_TensorProto() = default;
 
@@ -56,11 +64,63 @@ struct Provider_AttributeProto_Copyable {
   std::unique_ptr<Provider_AttributeProto> p_;
 };
 
-struct Provider_TensorShapeProto {
-  int dim_size() const { return dim_size_; }
-
-  int dim_size_{};
+struct Provider_TensorShapeProto_Dimension {
+    virtual const std::string& dim_param() const = 0;
 };
+
+struct Provider_TensorShapeProto_Dimensions {
+  virtual const Provider_TensorShapeProto_Dimension* begin() const = 0;
+  virtual const Provider_TensorShapeProto_Dimension* end() const = 0;
+};
+
+struct Provider_TensorShapeProto {
+  virtual int dim_size() const = 0;
+  virtual const Provider_TensorShapeProto_Dimensions& dim() const = 0;
+};
+
+struct Provider_ValueInfoProto {
+  virtual const Provider_TypeProto& type() const = 0;
+};
+
+struct Provider_ValueInfoProtos {
+  virtual Provider_ValueInfoProto* Add() = 0;
+
+  virtual const Provider_ValueInfoProto& operator[](int index) const = 0;
+};
+
+struct Provider_TensorProtos {
+  virtual Provider_TensorProto* Add() = 0;
+};
+
+struct Provider_NodeProto {
+};
+
+struct Provider_GraphProto {
+  virtual ~Provider_GraphProto() {}
+
+  virtual Provider_ValueInfoProtos& mutable_input() = 0;
+
+  virtual const Provider_ValueInfoProtos& output() const = 0;
+  virtual Provider_ValueInfoProtos& mutable_output() = 0;
+
+  virtual Provider_ValueInfoProtos& mutable_value_info() = 0;
+  virtual Provider_TensorProtos& mutable_initializer() = 0;
+  virtual Provider_NodeProto& add_node() = 0;
+
+  virtual void operator=(Provider_GraphProto& v) = 0;
+};
+
+struct Provider_ModelProto {
+  virtual ~Provider_ModelProto() {}
+
+  virtual bool SerializeToString(std::string& string) const = 0;
+  virtual bool SerializeToOstream(std::ostream& output) const = 0;
+  
+  virtual const Provider_GraphProto& graph() const = 0;
+  virtual Provider_GraphProto& mutable_graph() = 0;
+
+  virtual void set_ir_version(int64_t value) = 0;
+  };
 
 }  // namespace ONNX_NAMESPACE
 
@@ -68,6 +128,8 @@ namespace onnxruntime {
 
 struct ProviderHost;
 struct Provider_IExecutionProvider;
+struct Provider_GraphViewer;
+struct Provider_Node;
 
 struct Provider_IExecutionProviderFactory {
   virtual ~Provider_IExecutionProviderFactory() = default;
@@ -152,12 +214,19 @@ inline float* Provider_Tensor::MutableData<float>() { return MutableData_float()
 template <>
 inline const float* Provider_Tensor::Data<float>() const { return Data_float(); }
 
+struct Provider_DataTransferManager {
+  virtual Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const = 0;
+};
+
 struct Provider_OpKernelInfo {
   virtual Status GetAttr(const std::string& name, int64_t* value) const = 0;
   virtual Status GetAttr(const std::string& name, float* value) const = 0;
 
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;
+
+  virtual const Provider_DataTransferManager& GetDataTransferManager() const noexcept = 0;
+  virtual int GetKernelDef_ExecQueueId() const noexcept = 0;
 };
 
 template <>
@@ -223,6 +292,10 @@ struct Provider_KernelDefBuilder {
   virtual Provider_KernelDefBuilder& SinceVersion(int since_version) = 0;
   virtual Provider_KernelDefBuilder& Provider(const char* provider_type) = 0;
   virtual Provider_KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type) = 0;
+  virtual Provider_KernelDefBuilder& TypeConstraint(const char* arg_name, const std::vector<MLDataType>& supported_types) = 0;
+  virtual Provider_KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) = 0;
+  virtual Provider_KernelDefBuilder& OutputMemoryType(OrtMemType type, int input_index) = 0;
+  virtual Provider_KernelDefBuilder& ExecQueueId(int queue_id) = 0;
 
   virtual std::unique_ptr<Provider_KernelDef> Build() = 0;
 
@@ -230,6 +303,7 @@ struct Provider_KernelDefBuilder {
 };
 
 using NodeIndex = size_t;
+using Provider_NodeArgInfo = ONNX_NAMESPACE::Provider_ValueInfoProto;
 using Provider_NodeAttributes = std::unordered_map<std::string, ONNX_NAMESPACE::Provider_AttributeProto_Copyable>;
 
 using Provider_InitializedTensorSet = std::unordered_map<std::string, const ONNX_NAMESPACE::Provider_TensorProto*>;
@@ -239,18 +313,55 @@ struct Provider_NodeArg {
   virtual const std::string& Name() const noexcept = 0;
   virtual const ONNX_NAMESPACE::Provider_TensorShapeProto* Shape() const = 0;
   virtual ONNX_NAMESPACE::DataType Type() const noexcept = 0;
+  virtual const Provider_NodeArgInfo& ToProto() const noexcept = 0;
+  virtual bool Exists() const noexcept = 0;
+  virtual const ONNX_NAMESPACE::Provider_TypeProto* TypeAsProto() const noexcept = 0;
 
   void operator=(const Provider_NodeArg& v) = delete;
+};
+
+struct Provider_Graph {
+
+  virtual std::unique_ptr<Provider_GraphViewer> CreateGraphViewer() const = 0;
+  virtual std::unique_ptr<ONNX_NAMESPACE::Provider_GraphProto> CreateGraphProto() const = 0;
+
+  virtual Provider_NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::Provider_TypeProto* p_arg_type) = 0;
+
+  virtual Status Resolve() = 0;
+  virtual void AddInitializedTensor(const ONNX_NAMESPACE::Provider_TensorProto& tensor) = 0;
+  virtual Provider_Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, const std::vector<Provider_NodeArg*>& input_args, const std::vector<Provider_NodeArg*>& output_args, const Provider_NodeAttributes* attributes, const std::string& domain) = 0;
+
+  virtual const std::vector<const Provider_NodeArg*>& GetOutputs() const noexcept = 0;
+  virtual void SetOutputs(const std::vector<const Provider_NodeArg*>& outputs) = 0;
+
+  virtual const std::vector<const Provider_NodeArg*>& GetInputs() const noexcept = 0;
+};
+
+struct Provider_Function {
+//  virtual const ONNX_NAMESPACE::OpSchema& OpSchema() const = 0;
+
+  /** Gets the Graph instance for the Function body subgraph. */
+  virtual const Provider_Graph& Body() const = 0;
+
+  /** Gets the IndexedSubGraph for the Function. */
+//  virtual const IndexedSubGraph& GetIndexedSubGraph() const = 0;
 };
 
 struct Provider_Node {
   virtual ~Provider_Node() = default;
 
+  virtual const std::string& Name() const noexcept = 0;
+  virtual const std::string& Description() const noexcept = 0;
+  virtual const std::string& Domain() const noexcept = 0;
   virtual const std::string& OpType() const noexcept = 0;
+
+  virtual const Provider_Function* GetFunctionBody() const noexcept = 0;
 
   virtual ConstPointerContainer<std::vector<Provider_NodeArg*>> InputDefs() const noexcept = 0;
   virtual ConstPointerContainer<std::vector<Provider_NodeArg*>> OutputDefs() const noexcept = 0;
   virtual NodeIndex Index() const noexcept = 0;
+
+  virtual void ToProto(ONNX_NAMESPACE::Provider_NodeProto& proto, bool update_subgraphs = false) const = 0;
 
   virtual const Provider_NodeAttributes& GetAttributes() const noexcept = 0;
   virtual size_t GetInputEdgesCount() const noexcept = 0;
@@ -275,7 +386,6 @@ struct Provider_Node {
     void operator++() {
       impl_->operator++();
     }
-    void operator--();
 
     const Provider_Node& operator*() const {
       return impl_->operator*();
@@ -290,6 +400,37 @@ struct Provider_Node {
 
   virtual std::unique_ptr<Provider_NodeIterator> InputNodesBegin_internal() const noexcept = 0;
   virtual std::unique_ptr<Provider_NodeIterator> InputNodesEnd_internal() const noexcept = 0;
+
+  struct Provider_EdgeIterator {
+    virtual ~Provider_EdgeIterator() {}
+    virtual bool operator!=(const Provider_EdgeIterator& p) const = 0;
+
+    virtual void operator++() = 0;
+    virtual const Provider_Node& GetNode() const = 0;
+    virtual int GetSrcArgIndex() const = 0;
+    virtual int GetDstArgIndex() const = 0;
+  };
+
+  struct EdgeConstIterator {
+    EdgeConstIterator(std::unique_ptr<Provider_EdgeIterator> p) : impl_{std::move(p)} {}
+
+    bool operator!=(const EdgeConstIterator& p_other) const {
+      return *impl_ != *p_other.impl_;
+    }
+
+    void operator++() { impl_->operator++(); }
+
+    const Provider_EdgeIterator* operator->() const { return impl_.get(); }
+
+    std::unique_ptr<Provider_EdgeIterator> impl_;
+  };
+
+
+  EdgeConstIterator OutputEdgesBegin() const noexcept { return EdgeConstIterator(OutputEdgesBegin_internal()); }
+  EdgeConstIterator OutputEdgesEnd() const noexcept { return EdgeConstIterator(OutputEdgesEnd_internal()); }
+
+  virtual std::unique_ptr<Provider_EdgeIterator> OutputEdgesBegin_internal() const noexcept = 0;
+  virtual std::unique_ptr<Provider_EdgeIterator> OutputEdgesEnd_internal() const noexcept = 0;
 };
 
 #ifndef PROVIDER_BRIDGE_ORT
@@ -305,17 +446,36 @@ struct NodeComputeInfo {
 };
 #endif
 
+struct Provider_Model {
+  virtual ~Provider_Model() {}
+
+  virtual Provider_Graph &MainGraph() = 0;
+
+  virtual std::unique_ptr<ONNX_NAMESPACE::Provider_ModelProto> CreateModelProto() const = 0;
+};
+
 struct Provider_GraphViewer {
+  virtual std::unique_ptr<Provider_Model> CreateModel() const = 0;
+
   virtual ~Provider_GraphViewer() = default;
   virtual const std::string& Name() const noexcept = 0;
 
   virtual const Provider_Node* GetNode(NodeIndex node_index) const = 0;
+  virtual const Provider_NodeArg* GetNodeArg(const std::string& name) const = 0;
+
+  virtual bool IsSubgraph() const = 0;
 
   virtual int MaxNodeIndex() const noexcept = 0;
+
+  virtual const std::vector<const Provider_NodeArg*>& GetInputs() const noexcept = 0;
+  virtual const std::vector<const Provider_NodeArg*>& GetOutputs() const noexcept = 0;
+  virtual const std::vector<const Provider_NodeArg*>& GetValueInfo() const noexcept = 0;
 
   virtual const Provider_InitializedTensorSet& GetAllInitializedTensors() const noexcept = 0;
 
   virtual const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept = 0;
+  
+  virtual const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const = 0;
 
   void operator=(const Provider_GraphViewer& v) = delete;
 };
@@ -342,6 +502,7 @@ struct Provider_IndexedSubGraph {
   virtual std::vector<onnxruntime::NodeIndex>& Nodes() = 0;
 
   virtual void SetMetaDef(std::unique_ptr<MetaDef>& meta_def_) = 0;
+  virtual const MetaDef* GetMetaDef() = 0;
 
   void operator=(const Provider_IndexedSubGraph& v) = delete;
 };
@@ -361,6 +522,10 @@ struct Provider_ComputeCapability {
   std::unique_ptr<Provider_IndexedSubGraph> t_sub_graph_;
 
   void operator=(const Provider_ComputeCapability& v) = delete;
+};
+
+struct Provider_IDataTransfer {
+  virtual ~Provider_IDataTransfer() {}
 };
 
 // Provides the base class implementations, since Provider_IExecutionProvider is just an interface. This is to fake the C++ inheritance used by internal IExecutionProvider implementations
@@ -383,6 +548,8 @@ struct Provider_IExecutionProvider {
   virtual ~Provider_IExecutionProvider() {}
 
   virtual std::shared_ptr<Provider_KernelRegistry> Provider_GetKernelRegistry() const { return p_->Provider_GetKernelRegistry(); }
+
+  virtual std::unique_ptr<Provider_IDataTransfer> GetDataTransfer() const { return nullptr; }
 
   virtual std::vector<std::unique_ptr<Provider_ComputeCapability>> Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
                                                                                           const std::vector<const Provider_KernelRegistry*>& kernel_registries) const { return p_->Provider_GetCapability(graph, kernel_registries); }
@@ -426,12 +593,20 @@ struct ProviderHost {
   virtual std::unique_ptr<Provider_IndexedSubGraph> IndexedSubGraph_Create() = 0;
 
   virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Provider_OrtMemoryInfo> memory_info) = 0;
+  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+
   virtual Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) = 0;
   virtual std::unique_ptr<Provider_IExecutionProvider_Router> Create_IExecutionProvider_Router(Provider_IExecutionProvider* outer, const std::string& type) = 0;
+
+  virtual std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() = 0;
+
+  virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
 
   MLDataType (*DataTypeImpl_GetType_Tensor)();
   MLDataType (*DataTypeImpl_GetType_float)();
   MLDataType (*DataTypeImpl_GetTensorType_float)();
+  virtual const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;

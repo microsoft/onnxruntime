@@ -7,6 +7,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/allocatormgr.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/cuda/cuda_allocator.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/env.h"
@@ -57,7 +58,35 @@ struct Provider_TensorProto_Impl : ONNX_NAMESPACE::Provider_TensorProto {
     *p_ = *static_cast<const Provider_TensorProto_Impl*>(&v)->p_;
   }
 
-  ONNX_NAMESPACE::TensorProto* p_{};
+  ONNX_NAMESPACE::TensorProto* p_;
+};
+
+struct Provider_TensorShapeProto_Dimension_Impl : ONNX_NAMESPACE::Provider_TensorShapeProto_Dimension {
+  Provider_TensorShapeProto_Dimension_Impl(ONNX_NAMESPACE::TensorShapeProto_Dimension&  v) : v_{v} {}
+    
+  const std::string& dim_param() const override { return v_.dim_param();  }
+
+  ONNX_NAMESPACE::TensorShapeProto_Dimension& v_;
+};
+
+struct Provider_TensorShapeProto_Dimensions_Impl : ONNX_NAMESPACE::Provider_TensorShapeProto_Dimensions {
+  Provider_TensorShapeProto_Dimensions_Impl(google::protobuf::RepeatedPtrField<::ONNX_NAMESPACE::TensorShapeProto_Dimension>& v) : v_{v} {}
+    
+  const ONNX_NAMESPACE::Provider_TensorShapeProto_Dimension* begin() const override { return &dimension_begin_; } 
+  const ONNX_NAMESPACE::Provider_TensorShapeProto_Dimension* end() const override { return &dimension_end_; }
+
+  google::protobuf::RepeatedPtrField<::ONNX_NAMESPACE::TensorShapeProto_Dimension>& v_;
+  Provider_TensorShapeProto_Dimension_Impl dimension_begin_{v_.begin()}, dimension_end_{v_.end()};
+};
+
+struct Provider_TensorShapeProto_Impl : ONNX_NAMESPACE::Provider_TensorShapeProto {
+  Provider_TensorShapeProto_Impl(ONNX_NAMESPACE::TensorShapeProto& v) : v_{v} {}
+
+  int dim_size() const override { return v_.dim_size(); }
+  const ONNX_NAMESPACE::Provider_TensorShapeProto_Dimensions& dim() const override { return dim_; } 
+
+  ONNX_NAMESPACE::TensorShapeProto& v_;
+  Provider_TensorShapeProto_Dimensions_Impl dim_{v_.dim()};
 };
 
 struct Provider_AttributeProto_Impl : ONNX_NAMESPACE::Provider_AttributeProto {
@@ -114,8 +143,28 @@ struct Provider_KernelDefBuilder_Impl : Provider_KernelDefBuilder {
     v_.Provider(provider_type);
     return *this;
   }
+
+  Provider_KernelDefBuilder& TypeConstraint(const char* arg_name, const std::vector<MLDataType>& supported_types) override {
+    v_.TypeConstraint(arg_name, supported_types);
+  }
+
   Provider_KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType supported_type) override {
     v_.TypeConstraint(arg_name, supported_type);
+    return *this;
+  }
+
+  Provider_KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) override {
+    v_.InputMemoryType(type, input_index);
+    return *this;
+  }
+
+  Provider_KernelDefBuilder& OutputMemoryType(OrtMemType type, int input_index) override {
+    v_.OutputMemoryType(type, input_index);
+    return *this;
+  }
+
+  Provider_KernelDefBuilder& ExecQueueId(int queue_id) override {
+    v_.ExecQueueId(queue_id);
     return *this;
   }
 
@@ -137,7 +186,7 @@ struct Provider_NodeArg_Impl : Provider_NodeArg {
   virtual ONNX_NAMESPACE::DataType Type() const noexcept override { return p_->Type(); }
 
   const NodeArg* p_;
-  ONNX_NAMESPACE::Provider_TensorShapeProto tensor_shape_proto_;
+  ONNX_NAMESPACE::Provider_TensorShapeProto_Impl tensor_shape_proto_{p_};
 };
 
 struct Provider_Node_Impl : Provider_Node {
@@ -261,6 +310,10 @@ struct Provider_GraphViewer_Impl : Provider_GraphViewer {
 
   int MaxNodeIndex() const noexcept override { return v_.MaxNodeIndex(); }
 
+  const std::vector<const Provider_NodeArg*>& GetInputs() const noexcept override {
+    __assume(0);
+  }
+
   const Provider_InitializedTensorSet& GetAllInitializedTensors() const noexcept override {
     if (initialized_tensor_set_.empty()) {
       initialized_tensors_.reserve(v_.GetAllInitializedTensors().size());
@@ -282,20 +335,9 @@ struct Provider_GraphViewer_Impl : Provider_GraphViewer {
 
   mutable std::vector<Provider_TensorProto_Impl> initialized_tensors_;
   mutable Provider_InitializedTensorSet initialized_tensor_set_;
-};
 
-struct Provider_OpKernelInfo_Impl : Provider_OpKernelInfo {
-  Provider_OpKernelInfo_Impl(const OpKernelInfo& info) : info_(info) {}
-
-  Status GetAttr(const std::string& name, int64_t* value) const override {
-    return info_.GetAttr<int64_t>(name, value);
-  }
-
-  Status GetAttr(const std::string& name, float* value) const override {
-    return info_.GetAttr<float>(name, value);
-  }
-
-  const OpKernelInfo& info_;
+  mutable std::vector<Provider_NodeArg_Impl> inputs_impl_;
+  mutable std::vector<Provider_NodeArg*> inputs_;
 };
 
 struct Provider_Tensor_Impl final : Provider_Tensor {
@@ -307,6 +349,45 @@ struct Provider_Tensor_Impl final : Provider_Tensor {
   const TensorShape& Shape() const override { return p_->Shape(); }
 
   Tensor* p_;
+};
+
+struct Provider_IDataTransfer_Impl : Provider_IDataTransfer {
+  Provider_IDataTransfer_Impl(std::unique_ptr<IDataTransfer> v) : v_{std::move(v)} {}
+
+  std::unique_ptr<IDataTransfer> v_;
+};
+
+struct Provider_DataTransferManager_Impl : Provider_DataTransferManager {
+  Provider_DataTransferManager_Impl(const DataTransferManager& v) : v_{v} {}
+
+  Status CopyTensor(const Provider_Tensor& src, Provider_Tensor& dst, int exec_queue_id) const override {
+    return v_.CopyTensor(*static_cast<const Provider_Tensor_Impl*>(&src)->p_, *static_cast<const Provider_Tensor_Impl*>(&dst)->p_, exec_queue_id);
+  }
+
+  const DataTransferManager& v_;
+};
+
+struct Provider_OpKernelInfo_Impl : Provider_OpKernelInfo {
+  Provider_OpKernelInfo_Impl(const OpKernelInfo& info) : info_(info), data_transfer_manager_{info_.GetDataTransferManager()} {}
+
+  Status GetAttr(const std::string& name, int64_t* value) const override {
+    return info_.GetAttr<int64_t>(name, value);
+  }
+
+  Status GetAttr(const std::string& name, float* value) const override {
+    return info_.GetAttr<float>(name, value);
+  }
+
+  const Provider_DataTransferManager& GetDataTransferManager() const noexcept override {
+    return data_transfer_manager_;
+  }
+
+  int GetKernelDef_ExecQueueId() const noexcept override {
+    return info_.GetKernelDef().ExecQueueId();
+  }
+
+  const Provider_DataTransferManager_Impl& data_transfer_manager_;
+  const OpKernelInfo& info_;
 };
 
 struct Provider_OpKernelContext_Impl : Provider_OpKernelContext {
@@ -472,6 +553,14 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CPUAllocator>(std::move(static_cast<Provider_OrtMemoryInfo_Impl*>(memory_info.get())->info_)));
   };
 
+  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+  }
+
+  std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
+    return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+  }
+
   Provider_AllocatorPtr
   CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator) override {
     return std::make_shared<Provider_IAllocator_Impl>(onnxruntime::make_unique<DummyArena>(std::move(static_cast<Provider_IDeviceAllocator_Impl*>(resource_allocator.get())->p_)));
@@ -481,8 +570,20 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::make_unique<Provider_IExecutionProvider_Router_Impl>(outer, type);
   };
 
+  std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer() override {
+    return onnxruntime::make_unique<Provider_IDataTransfer_Impl>(onnxruntime::make_unique<GPUDataTransfer>());
+  }
+
+  std::string GetEnvironmentVar(const std::string& var_name) override {
+    return Env::Default().GetEnvironmentVar(var_name);
+  }
+
   logging::Logger* LoggingManager_GetDefaultLogger() override {
     return const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
+  }
+
+  const std::vector<MLDataType>& DataTypeImpl_AllFixedSizeTensorTypes() override {
+    return DataTypeImpl::AllFixedSizeTensorTypes();
   }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
@@ -532,6 +633,12 @@ struct ProviderLibrary {
     provider_->SetProviderHost(provider_host_);
   }
 
+  ProviderLibrary() {
+    //    Provider* (*PGetProvider)() = &Tensorrt_GetProvider;
+    //    provider_ = PGetProvider();
+    provider_->SetProviderHost(provider_host_);
+  }
+
   ~ProviderLibrary() {
     Env::Default().UnloadDynamicLibrary(handle_);
   }
@@ -570,11 +677,39 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
   return std::make_shared<IExecutionProviderFactory_Translator>(library.provider_->CreateExecutionProviderFactory(device_id));
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
+#ifdef _WIN32
+  static ProviderLibrary library("onnxruntime_providers_tensorrt.dll");
+#elif defined(__APPLE__)
+  static ProviderLibrary library("libonnxruntime_providers_tensorrt.dylib");
+#else
+  static ProviderLibrary library("libonnxruntime_providers_tensorrt.so");
+#endif
+  if (!library.provider_) {
+    LOGS_DEFAULT(ERROR) << "Failed to load provider shared library";
+    return nullptr;
+  }
+
+  //return std::make_shared<onnxruntime::MkldnnProviderFactory>(device_id);
+  //TODO: This is apparently a bug. The constructor parameter is create-arena-flag, not the device-id
+  return std::make_shared<IExecutionProviderFactory_Translator>(library.provider_->CreateExecutionProviderFactory(device_id));
+}
+
 }  // namespace onnxruntime
 
 // TODO: Right now Dnnl is the only provider in here, but this will be made more generic and support more providers in the future
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
   }
