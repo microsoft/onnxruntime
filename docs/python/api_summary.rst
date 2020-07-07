@@ -35,7 +35,7 @@ use IOBinding to put input on CUDA as the follows.
 	io_binding.bind_cpu_input('input', X)
 	io_binding.bind_output('output')
 	session.run_with_iobinding(io_binding)
-	Y = io_binding.get_outputs()[0]
+	Y = io_binding.copy_outputs_to_cpu()[0]
 
 Scenario 2:
 
@@ -45,10 +45,10 @@ The input data is on a device, users direclty use the input. The output data is 
 
 	session = onnxruntime.InferenceSession('model.onnx')
 	io_binding = session.io_binding()
-	io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
+	io_binding.bind_input(name='input', device_type=X.device.type, device_id=0, element_type=np.float32, shape=list(X.size()), buffer_ptr=X.data_ptr())
 	io_binding.bind_output('output')
 	session.run_with_iobinding(io_binding)
-	Y = io_binding.get_outputs()[0]
+	Y = io_binding.copy_outputs_to_cpu()[0]
 
 Scenario 3:
 
@@ -58,8 +58,8 @@ The input data on a dveice, users directly use the input and also place output o
 
 	session = onnxruntime.InferenceSession('model.onnx')
 	io_binding = session.io_binding()
-	io_binding.bind_input('input', X.device.type, 0, np.float32, list(X.size()), X.data_ptr())
-	io_binding.bind_output('output', Y.device.type, 0, np.float32, list(Y.size()), Y.data_ptr())
+	io_binding.bind_input(name='input', device_type=X.device.type, device_id=0, element_type=np.float32, shape=list(X.size()), buffer_ptr=X.data_ptr())
+	io_binding.bind_output(name='output', device_type=Y.device.type, device_id=0, element_type=np.float32, shape=list(Y.size()), buffer_ptr=Y.data_ptr())
 	session.run_with_iobinding(io_binding)
 
 Device
