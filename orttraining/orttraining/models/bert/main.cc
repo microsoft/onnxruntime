@@ -169,7 +169,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("attn_dropout_checkpoint", "Enable checkpointing of attention dropout to save memory.",
         cxxopts::value<bool>()->default_value("false"))
       ("gelu_checkpoint", "Enable checkpointing of Gelu activation output to save memory.",
-        cxxopts::value<bool>()->default_value("false"));
+        cxxopts::value<bool>()->default_value("false"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
         cxxopts::value<bool>()->default_value("false"));
   options
