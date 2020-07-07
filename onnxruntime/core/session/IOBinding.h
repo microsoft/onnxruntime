@@ -106,7 +106,7 @@ class IOBinding {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
 
-  // device info for outputs that are not pre-allocated
+  // device info for all outputs. only used by InferenceSession if the output is not pre-allocated.
   const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;
 
   // The implementation for the BindOutput() overloads
