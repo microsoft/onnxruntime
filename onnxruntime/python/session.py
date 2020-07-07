@@ -228,16 +228,17 @@ class IOBinding:
         :param shape: output shape
         :param buffer_ptr: memory pointer to output data
         '''
-        
+
         # Follow the `if` path when the user has not provided any pre-allocated buffer but still
         # would like to bind an output to a specific device (e.g. cuda).
         # Pre-allocating an output buffer may not be an option for the user as :
         # (1) They may not want to use a custom allocator specific to the device they want to bind the output to,
-        # in which case ORT will allocate the memory for the user 
+        # in which case ORT will allocate the memory for the user
         # (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs
         if buffer_ptr is None:
-            self._iobinding.bind_output(name, C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
-                                                          device_id))
+            self._iobinding.bind_output(name, 
+                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                                    device_id))
         else:
             if element_type is None or shape is None:
                 raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
