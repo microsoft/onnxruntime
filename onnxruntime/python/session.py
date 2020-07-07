@@ -247,9 +247,9 @@ class IOBinding:
                                                     device_id),
                                         element_type, shape, buffer_ptr)
 
-    def get_outputs(self):
-        '''Obtain outputs.'''
-        return self._iobinding.get_outputs()
+    def copy_outputs_to_cpu(self):
+        '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
+        return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):
         self._iobinding.clear_binding_inputs()

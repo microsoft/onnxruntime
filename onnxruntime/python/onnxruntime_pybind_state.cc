@@ -717,7 +717,7 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       })
-      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
+      .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());

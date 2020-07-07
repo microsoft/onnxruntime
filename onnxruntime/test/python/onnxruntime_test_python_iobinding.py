@@ -61,13 +61,13 @@ class TestIOBinding(unittest.TestCase):
         session.run_with_iobinding(io_binding)
         
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
-        ort_output = io_binding.get_outputs()[0]
+        ort_output = io_binding.copy_outputs_to_cpu()[0]
 
         # Validate results
         self.assertTrue(np.array_equal(torch_output_vals, ort_output))
 
     def test_bind_input_to_cpu_arr(self):
-        torch_input, torch_outpu, torch_output_vals = self.create_model_and_input()
+        torch_input, torch_output, torch_output_vals = self.create_model_and_input()
 
         session = onnxruntime.InferenceSession('model.onnx')
         io_binding = session.io_binding()
@@ -82,7 +82,7 @@ class TestIOBinding(unittest.TestCase):
         session.run_with_iobinding(io_binding)
         
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
-        ort_output = io_binding.get_outputs()[0]
+        ort_output = io_binding.copy_outputs_to_cpu()[0]
 
         # Validate results
         self.assertTrue(np.array_equal(torch_output_vals, ort_output))
@@ -104,7 +104,7 @@ class TestIOBinding(unittest.TestCase):
         session.run_with_iobinding(io_binding)
         
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
-        ort_output_vals = io_binding.get_outputs()[0]        
+        ort_output_vals = io_binding.copy_outputs_to_cpu()[0]        
         # Validate results
         self.assertTrue(np.array_equal(torch_output_vals, ort_output_vals))
         
@@ -127,7 +127,7 @@ class TestIOBinding(unittest.TestCase):
         # DISCLAIMER: This is only useful for ORT benchmarking as there is really no way to access the 
         # ORT allocated device memory for this bound output at this point as ORT doesn't provide
         # a handle over this memory yet and to access the contents of this memory, we would have to copy contents
-        # over to the host (CPU) using get_outputs() as done in the next steps.
+        # over to the host (CPU) using copy_outputs_to_cpu() as done in the next steps.
         # In future, we will provide a handle over the ORT allocated device memory for the bound output.
         # For now, this is a useful tool for benchmarking as Run() doesn't include the device-host copy latency
         # by doing this.
@@ -137,7 +137,7 @@ class TestIOBinding(unittest.TestCase):
         session.run_with_iobinding(io_binding)
         
         # Get outputs over to CPU (the outputs which were bound to CUDA will get copied over to the host here)
-        ort_output = io_binding.get_outputs()[0]
+        ort_output = io_binding.copy_outputs_to_cpu()[0]
         
         # Validate results
         self.assertTrue(np.array_equal(torch_output_vals, ort_output))
