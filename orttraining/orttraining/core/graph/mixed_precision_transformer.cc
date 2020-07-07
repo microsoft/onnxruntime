@@ -129,14 +129,15 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
     return Status::OK();
   }
   ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-              "elem_type should be float or float16");
+                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+              "elem_type should be float, bfloat16 or float16");
 
   // Get consumer nodes of the input `arg`
   std::vector<std::pair<Node*, int>> fp16_inputs;
   std::vector<std::pair<Node*, int>> fp32_inputs;
   GetConsumerNodeInputs(graph, fp32_node_args, arg, fp16_inputs, fp32_inputs);
-  if ((elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 && fp16_inputs.empty()) ||
+  if (((elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) && fp16_inputs.empty()) ||
       (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT && fp32_inputs.empty())) {
     return Status::OK();
   }
@@ -147,7 +148,7 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
   std::string output_name = graph.GenerateNodeArgName(arg->Name());
   const std::string cast_node_name = graph.GenerateNodeName("cast_" + output_name);
 
-  output_name += (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? "_f16" : "_f32");
+  output_name += (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ? "_f32" : "_f16");
   NodeArg& output = graph.GetOrCreateNodeArg(output_name, &type_proto);
 
   // Create Cast node
@@ -168,7 +169,7 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
 
   // Update consumer
   if (!fp16_inputs.empty() || !fp32_inputs.empty()) {
-    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       std::vector<Node*> fp16_nodes;
       fp16_nodes.reserve(fp16_inputs.size());
       for (const auto& kv : fp16_inputs) {
@@ -216,7 +217,7 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
   return Status::OK();
 }
 
-Status TransformConstants(Graph& graph) {
+Status TransformConstants(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
   // This pass does not require topological sort order: okay to visit nodes in any order.
   // We identify nodeargs to be converted to FP16 first, and then convert them separately
   // to avoid modifying the graph while iterating through it.
@@ -232,7 +233,7 @@ Status TransformConstants(Graph& graph) {
     }
   }
   for (auto* tensor : toFP16) {
-    ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, tensor, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, tensor, fp16_type));
   }
   return Status::OK();
 }
@@ -241,20 +242,20 @@ Status TransformConstants(Graph& graph) {
 // as SparseSoftmaxCrossEntropy where FP32 precision is required.
 // Converts fp16 tensor --> Op --> fp16 tensor to
 // fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
-Status TransformStage2(Graph& graph) {
+Status TransformStage2(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
   // This pass does not require topological sort order: okay to visit nodes in any order.
-  std::unordered_set<NodeArg *> toFP16, toFP32;
+  std::unordered_set<NodeArg*> toFP16, toFP32;
   for (auto& node : graph.Nodes()) {
     if (IsFP32Node(&node)) {
       for (NodeArg* input : node.MutableInputDefs()) {
         // TODO: Shouldn't we check stage2_fp32_node_args to conditionally transform this?
-        if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)
+        if (input->TypeAsProto()->tensor_type().elem_type() == fp16_type)
           toFP32.insert(input);
       }
 
       for (NodeArg* output : node.MutableOutputDefs()) {
         // TODO: This currently assumes that all outputs of FP32 ops are FP32.
-        if (output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)
+        if (output->TypeAsProto()->tensor_type().elem_type() == fp16_type)
           toFP16.insert(output);
       }
     }
@@ -262,11 +263,11 @@ Status TransformStage2(Graph& graph) {
   for (auto* tensor : toFP32)
     ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage2_fp32_node_args, tensor, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   for (auto* tensor : toFP16)
-    ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage2_fp32_node_args, tensor, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage2_fp32_node_args, tensor, fp16_type));
   return Status::OK();
 }
 
-static Status HandleFunctionCalls(Graph& graph);
+static Status HandleFunctionCalls(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType fp16_type);
 
 // TODO: Ideally, we should not need to transform a function-body here.
 // Ideally, for any full-precision function F, there should be a corresponding 16-bit precision
@@ -283,7 +284,7 @@ static Status HandleFunctionCalls(Graph& graph);
 // body if its transformed semantics does not match the original semantics (or rename the function):
 // otherwise, we may end up using a kernel with the original semantics erroneously.
 
-static Status HandleFunctionBody(const Function& node_func) {
+static Status HandleFunctionBody(const Function& node_func, ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
   const Graph& fn_body = node_func.Body();
   // TODO: eliminate use of const_casts
   Graph& graph = const_cast<Graph&>(fn_body);
@@ -299,7 +300,7 @@ static Status HandleFunctionBody(const Function& node_func) {
     onnx::TypeProto type = *(input->TypeAsProto());
     if (type.has_tensor_type() && type.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       if (!IsFP32(stage2_fp32_node_args, fn_name, argnum)) {
-        type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        type.mutable_tensor_type()->set_elem_type(fp16_type);
         graph.SetNodeArgType(const_cast<NodeArg&>(*input), type);
         // Introduce cast to full-precision if required:
         // TODO: fix const_cast; Graph doesn't provide us a method "GetMutableInputs".
@@ -311,7 +312,7 @@ static Status HandleFunctionBody(const Function& node_func) {
     ++argnum;
   }
 
-  ORT_RETURN_IF_ERROR(TransformConstants(graph));
+  ORT_RETURN_IF_ERROR(TransformConstants(graph, fp16_type));
 
   // End of stage 1. Update types of intermediate-values and return-values:
   Graph::ResolveOptions options;
@@ -319,17 +320,17 @@ static Status HandleFunctionBody(const Function& node_func) {
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 
   // Stage 2:
-  ORT_RETURN_IF_ERROR(TransformStage2(graph));
+  ORT_RETURN_IF_ERROR(TransformStage2(graph, fp16_type));
 
   // Recursively transform nested function call bodies.
-  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph));
+  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph, fp16_type));
 
   // Update types of intermediate-values and return-values:
   auto status = graph.Resolve(options);
   return status;
 }
 
-static Status HandleFunctionCalls(Graph& graph) {
+static Status HandleFunctionCalls(Graph& graph, ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
   for (auto index : order) {
@@ -337,7 +338,7 @@ static Status HandleFunctionCalls(Graph& graph) {
     if (!IsFP32Node(node)) {  // Bodies of FP32 Functions are not transformed
       const Function* node_func = node->GetFunctionBody();
       if (nullptr != node_func) {
-        ORT_RETURN_IF_ERROR(HandleFunctionBody(*node_func));
+        ORT_RETURN_IF_ERROR(HandleFunctionBody(*node_func, fp16_type));
       }
     }
   }
@@ -347,12 +348,13 @@ static Status HandleFunctionCalls(Graph& graph) {
 // Create FP16 NodeArg and update the consumers of arg with new FP16 NodeArg.
 static NodeArg* CreateFP16NodeArgAndUpdateConsumers(Graph& graph,
                                                     const std::unordered_map<std::string, std::vector<int>>& fp32_node_args,
-                                                    const NodeArg* arg) {
+                                                    const NodeArg* arg,
+                                                    ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
   ORT_ENFORCE(arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               "data type is not float");
   // Create FP16 Node Arg
   ONNX_NAMESPACE::TypeProto type_proto;
-  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  type_proto.mutable_tensor_type()->set_elem_type(fp16_type);
   type_proto.mutable_tensor_type()->mutable_shape()->CopyFrom(*arg->Shape());
   std::string arg_name = arg->Name() + "_fp16";
   NodeArg& new_arg = graph.GetOrCreateNodeArg(arg_name, &type_proto);
@@ -375,7 +377,10 @@ static NodeArg* CreateFP16NodeArgAndUpdateConsumers(Graph& graph,
 Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
-                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
+                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
+                                       ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
+  //only fp16 and bfloat16 supported
+  ORT_ENFORCE(fp16_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || fp16_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
   // Stage 1: Convert whole graph including forward and backward to FP16
   // Initialize function body for all function nodes
   // This is required to make sure after converting inputs\weights to FP16
@@ -388,7 +393,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   for (const NodeArg* input : graph.GetInputs()) {
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       ORT_RETURN_IF_ERROR(
-          CastNodeArg(graph, stage1_fp32_node_args, graph.GetNodeArg(input->Name()), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+          CastNodeArg(graph, stage1_fp32_node_args, graph.GetNodeArg(input->Name()), fp16_type));
     }
   }
 
@@ -400,7 +405,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
     NodeArg* input = graph.GetNodeArg(kv.first);
     if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       if (use_fp16_initializer) {
-        NodeArg* fp16_weight_arg = CreateFP16NodeArgAndUpdateConsumers(graph, stage1_fp32_node_args, input);
+        NodeArg* fp16_weight_arg = CreateFP16NodeArgAndUpdateConsumers(graph, stage1_fp32_node_args, input, fp16_type);
         if (fp16_weight_arg != nullptr) {
           fp16_initializers.emplace_back(fp16_weight_arg->Name(), kv.second);
           const auto it = weights_to_train.find(kv.first);
@@ -409,7 +414,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
           }
         }
       } else {
-        ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+        ORT_RETURN_IF_ERROR(CastNodeArg(graph, stage1_fp32_node_args, input, fp16_type));
       }
     }
   }
@@ -418,7 +423,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   for (const auto& kv : fp16_initializers) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = kv.second;
     Initializer initializer(*tensor_proto, graph.ModelPath());
-    ONNX_NAMESPACE::TensorProto weight_tensor_proto = initializer.ToFP16(kv.first);
+    ONNX_NAMESPACE::TensorProto weight_tensor_proto = fp16_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? initializer.ToFP16(kv.first) : initializer.ToBFloat16(kv.first);
     graph.AddInitializedTensor(weight_tensor_proto);
   }
 
@@ -430,9 +435,9 @@ Status TransformGraphForMixedPrecision(Graph& graph,
       auto& attributes = node.GetMutableAttributes();
       auto* element_type = &(attributes.find("element_types")->second);
       int ints_size = element_type->ints_size();
-      for(int i=0;i<ints_size;++i){
-        if(element_type->ints(i) == static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)){
-          element_type->set_ints(i, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      for (int i = 0; i < ints_size; ++i) {
+        if (element_type->ints(i) == static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+          element_type->set_ints(i, static_cast<int64_t>(fp16_type));
           // Need to resolve and populate the new type through the graph.
           graph.SetGraphResolveNeeded();
         }
@@ -441,10 +446,10 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   }
 
   // Handle implicit data type casting nodes such as Cast, ConstantOfShape
-  ORT_RETURN_IF_ERROR(TransformConstants(graph));
+  ORT_RETURN_IF_ERROR(TransformConstants(graph, fp16_type));
 
   // Handle function body
-  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph));
+  ORT_RETURN_IF_ERROR(HandleFunctionCalls(graph, fp16_type));
 
   // At this point, the model has been transformed to a valid FP16 model.
 
@@ -454,7 +459,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 
-  TransformStage2(graph);
+  TransformStage2(graph, fp16_type);
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 

@@ -106,7 +106,8 @@ Status TrainingRunner::Initialize() {
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
     mp.use_fp16_initializers = params_.use_fp16_initializer;
-
+    if (params_.use_bfloat16)
+        mp.fp16_type = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
     config.mixed_precision_config = mp;
   }
 

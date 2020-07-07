@@ -199,7 +199,10 @@ Status TrainingSession::ConfigureForTraining(
   }
   
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation));
-
+  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
+  }
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !config.weight_names_to_train.empty()
@@ -226,7 +229,7 @@ Status TrainingSession::ConfigureForTraining(
   if (is_mixed_precision_enabled_) {
     const auto& mixed_precision_config = config.mixed_precision_config.value();
     ORT_RETURN_IF_ERROR(EnableMixedPrecision(
-        weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
+        weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg, mixed_precision_config.fp16_type));
   }
 
   if (config.pipeline_config.has_value()) {
@@ -282,7 +285,6 @@ Status TrainingSession::ConfigureForTraining(
     ORT_RETURN_IF_ERROR(SetupOptimizerParams(
         weights_to_train_, fp32_weight_name_to_fp16_node_arg,
         loss_scale_input_name, config, opt_graph_config, opt_node_configs));
-
     TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
     ORT_RETURN_IF_ERROR(BuildOptimizer(
         opt_graph_config, opt_node_configs,
@@ -621,8 +623,9 @@ Status TrainingSession::ConfigureLossFunction(
 
 Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                              bool use_fp16_initializer,
-                                             std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
-  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg));
+                                             std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg,
+                                             ONNX_NAMESPACE::TensorProto_DataType fp16_type) {
+  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg, fp16_type));
 
   std::unordered_set<std::string> fp16_weight_initializer_names{};
   std::transform(

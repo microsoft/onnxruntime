@@ -103,6 +103,7 @@ class TrainingRunner {
     VectorString fetch_names;
 
     bool use_mixed_precision = false;
+    bool use_bfloat16 = false;
     float loss_scale = 1.0f;
     bool use_fp16_moments = false;
     bool use_fp16_initializer = true;
