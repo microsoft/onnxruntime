@@ -290,8 +290,8 @@ def optimize_model(input,
         optimizer.optimize(optimization_options)
 
     # Remove the temporary model.
-    #os.remove(temp_model_path)
-    #logger.debug("Remove tempoary model: {}".format(temp_model_path))
+    os.remove(temp_model_path)
+    logger.debug("Remove tempoary model: {}".format(temp_model_path))
 
     return optimizer
 
