@@ -97,8 +97,8 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         assert_allclose(results['loss'], expected_loss)
 
     def test_bert_fp16_with_swag(self):
-        expected_acc = 0.7719184244726582
-        expected_loss = 0.6942527259380163
+        expected_acc = 0.7684694591622513
+        expected_loss = 0.7017300290774664
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
         assert_allclose(results['acc'], expected_acc)
         assert_allclose(results['loss'], expected_loss)
