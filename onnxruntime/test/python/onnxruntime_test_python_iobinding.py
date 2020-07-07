@@ -124,7 +124,7 @@ class TestIOBinding(unittest.TestCase):
         io_binding.bind_input('input', torch_input.device.type, 0, np.float32, list(torch_input.size()), torch_input.data_ptr())
 
         # Bind output to CUDA
-        # DISCLAIMER: This is useful for ORT benchmarking as there is really no way to access the 
+        # DISCLAIMER: This is only useful for ORT benchmarking as there is really no way to access the 
         # ORT allocated device memory for this bound output at this point as ORT doesn't provide
         # a handle over this memory yet and to access the contents of this memory, we would have to copy contents
         # over to the host (CPU) using get_outputs() as done in the next steps.
