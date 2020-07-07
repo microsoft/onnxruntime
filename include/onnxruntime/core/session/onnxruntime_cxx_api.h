@@ -289,6 +289,7 @@ struct Value : Base<OrtValue> {
 
   template <typename T>
   T* GetTensorMutableData();
+
   template <typename T>
   T* At(const std::initializer_list<int64_t>& location);
 

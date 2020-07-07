@@ -1418,7 +1418,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::At, _In_ const OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ const void* out) {
+ORT_API_STATUS_IMPL(OrtApis::At, _In_ const OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ void** out) {
   TENSOR_READ_API_BEGIN
   //TODO: test if it's a string tensor
   if (location_values_length != tensor.Shape().NumDimensions())
@@ -1437,14 +1437,17 @@ ORT_API_STATUS_IMPL(OrtApis::At, _In_ const OrtValue* value, int64_t* location_v
     }
     offset += location[i-1] * sum;
   }
-  auto tensor_data = tensor.Data<float>();
+  // auto tensor_data = tensor.Data<float>();
   // auto tensor_data = reinterpret_cast<const float*>(tensor.DataRaw());
   // auto element_type = tensor.GetElementType()
   // std::string s = DataTypeImpl::ToString(ml_type);
   // const OrtValue* ovfirst = value[0];
   // auto data = reinterpret_cast<const OrtValue*>(tensor.DataRaw());
   // auto data = tensor_data[offset];
-  out = reinterpret_cast<const void *>(tensor_data + offset);
+  float x1 = 5;
+  float* x = &x1;
+  *out = static_cast<void *>(x);
+  // *out = reinterpret_cast<const void *>(tensor_data + offset);
   return nullptr;
   API_IMPL_END
 }

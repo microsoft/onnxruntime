@@ -480,16 +480,18 @@ inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, si
 template <typename T>
 T* Value::GetTensorMutableData() {
   T* out;
-  ThrowOnError(Global<void>::api_.GetTensorMutableData(p_, (void*)&out));
+  ThrowOnError(Global<void>::api_.GetTensorMutableData(p_, (void**)&out));
   return out;
 }
+
 
 template <typename T>
 inline T* Value::At(const std::initializer_list<int64_t>& location) {
   T* out;
-  ThrowOnError(Global<void>::api_.At(p_, &location, location.size(), (void**)&out));
+  ThrowOnError(Global<void>::api_.At(p_, &location, location.size(), dynamic_cast<void**>(&out)));
   return out;
 }
+
 
 inline TypeInfo Value::GetTypeInfo() const {
   OrtTypeInfo* output;
