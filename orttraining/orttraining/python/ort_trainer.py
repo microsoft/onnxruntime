@@ -195,6 +195,10 @@ def dtype_torch_to_numpy(torch_dtype):
         return np.int32
     elif torch_dtype == torch.int16 or torch_dtype == torch.short:
         return np.int16
+    elif torch_dtype == torch.bool:
+        return np.bool
+    else:
+        raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 
 def wrap_for_input_match(model, loss_fn, input_names):
     import inspect
