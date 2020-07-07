@@ -12,34 +12,38 @@
 #define MLAS_SUPPORTS_GEMM_U8X8
 #endif
 
+#if defined(_M_AMD64) || defined(__x86_64__)
+#define MLAS_SUPPORTS_PACKED_GEMM_U8X8
+#endif
+
 namespace onnxruntime {
 
-template <typename LeftScalar, typename RightScalar, typename OutputScalar>
 void QGemm(
     int M,
     int N,
     int K,
-    const LeftScalar* lhs_data,
+    const uint8_t* lhs_data,
     int lda,
-    const LeftScalar lhs_offset,
-    const RightScalar* rhs_data,
+    const uint8_t lhs_offset,
+    const uint8_t* rhs_data,
     int ldb,
-    const RightScalar rhs_offset,
-    OutputScalar* result_data,
+    const uint8_t rhs_offset,
+    bool rhs_signed,
+    int32_t* result_data,
     int ldc,
     concurrency::ThreadPool* thread_pool);
 
-template <typename LeftScalar, typename RightScalar>
 void QGemm(
     int M,
     int N,
     int K,
-    const LeftScalar* lhs_data,
+    const uint8_t* lhs_data,
     int lda,
-    const LeftScalar lhs_offset,
-    const RightScalar* rhs_data,
+    const uint8_t lhs_offset,
+    const uint8_t* rhs_data,
     int ldb,
-    const RightScalar rhs_offset,
+    const uint8_t rhs_offset,
+    bool rhs_signed,
     float* result_data,
     int ldc,
     const float* result_scale,

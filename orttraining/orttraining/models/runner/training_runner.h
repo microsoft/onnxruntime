@@ -30,9 +30,9 @@ class TrainingRunner {
 
     PathString train_data_dir;
     PathString test_data_dir;
-    PathString output_dir;  // Output of training, e.g., trained model files.
-    PathString perf_output_dir; // training perf metrics
-    std::string model_type; // bert/gpt2/...
+    PathString output_dir;       // Output of training, e.g., trained model files.
+    PathString perf_output_dir;  // training perf metrics
+    std::string model_type;      // bert/gpt2/...
 
     LossFunctionInfo loss_func_info;
 
@@ -169,6 +169,9 @@ class TrainingRunner {
 
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
+  
+    // Use invertible layernorm grad
+    bool use_invertible_layernorm_grad = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
@@ -177,7 +180,7 @@ class TrainingRunner {
   common::Status Initialize();
 
   common::Status Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader,
-    const MapStringToString& mapped_dimensions = {});
+                     const MapStringToString& mapped_dimensions = {});
 
   common::Status EndTraining(IDataLoader* data_loader);
 
@@ -189,7 +192,9 @@ class TrainingRunner {
   TrainingSession& GetSession() { return session_; }
 
  private:
-  enum SessionMode: int {ModelUpdateStep, GradientAccumulateStep, EvaluateStep};
+  enum SessionMode : int { ModelUpdateStep,
+                           GradientAccumulateStep,
+                           EvaluateStep };
   Status PrepareFeedNamesAndFeeds(const SessionMode mode,
                                   IDataLoader& training_data_loader,
                                   DataSet& training_data,
@@ -209,7 +214,7 @@ class TrainingRunner {
                         std::vector<MLValue>& feeds,
                         size_t& gradient_accumulation_step_count);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
-    const MapStringToString& mapped_dimensions);
+                      const MapStringToString& mapped_dimensions);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);

@@ -602,13 +602,6 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   LossSubgraph loss_subgraph(graph);
 
   // Stage 1: Convert whole graph including forward and backward to FP16
-  // Initialize function body for all function nodes
-  // This is required to make sure after converting inputs\weights to FP16
-  // the new NodeArg updates are correctly propagated to the function body nodes as well.
-  for (auto& node : graph.Nodes()) {
-    graph.InitFunctionBodyForNode(node);
-  }
-
   // Insert Cast node to convert inputs from FP32 to FP16
   // If all consumers are from loss graph, don't convert it, and remove it from To-32 loss graph inputs.
   for (const NodeArg* input : graph.GetInputs()) {
