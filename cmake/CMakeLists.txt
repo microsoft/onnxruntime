@@ -113,6 +113,18 @@ option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests."
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
+# options for security fuzzing
+# build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
+option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
+
+# Fuzz test has only been tested with BUILD_SHARED_LIB option,
+# using the MSVC compiler and on windows OS.
+if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
+  # Fuzz test library dependency, protobuf-mutator,
+  # needs the onnx message to be compiled using "non-lite protobuf version"
+  set(onnxruntime_FUZZ_ENABLED ON)
+endif()
+
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
@@ -378,7 +390,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
   endif()
 endif()
 
-if(NOT WIN32)
+if(NOT WIN32 AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 endif()
 # External dependencies
@@ -972,7 +984,11 @@ if (onnxruntime_ENABLE_TRAINING)
     find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
 
     if (MPI_FOUND)
-      execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      if(NOT DEFINED onnxruntime_MPI_HOME)
+        execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
+      else()
+        execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT) 
+      endif(NOT DEFINED onnxruntime_MPI_HOME)
       string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
       message( STATUS "MPI Version: ${MPI_VERSION}")
 
@@ -1002,6 +1018,7 @@ if (onnxruntime_ENABLE_TRAINING)
         NAMES ${NCCL_LIBNAME}
         HINTS
         ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+        ${onnxruntime_NCCL_HOME}/lib
         $ENV{CUDA_ROOT}/lib64)
 
       include(FindPackageHandleStandardArgs)
