@@ -78,6 +78,7 @@ Status SetupOptimizerParams(
 
   OptimizerGraphConfig opt_graph_config{};
   opt_graph_config.use_mixed_precision = config.mixed_precision_config.has_value();
+  opt_graph_config.fp16_type = config.mixed_precision_config.value().fp16_type;
   // TODO make OptimizerGraphConfig::loss_scale_input_name optional<string>
   opt_graph_config.loss_scale_input_name =
       loss_scale_input_name.has_value() ? loss_scale_input_name.value() : "";
