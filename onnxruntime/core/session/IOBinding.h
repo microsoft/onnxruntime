@@ -74,9 +74,6 @@ class IOBinding {
   const std::vector<std::string>& GetOutputNames() const;
   std::vector<OrtValue>& GetOutputs();
 
-  // device info for outputs that are not pre-allocated
-  const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;
-
   const std::vector<std::string>& GetInputNames() const;
   const std::vector<OrtValue>& GetInputs() const;
 
@@ -105,5 +102,8 @@ class IOBinding {
   std::vector<OrtDevice> outputs_device_info_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
+
+  // device info for outputs that are not pre-allocated
+  const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;
 };
 }  // namespace onnxruntime
