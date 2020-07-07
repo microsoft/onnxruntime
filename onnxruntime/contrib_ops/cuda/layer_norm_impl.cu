@@ -24,7 +24,7 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 
-#include "custom_layer_norm.cuh"
+#include "contrib_ops/cuda/custom_layer_norm.cuh"
 #include "layer_norm_impl.h"
 
 namespace onnxruntime {
