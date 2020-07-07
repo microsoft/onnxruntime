@@ -1140,14 +1140,14 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
   for (auto is_fp32 : test_with_fp32) {
-    // graph is partitioned into 4 parts.
+    // graph is partitioned into 3 parts.
     for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
 #ifdef _WIN32
-      auto surfix = std::to_wstring(i);
+      auto suffix = std::to_wstring(i);
 #else
-      auto surfix = std::to_string(i);
+      auto suffix = std::to_string(i);
 #endif
-      PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+      PathString output_file = ORT_TSTR("pipeline_partition_") + suffix + ORT_TSTR("_back.onnx");
 
       auto config = MakeBasicTrainingConfig();
 
@@ -1165,12 +1165,6 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
                               /*mlm_loss*/ "mlm_loss",
                               /*nsp_loss*/ "nsp_loss"});
       }
-
-      config.immutable_weights = {
-          {"Div", {{1, 8.0f}, {1, 1.4142135381698608f}}},
-          {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
-          {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
-          {"Sub", {{0, 1.0f}}}};
 
       config.pipeline_config = pipe;
       config.distributed_config.world_rank = i;
@@ -1242,11 +1236,11 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
 #ifdef _WIN32
-      auto surfix = std::to_wstring(i);
+      auto suffix = std::to_wstring(i);
 #else
-      auto surfix = std::to_string(i);
+      auto suffix = std::to_string(i);
 #endif
-      PathString output_file = ORT_TSTR("pipeline_partition_") + surfix + ORT_TSTR("_back.onnx");
+      PathString output_file = ORT_TSTR("pipeline_partition_") + suffix + ORT_TSTR("_back.onnx");
 
       auto config = MakeBasicTrainingConfig();
 
@@ -1392,12 +1386,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
   for (int i = 0; i < 3; ++i) {
 #ifdef _WIN32
-    auto surfix = std::to_wstring(i);
+    auto suffix = std::to_wstring(i);
 #else
-    auto surfix = std::to_string(i);
+    auto suffix = std::to_string(i);
 #endif
-    PathString input_file = filename_base + surfix + ORT_TSTR(".onnx");
-    PathString output_file = filename_base + surfix + ORT_TSTR("_back.onnx");
+    PathString input_file = filename_base + suffix + ORT_TSTR(".onnx");
+    PathString output_file = filename_base + suffix + ORT_TSTR("_back.onnx");
     load_and_check_gradient_graph(i, input_file, output_file);
   }
 }

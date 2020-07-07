@@ -835,7 +835,7 @@ Status FindAllConnectedNodes(Graph& graph,
           if (producer_node == nullptr) {
             // got nullptr as producer node. This could be because the input is a constant op which will be optimized
             // away. Print out this information and continue.
-            // LOGS_DEFAULT(WARNING) << "Cannot find producer node for node_arg: " << node_arg.Name() << ". Skipping this node.";
+            LOGS_DEFAULT(WARNING) << "Cannot find producer node for node_arg: " << node_arg.Name() << ". Skipping this node.";
           } else {
             connected_nodes.push_back(producer_node);
           }
@@ -876,8 +876,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
                                          const std::vector<PipelineStageNodeGroup>& node_groups,
                                          const std::vector<Node*>& send_nodes,
                                          const std::vector<Node*>& recv_nodes) {
-  ORT_ENFORCE(node_groups.size() >= 2, "Initializer ", initializer->Name(),
-              " is not shared across stages. It only exits in partition: ", node_groups[0].stage_id);
+  ORT_ENFORCE(node_groups.size() >= 2, "Initializer ", initializer->Name(), " is not shared across stages.");
 
   const size_t from_stage = node_groups.front().stage_id;
   const size_t to_stage = node_groups.back().stage_id;
@@ -899,7 +898,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
     send_nodes[i]->MutableInputDefs().push_back(current_node_arg);
     send_nodes[i]->MutableInputArgsCount().back()++;
 
-    // Create a new node_arg for the recv, as the new node_arg from recv node should possess a differnet id
+    // Create a new node_arg for the recv, as the new node_arg from recv node should possess a different id
     // than the one in send
     auto& new_node_arg = CreateNodeArg(graph, current_node_arg);
     new_node_args.push_back(&new_node_arg);
@@ -930,7 +929,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
 }
 
 void TraverseGraphWithConnectedElement(Graph& graph,
-                                       const Node* startNode,
+                                       const Node* start_node,
                                        std::set<const Node*>& visited_nodes,
                                        std::set<const NodeArg*>& visited_inputs,
                                        std::set<const NodeArg*>& visited_outputs) {
@@ -939,13 +938,12 @@ void TraverseGraphWithConnectedElement(Graph& graph,
   visited_outputs.clear();
 
   std::queue<const Node*> node_queue;
-  node_queue.push(startNode);
+  node_queue.push(start_node);
 
   while (!node_queue.empty()) {
     auto node = node_queue.front();
     node_queue.pop();
-    if (visited_nodes.count(node) == 0) {
-      visited_nodes.insert(node);
+    if (visited_nodes.insert(node).second) {
       std::vector<const Node*> connected_nodes;
       ORT_THROW_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
 
@@ -964,7 +962,7 @@ void TraverseGraphWithConnectedElement(Graph& graph,
 common::Status HandleSharedInitializer(Graph& graph,
                                        const std::vector<Node*>& send_nodes,
                                        const std::vector<Node*>& recv_nodes) {
-  // Map an given initializer to all the partitions that its consumer nodes reside. The size of
+  // Map a given initializer to all the partitions that its consumer nodes reside. The size of
   // the mapped vector reflects how many partitions this initializer's consumer nodes distribute.
   // If its size is greater than 1, it means this initializer is being used in more than one partition and
   // we need to proceed those cases.
@@ -999,15 +997,15 @@ common::Status HandleSharedInitializer(Graph& graph,
       }
 
       if (input_consumer_stage_map.count(input) == 0) {
-        std::vector<PipelineStageNodeGroup> stage_node_group{PipelineStageNodeGroup(stage, visited_consumer_nodes)};
-        input_consumer_stage_map[input] = std::move(stage_node_group);
+        input_consumer_stage_map[input] = std::vector<PipelineStageNodeGroup>{
+            PipelineStageNodeGroup(stage, visited_consumer_nodes)};
       } else {
         input_consumer_stage_map[input].push_back({stage, visited_consumer_nodes});
       }
     }
   }
 
-  for (const auto entry : input_consumer_stage_map) {
+  for (const auto& entry : input_consumer_stage_map) {
     // If any initializer is shared, handle the logic of passing it from the first seen stage all
     // the way to last seen stage.
     if (entry.second.size() > 1) {
@@ -1278,12 +1276,12 @@ Status ApplyPipelinePartitionToMainGraph(
   recv_nodes.reserve(split_count);
   ORT_RETURN_IF_ERROR(SplitGraph(graph, cut_info, send_nodes, recv_nodes));
 
-  ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
-
   if (send_nodes.size() != split_count || recv_nodes.size() != split_count) {
     ORT_THROW("Split error: not all cut has Send and Recv inserted. Send node count: ",
               send_nodes.size(), ", Recv node count: ", recv_nodes.size(), ", split count: ", split_count);
   }
+
+  ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
 
   if (pipeline_stage_id < split_count) {
     ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, send_nodes[pipeline_stage_id]));
