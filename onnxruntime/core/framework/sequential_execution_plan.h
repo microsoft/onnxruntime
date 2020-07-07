@@ -31,6 +31,9 @@ struct AllocPlanPerValue {
   // if the value is used in async kernel, a fence object would be created
   // note the fence object would be shared between MLValues reusing the same buffer
   bool create_fence_if_async{false};
+  const onnxruntime::NodeArg* p_def_site;
+  size_t program_counter_start;
+  size_t program_counter_end;
 
  public:
   AllocPlanPerValue() : location(CPU, Invalid) {}
@@ -47,7 +50,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::vector<AllocPlanPerValue> allocation_plan;
 
   // The following vector contains any initializer tensors that must be allocated sequentially.
-  std::vector<OrtValueIndex> allocation_order;
+  std::vector<OrtValueIndex> initializer_allocation_order;
+
+  // The following vector contains any activation tensors that must be allocated sequentially.
+  std::vector<OrtValueIndex> activation_allocation_order;
 
   // The following indicates the order in which nodes should be executed and the
   // ml-values to be free after each node's execution:

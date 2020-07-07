@@ -573,6 +573,9 @@ class PlannerImpl {
         // OrtValue index of the considered output NodeArg.
         const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
+        AllocPlan(current).p_def_site = ort_value_info_[current].p_def_site;
+        AllocPlan(current).program_counter_start = -1;
+        AllocPlan(current).program_counter_end = -1;
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
@@ -605,6 +608,7 @@ class PlannerImpl {
         } else {
           // otherwise: allocate a new buffer for this output
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter_start = program_counter;
         }
       }
 
@@ -652,7 +656,8 @@ class PlannerImpl {
   // Compute allocation order for tensors that are required to be allocated contiguously.
   Status ComputeAllocationOrder() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    std::vector<OrtValueIndex>& allocation_order(plan_.allocation_order);
+    std::vector<OrtValueIndex>& initializer_allocation_order(plan_.initializer_allocation_order);
+    std::vector<OrtValueIndex>& activation_allocation_order(plan_.activation_allocation_order);
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
       const auto* pnode = graph_viewer_.GetNode(step.node_index);
@@ -660,6 +665,8 @@ class PlannerImpl {
       if (!AllocateInputsContiguously(*pnode)) continue;
       // This node has requested inputs be allocated contiguously.
       const auto& input_defs = pnode->InputDefs();
+      onnxruntime::AllocKind input_kind;
+      bool set_input_kind = true;
       for (int input_arg_def_index = 0; static_cast<size_t>(input_arg_def_index) < input_defs.size(); ++input_arg_def_index) {
         const auto& node_input = input_defs[input_arg_def_index];
         if (!node_input->Exists()) continue;
@@ -667,11 +674,21 @@ class PlannerImpl {
         const auto& current_plan = AllocPlan(current_idx);
         const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
         const auto& actual_plan = AllocPlan(actual_idx);
-        // Currently, only initializers can be allocated contiguously and can only be specified once.
-        if (actual_plan.alloc_kind != AllocKind::kAllocateStatically)
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() currently can only be used on initializers.");
-        if (std::find(allocation_order.begin(), allocation_order.end(), actual_idx) == allocation_order.end())
-          allocation_order.push_back(actual_idx);
+        if(set_input_kind) {
+          input_kind = actual_plan.alloc_kind;
+          set_input_kind = false;
+        }
+
+        if ((actual_plan.alloc_kind == AllocKind::kAllocateStatically) && (input_kind != AllocKind::kAllocateStatically))
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() does handle mixed input types.");
+
+        if(actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
+          if (std::find(initializer_allocation_order.begin(), initializer_allocation_order.end(), actual_idx) == initializer_allocation_order.end())
+            initializer_allocation_order.push_back(actual_idx);
+        } else {
+          if (std::find(activation_allocation_order.begin(), activation_allocation_order.end(), actual_idx) == activation_allocation_order.end())
+            activation_allocation_order.push_back(actual_idx);
+        }
       }
     }
     return Status::OK();
@@ -748,6 +765,17 @@ class PlannerImpl {
 
     if (has_prev_dealloc_point)
       plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
+
+    int program_counter = 0;
+    for (auto& node_plan : exe_plan->execution_plan) {
+        for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
+          auto ml_value_idx = exe_plan->to_be_freed[index];
+          // TODO(codemzs): Assert program_counter_start is not equal to -1.
+          AllocPlan(ml_value_idx).program_counter_end = program_counter;
+        }
+
+        program_counter += 1;
+    }
   }
 
   static bool IsNonTensor(const onnxruntime::NodeArg& nodearg) {
