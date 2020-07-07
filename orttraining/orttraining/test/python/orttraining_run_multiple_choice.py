@@ -1,4 +1,4 @@
-# adapted from run_glue.py of huggingface transformers
+# adapted from run_multiple_choice.py of huggingface transformers
 
 import dataclasses
 import logging
@@ -77,32 +77,40 @@ class ORTMultipleChoiceTest(unittest.TestCase):
     def setUp(self):
         # configurations not to be changed accoss tests
         self.max_seq_length = 80
-        self.train_batch_size = 16
+        self.train_batch_size = 2
+        self.eval_batch_size = 2
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
         self.local_rank = -1
         self.overwrite_output_dir = True
-        self.gradient_accumulation_steps = 1
-        self.data_dir = "/bert_ort/liqun/hf_data/swag/swagaf/data"
+        self.gradient_accumulation_steps = 8
+        self.data_dir = "/bert_data/hf_data/swag/swagaf/data"
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "multiple_choice_test_output/")
         self.cache_dir = '/tmp/multiple_choice/'
         self.logging_steps = 10
 
-    def test_roberta_with_swag(self):
-        # results = self.run_multiple_choice(model_name="roberta-base", task_name="swag", fp16=False)
+    def test_bert_with_swag(self):
+        expected_acc = 0.7714685594321703
+        expected_loss = 0.7022780341538328
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
+        assert_allclose(results['acc'], expected_acc)
+        assert_allclose(results['loss'], expected_loss)
 
-    def test_roberta_fp16_with_swag(self):
-        # results = self.run_multiple_choice(model_name="roberta-base", task_name="swag", fp16=True)
+    def test_bert_fp16_with_swag(self):
+        expected_acc = 0.7719184244726582
+        expected_loss = 0.6942527259380163
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
+        assert_allclose(results['acc'], expected_acc)
+        assert_allclose(results['loss'], expected_loss)
 
     def run_multiple_choice(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
         data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
             max_seq_length=self.max_seq_length)
-            
+
         training_args = TrainingArguments(output_dir=self.output_dir + "/" + task_name, do_train=True, do_eval=True,
             per_gpu_train_batch_size=self.train_batch_size,
+            per_gpu_eval_batch_size=self.eval_batch_size,
             learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,local_rank=self.local_rank,
             overwrite_output_dir=self.overwrite_output_dir, gradient_accumulation_steps=self.gradient_accumulation_steps,
             fp16=fp16, logging_steps=self.logging_steps)
@@ -143,6 +151,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
         )
+
         model = AutoModelForMultipleChoice.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -182,12 +191,12 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
         if model_name.startswith('bert'):
             model_desc = ModelDescription([
-                IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('token_type_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=2),
-                IODescription('labels', ['batch', num_labels], torch.int64, num_classes=num_labels)], [
+                IODescription('input_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=model.config.vocab_size),
+                IODescription('attention_mask', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
+                IODescription('token_type_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
+                IODescription('labels', [self.train_batch_size, num_labels], torch.int64, num_classes=num_labels)], [
                 IODescription('loss', [], torch.float32),
-                IODescription('reshaped_logits', ['batch', num_labels], torch.float32)])
+                IODescription('reshaped_logits', [self.train_batch_size, num_labels], torch.float32)])
         else:
             model_desc = ModelDescription([
                 IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
