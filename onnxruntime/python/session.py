@@ -236,7 +236,7 @@ class IOBinding:
         # in which case ORT will allocate the memory for the user
         # (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs
         if buffer_ptr is None:
-            self._iobinding.bind_output(name, 
+            self._iobinding.bind_output(name,
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                     device_id))
         else:
