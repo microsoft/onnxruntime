@@ -455,13 +455,6 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
-template <typename T>
-inline T Value::At(const std::initializer_list<size_t>& location) {
-  OrtValue* out;
-  ThrowOnError(Global<void>::api_.At(p_, &location, location.size(), &out));
-  return out;
-}
-
 inline size_t Value::GetCount() const {
   size_t out;
   ThrowOnError(Global<void>::api_.GetValueCount(p_, &out));
@@ -487,7 +480,14 @@ inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, si
 template <typename T>
 T* Value::GetTensorMutableData() {
   T* out;
-  ThrowOnError(Global<void>::api_.GetTensorMutableData(p_, (void**)&out));
+  ThrowOnError(Global<void>::api_.GetTensorMutableData(p_, (void*)&out));
+  return out;
+}
+
+template <typename T>
+inline T* Value::At(const std::initializer_list<int64_t>& location) {
+  T* out;
+  ThrowOnError(Global<void>::api_.At(p_, &location, location.size(), (void**)&out));
   return out;
 }
 
