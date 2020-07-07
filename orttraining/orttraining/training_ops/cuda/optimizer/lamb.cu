@@ -192,7 +192,7 @@ __device__ __forceinline__ void _LambUpdateRule(
 
   if (_IsFiniteScalar(w_new_tmp)) {
     if (g_new) {
-      *g_new = T3(delta);
+      *g_new = T3(delta * T2(16384.0f));
     }
     if (w_new) {
       *w_new = w_new_tmp;
