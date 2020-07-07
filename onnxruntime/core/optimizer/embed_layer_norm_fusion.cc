@@ -423,7 +423,8 @@ static NodeArg* ExtractEmbedding(Graph& graph,
                                  int64_t batch_size,
                                  int64_t sequence_length,
                                  int64_t hidden_size,
-                                 const ONNX_NAMESPACE::TensorProto* tensor) {
+                                 const ONNX_NAMESPACE::TensorProto* tensor,
+                                 bool& modified) {
   assert(nullptr != tensor);
   assert(batch_size > 0);
   assert(sequence_length > 0);
@@ -456,6 +457,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   }
 
   NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
+  modified = true;
   return &node_arg;
 }
 
@@ -599,7 +601,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
 
       // The tensor has same data for all batches, and we extract only one batch data as position embedding.
-      position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
+      position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor, modified);
     } else {
       if (!MatchPositionEmbeddingSubgraph(graph, add_node, input_ids, logger, nodes_to_remove, position_embedding)) {
         DEBUG_LOG("Failed to match position embedding subgraph.");
