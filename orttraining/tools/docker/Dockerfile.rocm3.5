@@ -1,0 +1,124 @@
+# sudo docker build --network=host --file Dockerfile.amd --tag ort:rocm3.5-ort-dev .
+
+FROM rocm/tensorflow:rocm3.5-tf2.1-dev
+
+RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
+RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
+RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.5/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
+
+RUN apt-get -y update && \
+    apt-get -y install \
+      build-essential \
+      autotools-dev \
+      rsync \
+      curl \
+      wget \
+    #  jq \
+      openssh-server \
+      openssh-client \
+      sudo \
+    # Needed by UCX/OpenMPI
+      automake \
+      autoconf \
+      libtool \
+      flex \
+      doxygen \
+    # Needed by OpenMPI
+    #  cmake \
+    #  g++ \
+    #  gcc \
+    #  ifconfig \ 
+      net-tools \
+    # this is for MOFED - https://github.com/horovod/horovod/issues/1117#issuecomment-502917200
+      librdmacm1 \
+      libnl-route-3-200 \
+      libibverbs1 \
+      libibverbs-dev \
+      ibverbs-utils \
+      ibverbs-providers && \
+    apt-get autoremove
+
+# ROCm library
+RUN apt-get -y install rocm-libs miopen-hip
+
+ENV WORK_DIR=/work
+RUN mkdir -p $WORK_DIR
+
+ENV GITHUB_DIR=$WORK_DIR/github
+RUN mkdir -p $GITHUB_DIR
+
+ENV UCX_DIR=$WORK_DIR/ucx
+ENV OMPI_DIR=$WORK_DIR/ompi
+
+WORKDIR $GITHUB_DIR
+
+# UCX
+RUN git clone https://github.com/openucx/ucx.git \
+  && cd ucx \
+  && git checkout v1.8.0 \
+  && ./autogen.sh \
+  && mkdir build \
+  && cd build \
+  && ../contrib/configure-opt --prefix=$UCX_DIR --with-rocm=/opt/rocm --without-knem --without-cuda \
+  && make \
+  && make install
+
+# OpenMPI
+RUN git clone --recursive -b v4.0.3 https://github.com/open-mpi/ompi.git \
+  && cd ompi \
+  && ./autogen.pl \
+  && mkdir build \
+  && cd build \
+  && ../configure --prefix=$OMPI_DIR --with-ucx=$UCX_DIR --without-verbs \
+  && make \
+  && make install
+
+ENV PATH=$OMPI_DIR/bin:${PATH}
+ENV LD_LIBRARY_PATH=$OMPI_DIR/lib:$UCX_DIR/lib:${LD_LIBRARY_PATH}
+
+# RCCL
+# RUN apt-get -y purge rccl
+# RUN git clone https://github.com/ROCmSoftwarePlatform/rccl.git && cd rccl && ./install.sh -i
+ENV HSA_FORCE_FINE_GRAIN_PCIE=1
+ENV NCCL_MAX_NCHANNELS=4
+
+# CMake
+ENV CMAKE_VERSION=3.17.3
+RUN cd /usr/local && \
+    wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
+ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
+
+#ONNX Runtime
+WORKDIR $GITHUB_DIR
+ENV ORT_DIR=$GITHUB_DIR/onnxruntime
+RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxruntime.git \
+  && cd onnxruntime \
+  && python3 tools/ci_build/build.py --build_dir build --config Release --parallel --skip_tests --use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR --enable_training > build.log 2>&1; exit 0 \
+  && chmod a+x $ORT_DIR/build/Release/onnxruntime_training_bert
+
+# Enable ssh access without password needed
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
+RUN sed -i 's/#StrictModes yes/StrictModes no/g' /etc/ssh/sshd_config
+RUN sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd_config
+
+# Start or Restart sshd service
+ENTRYPOINT service ssh restart && /bin/bash
+
+# Remove gtest and gmock
+RUN rm -rf /opt/rocm/include/gtest /opt/rocm/include/gmock
+
+# Add model and scripts
+ENV BERT_DIR=$WORK_DIR/bert
+RUN mkdir -p $BERT_DIR
+
+ADD model $BERT_DIR/model
+ADD script $BERT_DIR/script
+RUN chmod a+x $BERT_DIR/script/run_perf.sh
+
+ADD lib $BERT_DIR/lib
+ENV LD_PERLOAD=$BERT_DIR/lib/libpsl.so
+
+ENV LOG_DIR=/data/wezhan/logs
+
+WORKDIR $BERT_DIR/script
