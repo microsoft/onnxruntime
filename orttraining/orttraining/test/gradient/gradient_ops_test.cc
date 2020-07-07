@@ -1374,7 +1374,6 @@ TEST(GradientCheckerTest, FastGeluGrad) {
 void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int opset_version) {
   const TensorShape input_shape({2, 3, 4});
   const TensorShape bias_shape({4});
-  const float error_tolerance = 1e-3f;
 
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type, domain, opset_version};
@@ -1383,7 +1382,7 @@ void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
       op_def, {input_shape, bias_shape}, {input_shape}, &max_error));
 
-  EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+  EXPECT_IS_TINY(max_error);
 }
 
 TEST(GradientCheckerTest, FastGeluGrad_Bias) {

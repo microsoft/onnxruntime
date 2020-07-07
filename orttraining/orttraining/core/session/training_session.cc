@@ -109,6 +109,19 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
+
+void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
+  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+  filtered_weight_names_to_train.clear();
+  for (const auto& name: weight_names_to_train) {
+    auto nodes = model_->MainGraph().GetConsumerNodes(name);
+    if (!nodes.empty())
+      filtered_weight_names_to_train.insert(name);
+    else
+      LOGS(*session_logger_, WARNING) << "Couldn't find any consumer node for weight " << name << ", exclude it from training.";
+  }
+}
+
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
   ORT_RETURN_IF(
@@ -116,6 +129,9 @@ Status TrainingSession::ConfigureForTraining(
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
 
   if (is_configured_) return Status::OK();
+
+  std::unordered_set<std::string> filtered_config_weight_names_to_train;
+  FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
 
   TrainingConfigurationResult config_result{};
 
@@ -186,8 +202,8 @@ Status TrainingSession::ConfigureForTraining(
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
   std::unordered_set<std::string> trainable_initializers =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   if (config.weight_names_to_not_train.size() > 0) {
     LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:";
@@ -201,8 +217,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     weight_names_to_train.erase(weight_name_to_not_train);
@@ -218,7 +234,7 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
-      weight_names_to_train, loss_name, config.set_gradients_as_graph_outputs));
+      weight_names_to_train, loss_name, config.gradient_graph_config, config.set_gradients_as_graph_outputs));
 
   // transform for mixed precision
   std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
@@ -339,8 +355,7 @@ Status TrainingSession::ConfigureForTraining(
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
   // conflict. It is user's responsibility to make sure different rank is passed in with different
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value()) &&
-      config.model_with_training_graph_path.has_value()) {
+  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
@@ -423,12 +438,14 @@ static Status ConfigureLossFunctionInternal(
 static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
                                          const std::unordered_set<std::string>& node_arg_names_to_train,
+                                         const GradientGraphConfiguration& gradient_graph_config,
                                          const bool set_gradient_as_graph_output = false) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
                                           loss_function_output_name,
+                                          gradient_graph_config,
                                           set_gradient_as_graph_output);
   return grad_graph_builder.Build();
 }
@@ -637,13 +654,16 @@ Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::strin
 
 Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                            const std::string& loss_function_output_name,
+                                           const GradientGraphConfiguration& gradient_graph_config,
                                            const bool set_gradient_as_graph_output) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
+  gradient_graph_config_ = gradient_graph_config;
 
   ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(model_->MainGraph(),
                                                  loss_function_output_name,
                                                  weights_to_train_,
+                                                 gradient_graph_config_,
                                                  set_gradient_as_graph_output));
 
   return DoPostLoadProcessing(*model_);
@@ -761,6 +781,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
     ORT_RETURN_IF_ERROR(BuildGradientGraphInternal(new_model->MainGraph(),
                                                    actual_loss_name,
                                                    weights_to_train_,
+                                                   gradient_graph_config_,
                                                    false));
 
     OptimizerOutputKeyMap<std::string> opt_graph_outputs;
@@ -793,7 +814,15 @@ const DataTransferManager& TrainingSession::GetDataTransferManager() const {
 bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) const {
   auto output_producer_node = model_->MainGraph().GetProducerNode(output_name);
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
-  return IsFP32Node(output_producer_node);
+
+  for (auto output : output_producer_node->OutputDefs()) {
+    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type()
+        && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {

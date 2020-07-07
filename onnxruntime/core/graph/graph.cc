@@ -433,7 +433,7 @@ void Node::SetNodeType(Node::Type node_type) noexcept {
   node_type_ = node_type;
 }
 
-const Function* Node::GetFunctionBody(bool try_init_func_body) noexcept {
+const Function* Node::GetFunctionBody(bool try_init_func_body) {
   if (nullptr != func_body_) {
     return func_body_;
   }

@@ -7,6 +7,7 @@
 #include <string>
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
@@ -26,12 +27,16 @@ typedef std::vector<NodeDef> GradientDef;
 
 class GradientBuilderBase {
  public:
-  GradientBuilderBase(
-      Graph* graph,
-      const Node* node,
-      const std::unordered_set<std::string>& gradient_inputs,
-      const std::unordered_set<std::string>& gradient_outputs)
-      : graph_(graph), node_(node), gradient_inputs_(gradient_inputs), gradient_outputs_(gradient_outputs) {
+  GradientBuilderBase(const GradientGraphConfiguration& gradient_graph_config,
+                      Graph* graph,
+                      const Node* node,
+                      const std::unordered_set<std::string>& gradient_inputs,
+                      const std::unordered_set<std::string>& gradient_outputs)
+      : gradient_graph_config_(gradient_graph_config),
+        graph_(graph),
+        node_(node),
+        gradient_inputs_(gradient_inputs),
+        gradient_outputs_(gradient_outputs) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -54,6 +59,10 @@ class GradientBuilderBase {
 
  protected:
   virtual GradientDef GetGradientDefsImpl() const = 0;
+
+  const GradientGraphConfiguration& GetGradientGraphConfiguration() const {
+    return gradient_graph_config_;
+  }
 
   // i-th input of forward op
   ArgDef I(const size_t i) const {
@@ -195,6 +204,7 @@ class GradientBuilderBase {
     return unique_prefix.str();
   }
 
+  const GradientGraphConfiguration& gradient_graph_config_;
   Graph* graph_;
   const Node* node_;
   std::string unique_node_prefix_;

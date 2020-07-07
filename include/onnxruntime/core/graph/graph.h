@@ -113,7 +113,7 @@ class Node {
   initialization for such nodes also happens during node creation. Therefore, 
   initialization of function body will happen via this method only in case 2 mentioned above.
   */ 
-  const Function* GetFunctionBody(bool try_int_func_body = true) noexcept;
+  const Function* GetFunctionBody(bool try_init_func_body = true);
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept;
