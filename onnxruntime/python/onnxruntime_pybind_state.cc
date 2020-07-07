@@ -707,8 +707,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
-        OrtValue mlvalue;
-        auto status = io_binding->Get()->BindOutput(name, mlvalue, device);
+        auto status = io_binding->Get()->BindOutput(name, device);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })

@@ -60,13 +60,16 @@ class IOBinding {
   common::Status SynchronizeOutputs();
 
   /**
-    * Bind an output name to a provided OrtValue. 
-    * If the output is pre-allocated, the value in 'device' is not used.
-    * If the output is not pre-allocated, information on the device it should be allocated on can be provided.
-    * 
-    * @param device Device to allocate on if not pre-allocated. Default is CPU. 
+    * Bind an output name to a provided pre-allocated OrtValue. 
     */
-  common::Status BindOutput(const std::string& name, const OrtValue& ml_value, OrtDevice device = {});
+  common::Status BindOutput(const std::string& name, const OrtValue& ml_value);
+
+  /**
+    * Bind an output name to a device. 
+    * 
+    * @param device Device to allocate the output on. Default is CPU. 
+    */
+  common::Status BindOutput(const std::string& name, OrtDevice device = {});
 
   /**
     * This simply collects the outputs obtained after calling Run() inside the @param outputs.
@@ -105,5 +108,8 @@ class IOBinding {
 
   // device info for outputs that are not pre-allocated
   const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;
+
+  // The implementation for the BindOutput() overloads
+  common::Status BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device);
 };
 }  // namespace onnxruntime
