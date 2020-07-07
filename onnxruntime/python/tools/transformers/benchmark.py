@@ -83,6 +83,7 @@ if "OMP_NUM_THREADS" not in os.environ:
 import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
+torch.set_num_threads(cpu_count)
 
 # use_cache is True by default in GPT2Model. Here we wrap a class to disable past state output.
 class GPT2ModelNoPastState(GPT2Model):
@@ -521,7 +522,6 @@ def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repea
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
         return results
 
-    torch.set_num_threads(1 if single_thread else cpu_count)
     torch.set_grad_enabled(False)
 
     for model_name in model_names:
@@ -780,6 +780,10 @@ def main():
     enable_onnxruntime = "onnxruntime" in args.engines
 
     results = []
+
+    if args.single_thread:
+        torch.set_num_threads(1)
+
     if enable_torch or enable_torchscript:
         if args.input_counts != [1]:
             logger.warning("--input_counts is not implemented for torch or torchscript engine.")
