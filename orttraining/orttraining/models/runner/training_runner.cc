@@ -170,6 +170,7 @@ Status TrainingRunner::Initialize() {
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
     gt_config.attn_dropout_checkpoint = params_.attn_dropout_checkpoint;
     gt_config.gelu_checkpoint = params_.gelu_checkpoint;
+    gt_config.transformer_layer_checkpoint = params_.transformer_layer_checkpoint;
 
     config.graph_transformer_config = gt_config;
   }

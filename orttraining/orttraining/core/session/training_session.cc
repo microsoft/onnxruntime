@@ -109,11 +109,10 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
-
 void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
-  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+                                          std::unordered_set<std::string>& filtered_weight_names_to_train) {
   filtered_weight_names_to_train.clear();
-  for (const auto& name: weight_names_to_train) {
+  for (const auto& name : weight_names_to_train) {
     auto nodes = model_->MainGraph().GetConsumerNodes(name);
     if (!nodes.empty())
       filtered_weight_names_to_train.insert(name);
@@ -193,10 +192,10 @@ Status TrainingSession::ConfigureForTraining(
     config_result.mixed_precision_config_result = mp_result;
   }
 
-  if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
-    ORT_IGNORE_RETURN_VALUE(Save(
-        config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
-  }
+  // if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
+  //   ORT_IGNORE_RETURN_VALUE(Save(
+  //       config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
+  // }
 
   // We need to get trainable weights to prevent constant folding from them. This works well if trainable weights are passed from config.
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
@@ -214,6 +213,13 @@ Status TrainingSession::ConfigureForTraining(
   }
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.graph_transformer_config));
+
+  if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
+    std::cout << "Saving transformed model \n";
+
+    ORT_IGNORE_RETURN_VALUE(Save(
+        config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
+  }
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
@@ -816,8 +822,7 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
 
   for (auto output : output_producer_node->OutputDefs()) {
-    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type()
-        && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type() && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       return true;
     }
   }

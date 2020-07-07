@@ -16,11 +16,11 @@ class TransformerLayerRecompute : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  std::vector<NodeArg*> IdentifyTransformerLayerEdges(Graph& graph) const;
+  std::vector<const NodeArg*> IdentifyTransformerLayerEdges(Graph& graph) const;
 
-  std::vector<Node*> NodesBetweenEdges(const NodeArg* begin, const NodeArg* end) const;
+  std::vector<const Node*> NodesBetweenEdges(Graph& graph, const NodeArg* start, const NodeArg* end) const;
 
-  void InsertRecomputeNode(const Node* node);
+  void InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes) const;
 };
 
 }  // namespace onnxruntime

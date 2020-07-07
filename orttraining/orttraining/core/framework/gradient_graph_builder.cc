@@ -142,11 +142,24 @@ Status GradientGraphBuilder::Build() {
 
   NodeSet reachable_nodes = ReverseBFS(y_nodes_);
 
+  // for (auto each : reachable_nodes) {
+  //   std::cout << "reachable_node: " << each->Name() << "\n";
+  // }
+
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable(reachable_nodes));
 
   // Going forward to figure out which node_args need backprop-ed.
-  deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
-  NodeSet visited(x_nodes_);
+  deque<const Node*> queue;  //(x_nodes_.begin(), x_nodes_.end());
+  NodeSet visited;           // (x_nodes_);
+  for (const Node* x_node : x_nodes_) {
+    if (reachable_nodes.find(x_node) != reachable_nodes.end()) {
+      queue.push_back(x_node);
+      visited.insert(x_node);
+    } else {
+      std::cout << "Unreachable node found " << x_node->Name() << "\n";
+    }
+  }
+
   unordered_set<const NodeArg*> visited_node_args = x_node_args_;
   visited_node_args.insert(y_node_args_.begin(), y_node_args_.end());
 

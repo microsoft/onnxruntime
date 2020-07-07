@@ -9,6 +9,7 @@
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/nonzero_shape_setter.h"
+#include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -94,6 +95,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(T
             horizontal_parallel_size, compatible_eps));
       }
       transformers.emplace_back(onnxruntime::make_unique<ComputationReductionTransformer>(compatible_eps));
+
+      if (config.transformer_layer_checkpoint) {
+        transformers.emplace_back(onnxruntime::make_unique<TransformerLayerRecompute>(compatible_eps));
+      }
     } break;
 
     case TransformerLevel::Level2: {

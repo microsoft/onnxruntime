@@ -184,6 +184,8 @@ class TrainingSession : public InferenceSession {
       bool attn_dropout_checkpoint{false};
       // Enable checkpointing of Gelu activation output to save memory
       bool gelu_checkpoint{false};
+      // Enable checkpointing of transformer layer ouput to save memory
+      bool transformer_layer_checkpoint{false};
     };
 
     GraphTransformerConfiguration graph_transformer_config{};

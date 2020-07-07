@@ -170,6 +170,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("false"))
       ("gelu_checkpoint", "Enable checkpointing of Gelu activation output to save memory.",
         cxxopts::value<bool>()->default_value("false"))
+      ("transformer_layer_checkpoint", "Enable checkpointing of transformer layer output to save memory.",
+        cxxopts::value<bool>()->default_value("false"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
         cxxopts::value<bool>()->default_value("false"));
   options
@@ -459,6 +461,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
     params.attn_dropout_checkpoint = flags["attn_dropout_checkpoint"].as<bool>();
     params.gelu_checkpoint = flags["gelu_checkpoint"].as<bool>();
+    params.transformer_layer_checkpoint = flags["transformer_layer_checkpoint"].as<bool>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(

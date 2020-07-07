@@ -173,6 +173,8 @@ class TrainingRunner {
     bool attn_dropout_checkpoint = false;
     // Enable checkpointing of Gelu activation output to save memory
     bool gelu_checkpoint = false;
+    // Enable checkpointing of transformer layer output to save memory
+    bool transformer_layer_checkpoint = false;
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
   };
