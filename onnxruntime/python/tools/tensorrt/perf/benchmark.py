@@ -7,12 +7,14 @@ import coloredlogs
 
 from BERTSquad import *
 from Resnet50 import *
+from FastRCNN import *
 
 logger = logging.getLogger('')
 
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
-    "resnet50": (Resnet50, "resnet50")
+    "resnet50": (Resnet50, "resnet50"),
+    "fast-rcnn": (FastRCNN, "fast-rcnn")
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -91,7 +93,6 @@ def run_onnxruntime(models=MODELS):
 
 
         for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider"]:
-        # for ep in ["CUDAExecutionProvider"]:
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
