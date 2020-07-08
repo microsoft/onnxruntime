@@ -2495,6 +2495,171 @@ public:
     }
 };
 
+template <typename T>
+class MlasQLinearAddExpTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<T> BufferInput;
+    MatrixGuardBuffer<T> BufferOutput;
+    MatrixGuardBuffer<T> BufferOutputReference;
+
+    T QLinearAddScalar(
+        T a,
+        float ScaleA,
+        int32_t ZeroPointA,
+        T b,
+        float ScaleB,
+        int32_t ZeroPointB,
+        float ScaleC,
+        int32_t ZeroPointC
+        )
+    {
+        const float MinimumValue = (float)((int)std::numeric_limits<T>::min() - ZeroPointC);
+        const float MaximumValue = (float)((int)std::numeric_limits<T>::max() - ZeroPointC);
+
+        float ValueA = ScaleA * (int32_t(a) - ZeroPointA);
+        float ValueB = ScaleB * (int32_t(b) - ZeroPointB);
+        float ValueC = (ValueA + ValueB) / ScaleC;
+        ValueC = std::min(std::max(ValueC, MinimumValue), MaximumValue);
+        return (T)(int32_t)std::nearbyintf(ValueC + ZeroPointC);
+    }
+
+    void
+    TestVectorVector(
+        size_t N,
+        float ScaleA,
+        int32_t ZeroPointA,
+        float ScaleB,
+        int32_t ZeroPointB,
+        float ScaleC,
+        int32_t ZeroPointC
+        )
+    {
+        T* InputA = BufferInput.GetBuffer(N);
+        T* InputB = BufferInput.GetBuffer(N);
+        T* OutputC = BufferOutput.GetBuffer(N);
+        T* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        int MinimumValue = (int)std::numeric_limits<T>::min();
+        int MaximumValue = (int)std::numeric_limits<T>::max();
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_int_distribution<int> distribution(MinimumValue, (int)MaximumValue);
+
+        for (size_t n = 0; n < N; n++) {
+            InputA[n] = static_cast<T>(distribution(generator));
+            InputB[n] = static_cast<T>(distribution(generator));
+            OutputReference[n] = QLinearAddScalar(InputA[n], ScaleA, ZeroPointA, InputB[n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
+        }
+        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, N);
+
+        for (size_t n = 0; n < N; n++) {
+            int diff = (int)Output[n] - (int)OutputReference[n];
+            if (diff < -1 || diff > 1) {
+                printf("TestVectorVector exp difference: %u %d %d\n", unsigned(N), static_cast<int>(Output[n]), static_cast<int>(OutputReference[n]));
+            }
+        }
+    }
+
+    void
+    TestVectorScalar(
+        size_t N,
+        float ScaleA,
+        int32_t ZeroPointA,
+        float ScaleB,
+        int32_t ZeroPointB,
+        float ScaleC,
+        int32_t ZeroPointC
+        )
+    {
+        T* InputA = BufferInput.GetBuffer(N);
+        T* InputB = BufferInput.GetBuffer(1);
+        T* OutputC = BufferOutput.GetBuffer(N);
+        T* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_int_distribution<int> distribution((int)MinimumValue, (int)MaximumValue);
+
+        InputB[0] = static_cast<T>(distribution(generator));
+        for (size_t n = 0; n < N; n++) {
+            InputA[n] = static_cast<T>(distribution(generator));
+            OutputReference[n] = QLinearAddScalar(InputA[n], ScaleA, ZeroPointA, InputB[0], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
+        }
+        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, 1);
+
+        for (size_t n = 0; n < N; n++) {
+            int diff = (int)Output[n] - (int)OutputReference[n];
+            if (diff < -1 || diff > 1) {
+                printf("TestVectorScalar exp difference: %u %d %d\n", unsigned(N), static_cast<int>(Output[n]), static_cast<int>(OutputReference[n]));
+            }
+        }
+    }
+
+    void
+    TestScalarVector(
+        size_t N,
+        float ScaleA,
+        int32_t ZeroPointA,
+        float ScaleB,
+        int32_t ZeroPointB,
+        float ScaleC,
+        int32_t ZeroPointC
+        )
+    {
+        T* InputA = BufferInput.GetBuffer(1);
+        T* InputB = BufferInput.GetBuffer(N);
+        T* OutputC = BufferOutput.GetBuffer(N);
+        T* OutputReference = BufferOutputReference.GetBuffer(N);
+
+        std::default_random_engine generator(static_cast<unsigned>(N));
+        std::uniform_int_distribution<int> distribution((int)MinimumValue, (int)MaximumValue);
+
+        InputA[0] = static_cast<T>(distribution(generator));
+        for (size_t n = 0; n < N; n++) {
+            InputB[n] = static_cast<T>(distribution(generator));
+            OutputReference[n] = QLinearAddScalar(InputA[0], ScaleA, ZeroPointA, InputB[n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
+        }
+
+        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, 1, N);
+
+        for (size_t n = 0; n < N; n++) {
+            int diff = (int)Output[n] - (int)OutputReference[n];
+            if (diff < -1 || diff > 1) {
+                printf("TestScalarVector exp difference: %u %d %d\n", unsigned(N), static_cast<int>(Output[n]), static_cast<int>(OutputReference[n]));
+            }
+        }
+    }
+
+public:
+    void
+    ExecuteShort(
+        void
+        ) override;
+};
+
+void
+MlasQLinearAddExpTest<uint8_t>::ExecuteShort(
+    void
+    )
+{
+    for (size_t n = 1; n < 128; n++) {
+        TestVectorVector(n, -10.f, 128, -10.f, 127, -20.f, 128);
+        TestVectorScalar(n, -10.f, 128, -10.f, 127, -20.f, 128);
+        TestScalarVector(n, -10.f, 128, -10.f, 127, -20.f, 128);
+    }
+}
+
+void
+MlasQLinearAddExpTest<int8_t>::ExecuteShort(
+    void
+    )
+{
+    for (size_t n = 1; n < 128; n++) {
+        TestVectorVector(n, -10.f, 0, -10.f, 0, -20.f, 0);
+        TestVectorScalar(n, -10.f, 0, -10.f, 0, -20.f, 0);
+        TestScalarVector(n, -10.f, 0, -10.f, 0, -20.f, 0);
+    }
+}
+
 class MlasFindMinMaxElementsTest : public MlasTestBase
 {
 private:
@@ -2603,6 +2768,12 @@ RunThreadedTests(
 
     printf("Softmax tests.\n");
     onnxruntime::make_unique<MlasSoftmaxTest>()->ExecuteShort();
+
+    printf("QLinearAdd<uint8_t> tests.\n");
+    onnxruntime::make_unique<MlasQLinearAddExpTest<uint8_t>>()->ExecuteShort();
+
+    printf("QLinearAdd<int8_t> tests.\n");
+    onnxruntime::make_unique<MlasQLinearAddExpTest<int8_t>>()->ExecuteShort();
 }
 
 int
