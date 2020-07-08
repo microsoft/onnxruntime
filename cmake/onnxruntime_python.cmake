@@ -189,6 +189,8 @@ file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
 )
+list(REMOVE_ITEM onnxruntime_python_quantization_src
+  "${ONNXRUNTIME_ROOT}/python/tools/quantization/test_calibrate.py")
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
