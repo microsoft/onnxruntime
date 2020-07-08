@@ -443,13 +443,11 @@ TEST(CApiTest, access_tensor_data_elements) {
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  std::vector<int64_t> dims = {4};
-  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length, shape.data(), shape.size());
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), shape.data(), shape.size());
 
-  // check first row of values
   float expected_value = 0;
-  for(int row=0; row < shape[0]; row++) {
-    for(int col=0; col < shape[1]; col++) {
+  for (size_t row = 0; row < (size_t)shape[0]; row++) {
+    for (size_t col = 0; col < (size_t)shape[1]; col++) {
       ASSERT_EQ(expected_value++, tensor.At<float>({row, col}));
     }
   }
