@@ -777,9 +777,12 @@ class SymbolicShapeInference:
 
     def _infer_OneHot(self, node):
         shape = self._get_shape(node, 0)
+        depth = self._try_get_value(node, 1)
         axis = get_attribute(node, 'axis', -1)
         axis = handle_negative_axis(axis, len(shape)+1)
-        new_shape = shape[:axis] + [self._new_symbolic_dim_from_output(node)] + shape[axis:]
+        new_shape = (shape[:axis] +
+                     [self._new_symbolic_dim_from_output(node) if depth is None else depth] +
+                     shape[axis:])
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[2]].type.tensor_type.elem_type, new_shape))
 
