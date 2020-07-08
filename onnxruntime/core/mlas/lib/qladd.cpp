@@ -476,8 +476,7 @@ MlasQLinearAddKernelHelper(
 
 #endif
 
-    typename SUI::i8x16_t vc;
-    while (n > 0) {
+    while (n >= 16) {
         int32x4_t vacc0_lo, vacc1_lo, vacc0_hi, vacc1_hi;
         if (IsScalarA) {
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(InputB);
@@ -533,17 +532,93 @@ MlasQLinearAddKernelHelper(
         // Pack, saturate, and add output zero point.
         const int16x8_t vacc0 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi)), VectorZeroPointC);
         const int16x8_t vacc1 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc1_lo), vqmovn_s32(vacc1_hi)), VectorZeroPointC);
-        vc = SUI::combine_i8_s16(vacc0, vacc1);
+        typename SUI::i8x16_t vc = SUI::combine_i8_s16(vacc0, vacc1);
 
         n -= 16;
-        if (n < 0) break;
-
         SUI::vst1q_i8(OutputC, vc);
         OutputC += 16;
     }
 
-    if (n < 0) {
-        n += 16;
+    if (n > 0) {
+        typename SUI::T TailDataA[16] = { 0 };
+        typename SUI::T TailDataB[16] = { 0 };
+
+        if (!IsScalarA) {
+            typename SUI::T* tail = TailDataA;
+            typename SUI::T* tail_end = tail + n;
+            do {
+                *tail = *(const typename SUI::T*)InputA;
+                tail++;
+                InputA++;
+            } while (tail < tail_end);
+        }
+        if (!IsScalarB) {
+            typename SUI::T* tail = TailDataB;
+            typename SUI::T* tail_end = tail + n;
+            do {
+                *tail = *(const typename SUI::T*)InputB;
+                tail++;
+                InputB++;
+            } while (tail < tail_end);
+        }
+
+        int32x4_t vacc0_lo, vacc1_lo, vacc0_hi, vacc1_hi;
+        if (IsScalarA) {
+            const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(TailDataB);
+            InputB += 16;
+            const int16x8_t vb0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorB0), VectorZeroPointB));
+            const int16x8_t vb1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorB0), VectorZeroPointB));
+
+            vacc0_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
+            vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(vb1_s16x8), VectorMultiplierB);
+        } else if (IsScalarB) {
+            const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(TailDataA);
+            InputA += 16;
+            const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
+            const int16x8_t va1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorA0), VectorZeroPointA));
+
+            vacc0_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va0_s16x8)), VectorMultiplierA);
+            vacc1_lo = vmlaq_s32(vscalar, vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
+            vacc0_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmlaq_s32(vscalar, MlasMoveHighS16S32(va1_s16x8), VectorMultiplierA);
+        } else  {
+            const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(TailDataA);
+            const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(TailDataB);
+            InputA += 16;
+            InputB += 16;
+            const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
+            const int16x8_t vb0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorB0), VectorZeroPointB));
+            const int16x8_t va1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorA0), VectorZeroPointA));
+            const int16x8_t vb1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorB0), VectorZeroPointB));
+
+            vacc0_lo = vmulq_s32(vmovl_s16(vget_low_s16(va0_s16x8)), VectorMultiplierA);
+            vacc1_lo = vmulq_s32(vmovl_s16(vget_low_s16(va1_s16x8)), VectorMultiplierA);
+            vacc0_hi = vmulq_s32(MlasMoveHighS16S32(va0_s16x8), VectorMultiplierA);
+            vacc1_hi = vmulq_s32(MlasMoveHighS16S32(va1_s16x8), VectorMultiplierA);
+
+            vacc0_lo = vmlaq_s32(vacc0_lo, vmovl_s16(vget_low_s16(vb0_s16x8)), VectorMultiplierB);
+            vacc1_lo = vmlaq_s32(vacc1_lo, vmovl_s16(vget_low_s16(vb1_s16x8)), VectorMultiplierB);
+            vacc0_hi = vmlaq_s32(vacc0_hi, MlasMoveHighS16S32(vb0_s16x8), VectorMultiplierB);
+            vacc1_hi = vmlaq_s32(vacc1_hi, MlasMoveHighS16S32(vb1_s16x8), VectorMultiplierB);
+        }
+
+        vacc0_lo = vsraq_n_s32(vacc0_lo, vbicq_s32(vacc0_lo, vzero_shift_mask), 31);
+        vacc1_lo = vsraq_n_s32(vacc1_lo, vbicq_s32(vacc1_lo, vzero_shift_mask), 31);
+        vacc0_hi = vsraq_n_s32(vacc0_hi, vbicq_s32(vacc0_hi, vzero_shift_mask), 31);
+        vacc1_hi = vsraq_n_s32(vacc1_hi, vbicq_s32(vacc1_hi, vzero_shift_mask), 31);
+
+        vacc0_lo = vrshlq_s32(vacc0_lo, vright_shift);
+        vacc1_lo = vrshlq_s32(vacc1_lo, vright_shift);
+        vacc0_hi = vrshlq_s32(vacc0_hi, vright_shift);
+        vacc1_hi = vrshlq_s32(vacc1_hi, vright_shift);
+
+        // Pack, saturate, and add output zero point.
+        const int16x8_t vacc0 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc0_lo), vqmovn_s32(vacc0_hi)), VectorZeroPointC);
+        const int16x8_t vacc1 = vqaddq_s16(vcombine_s16(vqmovn_s32(vacc1_lo), vqmovn_s32(vacc1_hi)), VectorZeroPointC);
+        typename SUI::i8x16_t vc = SUI::combine_i8_s16(vacc0, vacc1);
+
         typename SUI::i8x8_t i8x8 = SUI::vget_low_i8(vc);
         if (n & 8) {
             SUI::vst1_i8(OutputC, i8x8);
