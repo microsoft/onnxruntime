@@ -241,10 +241,6 @@ class IOBinding:
                                                     device_id))
         else:
             if element_type is None or shape is None:
-                print(element_type)
-                print(element_type is None)
-                print(shape)
-                print(shape is None)
                 raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(name,
                                         C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
