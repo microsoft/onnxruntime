@@ -78,9 +78,14 @@ Official builds are available on PyPi (Python), Nuget (C#/C/C++), Maven Central 
 
 Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.
 
-|Pypi (Python)|Nuget (C#/C/C++)|Maven Central (Java) | NPM (node.js) | Other package repositories|
-|---|---|---|---|---|
-*If using pip, run `pip install --upgrade pip` prior to downloading.*<br><br>CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime) / [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)<br><br>GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) / [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly) | CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) <br><br>GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)</li></ul>|CPU: [**com.microsoft.onnxruntime/onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)<br><br>GPU: [**com.microsoft.onnxruntime/onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|CPU: [**onnxruntime**](https://www.npmjs.com/package/onnxruntime)|[Contributed non-official packages](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp) (including Homebrew, Linuxbrew, and nixpkgs)<br><br>*These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.*|
+|Repository|Details|
+|---|---|
+|Pypi (Python)|*If using pip, run `pip install --upgrade pip` prior to downloading.*<br>CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime) / [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)<br>GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) / [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly)|
+|Nuget (C#/C/C++)|CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly) <br>GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu) / [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)</li></ul>|
+|Maven Central (Java)|CPU: [**com.microsoft.onnxruntime/onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)<br>GPU: [**com.microsoft.onnxruntime/onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|
+|npm (node.js)|CPU: [**onnxruntime**](https://www.npmjs.com/package/onnxruntime)|
+|Other|[Contributed non-official packages](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp) (including Homebrew, Linuxbrew, and nixpkgs)<br>*These are not maintained by the core ONNX Runtime team and may have limited support; use at your discretion.*|
+
 
 #### System Requirements
 
