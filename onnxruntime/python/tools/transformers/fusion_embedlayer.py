@@ -41,7 +41,7 @@ class FusionEmbedLayerNoMask(Fusion):
         self.utils = FusionUtils(model)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        # already fused. Assumes that only one mebedding layer in a transformer model.
+        # Embed layer has been fused. Assumes that only one mebedding layer in a transformer model.
         if self.nodes_to_add:
             return
 
@@ -61,7 +61,7 @@ class FusionEmbedLayerNoMask(Fusion):
         normalize_node = node
         word_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
         if word_embedding_path is None:
-            logger.info("Failed to find word embedding")
+            logger.info("Word embedding path is not found. Embed layer cannot be fused.")
             return
         add_node, word_embedding_gather = word_embedding_path
         input_ids = word_embedding_gather.input[1]
@@ -87,7 +87,7 @@ class FusionEmbedLayerNoMask(Fusion):
                     if position_embedding_path is not None:
                         position_embedding_weight_node, position_embedding_expand = position_embedding_path
                     else:
-                        logger.info("Failed to find position embedding")
+                        logger.info("Position embedding path is not found. Embed layer cannot be fused.")
                         return
 
             if position_embedding_shape is not None and position_embedding_shape.input[0] != input_ids:
@@ -98,7 +98,7 @@ class FusionEmbedLayerNoMask(Fusion):
         if segment_embedding_path is None:
             segment_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 1])
             if segment_embedding_path is None:
-                logger.info("Failed to find segment embedding")
+                logger.info("Segment embedding is not found. Embed layer cannot be fused.")
                 return
             _, segment_embedding_gather = segment_embedding_path
         else:
@@ -206,19 +206,23 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
         else:
             embed_node = self.nodes_to_add.pop()
             mask_input_name = next(iter(self.mask_indice))
-            mask_output_name = self.mask_indice[mask_input_name]
-            mask_node = output_name_to_node[mask_output_name]
-
-            self.nodes_to_remove.extend([mask_node])
 
             # store inputs for further processing
             self.mask_input_name = mask_input_name
 
-            # When mask has been casted to int32, use that casted one as input of embed layer norm.
-            if mask_input_name in self.mask_casted:
-                mask_input_name = self.mask_casted[mask_input_name]
+            mask_output_name = self.mask_indice[mask_input_name]
+            mask_node = output_name_to_node[mask_output_name]
+            # Remove mask processing node (like ReduceSum), but keep Cast node for 2D attention mask.
+            if mask_node.op_type == "ReduceSum" or mask_node.op_type == "MaskIndex":
+                self.nodes_to_remove.extend([mask_node])
 
-            embed_node.input.append(mask_input_name)
-            embed_node.output[1] = mask_output_name
+                # When mask has been casted to int32, use that casted one as input of embed layer norm.
+                if mask_input_name in self.mask_casted:
+                    mask_input_name = self.mask_casted[mask_input_name]
+
+                embed_node.input.append(mask_input_name)
+
+                embed_node.output[1] = mask_output_name
+
             self.nodes_to_add.append(embed_node)
             self.prune_graph = True
