@@ -378,7 +378,6 @@ Status TrainingSession::ConfigureForTraining(
 
   config_result_out = std::move(config_result);
   is_configured_ = true;
-  Save(PathString("/mnt/ort_unittest.onnx"), SaveOption::NO_RELOAD);
 
   return Status::OK();
 }
