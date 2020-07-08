@@ -434,16 +434,22 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
 
 struct AttentionMaskNodes {
   const Node* softmax;
+  bool has_input_mask; // When it is false, the following nodes will be NULL.
+
   const Node* add;
   const Node* mul;
   const Node* sub;
-  const Node* cast;
+  const Node* cast; // optional, could be NULL.
   const Node* unsqueeze_2;
   const Node* unsqueeze_1;
 };
 
 void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
   nodes_to_remove.push_back(mask_nodes.softmax->Index());
+  if (!mask_nodes.has_input_mask) {
+    return;
+  }
+
   nodes_to_remove.push_back(mask_nodes.add->Index());
 
   // When the last Attention node is fused. Original mask processing nodes can be removed safely.
@@ -463,25 +469,54 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
                                                                                                                    |
                                                                   (optional)                                       v
 [Attention_mask] --> Unsqueeze (axes=1) --> Unsqueeze (axes=2) --> Cast ---->Sub(1,*) --> Mul(*, -10000.0) --> Add( ,*)--->SoftMax -->[MatMul]
+
+When is_input_mask_optional is true, this function also matches the following subgraph:
+    {UnidirMask Subgraph [Where]} --> Softmax --> [MatMul]
+In this case, we only match two nodes: "Softmax" and "Where". Note that "Where" is the last node in unidirectional subgraph.
 */
-bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes& result, const logging::Logger& logger) {
+bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes& result, const logging::Logger& logger, bool is_input_mask_optional) {
   DEBUG_LOG("Start MatchInputMaskSubgraph");
-  std::vector<graph_utils::EdgeEndToMatch> mask_path{
-      {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
-      {0, 1, "Mul", {7, 13}, kOnnxDomain},
-      {0, 0, "Sub", {7, 13}, kOnnxDomain}};
+  
+  std::vector<graph_utils::EdgeEndToMatch> softmax_path{
+      {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for mask");
+  if (!graph_utils::FindPath(qkv_matmul, true, softmax_path, edges, logger)) {
+    DEBUG_LOG("Failed to find Softmax node");
     return false;
   }
 
   const Node& softmax = edges[0]->GetNode();
-  const Node& mask_add = edges[1]->GetNode();
-  const Node& mask_mul = edges[2]->GetNode();
-  const Node& mask_sub = edges[3]->GetNode();
+  if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1)) {
+    DEBUG_LOG("Output edge count not expected for Softmax");
+    return false;
+  }
+
+  result.softmax = &softmax;
+  result.has_input_mask = false;
+
+  // GPT-2 might not have input mask. In that case the subgraph is like:
+  // {UnidirMask Subgraph} --> Softmax --> [MatMul]
+  if (is_input_mask_optional) { 
+    const Node* parent = graph_utils::GetInputNode(softmax, 0);
+    if (parent != nullptr && parent->OpType() == "Where") {   // UnidirMask Subgraph ends withs Where node
+      return true;
+    }
+  }
+
+  std::vector<graph_utils::EdgeEndToMatch> mask_path{
+      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 1, "Mul", {7, 13}, kOnnxDomain},
+      {0, 0, "Sub", {7, 13}, kOnnxDomain}};
+
+  if (!graph_utils::FindPath(softmax, true, mask_path, edges, logger)) {
+    DEBUG_LOG("Failed to find path for mask");
+    return false;
+  }
+
+  const Node& mask_add = edges[0]->GetNode();
+  const Node& mask_mul = edges[1]->GetNode();
+  const Node& mask_sub = edges[2]->GetNode();
 
   // Match optional mask cast node
   Node* p_mask_cast = nullptr;
@@ -547,7 +582,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
 
-  result.softmax = &softmax;
+  result.has_input_mask = true;
   result.add = &mask_add;
   result.mul = &mask_mul;
   result.sub = &mask_sub;
@@ -999,13 +1034,13 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
 
   // Find input mask. Unsqueeze -> Unsqueeze -> (Cast) -> Sub -> Mul -> Add -> Softmax
   AttentionMaskNodes mask_nodes;
-  if (!MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger)) {
+  if (!MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, true)) {
     DEBUG_LOG("MatchInputMaskSubgraph returns false");
     return false;
   }
 
   MatchUnidirMaskResult unidir_mask_result;
-  if (!MatchUnidirMaskSubgraph(graph, *(mask_nodes.add), unidir_mask_result, logger)) {
+  if (!MatchUnidirMaskSubgraph(graph, *(mask_nodes.has_input_mask ? mask_nodes.add : mask_nodes.softmax), unidir_mask_result, logger)) {
     DEBUG_LOG("MatchUnidirMaskSubgraph returns NULL");
     return false;
   }
@@ -1076,15 +1111,22 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
   }
 
   // Now everything is ready, we will start fusing subgraph.
-  NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
-  NodeArg* mask_int32 = GetOrCreateMaskInt32(graph, mask_input, mask_int32_map, layer_norm.GetExecutionProviderType());
-
   NodeArg* qkv_weights = graph.GetNode(gemm0_result.gemm->Index())->MutableInputDefs()[1];
   NodeArg* qkv_bias = graph.GetNode(gemm0_result.gemm->Index())->MutableInputDefs()[2];
 
   // Create Attention Node.
-  std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], qkv_weights, qkv_bias, mask_int32};
+  std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], qkv_weights, qkv_bias};
   std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
+
+  if (mask_nodes.has_input_mask){
+    NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
+    NodeArg* mask_int32 = GetOrCreateMaskInt32(graph, mask_input, mask_int32_map, layer_norm.GetExecutionProviderType());
+    input_defs.push_back(mask_int32);
+  } else {
+    // Add a missing optional input for mask.
+    std::string empty_name;
+    input_defs.push_back(&graph.GetOrCreateNodeArg(empty_name, nullptr));
+  }
 
   if (has_past) {
     input_defs.push_back(past_result.past);
