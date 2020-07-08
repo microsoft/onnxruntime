@@ -956,6 +956,16 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
+  
+  // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
+  // so if a model contain any of these operators, fall back to CPU
+  std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
+  if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
+    return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
+  })) {
+    return result;
+  }
+
   // Too many unsupported operators, fallback to run on CPU
   if (unsupported_nodes.size() >= 6)
   {
