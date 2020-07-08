@@ -5,17 +5,22 @@ import numpy
 import logging
 import coloredlogs
 import numpy as np
+import argparse
 
 from BERTSquad import *
 from Resnet50 import *
 from FastRCNN import *
+from MaskRCNN import *
+from SSD import *
 
 logger = logging.getLogger('')
 
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
     "resnet50": (Resnet50, "resnet50"),
-    # "fast-rcnn": (FastRCNN, "fast-rcnn")
+    "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    "ssd": (SSD, "ssd"),
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -135,20 +140,27 @@ def load_onnx_model_zoo_test_data(path):
 
     return inputs, outputs
 
-def validate(ref_outputs, outputs):
-    print('Predicted {} results.'.format(len(outputs)))
-    print('Predicted {} results.'.format(len(ref_outputs)))
-    # print(np.array(ref_outputs).shape)
-    # print(np.array(outputs).shape)
-    print(ref_outputs)
-    print(outputs)
+def validate(all_ref_outputs, all_outputs, decimal):
+    print('Reference {} results.'.format(len(all_ref_outputs)))
+    print('Predicted {} results.'.format(len(all_outputs)))
+    # print(np.array(all_ref_outputs).shape)
+    # print(np.array(all_outputs).shape)
+    # print(all_ref_outputs)
+    # print(all_outputs)
 
-    for i in range(len(outputs)):
-        output = outputs[i]
-        ref_output = ref_outputs[i]
-        # Compare the results with reference outputs up to 4 decimal places
-        for ref_o, o in zip(ref_output, output):
-            np.testing.assert_almost_equal(ref_o, o, 4)
+    for i in range(len(all_outputs)):
+        ref_outputs = all_ref_outputs[i]
+        outputs = all_outputs[i]
+
+        for j in range(len(outputs)):
+            ref_output = ref_outputs[j]
+            output = outputs[j]
+            # print(ref_output)
+            # print(output)
+
+            # Compare the results with reference outputs up to x decimal places
+            for ref_o, o in zip(ref_output, output):
+                np.testing.assert_almost_equal(ref_o, o, decimal)
 
     print('ONNX Runtime outputs are similar to reference outputs!')
 
@@ -177,7 +189,7 @@ def run_onnxruntime(models=MODELS):
             fp16 = False
             sequence_length = 1
             optimize_onnx = False
-            repeat_times = 10
+            repeat_times = 5 
             batch_size = 1
             device_info = [] 
 
@@ -217,7 +229,7 @@ def run_onnxruntime(models=MODELS):
 
             result = inference_ort(model, inputs, result_template, repeat_times, batch_size)
 
-            validate(ref_outputs, model.get_outputs())
+            validate(ref_outputs, model.get_outputs(), model.get_decimal())
 
             logger.info(result)
             results.append(result)
