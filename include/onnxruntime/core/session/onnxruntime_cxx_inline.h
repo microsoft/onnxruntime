@@ -488,7 +488,11 @@ T* Value::GetTensorMutableData() {
 template <typename T>
 inline T* Value::At(const std::initializer_list<int64_t>& location) {
   T* out;
-  ThrowOnError(Global<void>::api_.At(p_, &location, location.size(), dynamic_cast<void**>(&out)));
+  std::vector<int64_t> location_(location.size());
+  size_t i=0;
+  for(auto& elem : location)
+    location_[i++] = elem;
+  ThrowOnError(Global<void>::api_.At(p_, location_.data(), location_.size(), (void**)&out));
   return out;
 }
 

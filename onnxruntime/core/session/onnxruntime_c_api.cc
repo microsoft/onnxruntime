@@ -1444,9 +1444,10 @@ ORT_API_STATUS_IMPL(OrtApis::At, _In_ const OrtValue* value, int64_t* location_v
   // const OrtValue* ovfirst = value[0];
   // auto data = reinterpret_cast<const OrtValue*>(tensor.DataRaw());
   // auto data = tensor_data[offset];
-  float x1 = 5;
-  float* x = &x1;
-  *out = static_cast<void *>(x);
+  
+  // float x1 = location_values_length;
+  // float* x = &location_values_length;
+  *out = static_cast<void *>(&location_values_length);
   // *out = reinterpret_cast<const void *>(tensor_data + offset);
   return nullptr;
   API_IMPL_END

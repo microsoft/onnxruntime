@@ -85,11 +85,11 @@ class Tensor final {
 
   Tensor& operator=(Tensor&& other) noexcept;
 
-  // float operator[](size_t index) const noexcept {
-  //   auto data = reinterpret_cast<float*>(static_cast<char*>(p_data_) + byte_offset_);
-  //   // auto data = reinterpret_cast<float*>(p_data_);
-  //   return data[index];
-  // }
+  float operator[](size_t index) const noexcept {
+    auto data = reinterpret_cast<float*>(static_cast<char*>(p_data_) + byte_offset_);
+    // auto data = reinterpret_cast<float*>(p_data_);
+    return data[index];
+  }
 
   /**
      Returns the data type.
