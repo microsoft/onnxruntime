@@ -97,6 +97,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
+  run_options.training_mode = true;
 
   // Create dummy feeds
   std::vector<int64_t> image_dims = {1, 784};
@@ -317,6 +318,7 @@ static void RunBertTrainingWithChecks(
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
+  run_options.training_mode = true;
 
   // Creating feeds
   int batch_size = 13;
@@ -1390,6 +1392,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
+    sub_sess.run_options.training_mode = true;
 
     sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
     ASSERT_STATUS_OK(sub_sess.sess->Load(sub_model_files[sub_id]));

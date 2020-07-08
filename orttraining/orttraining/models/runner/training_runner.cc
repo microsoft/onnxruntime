@@ -751,6 +751,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 #endif
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
+    run_options.training_mode = true;
     auto status = session_.Run(
         run_options,
         pipeline_worker_pool_.worker_states[worker_id].feed_names,
