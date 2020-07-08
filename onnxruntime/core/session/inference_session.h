@@ -252,7 +252,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                             std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
    * See Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches)
@@ -271,7 +271,7 @@ class InferenceSession {
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
-  virtual common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
