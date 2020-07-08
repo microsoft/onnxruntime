@@ -1418,22 +1418,22 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, int64_t* location_values, size_t location_values_length,
+ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_length,
                    _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
   if (location_values_length != tensor->Shape().NumDimensions())
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions does not match shape size");
-  std::vector<int64_t> location(location_values_length);
-  for(size_t i=0; i<location_values_length; i++) {
-    if(location_values[i] < 0 || location_values[i] >= tensor->Shape()[i])
+  std::vector<size_t> location(location_values_length);
+  for (size_t i = 0; i < location_values_length; i++) {
+    if (location_values[i] >= (size_t)tensor->Shape()[i])
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
     location[i] = location_values[i];
   }
   size_t offset = 0;
-  for(size_t i=1; i<=tensor->Shape().NumDimensions(); i++) {
+  for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
     int sum=1;
-    for(size_t j=i+1; j<=tensor->Shape().NumDimensions(); j++) sum *= tensor->Shape()[j-1];
+    for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= tensor->Shape()[j-1];
     offset += location[i-1] * sum;
   }
   auto data = ((char *)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);

@@ -202,5 +202,5 @@ ORT_API_STATUS_IMPL(GetAvailableProviders, _Outptr_ char ***out_ptr,
                     _In_ int *providers_length);
 ORT_API_STATUS_IMPL(ReleaseAvailableProviders, _In_ char **ptr,
                     _In_ int providers_length);
-ORT_API_STATUS_IMPL(At, _Inout_ OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ void** out);
+ORT_API_STATUS_IMPL(At, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_length, _Outptr_ void** out);
 }  // namespace OrtApis
