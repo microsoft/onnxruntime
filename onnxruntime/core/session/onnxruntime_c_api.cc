@@ -1418,14 +1418,14 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_length,
+ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
                    _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
-  if (location_values_length != tensor->Shape().NumDimensions())
+  if (location_values_count != tensor->Shape().NumDimensions())
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions do not match shape size");
-  std::vector<size_t> location(location_values_length);
-  for (size_t i = 0; i < location_values_length; i++) {
+  std::vector<size_t> location(location_values_count);
+  for (size_t i = 0; i < location_values_count; i++) {
     if (location_values[i] >= (size_t)tensor->Shape()[i])
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
     location[i] = location_values[i];
