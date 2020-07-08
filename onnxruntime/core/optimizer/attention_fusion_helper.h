@@ -469,6 +469,10 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
                                                                                                                    |
                                                                   (optional)                                       v
 [Attention_mask] --> Unsqueeze (axes=1) --> Unsqueeze (axes=2) --> Cast ---->Sub(1,*) --> Mul(*, -10000.0) --> Add( ,*)--->SoftMax -->[MatMul]
+
+When is_input_mask_optional is true, this function also matches the following subgraph:
+    {UnidirMask Subgraph [Where]} --> Softmax --> [MatMul]
+In this case, we only match two nodes: "Softmax" and "Where". Note that "Where" is the last node in unidirectional subgraph.
 */
 bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, AttentionMaskNodes& result, const logging::Logger& logger, bool is_input_mask_optional) {
   DEBUG_LOG("Start MatchInputMaskSubgraph");
@@ -478,7 +482,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(qkv_matmul, true, softmax_path, edges, logger)) {
-    DEBUG_LOG("Failed to find path for mask");
+    DEBUG_LOG("Failed to find Softmax node");
     return false;
   }
 
