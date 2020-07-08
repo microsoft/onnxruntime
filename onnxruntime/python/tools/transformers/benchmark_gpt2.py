@@ -53,25 +53,6 @@ PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
 MODEL_CLASSES = ['GPT2LMHeadModel', 'GPT2Model']
 
-
-def dump_environment():
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.info("OMP_NUM_THREADS={}".format(os.environ["OMP_NUM_THREADS"]))
-    else:
-        logger.info("no environment variable of OMP_NUM_THREADS")
-
-    if "OMP_WAIT_POLICY" in os.environ:
-        logger.info("OMP_WAIT_POLICY={}".format(os.environ["OMP_WAIT_POLICY"]))
-    else:
-        logger.info("no environment variable of OMP_WAIT_POLICY")
-
-
-def setup_environment():
-    # ATTENTION: these environment variables must be set before importing onnxruntime.
-    os.environ["OMP_NUM_THREADS"] = str(psutil.cpu_count(logical=True))
-    os.environ["OMP_WAIT_POLICY"] = 'ACTIVE'
-    dump_environment()
-
 def pytorch_inference(model, inputs, total_runs=100):
     logger.debug(f"start pytorch_inference")
     input_ids, past, attention_mask, position_ids = inputs
@@ -348,6 +329,8 @@ def parse_arguments():
 
     parser.add_argument("-q", "--quantize", required=False, action="store_true", help="Run quantization model")
 
+    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -443,14 +426,13 @@ def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_at
     return export_model_path
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, verbose):
+def create_onnxruntime_session(onnx_model_path, use_gpu, verbose, thread_num):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession
         sess_options = SessionOptions()
-        if not use_gpu:
-            sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+        sess_options.intra_op_num_threads = thread_num
+        logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
 
         if verbose:
             sess_options.log_severity_level = 0
@@ -505,7 +487,8 @@ def main():
     if args.float16:
         assert args.optimize_onnx and args.use_gpu, "--float16 requires --optimize_onnx --use_gpu"
 
-    dump_environment()
+    torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
+    print(torch.__config__.parallel_info())
 
     cache_dir = args.cache_dir
     if not os.path.exists(cache_dir):
@@ -532,8 +515,6 @@ def main():
     export_model_path = export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, args.use_attention_mask,
                                     args.verbose)
 
-    # setup environment variables before importing onnxruntime.
-    setup_environment()
     import onnxruntime
 
     if args.use_gpu:
@@ -568,7 +549,7 @@ def main():
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         print("finished")
 
-    session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose)
+    session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose, args.thread_num)
     if session is None:
         return
 

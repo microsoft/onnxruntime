@@ -83,8 +83,6 @@ if "OMP_NUM_THREADS" not in os.environ:
 import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
-torch.set_num_threads(cpu_count)
-
 # use_cache is True by default in GPT2Model. Here we wrap a class to disable past state output.
 class GPT2ModelNoPastState(GPT2Model):
     def __init__(self, config):
@@ -100,14 +98,15 @@ def load_pretrained_model(model_name, config, cache_dir):
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, single_thread = False):
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, thread_num = -1):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     if not enable_all_optimization:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
-    if single_thread or (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
+    sess_options.intra_op_num_threads = thread_num
+    if (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
         # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
         # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
         sess_options.intra_op_num_threads = 1
@@ -407,7 +406,7 @@ def allocateOutputBuffers(output_buffers, max_last_state_size, max_pooler_size, 
 
 def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, input_counts,
                     optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite, disable_ort_io_binding,
-                    use_raw_attention_mask, quantize, single_thread):
+                    use_raw_attention_mask, quantize, thread_num):
     import onnxruntime
 
     results = []
@@ -435,7 +434,7 @@ def run_onnxruntime(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, r
             if not is_valid_onnx_model:
                 continue
 
-            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True, single_thread = single_thread)
+            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True, thread_num = thread_num)
             if ort_session is None:
                 continue
 
@@ -516,7 +515,7 @@ def quantize_model(model, dtype=torch.qint8):
     return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
 
 def run_pytorch(use_gpu, model_names, fp16, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
-                verbose, quantize, single_thread):
+                verbose, quantize):
     results = []
     if use_gpu and not torch.cuda.is_available():
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
@@ -744,7 +743,7 @@ def parse_arguments():
     parser.set_defaults(use_raw_attention_mask=False)
 
     parser.add_argument("-q", "--quantize", required=False, action="store_true", help="Run quantization model")
-    parser.add_argument("--single_thread", required=False, action="store_true", help="Run quantization model")
+    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
     args = parser.parse_args()
     return args
@@ -781,8 +780,8 @@ def main():
 
     results = []
 
-    if args.single_thread:
-        torch.set_num_threads(1)
+    torch.set_num_threads(cpu_count if args.thread_num <= 0 else args.thread_num)
+    print(torch.__config__.parallel_info())
 
     if enable_torch or enable_torchscript:
         if args.input_counts != [1]:
@@ -790,11 +789,11 @@ def main():
 
         if enable_torchscript:
             results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, True, args.cache_dir, args.verbose, args.quantize, args.single_thread)
+                                   args.test_times, True, args.cache_dir, args.verbose, args.quantize)
 
         if enable_torch:
             results += run_pytorch(args.use_gpu, args.models, args.fp16, args.batch_sizes, args.sequence_lengths,
-                                   args.test_times, False, args.cache_dir, args.verbose, args.quantize, args.single_thread)
+                                   args.test_times, False, args.cache_dir, args.verbose, args.quantize)
 
     if enable_onnxruntime:
         try:
@@ -802,7 +801,7 @@ def main():
                                        args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
                                        args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
                                        args.disable_ort_io_binding, args.use_raw_attention_mask,
-                                       args.quantize, args.single_thread)
+                                       args.quantize, args.thread_num)
         except:
             logger.error(f"Exception", exc_info=True)
 
