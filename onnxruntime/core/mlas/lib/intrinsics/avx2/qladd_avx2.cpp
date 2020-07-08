@@ -75,6 +75,30 @@ MlasPackS16_256<int8_t>(
     return _mm256_packs_epi16(a, b);
 }
 
+MLAS_FORCEINLINE
+static
+__m256i
+MlasLoad32Bytes(const uint8_t* buffer, int64_t N)
+{
+    if (N >= 32) {
+        return _mm256_lddqu_si256((const __m256i*)buffer);
+    } else {
+        uint8_t dup[32];
+        uint8_t* dst = dup;
+        while (N >= 4) {
+            *(uint32_t*)(dst) = *(uint32_t*)(buffer);
+            N -= 4;
+            buffer += 4;
+            dst += 4;
+        }
+        while (N > 0) {
+            *dst++ = *buffer++;
+            --N;
+        }
+        return _mm256_lddqu_si256((const __m256i*)dup);
+    }
+}
+
 template <typename DataType, bool IsScalarA, bool IsScalarB>
 static
 void
@@ -111,11 +135,11 @@ MlasQLinearAddKernelAvx2Helper(
     while (n > 0) {
         __m256i va_i8x32, vb_i8x32;
         if (!IsScalarA) {
-            va_i8x32 = _mm256_lddqu_si256((const __m256i*)InputA);
+            va_i8x32 = MlasLoad32Bytes((const uint8_t*)InputA, n);
             InputA += 32;
         }
         if (!IsScalarB) {
-            vb_i8x32 = _mm256_lddqu_si256((const __m256i*)InputB);
+            vb_i8x32 = MlasLoad32Bytes((const uint8_t*)InputB, n);
             InputB += 32;
         }
 
