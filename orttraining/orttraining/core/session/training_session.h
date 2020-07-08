@@ -469,7 +469,7 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
-  const std::string training_mode_string_ = "training_mode";
+  static const std::string training_mode_string_;
 };
 }  // namespace training
 }  // namespace onnxruntime
