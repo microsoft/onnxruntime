@@ -6,6 +6,8 @@
 // This C++ API further simplifies usage and provides support for modern C++ syntax/features
 // at the cost of some overhead (i.e. using std::string over char *).
 //
+// Where applicable, default memory allocator options are used unless explicitly set.
+//
 // Experimental components are designed as drop-in replacements of the regular API, requiring
 // minimal code modifications to use.
 //
