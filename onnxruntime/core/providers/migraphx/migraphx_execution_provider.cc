@@ -404,13 +404,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-  } else if (optype == "BatchNormalization") {
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4)
-    {
-      return true;
-    }    
   } else if (optype == "Clip") {
     auto args = node->InputDefs();
     if (args.size() >= 3)
@@ -422,13 +415,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     {
       if (initializers.find(args[1]->Name()) == initializers.end())
         return true;
-    }
-  } else if (optype == "Conv") {
-    // input can only have 4 dims
-    const auto input_shape = node->InputDefs()[0]->Shape();
-    if (input_shape != nullptr and input_shape->dim_size() != 4)
-    {
-      return true;
     }
   } else if (optype == "ConstantOfShape") {
     const auto shape_arg = node->InputDefs()[0];
@@ -772,11 +758,11 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           const logging::Logger& logger) {
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
       "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
-      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", 
-      "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "Gemm", 
-      "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", "InstanceNormalization", "LRN", 
-      "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", "MaxPool", "Min", "Mul", "Neg", 
-      "OneHot", "Pad", "Pow", "PRelu",
+      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", 
+      "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
+      "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
+      "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
+      "MaxPool", "Min", "Mul", "Neg", "OneHot", "Pad", "Pow", "PRelu",
       "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", 
       "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", 
       "Round", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze", 
@@ -970,6 +956,18 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
+  if (!unsupported_nodes.empty())
+  {
+    std::cout << "=======================================" << std::endl;
+    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+    for (auto& idx : unsupported_nodes)
+    {
+      auto&& node = graph_viewer.GetNode(idx);
+      std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
+    }
+    std::cout << "=======================================" << std::endl;
+  }
+
   // Too many unsupported operators, fallback to run on CPU
   if (unsupported_nodes.size() >= 6)
   {
@@ -1098,7 +1096,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
-  // std::size_t fused_node_idx = 0;
+  std::size_t fused_node_idx = 0;
   for (const auto& fused_node : fused_nodes) {
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
@@ -1112,6 +1110,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
+
+    std::string onnx_name("ort_compile_");
+    onnx_name.append(std::to_string(fused_node_idx++));
+    onnx_name.append(".onnx");
+    std::ofstream ofs(onnx_name, std::ios::binary | std::ios::out);
+    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.length());
+    ofs.close();
+
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
 
