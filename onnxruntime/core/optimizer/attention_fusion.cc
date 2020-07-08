@@ -416,7 +416,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
   // Find mask nodes: Unsqueeze -> Unsqueeze -> (Cast) -> Sub -> Mul -> Add -> Softmax --> [MatMul]
   // The "Cast" node in parentheses is optional.
   AttentionFusionHelper::AttentionMaskNodes mask_nodes;
-  if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger)) {
+  if (!AttentionFusionHelper::MatchInputMaskSubgraph(graph, qkv_matmul, mask_nodes, logger, false)) {
     DEBUG_LOG("Failed in match input mask subgraph");
     return false;
   }
