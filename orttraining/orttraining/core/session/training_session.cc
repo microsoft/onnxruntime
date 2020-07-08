@@ -836,7 +836,7 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
       for (auto& drop_ratio : dropout_eval_feeds_) {
         OrtValue feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
-        auto cpu_allocator = session_state_->GetExecutionProviders()
+        auto cpu_allocator = GetSessionState().GetExecutionProviders()
                             .Get(onnxruntime::kCpuExecutionProvider)
                             ->GetAllocator(0, OrtMemTypeDefault);
         feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
@@ -846,12 +846,12 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
     }
     else {
       auto& input_names = io_binding.GetInputNames();
-      if (session_state_->GetInputNodeInfoMap().find(training_mode_string_) != session_state_->GetInputNodeInfoMap().end() &&
+      if (GetSessionState().GetInputNodeInfoMap().find(training_mode_string_) != GetSessionState().GetInputNodeInfoMap().end() &&
           std::find(input_names.begin(), input_names.end(), training_mode_string_) == input_names.end()) {
         // Set training_mode input to false
         OrtValue training_mode_feed_value;
         // We allocate on CPU first, copy will be taken care of downstream.
-        auto cpu_allocator = session_state_->GetExecutionProviders()
+        auto cpu_allocator = GetSessionState().GetExecutionProviders()
                             .Get(onnxruntime::kCpuExecutionProvider)
                             ->GetAllocator(0, OrtMemTypeDefault);
         training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(cpu_allocator, false, true /*is_1d*/);

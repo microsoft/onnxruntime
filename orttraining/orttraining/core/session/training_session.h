@@ -306,8 +306,6 @@ class TrainingSession : public InferenceSession {
   using InferenceSession::Run;  // For overload resolution.
   common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
 
-  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) override;
-
  private:
   /** Configures the loss function.
   The loss function can either be provided externally or built from the provided loss function information.
@@ -478,6 +476,8 @@ class TrainingSession : public InferenceSession {
   std::unordered_set<std::string> dropout_eval_feeds_;
   OptimizerGraphConfig opt_graph_config_;
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs_;
+
+  GradientGraphConfiguration gradient_graph_config_;
   static const std::string training_mode_string_;
 };
 }  // namespace training
