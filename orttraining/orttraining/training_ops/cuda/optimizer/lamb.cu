@@ -203,6 +203,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     }
   } else {
     if (g_new) {
+      printf("####gradient is zero\n");
       *g_new = T3(0);
     }
     if (w_new) {
