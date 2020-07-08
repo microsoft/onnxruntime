@@ -956,18 +956,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
-  if (!unsupported_nodes.empty())
-  {
-    std::cout << "=======================================" << std::endl;
-    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-    for (auto& idx : unsupported_nodes)
-    {
-      auto&& node = graph_viewer.GetNode(idx);
-      std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
-    }
-    std::cout << "=======================================" << std::endl;
-  }
-
   // Too many unsupported operators, fallback to run on CPU
   if (unsupported_nodes.size() >= 6)
   {
@@ -1096,7 +1084,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
-  std::size_t fused_node_idx = 0;
   for (const auto& fused_node : fused_nodes) {
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
@@ -1110,13 +1097,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
-
-    std::string onnx_name("ort_compile_");
-    onnx_name.append(std::to_string(fused_node_idx++));
-    onnx_name.append(".onnx");
-    std::ofstream ofs(onnx_name, std::ios::binary | std::ios::out);
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.length());
-    ofs.close();
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);
