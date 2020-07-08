@@ -423,9 +423,9 @@ class PosixEnv : public Env {
   }
 
   common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
-    char* error_str = dlerror();  // clear any old error_str
+    dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_LOCAL);
-    error_str = dlerror();
+    char* error_str = dlerror();
     if (!*handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
                             "Failed to load library " + library_filename + " with error: " + error_str);
@@ -437,9 +437,9 @@ class PosixEnv : public Env {
     if (!handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
     }
-    char* error_str = dlerror();  // clear any old error_str
+    dlerror();  // clear any old error_str
     int retval = dlclose(handle);
-    error_str = dlerror();
+    char* error_str = dlerror();
     if (retval != 0) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
                             "Failed to unload library with error: " + std::string(error_str));
@@ -448,9 +448,9 @@ class PosixEnv : public Env {
   }
 
   common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
-    char* error_str = dlerror();  // clear any old error str
+    dlerror();  // clear any old error str
     *symbol = dlsym(handle, symbol_name.c_str());
-    error_str = dlerror();
+    char* error_str = dlerror();
     if (error_str) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
                             "Failed to get symbol " + symbol_name + " with error: " + error_str);

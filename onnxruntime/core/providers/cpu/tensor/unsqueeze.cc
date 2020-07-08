@@ -65,9 +65,8 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 Status Unsqueeze::Compute(OpKernelContext* ctx) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareCompute(ctx, p));
-
+  ORT_ENFORCE(nullptr != p.input_tensor && nullptr != p.output_tensor, "Input and output must not be NULL");
   CopyCpuTensor(p.input_tensor, p.output_tensor);
-
   return Status::OK();
 }
 }  // namespace onnxruntime
