@@ -94,6 +94,12 @@ class Node {
   /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
   const std::string& Domain() const noexcept;
 
+  /** Gets the Node's exection priority. 
+  @remarks Higher value means higher priority  */
+  int Priority() const noexcept;
+  
+  void SetPriority(int priority) noexcept;
+
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept;
@@ -112,7 +118,7 @@ class Node {
   Nodes of type "Fused" are created during partitioning and the function body 
   initialization for such nodes also happens during node creation. Therefore, 
   initialization of function body will happen via this method only in case 2 mentioned above.
-  */ 
+  */
   const Function* GetFunctionBody(bool try_init_func_body = true);
 
   /** Gets the function body if applicable otherwise nullptr. */
@@ -450,6 +456,10 @@ class Node {
 
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
+
+  // Execution priority
+  int priority_ = 0;
+
   Node::Type node_type_ = Node::Type::Primitive;
 
   // The function body is owned by graph_
@@ -543,7 +553,7 @@ class Graph {
   }
 
   /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
-  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept{
+  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept {
     return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
   }
 
@@ -559,7 +569,7 @@ class Graph {
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
 
-  bool IsOutput(const NodeArg* node_arg) const noexcept{
+  bool IsOutput(const NodeArg* node_arg) const noexcept {
     return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
   }
 
@@ -793,7 +803,7 @@ class Graph {
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
-  Status InlineFunction(Node& node); 
+  Status InlineFunction(Node& node);
 
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);

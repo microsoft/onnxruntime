@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-// #include "core/graph/graph_viewer.h"
 
 #include <deque>
 
@@ -16,10 +15,12 @@ std::vector<const NodeArg*> TransformerLayerRecompute::IdentifyTransformerLayerE
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
 
-    if (node.OpType() == "LayerNormalization") {
-      layer_edges.push_back(node.InputDefs()[0]);
+    if ((node.OpType() == "LayerNormalization" || node.OpType() == "TrainableDropout") && node.GetOutputEdgesCount() == 4) {
+      layer_edges.push_back(node.OutputDefs()[0]);
     }
   }
+
+  // need to match two patterns here: one for start, one for end
   return layer_edges;
 }
 
@@ -71,12 +72,12 @@ std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(Graph& gra
     }
   }
 
-  std::cout << "start: " << start->Name() << "\n";
-  std::cout << "end: " << end->Name() << "\n";
+  // std::cout << "start: " << start->Name() << "\n";
+  // std::cout << "end: " << end->Name() << "\n";
 
-  for (const Node* node : intersect_nodes) {
-    std::cout << "Node: " << node->Name() << "\n";
-  }
+  // for (const Node* node : intersect_nodes) {
+  //   std::cout << "Node: " << node->Name() << "\n";
+  // }
 
   return intersect_nodes;
 }
@@ -95,13 +96,13 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       if (initializers.find(input->Name()) != initializers.end() ||
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
-        std::cout << "original input: " << input->Name() << "\n";
+        //std::cout << "original input: " << input->Name() << "\n";
       } else {
         auto& recomputed_input = graph.GetOrCreateNodeArg(input->Name() + "_recompute",
                                                           input->TypeAsProto());
         recomputed_inputs.push_back(&recomputed_input);
 
-        std::cout << "recomputed input: " << recomputed_input.Name() << "\n";
+        //std::cout << "recomputed input: " << recomputed_input.Name() << "\n";
       }
       recomputed_inputs.push_back(node->MutableOutputDefs()[1]);
       recomputed_inputs.push_back(node->MutableInputDefs()[1]);
@@ -110,13 +111,14 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       auto& recomputed_output = graph.GetOrCreateNodeArg(output->Name() + "_recompute",
                                                          output->TypeAsProto());
 
-      graph.AddNode(node->Name() + "_recompute",
-                    "TrainableDropoutGrad",
-                    "Recompute of " + node->Name(),
-                    recomputed_inputs,
-                    {&recomputed_output},
-                    {},
-                    kMSDomain);
+      Node& recompute_node = graph.AddNode(node->Name() + "_recompute",
+                                           "TrainableDropoutGrad",
+                                           "Recompute of " + node->Name(),
+                                           recomputed_inputs,
+                                           {&recomputed_output},
+                                           {},
+                                           kMSDomain);
+      recompute_node.SetPriority(-10);
       continue;
     }
 
@@ -128,13 +130,13 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
 
-        std::cout << "original input: " << input->Name() << "\n";
+        // std::cout << "original input: " << input->Name() << "\n";
       } else {
         auto& recomputed_input = graph.GetOrCreateNodeArg(input->Name() + "_recompute",
                                                           input->TypeAsProto());
         recomputed_inputs.push_back(&recomputed_input);
 
-        std::cout << "recomputed input: " << recomputed_input.Name() << "\n";
+        // std::cout << "recomputed input: " << recomputed_input.Name() << "\n";
       }
     }
 
@@ -144,18 +146,19 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
                                                          output->TypeAsProto());
       recomputed_outputs.push_back(&recomputed_output);
 
-      std::cout << "recomputed output: " << recomputed_output.Name() << "\n";
+      // std::cout << "recomputed output: " << recomputed_output.Name() << "\n";
     }
 
-    graph.AddNode(node->Name() + "_recompute",
-                  node->OpType(),
-                  "Recompute of " + node->Name(),
-                  recomputed_inputs,
-                  recomputed_outputs,
-                  &node->GetAttributes(),
-                  node->Domain());
+    Node& recompute_node = graph.AddNode(node->Name() + "_recompute",
+                                         node->OpType(),
+                                         "Recompute of " + node->Name(),
+                                         recomputed_inputs,
+                                         recomputed_outputs,
+                                         &node->GetAttributes(),
+                                         node->Domain());
+    recompute_node.SetPriority(-10);
 
-    std::cout << "Added Node: " << node->Name() << "_recompute\n";
+    // std::cout << "Added Node: " << node->Name() << "_recompute\n";
   }
 
   return;
@@ -164,11 +167,11 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
 Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
   std::vector<const NodeArg*> edges = IdentifyTransformerLayerEdges(graph);
 
-  for (const NodeArg* edge : edges) {
-    std::cout << "Edge: " << edge->Name() << "\n";
-  }
+  // for (const NodeArg* edge : edges) {
+  //   std::cout << "Edge: " << edge->Name() << "\n";
+  // }
 
-  for (size_t i = 0; i < edges.size() - 3; ++i) {
+  for (size_t i = 0; i < edges.size() - 1; ++i) {
     std::vector<const Node*> nodes = NodesBetweenEdges(graph, edges[i], edges[i + 1]);
     InsertRecomputeNodes(graph, nodes);
   }

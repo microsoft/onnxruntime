@@ -425,6 +425,14 @@ const OpSchema* Node::Op() const noexcept {
   return op_;
 }
 
+int Node::Priority() const noexcept {
+  return priority_;
+}
+
+void Node::SetPriority(int priority) noexcept {
+  priority_ = priority;
+}
+
 Node::Type Node::NodeType() const noexcept {
   return node_type_;
 }
@@ -510,6 +518,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
   }

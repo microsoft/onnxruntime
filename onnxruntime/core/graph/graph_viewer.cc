@@ -13,6 +13,9 @@
 namespace onnxruntime {
 
 bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
+  // if (n1->Priority() < n2->Priority()) {
+  //   return true;
+  // }
   return n1->Index() < n2->Index();
 }
 
@@ -25,6 +28,15 @@ GraphViewer::GraphViewer(const Graph& graph) {
       leaf_nodes.push_back(&node);
     }
   }
+
+  // Reverse the order of input vector, such that forward nodes are ReverseDFS first 
+  // This results in an execution order that forward nodes is always ran before the backward and recompute nodes 
+  std::reverse(leaf_nodes.begin(), leaf_nodes.end());
+
+  for (const Node* n : leaf_nodes) {
+    std::cout << "Graph View leaf nodes: " << n->Name() << "\n";
+  }
+
   graph.ReverseDFSFrom(
       leaf_nodes,
       nullptr,
