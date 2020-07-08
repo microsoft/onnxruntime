@@ -1214,6 +1214,22 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
+            iobinding_test = False
+            # For CUDA enabled builds test IOBinding feature
+            if args.use_cuda:
+                iobinding_test = True
+                try:
+                    import torch  # noqa
+                except ImportError as error:
+                    iobinding_test = False
+                    log.exception(error)
+                    log.warning(
+                        "Torch is not installed. "
+                        "The IOBinding tests will be skipped as it requires Torch.")
+
+            if iobinding_test:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
 

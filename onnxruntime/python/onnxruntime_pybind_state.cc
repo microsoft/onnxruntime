@@ -185,7 +185,7 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 template <typename T>
-void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* /*data_transfer_manager*/) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
@@ -242,47 +242,47 @@ static const char* GetDeviceName(const OrtDevice& device) {
 }
 
 template <>
-void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj, nullptr);
+    GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
     py_list.append(obj);
   }
   pyobjs.push_back(py_list);
 }
 
-void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-    AddNonTensor<TensorSeq>(val, pyobjs);
+    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager);
   } else {
     utils::ContainerChecker c_checker(val_type);
     if (c_checker.IsMap()) {
       if (c_checker.IsMapOf<std::string, std::string>()) {
-        AddNonTensor<MapStringToString>(val, pyobjs);
+        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<std::string, int64_t>()) {
-        AddNonTensor<MapStringToInt64>(val, pyobjs);
+        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<std::string, float>()) {
-        AddNonTensor<MapStringToFloat>(val, pyobjs);
+        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<std::string, double>()) {
-        AddNonTensor<MapStringToDouble>(val, pyobjs);
+        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, std::string>()) {
-        AddNonTensor<MapInt64ToString>(val, pyobjs);
+        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
-        AddNonTensor<MapInt64ToInt64>(val, pyobjs);
+        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, float>()) {
-        AddNonTensor<MapInt64ToFloat>(val, pyobjs);
+        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, double>()) {
-        AddNonTensor<MapInt64ToDouble>(val, pyobjs);
+        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager);
       }
     } else {
       if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
-        AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
+        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
-        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
+        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager);
       } else {
         throw std::runtime_error("Output is a non-tensor type which is not supported.");
       }
@@ -290,10 +290,10 @@ void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
-  GetPyObjFromTensor(rtensor, obj);
+  GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
   pyobjs.push_back(obj);
 }
 
@@ -460,13 +460,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+                onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
 #endif
 #ifdef USE_ACL
             onnxruntime::CreateExecutionProviderFactory_ACL(0)
 #endif
 #ifdef USE_ARMNN
-            onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
+                onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
 #endif
         };
 
@@ -642,7 +642,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
         }
 
-        //Check if input is sequence of tensors 
+        //Check if input is sequence of tensors
         onnx::TypeProto type_proto;
         const auto& def_list = *px.second;
         auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
@@ -654,7 +654,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         if (!temp) {
           throw std::runtime_error("Corresponding type_proto is null");
         } else {
-        type_proto = *temp;
+          type_proto = *temp;
         }
         if (type_proto.has_sequence_type()) {
           throw std::runtime_error("Cannot bind input to sequence of tensors");
@@ -681,8 +681,8 @@ void addObjectMethods(py::module& m, Environment& env) {
         OrtValue mlvalue;
 
         mlvalue.Init(p_tensor.release(),
-                       DataTypeImpl::GetType<Tensor>(),
-                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
         auto status = io_binding->Get()->BindInput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
@@ -699,16 +699,15 @@ void addObjectMethods(py::module& m, Environment& env) {
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
-                       DataTypeImpl::GetType<Tensor>(),
-                       DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-        
+                     DataTypeImpl::GetType<Tensor>(),
+                     DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
-      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name) -> void {
-        OrtValue mlvalue;
-        auto status = io_binding->Get()->BindOutput(name, mlvalue);
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
+        auto status = io_binding->Get()->BindOutput(name, device);
         if (!status.IsOK())
           throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
@@ -718,15 +717,15 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       })
-      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
+      .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
         for (const auto& _ : outputs) {
           if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch);
+            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
           } else {
-            AddNonTensorAsPyObj(_, rfetch);
+            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
           }
         }
         return rfetch;
@@ -802,8 +801,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
-          R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
-;
+                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -955,9 +953,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         rfetch.reserve(fetches.size());
         for (auto _ : fetches) {
           if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch);
+            AddTensorAsPyObj(_, rfetch, nullptr);
           } else {
-            AddNonTensorAsPyObj(_, rfetch);
+            AddNonTensorAsPyObj(_, rfetch, nullptr);
           }
         }
         return rfetch;
