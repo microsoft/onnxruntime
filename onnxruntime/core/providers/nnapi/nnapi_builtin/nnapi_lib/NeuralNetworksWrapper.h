@@ -98,12 +98,23 @@ inline std::string TypeToStr(const Type& type) {
   }
 }
 
+struct SymmPerChannelQuantParams {
+  ANeuralNetworksSymmPerChannelQuantParams params;
+  std::vector<float> scales;
+
+  SymmPerChannelQuantParams(const std::vector<float>& scales_vec, uint32_t channel_dim);
+  SymmPerChannelQuantParams(const SymmPerChannelQuantParams& other);
+  SymmPerChannelQuantParams& operator=(const SymmPerChannelQuantParams& other);
+};
+
 struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
   std::vector<uint32_t> dimensions;
+  std::unique_ptr<SymmPerChannelQuantParams> channel_quant;
 
   explicit OperandType(Type type, const std::vector<uint32_t>& d = {}, float scale = 0.0f, int32_t zeroPoint = 0);
+  explicit OperandType(Type type, const std::vector<uint32_t>& d, const SymmPerChannelQuantParams& cq);
   OperandType(const OperandType& other);
   OperandType& operator=(const OperandType& other);
 
