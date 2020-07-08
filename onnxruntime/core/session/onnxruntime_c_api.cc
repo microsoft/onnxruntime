@@ -1423,7 +1423,7 @@ ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_value
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
   if (location_values_length != tensor->Shape().NumDimensions())
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions does not match shape size");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions do not match shape size");
   std::vector<size_t> location(location_values_length);
   for (size_t i = 0; i < location_values_length; i++) {
     if (location_values[i] >= (size_t)tensor->Shape()[i])
