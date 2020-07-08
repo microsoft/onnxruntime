@@ -659,8 +659,7 @@ MlasQLinearAddKernelHelper(
     }
 
     auto n = static_cast<int64_t>(N);
-    MLAS_INT32X4 vc = _mm_setzero_si128();
-    while (n > 0) {
+    while (n >= 8) {
         if (!IsScalarA) {
             const auto va_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)InputA);
             const auto va_i16x8 = _mm_unpacklo_epi8(va_low_half, va_low_half);
@@ -688,17 +687,59 @@ MlasQLinearAddKernelHelper(
             r_hi = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)), _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
         }
         const auto vc_i16x8 = _mm_packs_epi32(r_lo, r_hi);
-        vc = MlasPackS16_128<DataType>(vc_i16x8, vc_i16x8);
+        MLAS_INT32X4 vc = MlasPackS16_128<DataType>(vc_i16x8, vc_i16x8);
 
         n -= 8;
-        if (n < 0) break;
-
         _mm_storel_epi64((MLAS_INT32X4*)OutputC, vc);
         OutputC += 8;
     }
 
-    if (n < 0) {
-        n += 8;
+    if (n > 0) {
+        uint8_t TailData[8] = { 0 };
+
+        if (!IsScalarA) {
+            uint8_t* tail = TailData;
+            uint8_t* tail_end = tail + n;
+            do {
+                *tail = *(const uint8_t*)InputA;
+                tail++;
+                InputA++;
+            } while (tail < tail_end);
+            const auto va_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)TailData);
+            const auto va_i16x8 = _mm_unpacklo_epi8(va_low_half, va_low_half);
+            InputA += 8;
+            va_lo = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpacklo_epi16(va_i16x8, va_i16x8), 24));
+            va_hi = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpackhi_epi16(va_i16x8, va_i16x8), 24));
+        }
+        if (!IsScalarB) {
+            uint8_t* tail = TailData;
+            uint8_t* tail_end = tail + n;
+            do {
+                *tail = *(const uint8_t*)InputB;
+                tail++;
+                InputB++;
+            } while (tail < tail_end);
+            const auto vb_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)TailData);
+            const auto vb_i16x8 = _mm_unpacklo_epi8(vb_low_half, vb_low_half);
+            InputB += 8;
+            vb_lo = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpacklo_epi16(vb_i16x8, vb_i16x8), 24));
+            vb_hi = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpackhi_epi16(vb_i16x8, vb_i16x8), 24));
+        }
+
+        MLAS_INT32X4 r_lo, r_hi;
+        if (IsScalarA) {
+            r_lo = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(vb_lo, VectorScaleRatio_BC)));
+            r_hi = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
+        } else if (IsScalarB) {
+            r_lo = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_lo, VectorScaleRatio_AC)));
+            r_hi = _mm_cvtps_epi32(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)));
+        } else {
+            r_lo = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_lo, VectorScaleRatio_AC)), _mm_mul_ps(vb_lo, VectorScaleRatio_BC)));
+            r_hi = _mm_cvtps_epi32(_mm_add_ps(_mm_add_ps(VectorFixedPart, _mm_mul_ps(va_hi, VectorScaleRatio_AC)), _mm_mul_ps(vb_hi, VectorScaleRatio_BC)));
+        }
+        const auto vc_i16x8 = _mm_packs_epi32(r_lo, r_hi);
+        MLAS_INT32X4 vc = MlasPackS16_128<DataType>(vc_i16x8, vc_i16x8);
+
         if (n & 4) {
             *(int*)OutputC = _mm_cvtsi128_si32(vc);
             n -= 4;
