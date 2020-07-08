@@ -429,6 +429,32 @@ TEST(CApiTest, create_tensor_with_data) {
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
 }
 
+TEST(CApiTest, access_tensor_data_elements) {
+  /**
+   * Create a 2x3 data blob that looks like:
+   *  
+   *  0 1 2
+   *  3 4 5
+   */
+  std::vector<int64_t> shape = {2,3};
+  int element_count = 6; // 2*3
+  std::vector<float> values(element_count);
+  for (int i = 0; i < element_count; i++) values[i] = i;
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<int64_t> dims = {4};
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values, values_length, shape.data(), shape.size());
+
+  // check first row of values
+  float expected_value = 0;
+  for(int row=0; row < shape[0]; row++) {
+    for(int col=0; col < shape[1]; col++) {
+      ASSERT_EQ(expected_value++, tensor.At<float>({row, col}));
+    }
+  }
+}
+
 TEST(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
