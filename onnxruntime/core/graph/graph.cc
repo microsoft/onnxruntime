@@ -2309,9 +2309,8 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
   }
 }
 
-bool Graph::IsInitializerTensor(const std::string& name){
-  auto iter = name_to_initial_tensor_.find(name);
-  return iter != name_to_initial_tensor_.end();
+bool Graph::IsInitializerTensor(const std::string& name) const {
+  return name_to_initial_tensor_.count(name) > 0;
 }
 
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
