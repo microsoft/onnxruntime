@@ -1418,37 +1418,26 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::At, _In_ const OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ void** out) {
-  TENSOR_READ_API_BEGIN
+ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, int64_t* location_values, size_t location_values_length,
+                   _Outptr_ void** out) {
+  TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
-  if (location_values_length != tensor.Shape().NumDimensions())
+  if (location_values_length != tensor->Shape().NumDimensions())
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "location dimensions does not match shape size");
   std::vector<int64_t> location(location_values_length);
   for(size_t i=0; i<location_values_length; i++) {
-    if(location_values[i] < 0 || location_values[i] >= tensor.Shape()[i])
+    if(location_values[i] < 0 || location_values[i] >= tensor->Shape()[i])
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
     location[i] = location_values[i];
   }
   size_t offset = 0;
-  for(size_t i=1; i<=tensor.Shape().NumDimensions(); i++) {
+  for(size_t i=1; i<=tensor->Shape().NumDimensions(); i++) {
     int sum=1;
-    for(size_t j=i+1; j<=tensor.Shape().NumDimensions(); j++) {
-      sum *= tensor.Shape()[j-1];
-    }
+    for(size_t j=i+1; j<=tensor->Shape().NumDimensions(); j++) sum *= tensor->Shape()[j-1];
     offset += location[i-1] * sum;
   }
-  // auto tensor_data = tensor.Data<float>();
-  // auto tensor_data = reinterpret_cast<const float*>(tensor.DataRaw());
-  // auto element_type = tensor.GetElementType()
-  // std::string s = DataTypeImpl::ToString(ml_type);
-  // const OrtValue* ovfirst = value[0];
-  // auto data = reinterpret_cast<const OrtValue*>(tensor.DataRaw());
-  // auto data = tensor_data[offset];
-  
-  // float x1 = location_values_length;
-  // float* x = &location_values_length;
-  *out = static_cast<void *>(&location_values_length);
-  // *out = reinterpret_cast<const void *>(tensor_data + offset);
+  auto data = ((char *)tensor->MutableDataRaw()) + (tensor->DataType()->Size() * offset);
+  *out = (void *)data;
   return nullptr;
   API_IMPL_END
 }

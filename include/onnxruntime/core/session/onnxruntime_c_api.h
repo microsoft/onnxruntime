@@ -839,7 +839,7 @@ struct OrtApi {
 
   // This function only works for numeric tensors
   // this is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
-  ORT_API2_STATUS(At, _In_ const OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ void** out);
+  ORT_API2_STATUS(At, _Inout_ OrtValue* value, int64_t* location_values, size_t location_values_length, _Outptr_ void** out);
 };
 
 /*

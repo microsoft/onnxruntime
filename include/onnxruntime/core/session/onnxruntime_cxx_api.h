@@ -291,7 +291,7 @@ struct Value : Base<OrtValue> {
   T* GetTensorMutableData();
 
   template <typename T>
-  T* At(const std::initializer_list<int64_t>& location);
+  T At(const std::initializer_list<int64_t>& location);
 
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
