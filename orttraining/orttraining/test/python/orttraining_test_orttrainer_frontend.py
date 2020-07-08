@@ -226,50 +226,50 @@ def testTrainStepInfoInvalidAllFinite(test_input):
 ])
 def testOptimizerConfig(optim_name, lr, alpha, default_alpha):
     '''Test initialization of _OptimizerConfig'''
-    hyper_parameters = {'lr': lr, 'alpha': alpha}
-    param_groups = [{'params': ['fc1.weight', 'fc2.weight']}]
+    defaults = {'lr': lr, 'alpha': alpha}
+    params = [{'params': ['fc1.weight', 'fc2.weight']}]
     if default_alpha is not None:
-        param_groups[0].update({'alpha': default_alpha})
+        params[0].update({'alpha': default_alpha})
     else:
-        param_groups[0].update({'alpha': alpha})
+        params[0].update({'alpha': alpha})
     cfg = optim.config._OptimizerConfig(
-        name=optim_name, hyper_parameters=hyper_parameters, param_groups=param_groups)
+        name=optim_name, params=params, defaults=defaults)
 
     assert cfg.name == optim_name
     rtol = 1e-03
-    assert_allclose(hyper_parameters['lr'],
+    assert_allclose(defaults['lr'],
                     cfg.lr, rtol=rtol, err_msg="lr mismatch")
 
-    # 1:1 mapping between hyper_parameters and param_groups's hyper parameters
-    for group in param_groups:
-        for k, _ in group.items():
+    # 1:1 mapping between defaults and params's hyper parameters
+    for param in params:
+        for k, _ in param.items():
             if k != 'params':
-                assert k in cfg.hyper_parameters, "hyper parameter {k} not present in one of the parameter groups"
-    for k, _ in cfg.hyper_parameters.items():
-        for group in cfg.param_groups:
-            assert k in group, "hyper parameter {k} not present in one of the parameter groups"
+                assert k in cfg.defaults, "hyper parameter {k} not present in one of the parameter params"
+    for k, _ in cfg.defaults.items():
+        for param in cfg.params:
+            assert k in param, "hyper parameter {k} not present in one of the parameter params"
 
 
-@pytest.mark.parametrize("optim_name,hyper_parameters,param_groups", [
+@pytest.mark.parametrize("optim_name,defaults,params", [
     ('AdamOptimizer', {'lr': -1}, []),  # invalid lr
     ('FooOptimizer', {'lr': 0.001}, []),  # invalid name
-    ('SGDOptimizer', [], []),  # invalid type(hyper_parameters)
+    ('SGDOptimizer', [], []),  # invalid type(defaults)
     (optim.AdamConfig, {'lr': 0.003}, []),  # invalid type(name)
     ('AdamOptimizer', {'lr': None}, []),  # missing 'lr' hyper parameter
-    ('SGDOptimizer', {'lr': 0.004}, {}),  # invalid type(param_groups)
-    # invalid type(param_groups[i])
+    ('SGDOptimizer', {'lr': 0.004}, {}),  # invalid type(params)
+    # invalid type(params[i])
     ('AdamOptimizer', {'lr': 0.005, 'alpha': 2}, [[]]),
-    # missing 'params' at 'param_groups'
+    # missing 'params' at 'params'
     ('AdamOptimizer', {'lr': 0.005, 'alpha': 2}, [{'alpha': 1}]),
-    # missing 'alpha' at 'hyper_parameters'
+    # missing 'alpha' at 'defaults'
     ('AdamOptimizer', {'lr': 0.005}, [{'params': 'param1', 'alpha': 1}]),
 ])
-def testOptimizerConfigInvalidInputs(optim_name, hyper_parameters, param_groups):
+def testOptimizerConfigInvalidInputs(optim_name, defaults, params):
     '''Test invalid initialization of _OptimizerConfig'''
 
     with pytest.raises(AssertionError):
         optim.config._OptimizerConfig(
-            name=optim_name, hyper_parameters=hyper_parameters, param_groups=param_groups)
+            name=optim_name, params=params, defaults=defaults)
 
 
 def testSGDConfig():
@@ -283,12 +283,12 @@ def testSGDConfig():
     cfg = optim.SGDConfig(lr=0.002)
     assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
 
-    # SGD does not support param_groups
+    # SGD does not support params
     with pytest.raises(AssertionError) as e:
-        param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
-        optim.SGDConfig(param_groups=param_groups, lr=0.002)
+        params = [{'params': ['layer1.weight'], 'lr': 0.1}]
+        optim.SGDConfig(params=params, lr=0.002)
         assert_allclose(0.002, cfg.lr, rtol=rtol, err_msg="lr mismatch")
-    assert str(e.value) == "'param_groups' must be an empty list for SGD optimizer"
+    assert str(e.value) == "'params' must be an empty list for SGD optimizer"
 
 
 def testAdamConfig():
@@ -327,32 +327,32 @@ def testLambConfig():
     ('Adam'),
     ('Lamb')
 ])
-def testParamGroups(optim_name):
+def testParamparams(optim_name):
     rtol = 1e-5
-    param_groups = [{'params': ['layer1.weight'], 'alpha': 0.1}]
+    params = [{'params': ['layer1.weight'], 'alpha': 0.1}]
     if optim_name == 'Adam':
-        cfg = optim.AdamConfig(param_groups=param_groups, alpha=0.2)
+        cfg = optim.AdamConfig(params=params, alpha=0.2)
     elif optim_name == 'Lamb':
-        cfg = optim.LambConfig(param_groups=param_groups, alpha=0.2)
+        cfg = optim.LambConfig(params=params, alpha=0.2)
     else:
         raise ValueError('invalid input')
-    assert len(cfg.param_groups) == 1, "param_groups should have length 1"
-    assert_allclose(cfg.param_groups[0]['alpha'], 0.1,
-                    rtol=rtol, err_msg="invalid lr on param_groups[0]")
+    assert len(cfg.params) == 1, "params should have length 1"
+    assert_allclose(cfg.params[0]['alpha'], 0.1,
+                    rtol=rtol, err_msg="invalid lr on params[0]")
 
 
 @pytest.mark.parametrize("optim_name", [
     ('Adam'),
     ('Lamb')
 ])
-def testInvalidParamGroups(optim_name):
-    # lr is not supported within param_groups
+def testInvalidParamparams(optim_name):
+    # lr is not supported within params
     with pytest.raises(AssertionError) as e:
-        param_groups = [{'params': ['layer1.weight'], 'lr': 0.1}]
+        params = [{'params': ['layer1.weight'], 'lr': 0.1}]
         if optim_name == 'Adam':
-            optim.AdamConfig(param_groups=param_groups, lr=0.2)
+            optim.AdamConfig(params=params, lr=0.2)
         elif optim_name == 'Lamb':
-            optim.LambConfig(param_groups=param_groups, lr=0.2)
+            optim.LambConfig(params=params, lr=0.2)
         else:
             raise ValueError('invalid input')
-    assert str(e.value) == "'lr' is not supported inside param_groups"
+    assert str(e.value) == "'lr' is not supported inside params"

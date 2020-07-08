@@ -1,107 +1,112 @@
 class _OptimizerConfig(object):
     r"""Base class for optimizer configuration
 
-    This private class is not an optimizer, but a means to configure existing ones from ORT backend.
+    This class is not an optimizer, but a mean to configure existing ones from ORT backend.
     Once the optimizer is configured, no user intervention is needed to update weights or zero gradients during training.
     The 'parameter group' was inspired by `Pytorch <https://pytorch.org/docs/stable/optim.html#per-parameter-options>`_.
 
     Args:
         name (str): optimizer names.
             One of 'SGDOptimizer', 'AdamOptimizer' and 'LambOptimizer'
-        hyper_parameters (dict): optimizer hyper-parameters applied to all model parameters.
-                                 Every optimizer must have a 'lr' entry on this dictionary.
-        param_groups (list of dict, default is []): list of parameters groups.
-            Each dict must contain a 'params' key with a list of model parameters that will
+        defaults (dict): optimizer parameters applied to all model parameters.
+                         Used when a parameter group doesn’t specify them.
+                         NOTE: Every optimizer must have 'lr'.
+        params (list of dict, default is []): list of parameter groups.
+            Each dict must contain a 'params' key with a list of names of model's parameter that will
             be optimized with the group's custom hyper-parameters values.
-            In other words, parameter groups override the default :py:attr:`.hyper_parameters`
+            In other words, parameter groups override the default :py:attr:`.defaults`
             for specific model parameters.
+            Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
 
     Example:
 
     .. code-block:: python
 
         lamb_optim = _OptimizerConfig(name = 'LambOptimizer',
-                                    hyper_parameters = {'lr': 0.001, 'alpha' : 0.01, 'beta' : 0.9},
-                                    param_groups = [ { 'params' : ['model_param0', 'model_param1'],
-                                                       'epsilon' : 0.03, 'beta' : 0.5},
-                                                     { 'params' : ['model_param2'],
-                                                       'alpha' : 0.04},
-                                                   ]
-                    )
+                                      params = [ { 'params' : ['model_param0', 'model_param1'],
+                                                   'epsilon' : 0.03, 'beta' : 0.5},
+                                                 { 'params' : ['model_param2'],
+                                                   'alpha' : 0.04},
+                                               ],
+                                      defaults = { 'lr': 0.001, 'alpha' : 0.01, 'beta' : 0.9})
     """
 
-    def __init__(self, name, hyper_parameters, param_groups=[]):
+    def __init__(self, name, params, defaults):
         assert isinstance(name, str), "'name' must be a string"
         assert name in ['AdamOptimizer', 'LambOptimizer', 'SGDOptimizer'], \
             "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
-        assert isinstance(hyper_parameters,
-                          dict), "'hyper_parameters' must be a dict"
-        assert 'lr' in hyper_parameters, "'hyper_parameters' must contain a {'lr' : positive number} entry"
-        assert (isinstance(hyper_parameters['lr'], float) or
-                isinstance(hyper_parameters['lr'], int)) and hyper_parameters['lr'] >= 0, "lr must be a positive number"
-        assert isinstance(param_groups, list), "'param_groups' must be a list"
-        for group in param_groups:
+        assert isinstance(defaults,
+                          dict), "'defaults' must be a dict"
+        assert 'lr' in defaults, "'defaults' must contain a {'lr' : positive number} entry"
+        assert (isinstance(defaults['lr'], float) or
+                isinstance(defaults['lr'], int)) and defaults['lr'] >= 0, "lr must be a positive number"
+        assert isinstance(params, list), "'params' must be a list"
+        for group in params:
             assert isinstance(group, dict) and len(group) > 1 and 'params' in group, \
-                ("Each dict inside 'param_groups' must contain a {'params' : [model parameter names]} entry"
+                ("Each dict inside 'params' must contain a {'params' : [model parameter names]} entry"
                  " and additional entries for custom hyper parameter values")
             for k, _ in group.items():
                 if k != 'params':
-                    assert k in hyper_parameters, f"'param_groups' has 'k' hyper parameter not present at 'hyper_parameters'"
+                    assert k in defaults, f"'params' has 'k' hyper parameter not present at 'defaults'"
 
         self.name = name
-        self.lr = hyper_parameters['lr']
-        self.base_lrs = [hyper_parameters['lr']]
-        self.hyper_parameters = hyper_parameters
-        self.param_groups = []
+        self.lr = defaults['lr']
+        self.base_lrs = [defaults['lr']]
+        self.defaults = defaults
+        self.params = []
 
         # TODO: monitor this for perf issues
         # Maybe we don't have to do this to populate TrainingParameters,
         # but it does make code easier to maintain
-        for param_group in param_groups:
+        for param_group in params:
             self._add_param_group(param_group)
 
     def _add_param_group(self, param_group):
-        r"""Add a parameter group to the :py:class:`_OptimizerConfig` s `param_groups`."""
+        r"""Add a parameter group to the :py:class:`_OptimizerConfig` s `params`."""
         assert isinstance(param_group, dict), "param group must be a dict"
 
         # Each parameter group must have all hyper parameters set
-        for name, value in self.hyper_parameters.items():
+        for name, value in self.defaults.items():
             if name not in param_group:
                 param_group.setdefault(name, value)
 
-        self.param_groups.append(param_group)
+        self.params.append(param_group)
 
 
 class SGDConfig(_OptimizerConfig):
     r"""SGD optimizer configuration
 
-    NOTE: Current implementation does not support :py:attr:`param_groups`, and must be
+    NOTE: Current implementation does not support :py:attr:`params`, and must be
     passed as an empty list.
 
     Args:
-        param_groups (list of dict, default is []): list of parameters groups.
-            Each dict must contain a 'params' key with a list of model parameters that will
+        params (list of dict, default is []): list of parameter groups.
+            Each dict must contain a 'params' key with a list of names of model's parameter that will
             be optimized with the group's custom hyper-parameters values.
-            In other words, parameter groups override the default :py:attr:`.hyper_parameters` for specific model parameters
+            In other words, parameter groups override the default :py:attr:`.defaults`
+            for specific model parameters.
+            Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
         lr (float, default is 0.001): Learning rate
     """
 
-    def __init__(self, param_groups=[], lr=0.001):
+    def __init__(self, params=[], lr=0.001):
         super().__init__(name='SGDOptimizer',
-                         hyper_parameters={'lr': lr},
-                         param_groups=param_groups)
-        assert isinstance(param_groups, list) and len(
-            param_groups) == 0, "'param_groups' must be an empty list for SGD optimizer"
+                         params=params,
+                         defaults={'lr': lr})
+        assert isinstance(params, list) and len(
+            params) == 0, "'params' must be an empty list for SGD optimizer"
 
 
 class AdamConfig(_OptimizerConfig):
     r"""Adam optimizer configuration
 
     Args:
-        param_groups (list of dict, default is []): list of parameters groups.
-            Each dict must contain a 'params' key with a list of model parameters that will
+        params (list of dict, default is []): list of parameter groups.
+            Each dict must contain a 'params' key with a list of names of model's parameter that will
             be optimized with the group's custom hyper-parameters values.
-            In other words, parameter groups override the default :py:attr:`.hyper_parameters` for specific model parameters
+            In other words, parameter groups override the default :py:attr:`.defaults`
+            for specific model parameters.
+            Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
         lr (float, default is 0.001): Learning rate
         alpha (float, default is 0.9): Coefficient of previous gradient in running average of row 1.
         beta (float, default is 0.999):  Coefficient of previous squared gradient in running average.
@@ -113,7 +118,7 @@ class AdamConfig(_OptimizerConfig):
             True means applying decay after weight update.
     """
 
-    def __init__(self, param_groups=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8, do_bias_correction=True, weight_decay_mode=True):
+    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8, do_bias_correction=True, weight_decay_mode=True):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -123,19 +128,19 @@ class AdamConfig(_OptimizerConfig):
                           bool), "'do_bias_correction' must be a boolean"
         assert isinstance(weight_decay_mode,
                           bool), "'weight_decay_mode' must be a boolean"
-        for group in param_groups:
-            assert 'lr' not in group, "'lr' is not supported inside param_groups"
+        for param in params:
+            assert 'lr' not in param, "'lr' is not supported inside params"
 
-        hyper_parameters = {'lr': lr,
-                            'alpha': alpha,
-                            'beta': beta,
-                            'lambda_coef': lambda_coef,
-                            'epsilon': epsilon,
-                            'do_bias_correction': do_bias_correction,
-                            'weight_decay_mode': weight_decay_mode}
+        defaults = {'lr': lr,
+                    'alpha': alpha,
+                    'beta': beta,
+                    'lambda_coef': lambda_coef,
+                    'epsilon': epsilon,
+                    'do_bias_correction': do_bias_correction,
+                    'weight_decay_mode': weight_decay_mode}
         super().__init__(name='AdamOptimizer',
-                         hyper_parameters=hyper_parameters,
-                         param_groups=param_groups)
+                         params=params,
+                         defaults=defaults)
         self.alpha = alpha
         self.beta = beta
         self.lambda_coef = lambda_coef
@@ -148,10 +153,12 @@ class LambConfig(_OptimizerConfig):
     r"""Lamb optimizer configuration
 
     Args:
-        param_groups (list of dict, default is []): list of parameters groups.
-            Each dict must contain a 'params' key with a list of model parameters that will
+        params (list of dict, default is []): list of parameter groups.
+            Each dict must contain a 'params' key with a list of names of model's parameter that will
             be optimized with the group's custom hyper-parameters values.
-            In other words, parameter groups override the default :py:attr:`.hyper_parameters` for specific model parameters
+            In other words, parameter groups override the default :py:attr:`.defaults`
+            for specific model parameters.
+            Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
         lr (float, default is 0.001): Learning rate
         alpha (float, default is 0.9): Coefficient of previous gradient in running average of row 1.
         beta (float, default is 0.999):  Coefficient of previous squared gradient in running average.
@@ -162,7 +169,7 @@ class LambConfig(_OptimizerConfig):
         do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
     """
 
-    def __init__(self, param_groups=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=True):
+    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=True):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -174,20 +181,20 @@ class LambConfig(_OptimizerConfig):
         assert epsilon >= 0, "'epsilon' must be a positive number"
         assert isinstance(do_bias_correction,
                           bool), "'do_bias_correction' must be a boolean"
-        for group in param_groups:
-            assert 'lr' not in group, "'lr' is not supported inside param_groups"
+        for param in params:
+            assert 'lr' not in param, "'lr' is not supported inside params"
 
-        hyper_parameters = {'lr': lr,
-                            'alpha': alpha,
-                            'beta': beta,
-                            'lambda_coef': lambda_coef,
-                            'ratio_min': ratio_min,
-                            'ratio_max': ratio_max,
-                            'epsilon': epsilon,
-                            'do_bias_correction': do_bias_correction}
+        defaults = {'lr': lr,
+                    'alpha': alpha,
+                    'beta': beta,
+                    'lambda_coef': lambda_coef,
+                    'ratio_min': ratio_min,
+                    'ratio_max': ratio_max,
+                    'epsilon': epsilon,
+                    'do_bias_correction': do_bias_correction}
         super().__init__(name='LambOptimizer',
-                         hyper_parameters=hyper_parameters,
-                         param_groups=param_groups)
+                         params=params,
+                         defaults=defaults)
         self.alpha = alpha
         self.beta = beta
         self.lambda_coef = lambda_coef
