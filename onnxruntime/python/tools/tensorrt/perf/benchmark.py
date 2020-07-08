@@ -4,6 +4,7 @@ from datetime import datetime
 import numpy
 import logging
 import coloredlogs
+import numpy as np
 
 from BERTSquad import *
 from Resnet50 import *
@@ -14,7 +15,7 @@ logger = logging.getLogger('')
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
     "resnet50": (Resnet50, "resnet50"),
-    "fast-rcnn": (FastRCNN, "fast-rcnn")
+    # "fast-rcnn": (FastRCNN, "fast-rcnn")
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -32,9 +33,9 @@ def get_latency_result(runtimes, batch_size):
         "QPS": "{:.2f}".format(throughput),
     }
 
-def inference_ort(ort_session, result_template, repeat_times, batch_size):
+def inference_ort(ort_session, inputs, result_template, repeat_times, batch_size):
     result = {}
-    runtimes = timeit.repeat(lambda: ort_session.inference(), number=1, repeat=repeat_times)
+    runtimes = timeit.repeat(lambda: ort_session.inference(inputs), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
@@ -76,6 +77,81 @@ def get_trt_version():
     
     return ""
 
+"""
+"""
+def load_onnx_model_zoo_test_data(path):
+    p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = p2.communicate()
+    stdout = stdout.decode("ascii").strip()
+    test_data_set_dir = stdout.split("\n") 
+    print(stdout)
+    print(test_data_set_dir)
+
+    inputs = []
+    outputs = []
+
+    # find test data path
+    for test_data_dir in test_data_set_dir:
+        pwd = os.getcwd()
+        os.chdir(test_data_dir)
+
+        p1 = subprocess.Popen(["find", ".", "-name", "input_*"], stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
+        stdout, sterr = p2.communicate()
+        stdout = stdout.decode("ascii").strip()
+        input_data = stdout.split("\n") 
+        print(input_data)
+
+        p1 = subprocess.Popen(["find", ".", "-name", "output_*"], stdout=subprocess.PIPE)
+        p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
+        stdout, sterr = p2.communicate()
+        stdout = stdout.decode("ascii").strip()
+        output_data = stdout.split("\n") 
+        print(output_data)
+
+        # load inputs
+        input_data_pb = [] 
+        for data in input_data:
+            tensor = onnx.TensorProto()
+            with open(data, 'rb') as f:
+                tensor.ParseFromString(f.read())
+                input_data_pb.append(numpy_helper.to_array(tensor))
+        inputs.append(input_data_pb)
+
+        # load outputs 
+        output_data_pb = [] 
+        for data in output_data:
+            tensor = onnx.TensorProto()
+            with open(data, 'rb') as f:
+                tensor.ParseFromString(f.read())
+                output_data_pb.append(numpy_helper.to_array(tensor))
+        outputs.append(output_data_pb)
+
+        os.chdir(pwd)
+
+    print('Loaded {} inputs successfully.'.format(len(inputs)))
+    print('Loaded {} outputs successfully.'.format(len(outputs)))
+
+    return inputs, outputs
+
+def validate(ref_outputs, outputs):
+    print('Predicted {} results.'.format(len(outputs)))
+    print('Predicted {} results.'.format(len(ref_outputs)))
+    # print(np.array(ref_outputs).shape)
+    # print(np.array(outputs).shape)
+    print(ref_outputs)
+    print(outputs)
+
+    for i in range(len(outputs)):
+        output = outputs[i]
+        ref_output = ref_outputs[i]
+        # Compare the results with reference outputs up to 4 decimal places
+        for ref_o, o in zip(ref_output, output):
+            np.testing.assert_almost_equal(ref_o, o, 4)
+
+    print('ONNX Runtime outputs are similar to reference outputs!')
+
 
 def run_onnxruntime(models=MODELS):
     import onnxruntime
@@ -91,8 +167,8 @@ def run_onnxruntime(models=MODELS):
             os.mkdir(path)
         os.chdir(path)
 
-
-        for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider"]:
+        # for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider"]:
+        for ep in ["CUDAExecutionProvider"]:
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
@@ -110,6 +186,9 @@ def run_onnxruntime(models=MODELS):
 
             model = model_class()
             sess = model.get_session()
+
+            test_set_dir = model.get_onnx_zoo_test_data_dir()
+            inputs, ref_outputs = load_onnx_model_zoo_test_data(test_set_dir)
 
             if ep == "CUDAExecutionProvider":
                 sess.set_providers([ep])
@@ -136,11 +215,13 @@ def run_onnxruntime(models=MODELS):
             logger.info(sess.get_providers())
             logger.info("Inferencing {} with {} ...".format(model.get_model_name(), ep))
 
-            result = inference_ort(model, result_template, repeat_times, batch_size)
+            result = inference_ort(model, inputs, result_template, repeat_times, batch_size)
+
+            validate(ref_outputs, model.get_outputs())
 
             logger.info(result)
             results.append(result)
-            model.postprocess()
+            #model.postprocess()
 
         os.chdir(pwd)
 
