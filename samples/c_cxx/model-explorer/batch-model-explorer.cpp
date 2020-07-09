@@ -98,9 +98,8 @@ int main(int argc, char** argv) {
     // Create an Ort tensor containing random numbers
     std::vector<float> batch_input_tensor_values(num_elements_per_batch);
     std::generate(batch_input_tensor_values.begin(), batch_input_tensor_values.end(), [&] { return rand() % 255; });  // generate random numbers in the range [0, 255]
-    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     std::vector<Ort::Value> batch_input_tensors;
-    batch_input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, batch_input_tensor_values.data(), batch_input_tensor_values.size(), input_shape.data(), input_shape.size()));
+    batch_input_tensors.push_back(Ort::Experimental::Value::CreateTensor<float>(batch_input_tensor_values.data(), batch_input_tensor_values.size(), input_shape));
 
     // double-check the dimensions of the input tensor
     assert(batch_input_tensors[0].IsTensor() &&
