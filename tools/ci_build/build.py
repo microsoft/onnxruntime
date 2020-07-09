@@ -1223,7 +1223,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             # For CUDA enabled builds test IOBinding feature
             # Limit testing to Windows/Ubuntu and non-ARM builds as Torch wheels 
             # may not be available for all platform/processor combinations
-            if args.use_cuda and (is_windows() or is_ubuntu_1604())   and not (args.arm or args.arm64):
+            if args.use_cuda and (is_windows() or is_ubuntu_1604()) and not (args.arm or args.arm64):
                 # We need to have Torch installed to test the IOBinding feature
                 # which currently allocates Torch's allocator to allocate GPU memory for testing
                 log.info("Attempting to install Torch to test ORT's IOBinding feature")
