@@ -6,7 +6,7 @@ stages:
       --enable_training
       --wheel_name_suffix training
     docker_image_prefix: onnxruntime-training
-    linux_gpu_dockerfile: Dockerfile.manylinux2014_gpu
+    linux_gpu_dockerfile: Dockerfile.ortrelease
     python.version: 3.6
   jobs:
   - job: Linux_py_GPU_Wheels

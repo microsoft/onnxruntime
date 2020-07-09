@@ -70,7 +70,7 @@ elif [ $BUILD_OS = "yocto" ]; then
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
-        DOCKER_FILE=Dockerfile.ubuntu_gpu
+        DOCKER_FILE=Dockerfile.ortrelease
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
         DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
