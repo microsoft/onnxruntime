@@ -485,12 +485,14 @@ def install_python_deps(numpy_version=""):
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
 
+
 # We need to install Torch to test certain functioanlities of the ORT Python package
 def install_torch():
     # Command works for both Windows and Linux
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
                     '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
+
 
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
