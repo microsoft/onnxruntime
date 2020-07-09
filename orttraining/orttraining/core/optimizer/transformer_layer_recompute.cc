@@ -3,25 +3,58 @@
 
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
+#include "core/common/common.h"
+
 #include <deque>
 
 namespace onnxruntime {
+Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
+    Graph& graph, std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges) const {
+  const std::unordered_set<std::string> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
+  const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout", "TrainableDropout"};
 
-std::vector<const NodeArg*> TransformerLayerRecompute::IdentifyTransformerLayerEdges(Graph& graph) const {
-  std::vector<const NodeArg*> layer_edges;
-
+  std::vector<const NodeArg*> layer_start_edges, layer_end_edges;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
 
-    if ((node.OpType() == "LayerNormalization" || node.OpType() == "TrainableDropout") && node.GetOutputEdgesCount() == 4) {
-      layer_edges.push_back(node.OutputDefs()[0]);
+    // Look for start of a transformer layer
+    if ((node.OpType() == "LayerNormalization" || dropout_ops.find(node.OpType()) != dropout_ops.end()) &&
+        node.GetOutputEdgesCount() == 4) {
+      layer_start_edges.push_back(node.OutputDefs()[0]);
+    }
+
+    // Look for end of a transformer layer
+    if (gelu_ops.find(node.OpType()) != gelu_ops.end()) {
+      auto next_node = node.OutputNodesBegin();
+
+      while (next_node->OutputNodesBegin() != next_node->OutputNodesEnd() &&
+             dropout_ops.find(next_node->OpType()) == dropout_ops.end()) {
+        next_node = next_node->OutputNodesBegin();
+      }
+
+      while (next_node->OutputNodesBegin() != next_node->OutputNodesEnd() &&
+             next_node->OpType() != "LayerNormalization") {
+        next_node = next_node->OutputNodesBegin();
+      }
+
+      if (next_node->OpType() == "LayerNormalization") {
+        layer_end_edges.push_back(next_node->OutputDefs()[0]);
+      }
     }
   }
 
-  // need to match two patterns here: one for start, one for end
-  return layer_edges;
+  ORT_RETURN_IF_NOT(layer_start_edges.size() == layer_end_edges.size(), "Number of start and end edges doesn't match!");
+
+  start_end_edges.clear();
+  std::cout << "Find " << layer_start_edges.size() << " transformer layers.\n";
+  for (size_t i = 0; i < layer_start_edges.size(); ++i) {
+    start_end_edges.push_back({layer_start_edges[i], layer_end_edges[i]});
+    std::cout << "Start edge: " << layer_start_edges[i]->Name() << " End edge: " << layer_end_edges[i]->Name() << "\n";
+  }
+
+  return Status::OK();
 }
 
 typedef std::set<const Node*, NodeCompare> NodeSet;
@@ -165,14 +198,11 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
 }
 
 Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
-  std::vector<const NodeArg*> edges = IdentifyTransformerLayerEdges(graph);
+  std::vector<std::pair<const NodeArg*, const NodeArg*>> start_end_edges;
+  ORT_RETURN_IF_ERROR(IdentifyTransformerLayerEdges(graph, start_end_edges));
 
-  // for (const NodeArg* edge : edges) {
-  //   std::cout << "Edge: " << edge->Name() << "\n";
-  // }
-
-  for (size_t i = 0; i < edges.size() - 1; ++i) {
-    std::vector<const Node*> nodes = NodesBetweenEdges(graph, edges[i], edges[i + 1]);
+  for (size_t i = 0; i < start_end_edges.size(); ++i) {
+    std::vector<const Node*> nodes = NodesBetweenEdges(graph, start_end_edges[i].first, start_end_edges[i].second);
     InsertRecomputeNodes(graph, nodes);
   }
 
