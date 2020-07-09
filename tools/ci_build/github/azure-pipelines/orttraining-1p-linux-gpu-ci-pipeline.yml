@@ -1,3 +1,8 @@
+parameters:
+  - name: conda_version
+    displayName: Conda Version
+    type: string
+    default: 4.8.0
 stages:
 - stage: Python_Packaging
 
@@ -8,11 +13,6 @@ stages:
     docker_image_prefix: onnxruntime-training
     linux_gpu_dockerfile: Dockerfile.ortrelease
     python.version: 3.6
-  parameters:
-    - name: conda_version
-      displayName: Conda Version
-      type: string
-      default: 4.8.0
   jobs:
   - job: Linux_py_GPU_Wheels
     timeoutInMinutes: 90
