@@ -34,9 +34,6 @@ BERT_TEST_MODELS = {
 skip_on_ort_version = pytest.mark.skipif(onnxruntime.__version__ == ('1.3.0'),
                                          reason="skip failed tests. TODO: fix them in 1.4.0.")
 
-def _get_fusion_model_path(name):
-    sub_dir, file = BERT_TEST_MODELS[name]
-    return os.path.join('test_data', sub_dir, file)
 
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
