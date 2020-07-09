@@ -489,7 +489,7 @@ def install_python_deps(numpy_version=""):
 def install_torch():
     # Command works for both Windows and Linux
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
-                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101', 
+                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
                     '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
 
 def check_md5(filename, expected_md5):
@@ -1221,7 +1221,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 cwd=cwd, dll_path=dll_path)
 
             # For CUDA enabled builds test IOBinding feature
-            # Limit testing to Windows/Ubuntu and non-ARM builds as Torch wheels 
+            # Limit testing to Windows/Ubuntu and non-ARM builds as Torch wheels
             # may not be available for all platform/processor combinations
             if args.use_cuda and (is_windows() or is_ubuntu_1604()) and not (args.arm or args.arm64):
                 # We need to have Torch installed to test the IOBinding feature
