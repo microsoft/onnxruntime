@@ -485,8 +485,8 @@ void
     float ScaleC,
     int32_t ZeroPointC,
     int8_t* OutputC,
-    size_t LengthA,
-    size_t LengthB
+    size_t N,
+    bool IsScalarB
     );
 
 typedef MLAS_QLINEAR_BINARY_OP_S8_KERNEL* PMLAS_QLINEAR_BINARY_OP_S8_KERNEL;
@@ -503,8 +503,8 @@ void
     float ScaleC,
     int32_t ZeroPointC,
     uint8_t* OutputC,
-    size_t LengthA,
-    size_t LengthB
+    size_t N,
+    bool IsScalarB
     );
 
 typedef MLAS_QLINEAR_BINARY_OP_U8_KERNEL* PMLAS_QLINEAR_BINARY_OP_U8_KERNEL;

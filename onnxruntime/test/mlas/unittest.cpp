@@ -2495,16 +2495,17 @@ public:
     }
 };
 
-template <typename T>
-class MlasQLinearAddExpTest : public MlasTestBase
+class MlasQLinearAddTest : public MlasTestBase
 {
 private:
-    MatrixGuardBuffer<T> BufferInputA;
-    MatrixGuardBuffer<T> BufferInputB;
-    MatrixGuardBuffer<T> BufferOutput;
-    MatrixGuardBuffer<T> BufferOutputReference;
+    MatrixGuardBuffer<uint8_t> BufferInputA;
+    MatrixGuardBuffer<uint8_t> BufferInputB;
+    MatrixGuardBuffer<uint8_t> BufferOutput;
+    MatrixGuardBuffer<uint8_t> BufferOutputReference;
 
-    T QLinearAddScalar(
+    template <typename T>
+    T
+    QLinearAddScalar(
         T a,
         float ScaleA,
         int32_t ZeroPointA,
@@ -2528,8 +2529,9 @@ private:
         return static_cast<T>(qc);
     }
 
+    template <typename T, bool IsScalarB>
     void
-    TestVectorVector(
+    Test(
         size_t N,
         float ScaleA,
         int32_t ZeroPointA,
@@ -2539,161 +2541,93 @@ private:
         int32_t ZeroPointC
         )
     {
-        T* InputA = BufferInputA.GetBuffer(N);
-        T* InputB = BufferInputB.GetBuffer(N);
-        T* OutputC = BufferOutput.GetBuffer(N);
-        T* OutputReference = BufferOutputReference.GetBuffer(N);
+        T* InputA = (T*)BufferInputA.GetBuffer(N);
+        T* InputB = (T*)BufferInputB.GetBuffer(IsScalarB ? 1 : N);
+        T* OutputC = (T*)BufferOutput.GetBuffer(N);
+        T* OutputReference = (T*)BufferOutputReference.GetBuffer(N);
 
         constexpr int MinimumValue = (int)std::numeric_limits<T>::min();
         constexpr int MaximumValue = (int)std::numeric_limits<T>::max();
         std::default_random_engine generator(static_cast<unsigned>(N));
         std::uniform_int_distribution<int> distribution(MinimumValue, MaximumValue);
 
+        if (IsScalarB) {
+            InputB[0] = static_cast<T>(distribution(generator));
+        }
         for (size_t n = 0; n < N; n++) {
             InputA[n] = static_cast<T>(distribution(generator));
-            InputB[n] = static_cast<T>(distribution(generator));
-            OutputReference[n] = QLinearAddScalar(InputA[n], ScaleA, ZeroPointA, InputB[n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
+            if (!IsScalarB) {
+                InputB[n] = static_cast<T>(distribution(generator));
+            }
+            OutputReference[n] = QLinearAddScalar(InputA[n], ScaleA, ZeroPointA, InputB[IsScalarB ? 0 : n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
         }
 
-        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, N);
+        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, IsScalarB);
 
         for (size_t n = 0; n < N; n++) {
             int diff = (int)OutputC[n] - (int)OutputReference[n];
             if (diff < -1 || diff > 1) {
-                printf("TestVectorVector exp difference @ %u of %u, %d + %d => %d (expecting %d)\n",
-                        static_cast<unsigned>(n), static_cast<unsigned>(N),
-                        static_cast<int>(InputA[n]), static_cast<int>(InputB[n]),
-                        static_cast<int>(OutputC[n]), static_cast<int>(OutputReference[n]));
+                printf("Test IsScalarB=%d difference @%u of %u, %d(%f,%d) + %d(%f,%d) => %d(%f,%d) (expecting %d)\n",
+                        int(IsScalarB), static_cast<unsigned>(n), static_cast<unsigned>(N),
+                        static_cast<int>(InputA[n]), ScaleA, ZeroPointA,
+                        static_cast<int>(InputB[IsScalarB ? 0 : n]), ScaleB, ZeroPointB,
+                        static_cast<int>(OutputC[n]), ScaleC, ZeroPointC,
+                        static_cast<int>(OutputReference[n]));
             }
         }
-
-        BufferInputA.ReleaseBuffer();
-        BufferInputB.ReleaseBuffer();
-        BufferOutput.ReleaseBuffer();
-        BufferOutputReference.ReleaseBuffer();
-    }
-
-    void
-    TestVectorScalar(
-        size_t N,
-        float ScaleA,
-        int32_t ZeroPointA,
-        float ScaleB,
-        int32_t ZeroPointB,
-        float ScaleC,
-        int32_t ZeroPointC
-        )
-    {
-        T* InputA = BufferInputA.GetBuffer(N);
-        T* InputB = BufferInputB.GetBuffer(1);
-        T* OutputC = BufferOutput.GetBuffer(N);
-        T* OutputReference = BufferOutputReference.GetBuffer(N);
-
-        constexpr int MinimumValue = (int)std::numeric_limits<T>::min();
-        constexpr int MaximumValue = (int)std::numeric_limits<T>::max();
-        std::default_random_engine generator(static_cast<unsigned>(N));
-        std::uniform_int_distribution<int> distribution(MinimumValue, MaximumValue);
-
-        InputB[0] = static_cast<T>(distribution(generator));
-        for (size_t n = 0; n < N; n++) {
-            InputA[n] = static_cast<T>(distribution(generator));
-            OutputReference[n] = QLinearAddScalar(InputA[n], ScaleA, ZeroPointA, InputB[0], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
-        }
-        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, 1);
-
-        for (size_t n = 0; n < N; n++) {
-            int diff = (int)OutputC[n] - (int)OutputReference[n];
-            if (diff < -1 || diff > 1) {
-                printf("TestVectorScalar exp difference @ %u of %u, %d + %d => %d (expecting %d)\n",
-                        static_cast<unsigned>(n), static_cast<unsigned>(N),
-                        static_cast<int>(InputA[n]), static_cast<int>(InputB[0]),
-                        static_cast<int>(OutputC[n]), static_cast<int>(OutputReference[n]));
-            }
-        }
-
-        BufferInputA.ReleaseBuffer();
-        BufferInputB.ReleaseBuffer();
-        BufferOutput.ReleaseBuffer();
-        BufferOutputReference.ReleaseBuffer();
-    }
-
-    void
-    TestScalarVector(
-        size_t N,
-        float ScaleA,
-        int32_t ZeroPointA,
-        float ScaleB,
-        int32_t ZeroPointB,
-        float ScaleC,
-        int32_t ZeroPointC
-        )
-    {
-        T* InputA = BufferInputA.GetBuffer(1);
-        T* InputB = BufferInputB.GetBuffer(N);
-        T* OutputC = BufferOutput.GetBuffer(N);
-        T* OutputReference = BufferOutputReference.GetBuffer(N);
-
-        constexpr int MinimumValue = (int)std::numeric_limits<T>::min();
-        constexpr int MaximumValue = (int)std::numeric_limits<T>::max();
-        std::default_random_engine generator(static_cast<unsigned>(N));
-        std::uniform_int_distribution<int> distribution(MinimumValue, MaximumValue);
-
-        InputA[0] = static_cast<T>(distribution(generator));
-        for (size_t n = 0; n < N; n++) {
-            InputB[n] = static_cast<T>(distribution(generator));
-            OutputReference[n] = QLinearAddScalar(InputA[0], ScaleA, ZeroPointA, InputB[n], ScaleB, ZeroPointB, ScaleC, ZeroPointC);
-        }
-
-        MlasQLinearAdd(InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, 1, N);
-
-        for (size_t n = 0; n < N; n++) {
-            int diff = (int)OutputC[n] - (int)OutputReference[n];
-            if (diff < -1 || diff > 1) {
-                printf("TestScalarVector exp difference @ %u of %u, %d + %d => %d (expecting %d)\n",
-                        static_cast<unsigned>(n), static_cast<unsigned>(N),
-                        static_cast<int>(InputA[0]), static_cast<int>(InputB[n]),
-                        static_cast<int>(OutputC[n]), static_cast<int>(OutputReference[n]));
-            }
-        }
-
-        BufferInputA.ReleaseBuffer();
-        BufferInputB.ReleaseBuffer();
-        BufferOutput.ReleaseBuffer();
-        BufferOutputReference.ReleaseBuffer();
     }
 
 public:
     void
     ExecuteShort(
         void
-        ) override;
+        ) override
+    {
+        // uint8_t test
+        static const uint8_t zero_points[] = { 0, 18, 75, 128, 157, 231, 255 };
+        for (size_t a = 0; a < _countof(zero_points); a++) {
+            uint8_t offa = zero_points[a];
+
+            for (size_t b = 0; b < _countof(zero_points); b++) {
+                uint8_t offb = zero_points[b];
+
+                for (size_t c = 0; c < _countof(zero_points); c++) {
+                    uint8_t offc = zero_points[c];
+
+                    for (size_t n = 1; n < 128; n++) {
+                        // vector + vector
+                        Test<uint8_t, false>(n, 10.f, offa, 10.f, offb, 20.f, offc);
+
+                        // vector + scalar
+                        Test<uint8_t, true>(n, 10.f, offa, 10.f, offb, 20.f, offc);
+                    }
+                }
+            }
+        }
+
+        static const int8_t szero_points[] = { -128, -110, -53, 0, 29, 103, 127 };
+        for (size_t a = 0; a < _countof(zero_points); a++) {
+            int8_t offa = szero_points[a];
+
+            for (size_t b = 0; b < _countof(zero_points); b++) {
+                int8_t offb = szero_points[b];
+
+                for (size_t c = 0; c < _countof(zero_points); c++) {
+                    int8_t offc = szero_points[c];
+
+                    for (size_t n = 1; n < 128; n++) {
+                        // vector + vector
+                        Test<int8_t, false>(n, 10.f, offa, 10.f, offb, 20.f, offc);
+
+                        // vector + scalar
+                        Test<int8_t, true>(n, 10.f, offa, 10.f, offb, 20.f, offc);
+                    }
+                }
+            }
+        }
+
+    }
 };
-
-template<>
-void
-MlasQLinearAddExpTest<uint8_t>::ExecuteShort(
-    void
-    )
-{
-    for (size_t n = 1; n < 128; n++) {
-        TestVectorVector(n, 10.f, 128, 10.f, 128, 20.f, 128);
-        TestVectorScalar(n, 10.f, 128, 10.f, 128, 20.f, 128);
-        TestScalarVector(n, 10.f, 128, 10.f, 128, 20.f, 128);
-    }
-}
-
-template<>
-void
-MlasQLinearAddExpTest<int8_t>::ExecuteShort(
-    void
-    )
-{
-    for (size_t n = 1; n < 128; n++) {
-        TestVectorVector(n, 10.f, 0, 10.f, 0, 20.f, 0);
-        TestVectorScalar(n, 10.f, 0, 10.f, 0, 20.f, 0);
-        TestScalarVector(n, 10.f, 0, 10.f, 0, 20.f, 0);
-    }
-}
 
 class MlasFindMinMaxElementsTest : public MlasTestBase
 {
@@ -2852,11 +2786,8 @@ main(
         onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
     }
 
-    printf("QLinearAdd<uint8_t> tests.\n");
-    onnxruntime::make_unique<MlasQLinearAddExpTest<uint8_t>>()->ExecuteShort();
-
-    printf("QLinearAdd<int8_t> tests.\n");
-    onnxruntime::make_unique<MlasQLinearAddExpTest<int8_t>>()->ExecuteShort();
+    printf("QLinearAdd tests.\n");
+    onnxruntime::make_unique<MlasQLinearAddTest>()->ExecuteShort();
 
     printf("Done.\n");
 
