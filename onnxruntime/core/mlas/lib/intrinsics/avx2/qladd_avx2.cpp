@@ -85,11 +85,11 @@ MlasLoad32Bytes(const uint8_t* buffer, int64_t N)
     } else {
         uint8_t dup[32];
         uint8_t* dst = dup;
-        while (N >= 4) {
+        while (N >= sizeof(uint32_t)) {
             *(uint32_t*)(dst) = *(uint32_t*)(buffer);
-            N -= 4;
-            buffer += 4;
-            dst += 4;
+            N -= sizeof(uint32_t);
+            buffer += sizeof(uint32_t);
+            dst += sizeof(uint32_t);
         }
         while (N > 0) {
             *dst++ = *buffer++;
