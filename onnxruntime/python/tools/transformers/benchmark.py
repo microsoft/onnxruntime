@@ -49,7 +49,7 @@ import psutil
 import onnx
 from packaging import version
 from transformers.modeling_utils import Conv1D
-from quantize import quantize, QuantizationMode
+from onnxruntime.quantization import quantize, QuantizationMode
 
 logger = logging.getLogger('')
 
