@@ -61,6 +61,9 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     y_nodes_.insert(node);
   }
 
+  reachable_nodes_ = ReverseBFS(y_nodes_);
+
+  // building x_nodes_
   for (const auto& name : x_node_arg_names) {
     const NodeArg* node_arg = graph->GetNodeArg(name);
     if (!node_arg) {
@@ -74,13 +77,20 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
     }
 
     string grad_arg_name = GradientBuilderBase::GradientName(name);
-    pending_[grad_arg_name] = static_cast<int>(nodes.size());
+    pending_[grad_arg_name] = 0;
 
-    x_nodes_.insert(nodes.begin(), nodes.end());
+    for (const Node* node : nodes) {
+      if (IsReachable(node)) {
+        pending_[grad_arg_name] += 1;
+        x_nodes_.insert(node);
+      } else {
+        std::cout << "Unreachable node found " << node->Name() << "\n";
+      }
+    }
   }
 }
 
-NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
+NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) const {
   NodeSet visited(nodes);
   deque<const Node*> queue(nodes.begin(), nodes.end());
 
@@ -105,13 +115,13 @@ NodeSet GradientGraphBuilder::ReverseBFS(const NodeSet& nodes) {
   return visited;
 }
 
-Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nodes) {
+Status GradientGraphBuilder::CheckNodeArgsReachable() const {
   for (const NodeArg* node_arg : x_node_args_) {
     auto nodes = graph_->GetConsumerNodes(node_arg->Name());
 
     bool reachable = false;
     for (const Node* node : nodes) {
-      if (reachable_nodes.find(node) != reachable_nodes.end()) {
+      if (IsReachable(node)) {
         reachable = true;
         break;
       }
@@ -140,26 +150,12 @@ Status GradientGraphBuilder::Build() {
     gradient_graph_defs.AddInitializers({tensor_proto});
   }
 
-  NodeSet reachable_nodes = ReverseBFS(y_nodes_);
-
-  // for (auto each : reachable_nodes) {
-  //   std::cout << "reachable_node: " << each->Name() << "\n";
-  // }
-
-  ORT_RETURN_IF_ERROR(CheckNodeArgsReachable(reachable_nodes));
+  ORT_RETURN_IF_ERROR(CheckNodeArgsReachable());
 
   // Going forward to figure out which node_args need backprop-ed.
-  deque<const Node*> queue;  //(x_nodes_.begin(), x_nodes_.end());
-  NodeSet visited;           // (x_nodes_);
-  for (const Node* x_node : x_nodes_) {
-    if (reachable_nodes.find(x_node) != reachable_nodes.end()) {
-      queue.push_back(x_node);
-      visited.insert(x_node);
-    } else {
-      std::cout << "Unreachable node found " << x_node->Name() << "\n";
-    }
-  }
-
+  deque<const Node*> queue(x_nodes_.begin(), x_nodes_.end());
+  NodeSet visited(x_nodes_);
+  
   unordered_set<const NodeArg*> visited_node_args = x_node_args_;
   visited_node_args.insert(y_node_args_.begin(), y_node_args_.end());
 
@@ -170,7 +166,7 @@ Status GradientGraphBuilder::Build() {
     for (auto edge_it = node->OutputEdgesBegin(); edge_it != node->OutputEdgesEnd(); ++edge_it) {
       const Node& next_node = edge_it->GetNode();
 
-      if (reachable_nodes.find(&next_node) == reachable_nodes.end()) continue;
+      if (!IsReachable(&next_node)) continue;
 
       const NodeArg* node_arg = node->OutputDefs()[edge_it->GetSrcArgIndex()];
       string grad_node_arg_name = GradientBuilderBase::GradientName(node_arg->Name());
