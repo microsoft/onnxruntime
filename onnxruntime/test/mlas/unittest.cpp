@@ -2816,11 +2816,6 @@ main(
     //
     // Run threaded tests without the thread pool.
     //
-    printf("QLinearAdd<uint8_t> tests.\n");
-    onnxruntime::make_unique<MlasQLinearAddExpTest<uint8_t>>()->ExecuteShort();
-
-    printf("QLinearAdd<int8_t> tests.\n");
-    onnxruntime::make_unique<MlasQLinearAddExpTest<int8_t>>()->ExecuteShort();
 
     RunThreadedTests();
 
@@ -2856,7 +2851,7 @@ main(
     if (MlasNchwcGetBlockSize() > 1) {
         onnxruntime::make_unique<MlasReorderOutputTest>()->ExecuteShort();
     }
-    
+
     printf("QLinearAdd<uint8_t> tests.\n");
     onnxruntime::make_unique<MlasQLinearAddExpTest<uint8_t>>()->ExecuteShort();
 
