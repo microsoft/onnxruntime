@@ -118,21 +118,21 @@ Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
       *context,
       [](gsl::span<T> output, const T& input0, gsl::span<const T> input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
-        MlasQLinearAdd(&input0, A_scale, A_zero_point,
-                       input1.data(), B_scale, B_zero_point,
-                       C_scale, C_zero_point, output.data(), 1, output.size());
+        MlasQLinearAdd(input1.data(), B_scale, B_zero_point,
+                       &input0, A_scale, A_zero_point,
+                       C_scale, C_zero_point, output.data(), output.size(), true);
       },
       [](gsl::span<T> output, gsl::span<const T> input0, const T& input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
         MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
                        &input1, B_scale, B_zero_point,
-                       C_scale, C_zero_point, output.data(), output.size(), 1);
+                       C_scale, C_zero_point, output.data(), output.size(), true);
       },
       [](gsl::span<T> output, gsl::span<const T> input0, gsl::span<const T> input1,
          float A_scale, float B_scale, float C_scale, T A_zero_point, T B_zero_point, T C_zero_point) {
         MlasQLinearAdd(input0.data(), A_scale, A_zero_point,
                        input1.data(), B_scale, B_zero_point,
-                       C_scale, C_zero_point, output.data(), output.size(), output.size());
+                       C_scale, C_zero_point, output.data(), output.size(), false);
       },
       1.0);
 }
