@@ -842,8 +842,8 @@ Graph::Graph(const Model& owning_model,
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
     TypeProto t{TypeProtoFromTensorProto(tensor)};
 
-    if (t.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        ORT_THROW("This is an invalid model. Tensor does not have type information.");
+    if (!utils::HasElemType(t.tensor_type())) {
+      ORT_THROW("This is an invalid model. Tensor does not have type information.");
     }
 
     if (ir_version_ < 4) {
