@@ -486,7 +486,7 @@ def install_python_deps(numpy_version=""):
                     'files.pythonhosted.org'] + dep_packages)
 
 
-# We need to install Torch to test certain functioanlities of the ORT Python package
+# We need to install Torch to test certain functionalities of the ORT Python package
 def install_torch():
     # Command works for both Windows and Linux
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
