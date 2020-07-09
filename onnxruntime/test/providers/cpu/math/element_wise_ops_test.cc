@@ -880,7 +880,7 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
 TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
   const TensorShape shape{3, 3, 3};
-  for (size_t num_inputs = 2; num_inputs < 20; ++num_inputs) {
+  for (size_t num_inputs = 2; num_inputs < 10; ++num_inputs) {
     TestSumMultipleInputsNoBroadcasting(num_inputs, shape);
   }
 }

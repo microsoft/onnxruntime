@@ -38,16 +38,18 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
        ++element_count, element_idx += blockDim.x) {
     if (element_idx < N) {
       // first and second inputs
-      output[element_idx] = func(
+      T output_value = func(
           inputs_buffer[element_count][0], inputs_buffer[element_count][1]);
 
       // remaining inputs
 #pragma unroll
       for (size_t input_batch_idx = 2; input_batch_idx < max_input_batch_size; ++input_batch_idx) {
         if (input_batch_idx < inputs.Size()) {
-          output[element_idx] = func(output[element_idx], inputs_buffer[element_count][input_batch_idx]);
+          output_value = func(output_value, inputs_buffer[element_count][input_batch_idx]);
         }
       }
+
+      output[element_idx] = output_value;
     }
   }
 }
@@ -61,7 +63,7 @@ void VariadicElementWiseNoBroadcastInputBatchImpl(
     size_t N,
     TArray<const T*, max_input_batch_size> inputs,
     T* output) {
-  const size_t elements_per_thread = 4;
+  const size_t elements_per_thread = GridDim::maxElementsPerThread;
   const size_t threads_per_block = GridDim::maxThreadsPerBlock;
   const size_t blocks_per_grid = CeilDiv(N, elements_per_thread * threads_per_block);
   VariadicElementWiseNoBroadcastInputBatchKernel<T, Func, max_input_batch_size, elements_per_thread>

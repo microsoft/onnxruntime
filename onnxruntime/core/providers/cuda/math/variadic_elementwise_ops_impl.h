@@ -23,7 +23,7 @@ void Impl_General(
     T* output_data,
     size_t count);
 
-constexpr int32_t k_max_input_batch_size = 16;
+constexpr int32_t k_max_input_batch_size = 8;
 
 template <typename T>
 using InputBatchArray = TArray<const T*, k_max_input_batch_size>;
