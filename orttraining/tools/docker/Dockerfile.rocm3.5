@@ -6,40 +6,22 @@ RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 RUN cat /dev/null > /etc/apt/sources.list.d/rocm.list
 RUN echo 'deb [arch=amd64] http://repo.radeon.com/rocm/apt/3.5/ xenial main' | tee /etc/apt/sources.list.d/rocm.list
 
-RUN apt-get -y update && \
-    apt-get -y install \
-      build-essential \
-      autotools-dev \
-      rsync \
-      curl \
-      wget \
-    #  jq \
-      openssh-server \
-      openssh-client \
-      sudo \
-    # Needed by UCX/OpenMPI
-      automake \
-      autoconf \
-      libtool \
-      flex \
-      doxygen \
-    # Needed by OpenMPI
-    #  cmake \
-    #  g++ \
-    #  gcc \
-    #  ifconfig \ 
-      net-tools \
-    # this is for MOFED - https://github.com/horovod/horovod/issues/1117#issuecomment-502917200
-      librdmacm1 \
-      libnl-route-3-200 \
-      libibverbs1 \
-      libibverbs-dev \
-      ibverbs-utils \
-      ibverbs-providers && \
-    apt-get autoremove
+RUN apt-get -y update
+RUN apt-get -y install apt-utils
+RUN apt-get -y install build-essential autotools-dev \
+    make git curl vim wget rsync jq openssh-server openssh-client sudo \
+    iputils-ping net-tools ethtool \
+    automake autoconf libtool flex doxygen \
+    perl lsb-release iproute2 pciutils graphviz \
+    bc tar git bash pbzip2 pv bzip2 cabextract \
+    # g++ gcc
+    && apt-get autoremove
 
 # ROCm library
 RUN apt-get -y install rocm-libs miopen-hip
+
+# Labels for the docker
+LABEL description="This docker sets up the environment to run ORT Training with AMD GPU"
 
 ENV WORK_DIR=/work
 RUN mkdir -p $WORK_DIR
@@ -47,9 +29,19 @@ RUN mkdir -p $WORK_DIR
 ENV GITHUB_DIR=$WORK_DIR/github
 RUN mkdir -p $GITHUB_DIR
 
+# Infiniband setup
+ENV MOFED_VERSION=5.0-2.1.8.0
+ENV MOFED_OS=ubuntu18.04
+ENV MOFED_FILENAME=MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
+RUN curl -fSsL https://www.mellanox.com/downloads/ofed/MLNX_OFED-${MOFED_VERSION}/${MOFED_FILENAME}.tgz | tar -zxpf -
+RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
+    ./mlnxofedinstall --force --user-space-only --without-fw-update && \
+    cd .. && \
+    rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
+
+
 ENV UCX_DIR=$WORK_DIR/ucx
 ENV OMPI_DIR=$WORK_DIR/ompi
-
 WORKDIR $GITHUB_DIR
 
 # UCX
@@ -93,14 +85,24 @@ WORKDIR $GITHUB_DIR
 ENV ORT_DIR=$GITHUB_DIR/onnxruntime
 RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxruntime.git \
   && cd onnxruntime \
-  && python3 tools/ci_build/build.py --build_dir build --config Release --parallel --skip_tests --use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR --enable_training > build.log 2>&1; exit 0 \
-  && chmod a+x $ORT_DIR/build/Release/onnxruntime_training_bert
+  && python3 tools/ci_build/build.py --build_dir build --config Release --update --parallel --skip_tests --build_wheel \
+	--use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR \
+	--enable_training --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` > build.log 2>&1; exit 0 \
+  && chmod a+x $ORT_DIR/build/Release/onnxruntime_training_bert \
+  && pip install $ORT_DIR/build/Release/dist/*.whl
+
+RUN ldconfig
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
 RUN sed -i 's/#StrictModes yes/StrictModes no/g' /etc/ssh/sshd_config
 RUN sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
 RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd_config
+
+RUN pip install --no-cache-dir \
+    tqdm boto3 requests six ipdb \
+    h5py html2text nltk progressbar \
+    mpi4py git+https://github.com/NVIDIA/dllogger
 
 # Start or Restart sshd service
 ENTRYPOINT service ssh restart && /bin/bash
