@@ -1,2 +1,2 @@
-class LRScheduler(object):
+class _LRScheduler(object):
     pass

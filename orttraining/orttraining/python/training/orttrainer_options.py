@@ -166,7 +166,7 @@ class ORTTrainerOptions(object):
         distributed.enable_adasum (bool, default is False):
             enable `Adasum <https://github.com/horovod/horovod/pull/1484>`_
             algorithm for AllReduce
-        lr_scheduler (optim.LRScheduler, default is None):
+        lr_scheduler (optim._LRScheduler, default is None):
             specifies learning rate scheduler
         mixed_precision (dict):
             mixed precision training options
@@ -273,7 +273,7 @@ class _ORTTrainerOptionsInternal(ORTTrainerOptions):
 
 class ORTTrainerOptionsValidator(cerberus.Validator):
     _LR_SCHEDULER = cerberus.TypeDefinition(
-        'lr_scheduler', (lr_scheduler.LRScheduler,), ())
+        'lr_scheduler', (lr_scheduler._LRScheduler,), ())
     _LOSS_SCALER = cerberus.TypeDefinition(
         'loss_scaler', (loss_scaler.LossScaler,), ())
 
