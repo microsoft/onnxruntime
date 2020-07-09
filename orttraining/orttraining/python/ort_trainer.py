@@ -16,6 +16,14 @@ import warnings
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
 
+import sys
+sys.path.append('/bert_ort/liqun/onnxruntime/onnxruntime/core/providers/nuphar/scripts')
+from symbolic_shape_infer import SymbolicShapeInference
+
+# pre_shape_infer_model_path = '/bert_ort/liqun/test_out/mc_post_apply_trx.onnx'
+# post_shape_infer_model_path = '/bert_ort/liqun/test_out/mc_post_apply_trx_post_shape_infer.onnx'
+# SymbolicShapeInference.infer_shapes(pre_shape_infer_model_path, post_shape_infer_model_path, auto_merge=True)
+
 DEFAULT_OPSET_VERSION = 12
 
 class IODescription():
@@ -674,6 +682,13 @@ class ORTTrainer():
             self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
+
+        pre_shape_infer_model_path = '/bert_ort/liqun/test_out/mc_pre_shape_infer_2.onnx'
+        post_shape_infer_model_path = '/bert_ort/liqun/test_out/mc_post_shape_infer_2.onnx'
+        onnx.save(self._onnx_model_, pre_shape_infer_model_path)
+        SymbolicShapeInference.infer_shapes(pre_shape_infer_model_path, post_shape_infer_model_path, auto_merge=True)
+        self._onnx_model_ = onnx.load(post_shape_infer_model_path)
+
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
             create_ort_training_session_with_optimizer(
                 self.onnx_model_, self.device_,

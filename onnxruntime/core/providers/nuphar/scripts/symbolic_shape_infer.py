@@ -90,7 +90,9 @@ class SymbolicShapeInference:
             'Gather'                : self._infer_Gather,
             'GatherElements'        : self._infer_GatherElements,
             'GatherND'              : self._infer_GatherND,
+            'Gelu'                  : self._infer_Gelu,
             'If'                    : self._infer_If,
+            'LayerNormalization'    : self._infer_LayerNormalization,
             'Loop'                  : self._infer_Loop,
             'MatMul'                : self._infer_MatMul,
             'MatMulInteger16'       : self._infer_MatMulInteger,
@@ -112,6 +114,7 @@ class SymbolicShapeInference:
             'Shape'                 : self._infer_Shape,
             'Size'                  : self._infer_Size,
             'Slice'                 : self._infer_Slice,
+            'SoftmaxCrossEntropyLoss'   : self._infer_SoftmaxCrossEntropyLoss,
             'Split'                 : self._infer_Split,
             'SplitToSequence'       : self._infer_SplitToSequence,
             'Squeeze'               : self._infer_Squeeze,
@@ -1038,6 +1041,38 @@ class SymbolicShapeInference:
             assert len(ends) == 1
             self.sympy_data_[node.output[0]] = self.sympy_data_[node.input[0]][starts[0]:ends[0]]
 
+    def _infer_Gelu(self, node):
+        data_shape = self._get_shape(node, 0)
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.FLOAT, data_shape))
+        self.known_vi_[vi.name] = vi
+
+    def _infer_LayerNormalization(self, node):
+        data_shape = self._get_shape(node, 0)
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.FLOAT, data_shape))
+        self.known_vi_[vi.name] = vi
+
+        data_shape[len(data_shape) - 1] = 1
+        vi = self.known_vi_[node.output[1]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.FLOAT, data_shape))
+        self.known_vi_[vi.name] = vi
+
+        vi = self.known_vi_[node.output[2]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[2], onnx.TensorProto.FLOAT, data_shape))
+        self.known_vi_[vi.name] = vi
+
+    def _infer_SoftmaxCrossEntropyLoss(self, node):
+        vi = self.known_vi_[node.output[0]]
+        vi.type.tensor_type.elem_type = onnx.TensorProto.FLOAT
+        self.known_vi_[vi.name] = vi
+
+        if len(node.output) > 1:
+            data_shape = self._get_shape(node, 0)
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, onnx.TensorProto.FLOAT, data_shape))
+            self.known_vi_[vi.name] = vi
+
     def _infer_Split_Common(self, node, make_value_info_func):
         input_sympy_shape = self._get_sympy_shape(node, 0)
         axis = handle_negative_axis(get_attribute(node, 'axis', 0), len(input_sympy_shape))
@@ -1153,6 +1188,12 @@ class SymbolicShapeInference:
 
         for node in self.out_mp_.graph.node:
             assert all([i in self.known_vi_ for i in node.input if i])
+            # if node.op_type == 'SoftmaxCrossEntropyLoss':
+            #     # import pdb; pdb.set_trace()
+            #     print("")
+            if node.op_type == 'LayerNormalization':
+                # import pdb; pdb.set_trace()
+                print("")
             self._onnx_infer_single_node(node)
             if node.op_type in self.dispatcher_:
                 self.dispatcher_[node.op_type](node)

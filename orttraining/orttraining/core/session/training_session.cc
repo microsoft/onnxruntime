@@ -215,6 +215,12 @@ Status TrainingSession::ConfigureForTraining(
 
   ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph(trainable_initializers, config.enable_gelu_approximation));
 
+  // std::string filename = "/bert_ort/liqun/test_out/mc_post_apply_trx.onnx";
+  // Save(filename, SaveOption::NO_RELOAD);
+
+  common::Status status = Model::Load("/bert_ort/liqun/test_out/mc_post_apply_trx_post_shape_infer.onnx", model_,
+    nullptr, *session_logger_);
+
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
       !filtered_config_weight_names_to_train.empty()

@@ -152,6 +152,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             cache_dir=model_args.cache_dir,
         )
 
+        config.num_hidden_layers = 1
         model = AutoModelForMultipleChoice.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -191,12 +192,18 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
         if model_name.startswith('bert'):
             model_desc = ModelDescription([
-                IODescription('input_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=model.config.vocab_size),
-                IODescription('attention_mask', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
-                IODescription('token_type_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
-                IODescription('labels', [self.train_batch_size, num_labels], torch.int64, num_classes=num_labels)], [
+                IODescription('input_ids', ['batch', num_labels, 'max_seq_length'], torch.int64, num_classes=model.config.vocab_size),
+                IODescription('attention_mask', ['batch', num_labels, 'max_seq_length'], torch.int64, num_classes=2),
+                IODescription('token_type_ids', ['batch', num_labels, 'max_seq_length'], torch.int64, num_classes=2),
+                IODescription('labels', ['batch', num_labels], torch.int64, num_classes=num_labels)], [
                 IODescription('loss', [], torch.float32),
-                IODescription('reshaped_logits', [self.train_batch_size, num_labels], torch.float32)])
+                IODescription('reshaped_logits', ['batch', num_labels], torch.float32)])
+                # IODescription('input_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=model.config.vocab_size),
+                # IODescription('attention_mask', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
+                # IODescription('token_type_ids', [self.train_batch_size, num_labels, data_args.max_seq_length], torch.int64, num_classes=2),
+                # IODescription('labels', [self.train_batch_size, num_labels], torch.int64, num_classes=num_labels)], [
+                # IODescription('loss', [], torch.float32),
+                # IODescription('reshaped_logits', [self.train_batch_size, num_labels], torch.float32)])
         else:
             model_desc = ModelDescription([
                 IODescription('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'], torch.int64, num_classes=model.config.vocab_size),
