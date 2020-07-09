@@ -7,7 +7,7 @@ class TrainStepInfo(object):
 
     This class shouldn't be accessed directly by the user, unless they really know what they are doing.
     Instead, :py:class:`.ORTTrainer` passes it to relevant class methods automatically,
-    such as :py:method:`.LRScheduler.get_lr` or :py:class:`.LossScaler.update`.
+    such as :py:method:`._LRScheduler.get_lr` or :py:class:`.LossScaler.update`.
 
     Args:
         all_finite (bool): flag that indicates whether all gradients are still finite after last step
