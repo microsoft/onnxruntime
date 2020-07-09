@@ -11,8 +11,8 @@ import subprocess
 from BaseModel import *
 
 class BERTSquad(BaseModel):
-    def __init__(self, model_name='BERT Squad'): 
-        BaseModel.__init__(self, model_name)
+    def __init__(self, model_name='BERT-Squad', providers=None): 
+        BaseModel.__init__(self, model_name, providers)
         self.input_file_ = 'inputs.json'
         self.all_results_ = []
         self.input_ids_ =  None
@@ -21,22 +21,23 @@ class BERTSquad(BaseModel):
         self.extra_data_ = None 
         self.eval_examples_ = None 
 
-        if not os.path.exists("uncased_L-12_H-768_A-12"):
+        if not os.path.exists("uncased_L-12_H-768_A-12/bert_config.json"):
             subprocess.run("wget -q https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip", shell=True, check=True)     
             subprocess.run("unzip uncased_L-12_H-768_A-12.zip", shell=True, check=True)
 
-        if not os.path.exists("download_sample_10"):
+        if not os.path.exists("download_sample_10/bertsquad10.onnx"):
             subprocess.run("wget https://github.com/onnx/models/raw/master/text/machine_comprehension/bert-squad/model/bertsquad-10.tar.gz", shell=True, check=True)     
             subprocess.run("tar zxf bertsquad-10.tar.gz", shell=True, check=True)
 
         #self.preprocess()
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "download_sample_10") 
-        try: 
-            self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10.onnx')
-        except:
-            subprocess.run("python3 ../symbolic_shape_infer.py --input ./download_sample_10/bertsquad10.onnx --output ./download_sample_10/bertsquad10_new.onnx --auto_merge", shell=True, check=True)     
-            self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10_new.onnx', providers=['CUDAExecutionProvider'] )
+        self.create_session('download_sample_10/bertsquad10.onnx')
+        # try: 
+            # self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10.onnx')
+        # except:
+            # subprocess.run("python3 ../symbolic_shape_infer.py --input ./download_sample_10/bertsquad10.onnx --output ./download_sample_10/bertsquad10_new.onnx --auto_merge", shell=True, check=True)     
+            # self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10_new.onnx', providers=['CUDAExecutionProvider'] )
 
     def preprocess(self):
         with open(self.input_file_) as json_file:
@@ -67,57 +68,66 @@ class BERTSquad(BaseModel):
         self.eval_examples_ = eval_examples
 
     def inference(self, input_list=None):
+        session = self.session_
+        for input_meta in session.get_inputs():
+            print(input_meta)
+
         if input_list:
             unique_ids_raw_output = input_list[0][0]
             input_ids = input_list[0][1] 
             input_mask = input_list[0][2] 
             segment_ids = input_list[0][3] 
             print(unique_ids_raw_output)
+
+            outputs = []
+            for test_data in input_list:
+                unique_ids_raw_output = test_data[0]
+                input_ids = test_data[1] 
+                input_mask = test_data[2] 
+                segment_ids = test_data[3] 
+
+                n = len(input_ids)
+                batch_size = 1
+                bs = batch_size
+
+                for idx in range(0, n):
+                    data = {"unique_ids_raw_output___9:0": unique_ids_raw_output,
+                            "input_ids:0": input_ids[idx:idx+bs],
+                            "input_mask:0": input_mask[idx:idx+bs],
+                            "segment_ids:0": segment_ids[idx:idx+bs]}
+
+                    result = session.run(["unique_ids:0","unstack:0", "unstack:1"], data)
+                outputs.append([result])
+            self.outputs_ = outputs
+
         else:
-            unique_ids_raw_output = None
             input_ids = self.input_ids_
             input_mask = self.input_mask_
             segment_ids = self.segment_ids_
 
-        extra_data = self.extra_data_
-        eval_examples = self.eval_examples_
-        all_results = self.all_results_
-        batch_size = 1
+            extra_data = self.extra_data_
+            eval_examples = self.eval_examples_
+            all_results = self.all_results_
+            batch_size = 1
 
-        session = self.session_
+            n = len(input_ids)
+            bs = batch_size
 
-        for input_meta in session.get_inputs():
-            print(input_meta)
-
-        n = len(input_ids)
-        bs = batch_size
-        start = timer()
-
-        for idx in range(0, n):
-            item = eval_examples[idx]
-            print(np.array([item.qas_id], dtype=np.int64))
-            if input_list:
-                # this is using batch_size=1
-                # feed the input data as int64
-                data = {"unique_ids_raw_output___9:0": unique_ids_raw_output,
-                        "input_ids:0": input_ids[idx:idx+bs],
-                        "input_mask:0": input_mask[idx:idx+bs],
-                        "segment_ids:0": segment_ids[idx:idx+bs]}
-            else:
+            for idx in range(0, n):
                 item = eval_examples[idx]
                 data = {"unique_ids_raw_output___9:0": np.array([item.qas_id], dtype=np.int64),
                         "input_ids:0": input_ids[idx:idx+bs],
                         "input_mask:0": input_mask[idx:idx+bs],
                         "segment_ids:0": segment_ids[idx:idx+bs]}
 
-            result = session.run(["unique_ids:0","unstack:0", "unstack:1"], data)
-            # in_batch = result[1].shape[0]
-            # start_logits = [float(x) for x in result[1][0].flat]
-            # end_logits = [float(x) for x in result[2][0].flat]
-            # for i in range(0, in_batch):
-                # unique_id = len(all_results)
-                # all_results.append(RawResult(unique_id=unique_id, start_logits=start_logits, end_logits=end_logits))
-        self.outputs_ = [result]
+                result = session.run(["unique_ids:0","unstack:0", "unstack:1"], data)
+                in_batch = result[1].shape[0]
+                start_logits = [float(x) for x in result[1][0].flat]
+                end_logits = [float(x) for x in result[2][0].flat]
+                for i in range(0, in_batch):
+                    unique_id = len(all_results)
+                    all_results.append(RawResult(unique_id=unique_id, start_logits=start_logits, end_logits=end_logits))
+            self.outputs_ = [result]
 
     def postprocess(self):
         n_best_size = 20

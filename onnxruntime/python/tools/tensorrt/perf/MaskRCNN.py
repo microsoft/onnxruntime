@@ -10,8 +10,8 @@ from BaseModel import *
 # import matplotlib.patches as patches
 
 class MaskRCNN(BaseModel):
-    def __init__(self, model_name='Mask R-CNN'): 
-        BaseModel.__init__(self, model_name)
+    def __init__(self, model_name='MaskRCNN-10', providers=None): 
+        BaseModel.__init__(self, model_name, providers)
         self.inputs_ = []
         self.ref_outputs_ = []
         self.validate_decimal_ = 3
@@ -22,13 +22,8 @@ class MaskRCNN(BaseModel):
 
         self.image_ = Image.open('dependencies/demo.jpg')
         self.onnx_zoo_test_data_dir_ = os.getcwd() 
-        # self.preprocess()
 
-        try: 
-            self.session_ = onnxruntime.InferenceSession('mask_rcnn_R_50_FPN_1x.onnx', providers=['CUDAExecutionProvider'])
-        except:
-            subprocess.run("python3 ../symbolic_shape_infer.py --input ./mask_rcnn_R_50_FPN_1x.onnx --output ./mask_rcnn_R_50_FPN_1x_new.onnx --auto_merge", shell=True, check=True)     
-            self.session_ = onnxruntime.InferenceSession('mask_rcnn_R_50_FPN_1x_new.onnx', providers=['CUDAExecutionProvider'])
+        self.create_session('mask_rcnn_R_50_FPN_1x.onnx')
 
 
     def preprocess(self):

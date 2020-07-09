@@ -6,21 +6,30 @@ import logging
 import coloredlogs
 import numpy as np
 import argparse
+import copy
 
 from BERTSquad import *
 from Resnet50 import *
+from Resnet152 import *
 from FastRCNN import *
 from MaskRCNN import *
 from SSD import *
+from InceptionV2 import *
+from Mobilenet import *
+from Shufflenet import *
 
 logger = logging.getLogger('')
 
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
     "resnet50": (Resnet50, "resnet50"),
+    "resnet152": (Resnet152, "resnet152"),
     "fast-rcnn": (FastRCNN, "fast-rcnn"),
     "mask-rcnn": (MaskRCNN, "mask-rcnn"),
     "ssd": (SSD, "ssd"),
+    "inception-v2": (InceptionV2, "inception-v2"),
+    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    "shufflenet-v2": (Shufflenet, "shufflenet-v2"),
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -40,7 +49,10 @@ def get_latency_result(runtimes, batch_size):
 
 def inference_ort(ort_session, inputs, result_template, repeat_times, batch_size):
     result = {}
-    runtimes = timeit.repeat(lambda: ort_session.inference(inputs), number=1, repeat=repeat_times)
+
+    # skip the 1st inference for TRT intentionally, since TRT engine creates subgraph which is expensive
+    runtimes = timeit.repeat(lambda: ort_session.inference(inputs), number=1, repeat=repeat_times+1)
+    runtimes = runtimes[1:]
     result.update(result_template)
     result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
@@ -82,8 +94,12 @@ def get_trt_version():
     
     return ""
 
-"""
-"""
+#
+# The following two lists will be generated.
+#
+# inputs: [[[test_data_0_input_0.pb], [test_data_0_input_1.pb] ...], [[test_data_1_input_0.pb], [test_data_1_input_1.pb] ...] ...]
+# outputs: [[[test_data_0_output_0.pb], [test_data_0_output_1.pb] ...], [[test_data_1_output_0.pb], [test_data_1_output_1.pb] ...] ...]
+#
 def load_onnx_model_zoo_test_data(path):
     p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
@@ -101,6 +117,7 @@ def load_onnx_model_zoo_test_data(path):
         pwd = os.getcwd()
         os.chdir(test_data_dir)
 
+        # load inputs
         p1 = subprocess.Popen(["find", ".", "-name", "input_*"], stdout=subprocess.PIPE)
         p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
         stdout, sterr = p2.communicate()
@@ -108,6 +125,16 @@ def load_onnx_model_zoo_test_data(path):
         input_data = stdout.split("\n") 
         print(input_data)
 
+        input_data_pb = [] 
+        for data in input_data:
+            tensor = onnx.TensorProto()
+            with open(data, 'rb') as f:
+                tensor.ParseFromString(f.read())
+                input_data_pb.append(numpy_helper.to_array(tensor))
+                print(np.array(input_data_pb[-1]).shape)
+        inputs.append(input_data_pb)
+
+        # load outputs 
         p1 = subprocess.Popen(["find", ".", "-name", "output_*"], stdout=subprocess.PIPE)
         p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
         stdout, sterr = p2.communicate()
@@ -115,22 +142,13 @@ def load_onnx_model_zoo_test_data(path):
         output_data = stdout.split("\n") 
         print(output_data)
 
-        # load inputs
-        input_data_pb = [] 
-        for data in input_data:
-            tensor = onnx.TensorProto()
-            with open(data, 'rb') as f:
-                tensor.ParseFromString(f.read())
-                input_data_pb.append(numpy_helper.to_array(tensor))
-        inputs.append(input_data_pb)
-
-        # load outputs 
         output_data_pb = [] 
         for data in output_data:
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
                 tensor.ParseFromString(f.read())
                 output_data_pb.append(numpy_helper.to_array(tensor))
+                print(np.array(output_data_pb[-1]).shape)
         outputs.append(output_data_pb)
 
         os.chdir(pwd)
@@ -164,43 +182,66 @@ def validate(all_ref_outputs, all_outputs, decimal):
 
     print('ONNX Runtime outputs are similar to reference outputs!')
 
+def cleanup_files():
+    files = []
+    p = subprocess.Popen(["find", ".", "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    files = files + stdout.split("\n") 
 
-def run_onnxruntime(models=MODELS):
+    p = subprocess.Popen(["find", ".", "-name", "*.onnx"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    files = files + stdout.split("\n") 
+
+    p = subprocess.Popen(["find", ".", "-name", "*.gz"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    files = files + stdout.split("\n") 
+
+    for f in files:
+        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
+
+
+def run_onnxruntime(args, models=MODELS):
     import onnxruntime
 
     results = []
+    latency_results = {} 
     for name in models.keys():
         info = models[name] 
         model_class = info[0]
         path = info[1]
+        latency_result = {}
 
         pwd = os.getcwd()
         if not os.path.exists(path):
             os.mkdir(path)
         os.chdir(path)
 
-        # for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider"]:
-        for ep in ["CUDAExecutionProvider"]:
+        provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+
+        # create onnxruntime inference session
+        logger.info("Initializing {} with {}...".format(name, provider_list))
+        model = model_class(providers=provider_list)
+        model_name = model.get_model_name()
+        
+
+        for ep in provider_list:
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
 
             # these settings are temporary
-            fp16 = False
             sequence_length = 1
             optimize_onnx = False
-            repeat_times = 5 
             batch_size = 1
             device_info = [] 
 
-            # create onnxruntime inference session
-            logger.info("Initializing {} with {}...".format(name, ep))
-
-            model = model_class()
             sess = model.get_session()
 
-            test_set_dir = model.get_onnx_zoo_test_data_dir()
-            inputs, ref_outputs = load_onnx_model_zoo_test_data(test_set_dir)
+            test_data_dir = model.get_onnx_zoo_test_data_dir()
+            inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
 
             if ep == "CUDAExecutionProvider":
                 sess.set_providers([ep])
@@ -215,29 +256,32 @@ def run_onnxruntime(models=MODELS):
                 "device": ep,
                 "device_info": ','.join(device_info),
                 "optimizer": optimize_onnx,
-                "fp16": fp16,
+                "fp16": args.fp16,
                 "io_binding": False,
-                "model_name": model.get_model_name(),
+                "model_name": model_name,
                 "inputs": len(sess.get_inputs()),
                 "batch_size": batch_size,
                 "sequence_length": sequence_length,
                 "datetime": str(datetime.now()),
             }
 
+            logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
-            logger.info("Inferencing {} with {} ...".format(model.get_model_name(), ep))
 
-            result = inference_ort(model, inputs, result_template, repeat_times, batch_size)
+            result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
+            latency_result[ep] = result["average_latency_ms"]
 
             validate(ref_outputs, model.get_outputs(), model.get_decimal())
 
             logger.info(result)
             results.append(result)
-            #model.postprocess()
 
+        latency_results[model_name] = copy.deepcopy(latency_result)
+
+        cleanup_files()
         os.chdir(pwd)
 
-    return results
+    return results, latency_results
 
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
@@ -254,10 +298,36 @@ def output_details(results, csv_filename):
 
     logger.info(f"Detail results are saved to csv file: {csv_filename}")
 
+def output_latency_comparison(results, csv_filename):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = ["Model", "CUDA latency (ms)", "TRT latency (ms)"]
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(column_names)
+
+        for key, value in results.items():
+            row = [key,
+                   value['CUDAExecutionProvider'] if 'CUDAExecutionProvider' in value else "  ",
+                   value['TensorrtExecutionProvider'] if 'TensorrtExecutionProvider' in value else "  "]
+            csv_writer.writerow(row)
+            
+
+    logger.info(f"Latency comparison are saved to csv file: {csv_filename}")
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
+
+    parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference")
+
+    parser.add_argument("--fp32", required=False, action="store_true", help="Use FP32 to accelerate inference")
+
+    parser.add_argument("-t",
+                        "--test_times",
+                        required=False,
+                        default=10,
+                        type=int,
+                        help="Number of repeat times to get average inference latency.")
 
     # parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
 
@@ -275,11 +345,14 @@ def main():
     args = parse_arguments()
     setup_logger(False)
 
-    results = run_onnxruntime()
+    results, latency_results = run_onnxruntime(args)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
     output_details(results, csv_filename)
+    csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
+    output_latency_comparison(latency_results, csv_filename)
+    print(latency_results)
 
     # csv_filename = args.result_csv or f"benchmark_summary_{time_stamp}.csv"
     # output_summary(results, csv_filename, args)

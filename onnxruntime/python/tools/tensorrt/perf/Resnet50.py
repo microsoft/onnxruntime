@@ -8,18 +8,19 @@ from onnx import numpy_helper
 from BaseModel import *
 
 class Resnet50(BaseModel):
-    def __init__(self, model_name='Resnet 50'): 
-        BaseModel.__init__(self, model_name)
+    def __init__(self, model_name='Resnet50-v2', providers=None): 
+        BaseModel.__init__(self, model_name, providers)
         self.inputs_ = []
         self.ref_outputs_ = []
 
-        if not os.path.exists("resnet50v2"):
+        if not os.path.exists("resnet50v2/resnet50v2.onnx"):
             subprocess.run("wget https://s3.amazonaws.com/onnx-model-zoo/resnet/resnet50v2/resnet50v2.tar.gz", shell=True, check=True)
-            subprocess.run("wget https://raw.githubusercontent.com/anishathalye/imagenet-simple-labels/master/imagenet-simple-labels.json", shell=True, check=True)
+            # subprocess.run("wget https://raw.githubusercontent.com/anishathalye/imagenet-simple-labels/master/imagenet-simple-labels.json", shell=True, check=True)
             subprocess.run("tar zxf resnet50v2.tar.gz", shell=True, check=True)
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "resnet50v2") 
-        self.session_ = onnxruntime.InferenceSession('resnet50v2/resnet50v2.onnx', None)
+        self.create_session('resnet50v2/resnet50v2.onnx')
+        # self.session_ = onnxruntime.InferenceSession('resnet50v2/resnet50v2.onnx', None)
 
 
     def preprocess(self):
