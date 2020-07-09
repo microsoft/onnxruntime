@@ -19,6 +19,7 @@ WORKDIR /stage
     
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
+CMD echo $CONDA_VERSION
 ARG CONDA_URL=https://repo.anaconda.com/miniconda/Miniconda3-${CONDA_VERSION}-Linux-x86_64.sh
 RUN cd /stage && curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
     /bin/bash ./install-conda.sh -b -p /opt/conda &&\

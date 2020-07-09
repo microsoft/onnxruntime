@@ -8,6 +8,11 @@ stages:
     docker_image_prefix: onnxruntime-training
     linux_gpu_dockerfile: Dockerfile.ortrelease
     python.version: 3.6
+  parameters:
+    - name: conda_version
+      displayName: Conda Version
+      type: string
+      default: 4.8.0
   jobs:
   - job: Linux_py_GPU_Wheels
     timeoutInMinutes: 90
@@ -31,6 +36,7 @@ stages:
               --build-arg BUILD_UID=$(id -u) \
               --build-arg PYTHON_VERSION=$(python.version) \
               --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
+              --build-arg CONDA_VERSION="${{ parameters.conda_version }}" \
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
