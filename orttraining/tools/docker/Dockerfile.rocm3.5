@@ -40,33 +40,20 @@ RUN cd MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64 && \
     rm -r MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 
 
-ENV UCX_DIR=$WORK_DIR/ucx
-ENV OMPI_DIR=$WORK_DIR/ompi
 WORKDIR $GITHUB_DIR
 
-# UCX
-RUN git clone https://github.com/openucx/ucx.git \
-  && cd ucx \
-  && git checkout v1.8.0 \
-  && ./autogen.sh \
-  && mkdir build \
-  && cd build \
-  && ../contrib/configure-opt --prefix=$UCX_DIR --with-rocm=/opt/rocm --without-knem --without-cuda \
-  && make \
-  && make install
-
-# OpenMPI
-RUN git clone --recursive -b v4.0.3 https://github.com/open-mpi/ompi.git \
-  && cd ompi \
-  && ./autogen.pl \
-  && mkdir build \
-  && cd build \
-  && ../configure --prefix=$OMPI_DIR --with-ucx=$UCX_DIR --without-verbs \
-  && make \
-  && make install
+ENV OPENMPI_BASEVERSION=4.0
+ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.4
+ENV OMPI_DIR=${WORK_DIR}/openmpi-${OPENMPI_VERSION}
+RUN wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar xzf - && \
+    cd openmpi-${OPENMPI_VERSION} && \
+    ./configure --enable-mca-no-build=btl-uct --prefix=${OMPI_DIR} && \
+    make -j"$(nproc)" install && \
+    # Sanity check:
+    test -f ${OMPI_DIR}/bin/mpic++
 
 ENV PATH=$OMPI_DIR/bin:${PATH}
-ENV LD_LIBRARY_PATH=$OMPI_DIR/lib:$UCX_DIR/lib:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=$OMPI_DIR/lib:${LD_LIBRARY_PATH}
 
 # RCCL
 # RUN apt-get -y purge rccl
@@ -88,7 +75,7 @@ RUN git clone --recursive -b wezhan/amdgpu https://github.com/microsoft/onnxrunt
   && python3 tools/ci_build/build.py --build_dir build --config Release --parallel --skip_tests --build_wheel \
 	--use_hip --hip_home /opt/rocm --use_mpi --mpi_home $OMPI_DIR \
 	--enable_training --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` > build.log 2>&1; exit 0 \
-  && chmod a+x $ORT_DIR/build/Release/onnxruntime_training_bert \
+  && test -f $ORT_DIR/build/Release/onnxruntime_training_bert \
   && pip install $ORT_DIR/build/Release/dist/*.whl
 
 RUN ldconfig
