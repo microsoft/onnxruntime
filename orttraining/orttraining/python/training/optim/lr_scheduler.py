@@ -3,7 +3,7 @@ import math
 from . import config
 
 
-class LRScheduler(object):
+class _LRScheduler(object):
     r"""Base class for implementing custom learning rate schedulers
 
     Schedulers can be either stateful or stateless.
@@ -61,7 +61,7 @@ class LRScheduler(object):
         self.optimizer_config.lr = new_lr[0]
 
 
-class ConstantWarmupLRScheduler(LRScheduler):
+class ConstantWarmupLRScheduler(_LRScheduler):
     r"""Constant warmup strategy for learning rate update
 
     Learning rate update strategy:
@@ -118,7 +118,7 @@ class ConstantWarmupLRScheduler(LRScheduler):
         return [self.optimizer_config.lr * warmup]
 
 
-class CosineWarmupLRScheduler(LRScheduler):
+class CosineWarmupLRScheduler(_LRScheduler):
     r"""Cosine warmup strategy for learning rate update
 
     Learning rate update strategy:
@@ -174,7 +174,7 @@ class CosineWarmupLRScheduler(LRScheduler):
         return [self.optimizer_config.lr * self._warmup_cosine(train_step_info)]
 
 
-class LinearWarmupLRScheduler(LRScheduler):
+class LinearWarmupLRScheduler(_LRScheduler):
     r"""Linear warmup strategy for learning rate update
 
     Learning rate update strategy:
@@ -230,7 +230,7 @@ class LinearWarmupLRScheduler(LRScheduler):
         return [self.optimizer_config.lr * self._warmup_linear(train_step_info)]
 
 
-class PolyWarmupLRScheduler(LRScheduler):
+class PolyWarmupLRScheduler(_LRScheduler):
     r"""Polynomial warmup strategy for learning rate update
 
     Learning rate update strategy:
