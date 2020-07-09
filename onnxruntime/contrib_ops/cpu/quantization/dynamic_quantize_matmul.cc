@@ -105,7 +105,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                y_data + helper.OutputOffsets()[i],
                static_cast<size_t>(helper.N()),
                &multiplier,
-               nullptr,
+               bias_data,
                thread_pool);
       continue;
     }

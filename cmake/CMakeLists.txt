@@ -113,6 +113,18 @@ option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests."
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
+# options for security fuzzing
+# build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
+option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
+
+# Fuzz test has only been tested with BUILD_SHARED_LIB option,
+# using the MSVC compiler and on windows OS.
+if(MSVC AND WIN32 AND onnxruntime_FUZZ_TEST AND onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_FULL_PROTOBUF)
+  # Fuzz test library dependency, protobuf-mutator,
+  # needs the onnx message to be compiled using "non-lite protobuf version"
+  set(onnxruntime_FUZZ_ENABLED ON)
+endif()
+
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()

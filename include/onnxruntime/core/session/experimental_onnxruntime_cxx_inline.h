@@ -7,17 +7,17 @@
 // the main C++ file with implementation details.
 namespace Ort::Experimental {
 
-inline std::vector<Value> Session::Run(const std::vector<std::string>& input_names, const std::vector<Value>& input_values,
-                                       const std::vector<std::string>& output_names, const RunOptions& run_options) {
+inline std::vector<Ort::Value> Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values,
+                                            const std::vector<std::string>& output_names, const RunOptions& run_options) {
   size_t output_names_count = GetOutputNames().size();
-  std::vector<Value> output_values;
+  std::vector<Ort::Value> output_values;
   for (size_t i = 0; i < output_names_count; i++) output_values.emplace_back(nullptr);
   Run(input_names, input_values, output_names, output_values, run_options);
   return output_values;
 }
 
-inline void Session::Run(const std::vector<std::string>& input_names, const std::vector<Value>& input_values,
-                         const std::vector<std::string>& output_names, std::vector<Value>& output_values, const RunOptions& run_options) {
+inline void Session::Run(const std::vector<std::string>& input_names, const std::vector<Ort::Value>& input_values,
+                         const std::vector<std::string>& output_names, std::vector<Ort::Value>& output_values, const RunOptions& run_options) {
   size_t input_names_count = input_names.size();
   size_t output_names_count = output_names.size();
   std::vector<const char*> input_names_(input_names_count, nullptr);
@@ -84,6 +84,26 @@ inline std::vector<std::vector<int64_t>> Session::GetOverridableInitializerShape
   std::vector<std::vector<int64_t>> out(init_count);
   for (size_t i = 0; i < init_count; i++) out[i] = GetOverridableInitializerTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
   return out;
+}
+
+template <typename T>
+inline Ort::Value Value::CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape) {
+  return CreateTensor(p_data, p_data_element_count * sizeof(T), shape, TypeToTensorType<T>::type);
+}
+
+inline Ort::Value Value::CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
+  Ort::MemoryInfo info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  return Ort::Value::CreateTensor(info, p_data, p_data_byte_count, shape.data(), shape.size(), type);
+}
+
+template <typename T>
+inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape) {
+  return CreateTensor(shape, TypeToTensorType<T>::type);
+}
+
+inline Ort::Value Value::CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type) {
+  Ort::AllocatorWithDefaultOptions allocator;
+  return Ort::Value::CreateTensor(allocator, shape.data(), shape.size(), type);
 }
 
 }  // namespace Ort::Experimental
