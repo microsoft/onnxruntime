@@ -70,9 +70,11 @@ elif [ $BUILD_OS = "yocto" ]; then
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
-        DOCKER_FILE=Dockerfile.ortrelease
+        DOCKER_FILE=Dockerfile.ubuntu_gpu
+        if [[ $BUILD_EXTR_PAR == *"--enable_training"* ]]; then
+            DOCKER_FILE=Dockerfile.ortrelease
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
-        DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
+            DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
         $DOCKER_CMD build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg BUILD_EXTR_PAR="${BUILD_EXTR_PAR}" -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
