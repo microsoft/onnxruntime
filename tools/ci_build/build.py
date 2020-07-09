@@ -485,6 +485,12 @@ def install_python_deps(numpy_version=""):
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
 
+# We need to install Torch to test certain functioanlities of the ORT Python package
+def install_torch():
+    # Command works for both Windows and Linux
+    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
+                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101', 
+                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
 
 def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
@@ -1214,20 +1220,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
-            iobinding_test = False
             # For CUDA enabled builds test IOBinding feature
-            if args.use_cuda:
-                iobinding_test = True
-                try:
-                    import torch  # noqa
-                except ImportError as error:
-                    iobinding_test = False
-                    log.exception(error)
-                    log.warning(
-                        "Torch is not installed. "
-                        "The IOBinding tests will be skipped as it requires Torch.")
-
-            if iobinding_test:
+            # Limit testing to Windows/Ubuntu and non-ARM builds as Torch wheels 
+            # may not be available for all platform/processor combinations
+            if args.use_cuda and (is_windows() or is_ubuntu_1604())   and not (args.arm or args.arm64):
+                # We need to have Torch installed to test the IOBinding feature
+                # which currently allocates Torch's allocator to allocate GPU memory for testing
+                log.info("Attempting to install Torch to test ORT's IOBinding feature")
+                install_torch()
+                log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
