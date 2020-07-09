@@ -1232,7 +1232,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 iobinding_test = True
 
                 # Try install Torch on Windows
-                # On Linux, the docker will install Torch
+                # On Linux, the DockerFile will hold the Torch installation logic
                 if is_windows():
                     log.info("Attempting to install Torch to test ORT's IOBinding feature")
                     install_torch()
