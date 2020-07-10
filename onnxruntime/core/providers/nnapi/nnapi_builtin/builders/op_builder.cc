@@ -1453,9 +1453,7 @@ void ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   inputs.reserve(node_input_size);
   if (all_input_have_same_layout) {
     // if all the inputs are of same layout, output will be the same layout
-    if (model_builder.IsOperandNHWC(input0)) {
-      output_is_nhwc = true;
-    }
+    output_is_nhwc = model_builder.IsOperandNHWC(input0);
 
     for (size_t i = 0; i < node_input_size; i++) {
       auto input = node.InputDefs()[i]->Name();
@@ -1546,23 +1544,29 @@ void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   NodeAttrHelper helper(node);
   vector<int32_t> axes = helper.Get("axes", vector<int32_t>());
-  auto input_dims = shaper[input].size();
+  const auto& input_shape(shaper[input]);
+  auto input_dims = input_shape.size();
   for (auto& axis : axes) {
     if (axis < 0)
       axis += input_dims;
   }
 
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
-  if (!axes.empty()) {
-    const auto axes_name = model_builder.GetUniqueName(node.Name() + input + "_axes");
-    Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-    shaper.AddShape(axes_name, axes_dimen);
-    const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-    model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type);
-    input_indices.push_back(operand_indices.at(axes_name));  // axes
+  if (axes.empty()) {  // Squeeze all
+    for (size_t i = 0; i < input_dims; i++) {
+      if (input_shape[i] == 1)
+        axes.push_back(i);
+    }
   }
+
+  const auto axes_name = model_builder.GetUniqueName(node.Name() + input + "_axes");
+  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+  shaper.AddShape(axes_name, axes_dimen);
+  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+  model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type);
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));      // input
+  input_indices.push_back(operand_indices.at(axes_name));  // axes
 
   const auto& output = node.OutputDefs()[0]->Name();
   shaper.Squeeze(input, axes, output);
