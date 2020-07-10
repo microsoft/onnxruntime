@@ -27,7 +27,7 @@ if [ "$run_cpu" = true ] ; then
   average_over=100
 fi
 
-# enable optimizer (use script instead of OnnxRuntime for graph optimization)
+# Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 use_optimizer=true
 
 # Batch Sizes and Sequence Lengths
@@ -45,11 +45,20 @@ models_to_test="bert-base-cased roberta-base gpt2"
 # If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
 
-#This script will generate a logs file with a list of commands used in tests.
+# This script will generate a logs file with a list of commands used in tests.
 echo echo "ort=$run_ort torch=$run_torch torchscript=$run_torchscript gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
 
-#Set it to false to skip testing. You can use it to dry run this script with the log file.
+# Set it to false to skip testing. You can use it to dry run this script with the log file.
 run_tests=true
+
+# Directory for downloading pretrained models.
+cache_dir="./cache_models"
+
+# Directory for ONNX models
+onnx_dir="./onnx_models"
+
+# Use raw attention mask in Attention operator or not.
+use_raw_attention_mask=false
 
 # -------------------------------------------
 if [ "$run_cpu" = true ] ; then
@@ -79,41 +88,46 @@ fi
 
 if [ "$run_cli" = true ] ; then
   echo "Use onnxruntime_tools.transformers.benchmark" 
-  optimizer_script="-m onnxruntime_tools.transformers.benchmark"
+  benchmark_script="-m onnxruntime_tools.transformers.benchmark"
 else
-  optimizer_script="benchmark.py"
+  benchmark_script="benchmark.py"
 fi
 
-onnx_export_options="-i $input_counts -v -b 0 --overwrite -f fusion.csv"
-benchmark_options="-b $batch_sizes -s $sequence_lengths -t $average_over -f fusion.csv -r result.csv -d detail.csv"
+onnx_export_options="-i $input_counts -v -b 0 --overwrite -f fusion.csv -c $cache_dir --onnx_dir $onnx_dir"
+benchmark_options="-b $batch_sizes -s $sequence_lengths -t $average_over -f fusion.csv -r result.csv -d detail.csv -c $cache_dir --onnx_dir $onnx_dir"
 
 if [ "$use_optimizer" = true ] ; then
   onnx_export_options="$onnx_export_options -o"
   benchmark_options="$benchmark_options -o"
 fi
 
+if [ "$use_raw_attention_mask" = true ] ; then
+  onnx_export_options="$onnx_export_options --use_raw_attention_mask"
+  benchmark_options="$benchmark_options --use_raw_attention_mask"
+fi
+
 # -------------------------------------------
 run_one_test() {
     if [ "$run_ort" = true ] ; then
-      echo python $optimizer_script -m $1 $onnx_export_options $2 $3 >> benchmark.log
-      echo python $optimizer_script -m $1 $benchmark_options $2 $3 -i $input_counts >> benchmark.log
+      echo python $benchmark_script -m $1 $onnx_export_options $2 $3 >> benchmark.log
+      echo python $benchmark_script -m $1 $benchmark_options $2 $3 -i $input_counts >> benchmark.log
       if [ "$run_tests" = true ] ; then
-        python $optimizer_script -m $1 $onnx_export_options $2 $3
-        python $optimizer_script -m $1 $benchmark_options $2 $3 -i $input_counts
+        python $benchmark_script -m $1 $onnx_export_options $2 $3
+        python $benchmark_script -m $1 $benchmark_options $2 $3 -i $input_counts
       fi
     fi
 
     if [ "$run_torch" = true ] ; then
-      echo python $optimizer_script -e torch -m $1 $benchmark_options $2 $3 >> benchmark.log
+      echo python $benchmark_script -e torch -m $1 $benchmark_options $2 $3 >> benchmark.log
       if [ "$run_tests" = true ] ; then
-        python $optimizer_script -e torch -m $1 $benchmark_options $2 $3
+        python $benchmark_script -e torch -m $1 $benchmark_options $2 $3
       fi
     fi
 
     if [ "$run_torchscript" = true ] ; then
-      echo python $optimizer_script -e torchscript -m $1 $benchmark_options $2 $3 >> benchmark.log
+      echo python $benchmark_script -e torchscript -m $1 $benchmark_options $2 $3 >> benchmark.log
       if [ "$run_tests" = true ] ; then
-        python $optimizer_script -e torchscript -m $1 $benchmark_options $2 $3
+        python $benchmark_script -e torchscript -m $1 $benchmark_options $2 $3
       fi
     fi
 }

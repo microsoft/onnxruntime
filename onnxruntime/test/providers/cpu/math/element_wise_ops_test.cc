@@ -150,11 +150,11 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
                         {4.0f, 5.0f, 6.0f,
                          3.0f, 4.0f, 5.0f,
                          2.0f, 3.0f, 4.0f});
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
-  #endif
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
@@ -170,11 +170,11 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
                         {4.0f, 5.0f, 6.0f,
                          3.0f, 4.0f, 5.0f,
                          2.0f, 3.0f, 4.0f});
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
-  #endif
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_0x0) {
@@ -489,7 +489,7 @@ TEST(MathOpTest, Neg_int8) {
 
 // OpenVINO EP: Disabled temporarily
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: INT8 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: INT8 is not supported
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8 is not supported
 #endif
@@ -846,10 +846,43 @@ TEST(MathOpTest, Sum_8_Test2) {
 
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   // OpenVINO: Disabled temporarily due to accuarcy issues
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Input batch size is inconsistent
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "Sum is not correct", {kTensorrtExecutionProvider});  //TensorRT: result differs
 #endif
+}
+
+static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorShape& shape) {
+  using element_type = float;
+
+  OpTester test{"Sum", 8};
+
+  const auto& dims = shape.GetDims();
+  const std::vector<element_type> input_data(shape.Size(), 1);
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    test.AddInput<element_type>(MakeString("data_", i).c_str(), dims, input_data);
+  }
+
+  const std::vector<element_type> expected_output_data =
+      [&input_data, num_inputs]() {
+        std::vector<element_type> result;
+        std::transform(
+            input_data.begin(), input_data.end(), std::back_inserter(result),
+            [num_inputs](element_type value) { return num_inputs * value; });
+        return result;
+      }();
+
+  test.AddOutput<element_type>("sum", dims, expected_output_data);
+
+  test.Run();
+}
+
+TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
+  const TensorShape shape{3, 3, 3};
+  for (size_t num_inputs = 2; num_inputs < 10; ++num_inputs) {
+    TestSumMultipleInputsNoBroadcasting(num_inputs, shape);
+  }
 }
 
 TEST(MathOpTest, Min_6) {
@@ -871,11 +904,11 @@ TEST(MathOpTest, Min_6) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch
-  #else
-    test.Run();
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch
+#else
+  test.Run();
+#endif
 }
 
 TEST(MathOpTest, Min_8) {
@@ -897,11 +930,11 @@ TEST(MathOpTest, Min_8) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch
-  #else
-    test.Run();
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch
+#else
+  test.Run();
+#endif
 }
 
 TEST(MathOpTest, Min_12_Float) {
@@ -1025,11 +1058,11 @@ TEST(MathOpTest, Max_6) {
                         {1.0f, 0.0f, 3.0f,
                          -1.0f, 3.3f, 64.0f,
                          5.4f, 0.03f, 10000.0f});
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch
-  #else
-    test.Run();
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch
+#else
+  test.Run();
+#endif
 }
 
 TEST(MathOpTest, Max_8_Float) {
@@ -1496,12 +1529,12 @@ TEST(MathOpTest, Mean_6) {
                         {1.0f, 0.0f, 2.0f,
                          -2.0f, 2.2f, 10.0f,
                          -3.0f, 0.02f, -4.0f});
-  // OpenVINO: Disabled due to accuracy mismatch
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-  #else
-    test.Run();
-  #endif
+// OpenVINO: Disabled due to accuracy mismatch
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
+  test.Run();
+#endif
 }
 
 TEST(MathOpTest, Mean_8) {
@@ -1517,12 +1550,12 @@ TEST(MathOpTest, Mean_8) {
                         {12.0f / 3.0f, 22.0f / 3.0f, 32.0f / 3.0f,
                          43.0f / 3.0f, 53.0f / 3.0f, 63.0f / 3.0f,
                          74.0f / 3.0f, 84.0f / 3.0f, 94.0f / 3.0f});
-  // OpenVINO: Disabled due to accuracy mismatch
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: Input batch size is inconsistent
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
-  #endif
+// OpenVINO: Disabled due to accuracy mismatch
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Input batch size is inconsistent
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+#endif
 }
 
 template <float (&op)(float value)>

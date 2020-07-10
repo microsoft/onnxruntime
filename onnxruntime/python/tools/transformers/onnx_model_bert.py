@@ -10,7 +10,7 @@ from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
 from fusion_embedlayer import FusionEmbedLayerNormalization
-from fusion_attention import FusionAttention, AttentionMask
+from fusion_attention import FusionAttention, AttentionMask, AttentionMaskFormat
 from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
@@ -30,9 +30,14 @@ class BertOptimizationOptions:
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
+        self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
 
         if model_type == 'gpt2':
             self.enable_skip_layer_norm = False
+            self.attention_mask_format = AttentionMaskFormat.AttentionMask
+
+    def use_raw_attention_mask(self):
+        self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
 
 class BertOnnxModel(OnnxModel):
@@ -158,8 +163,9 @@ class BertOnnxModel(OnnxModel):
             # After:
             #  input_ids --> Shape                                                  --> ConstantOfShape -->Cast --> EmbedLayerNormaliation/ReduceSum
             # TODO: merge ConstantOfShape -->Cast to ConstantOfShape (need update the data type of value)
-            if node.op_type == 'EmbedLayerNormalization' or node.op_type == 'ReduceSum':
-                i = 1 if node.op_type == 'EmbedLayerNormalization' else 0
+            op_input_id = {"EmbedLayerNormalization": 1, "ReduceSum": 0, "Attention": 3}
+            if node.op_type in op_input_id:
+                i = op_input_id[node.op_type]
                 parent_nodes = self.match_parent_path(
                     node, ['Cast', 'ConstantOfShape', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [i, 0, 0, 0, 0, 0],
                     output_name_to_node)
@@ -208,6 +214,8 @@ class BertOnnxModel(OnnxModel):
             self.fuse_skip_layer_norm()
 
         if (options is None) or options.enable_attention:
+            if options is not None:
+                self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
 
         if (options is None) or options.enable_embed_layer_norm:

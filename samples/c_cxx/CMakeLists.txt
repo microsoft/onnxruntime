@@ -32,10 +32,8 @@ if(NOT ONNXRUNTIME_ROOTDIR)
   endif()
 endif()
 
-if(WIN32)
-  include_directories("${ONNXRUNTIME_ROOTDIR}/include" "${ONNXRUNTIME_ROOTDIR}/include/onnxruntime/core/session")
-  link_directories("${ONNXRUNTIME_ROOTDIR}/lib")
-endif()
+include_directories("${ONNXRUNTIME_ROOTDIR}/include" "${ONNXRUNTIME_ROOTDIR}/include/onnxruntime/core/session")
+link_directories("${ONNXRUNTIME_ROOTDIR}/lib")
 
 #if JPEG lib is available, we'll use it for image decoding, otherwise we'll use WIC
 find_package(JPEG)
@@ -78,9 +76,12 @@ if(onnxruntime_USE_DML)
   add_definitions(-DUSE_DML)
 endif()
 
-
-add_subdirectory(imagenet)
+# some examples require a Windows build environment
+if(WIN32)
+  add_subdirectory(imagenet)
+  add_subdirectory(MNIST)
+endif()
 if(PNG_FOUND)
   add_subdirectory(fns_candy_style_transfer)
 endif()
-add_subdirectory(MNIST)
+add_subdirectory(model-explorer)

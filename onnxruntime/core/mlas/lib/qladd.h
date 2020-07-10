@@ -48,6 +48,26 @@ MlasFp32FromBits(
     return uf.fp32;
 }
 
+MLAS_FORCEINLINE
+static
+void
+MlasCopyTailBytes(
+    uint8_t* target,
+    const uint8_t* src,
+    size_t N)
+{
+    while (N >= sizeof(uint32_t)) {
+        *(uint32_t*)(target) = *(uint32_t*)(src);
+        N -= sizeof(uint32_t);
+        target += sizeof(uint32_t);
+        src += sizeof(uint32_t);
+    }
+    while (N > 0) {
+        *target++ = *src++;
+        --N;
+    }
+}
+
 bool
 MlasCalcQLinearAddParameters(
     float ScaleRatio_AC,
