@@ -29,6 +29,7 @@ BERT_TEST_MODELS = {
     "gpt2": ('gpt2_pytorch1.4_opset11_no_past', 'GPT2Model.onnx'),
     "gpt2_past": ('gpt2_pytorch1.5_opset11', 'gpt2_past.onnx'),
     "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
+    "multiple_embed": ('FUSION', 'embed_layer_norm_multiple.onnx'),
 }
 
 skip_on_ort_version = pytest.mark.skipif(onnxruntime.__version__ == ('1.3.0'),
@@ -250,6 +251,21 @@ class TestBertOptimization(unittest.TestCase):
             'SkipLayerNormalization': 0
         }
         self.verify_node_count(model, expected_node_count, 'test_gpt2_past_mask')
+
+    def test_multiple_embed(self):
+        input_model_path = _get_test_model_path('multiple_embed')
+        model = optimize_model(input_model_path, 'bert', num_heads=2, hidden_size=4)
+        expected_node_count = {
+            'EmbedLayerNormalization': 2,
+            'Attention': 2,
+            'Gelu': 0,
+            'FastGelu': 0,
+            'BiasGelu': 0,
+            'LayerNormalization': 0,
+            'SkipLayerNormalization': 0
+        }
+        self.verify_node_count(model, expected_node_count, 'test_multiple_embed')
+
 
 if __name__ == '__main__':
     unittest.main()

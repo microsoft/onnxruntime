@@ -92,7 +92,7 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionSkipLayerNormalization(self)
         fusion.apply()
 
-    def get_graph_inputs_from_embed_nodes(self, casted = False):
+    def get_graph_inputs_from_embed_nodes(self, casted=False):
         """
         Get graph inputs that feed into EmbedLayerNormaliazation.
         Returns a list of the graph input names based on the filter whether it is casted or not.
@@ -102,7 +102,8 @@ class BertOnnxModel(OnnxModel):
         output_name_to_node = self.output_name_to_node()
         embed_nodes = self.get_nodes_by_op_type('EmbedLayerNormalization')
         for embed_node in embed_nodes:
-            bert_inputs = embed_node.input[:2] + embed_node.input[7:] # inputs 0, 1 and 7 are input_ids, segment_ids and attention mask
+            bert_inputs = embed_node.input[:2] + embed_node.input[
+                7:]  # inputs 0, 1 and 7 are input_ids, segment_ids and attention mask
             for bert_input in bert_inputs:
                 if self.find_graph_input(bert_input):
                     if not casted:
@@ -118,9 +119,8 @@ class BertOnnxModel(OnnxModel):
         original_opset_version = self.model.opset_import[0].version
         graph = self.graph()
 
-        
         new_graph_inputs = []
-        casted_bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(casted = True)
+        casted_bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(casted=True)
         utils = FusionUtils(self)
 
         for input in graph.input:
@@ -148,7 +148,8 @@ class BertOnnxModel(OnnxModel):
         """
         Update input and output shape to use dynamic axes.
         """
-        bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(casted = True) + self.get_graph_inputs_from_embed_nodes(casted = False)
+        bert_graph_inputs = self.get_graph_inputs_from_embed_nodes(
+            casted=True) + self.get_graph_inputs_from_embed_nodes(casted=False)
 
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:

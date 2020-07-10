@@ -119,7 +119,6 @@ class FusionEmbedLayerNoMask(Fusion):
 
         self.nodes_to_remove.extend([normalize_node])
 
-
         # Cast input_ids and segment_ids to int32.
         input_ids_cast_node = None
         if self.model.find_graph_input(input_ids):
@@ -174,7 +173,7 @@ class FusionEmbedLayerNoMask(Fusion):
         # Set default value to 1e-12 if no attribute is found.
         # OnnxRuntime 1.2.0 or older has no epsilon attribute. The optimized model can only work for 1.3.0 or later.
         if len(embed_node.attribute) == 0:
-            embed_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-12)])
+            embed_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
         self.model.replace_input_of_all_nodes(normalize_node.output[0], output_name)
         self.nodes_to_add.append(embed_node)
