@@ -1115,21 +1115,27 @@ void RetrieveSendRecvOperators(
   }
 }
 
+PathString GenerateFileNameWithIndex(const PathString& base_str, int index, const PathString& file_suffix) {
+  Path p;
+  ORT_ENFORCE(Path::Parse(base_str, p).IsOK());
+  return p.ConcatIndex(index).Concat(file_suffix).ToPathString();
+}
+
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
-  const auto model_path = ORT_TSTR("testdata/bert-tiny.onnx");
+  const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
   const size_t total_partition_count = 3;
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
   pipe.do_partition = true;
 
-  // evenly model in 3 partitions
+  // cut model in 3 partitions
   TrainingSession::TrainingConfiguration::CutInfo cut0 = {
-      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("186"),
-      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("71", {"273"})};
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("326"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("103", {"413", "529"})};
 
   TrainingSession::TrainingConfiguration::CutInfo cut1 = {
-      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("308"),
-      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("71", {"395"})};
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("558"),
+      onnxruntime::training::TrainingSession::TrainingConfiguration::CutEdge("103", {"645"})};
 
   pipe.cut_list.emplace_back(cut0);
   pipe.cut_list.emplace_back(cut1);
@@ -1142,13 +1148,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
-#ifdef _WIN32
-      auto suffix = std::to_wstring(i);
-#else
-      auto suffix = std::to_string(i);
-#endif
-      PathString output_file = ORT_TSTR("pipeline_partition_") + suffix + ORT_TSTR("_back.onnx");
 
+      PathString output_file = GenerateFileNameWithIndex(ORT_TSTR("pipeline_partition_"), i, ORT_TSTR("_back.onnx"));
       auto config = MakeBasicTrainingConfig();
 
       if (i == static_cast<int>(total_partition_count - 1)) {
@@ -1156,8 +1157,8 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
         config.loss_function_config.value().loss_function_info =
             LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
                              "total_loss",
-                             {/*prediction_masked_lm*/ "output1",
-                              /*prediction_next_sentence*/ "output2",
+                             {/*prediction_masked_lm*/ "prediction_scores",
+                              /*prediction_next_sentence*/ "seq_relationship_score",
                               /*masked_lm_positions*/ "masked_lm_positions",
                               /*masked_lm_ids*/ "masked_lm_ids",
                               /*masked_lm_weights*/ "masked_lm_weights",
@@ -1165,6 +1166,12 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
                               /*mlm_loss*/ "mlm_loss",
                               /*nsp_loss*/ "nsp_loss"});
       }
+
+      // Add weight_names_to_not_train to avoid generating backward graph on those tensor
+      config.weight_names_to_not_train = {
+          "position_01",            // Slice's dat input
+          "op_min_ends_expand_10",  //op_min_ends_expand_10
+      };
 
       config.pipeline_config = pipe;
       config.distributed_config.world_rank = i;
@@ -1235,12 +1242,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   for(auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
-#ifdef _WIN32
-      auto suffix = std::to_wstring(i);
-#else
-      auto suffix = std::to_string(i);
-#endif
-      PathString output_file = ORT_TSTR("pipeline_partition_") + suffix + ORT_TSTR("_back.onnx");
+      PathString output_file = GenerateFileNameWithIndex(ORT_TSTR("pipeline_partition_"), i, ORT_TSTR("_back.onnx"));
 
       auto config = MakeBasicTrainingConfig();
 
@@ -1385,13 +1387,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   };
 
   for (int i = 0; i < 3; ++i) {
-#ifdef _WIN32
-    auto suffix = std::to_wstring(i);
-#else
-    auto suffix = std::to_string(i);
-#endif
-    PathString input_file = filename_base + suffix + ORT_TSTR(".onnx");
-    PathString output_file = filename_base + suffix + ORT_TSTR("_back.onnx");
+    PathString input_file = GenerateFileNameWithIndex(filename_base, i, ORT_TSTR(".onnx"));
+    PathString output_file = GenerateFileNameWithIndex(filename_base, i, ORT_TSTR("_back.onnx"));
+
     load_and_check_gradient_graph(i, input_file, output_file);
   }
 }
@@ -1442,12 +1440,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   std::vector<PathString> sub_model_files(num_subs);
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
-#ifdef _WIN32
-    auto sub_id_str = std::to_wstring(sub_id);
-#else
-    auto sub_id_str = std::to_string(sub_id);
-#endif
-    sub_model_files[sub_id] = ORT_TSTR("sub_") + sub_id_str + ORT_TSTR(".onnx");
+    sub_model_files[sub_id] = GenerateFileNameWithIndex(ORT_TSTR("sub_"), sub_id, ORT_TSTR(".onnx"));
   }
 
   PipelineSplitter splitter;
@@ -1467,12 +1460,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     auto& sub_sess = subs[sub_id];
     sub_sess.so.enable_profiling = true;
-#ifdef _WIN32
-    auto sub_id_str = std::to_wstring(sub_id);
-#else
-    auto sub_id_str = std::to_string(sub_id);
-#endif
-    sub_sess.so.profile_file_prefix = ORT_TSTR("pipeline") + sub_id_str;
+    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex(ORT_TSTR("pipeline"), sub_id, ORT_TSTR(""));
 
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
