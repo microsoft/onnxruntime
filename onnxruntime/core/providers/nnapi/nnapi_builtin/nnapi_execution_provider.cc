@@ -43,6 +43,11 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
+  // TODO: Task 812756: NNAPI EP, add support for subgraph (If and Loop operators)
+  if (graph_view.IsSubgraph()) {
+    return result;
+  }
+
   std::unordered_set<std::string> all_node_inputs;
   for (const auto& node : graph_view.Nodes()) {
     for (auto* input : node.InputDefs()) {
@@ -240,10 +245,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
 
         auto input_idx = model->GetMappedInputIdx(input_name);
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_idx);
-        const auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        const auto& tensor_shape = ort.GetTensorShape(tensor_info);
+        auto* tensor_info = ort.GetTensorTypeAndShape(input_tensor);
         std::vector<uint32_t> dimensions;
-        for (const auto& dim : tensor_shape)
+        for (const auto& dim : ort.GetTensorShape(tensor_info))
           dimensions.push_back(static_cast<uint32_t>(dim));
 
         // it is possible that the input has the detailed size while
@@ -299,7 +303,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           }
 
           if (model_output_type.GetOperandBlobByteSize() == 0) {
-            return Status(common::ONNXRUNTIME, common::FAIL, "We do not support dynamic output shape for now");
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "We do not support dynamic output shape or empty output for now");
           }
 
           outputs.push_back({output_buffer, std::move(model_output_type)});

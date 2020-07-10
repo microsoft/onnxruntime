@@ -13,8 +13,9 @@ namespace test {
 
 TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
-    // exclude NGraph and TensorRT as this isn't handled by those EPs
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+    // exclude NGraph, TensorRT and NNAPI as this isn't handled by those EPs
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
+               {kTensorrtExecutionProvider, kNGraphExecutionProvider, kNnapiExecutionProvider});
   };
 
   // test binary element-wise op broadcasting when there's a dim with value of zero
@@ -183,7 +184,7 @@ TEST(MathOpTest, Add_Broadcast_0x0) {
   test.AddInput<float>("A", {}, {10.0f});
   test.AddInput<float>("B", {}, {2.0f});
   test.AddOutput<float>("C", {}, {12.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});  // NNAPI: Add does not support scalar input
 }
 
 TEST(MathOpTest, Add_Broadcast_0x1) {
@@ -814,7 +815,7 @@ TEST(MathOpTest, Sum_8_Test1) {
   //This test runs fine on CPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    //TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
 #endif
 }
 
