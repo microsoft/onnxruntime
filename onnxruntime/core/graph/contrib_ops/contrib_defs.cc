@@ -1734,7 +1734,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .Output(0, "Y", "Matrix multiply results", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .SetDoc(TransposeMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
