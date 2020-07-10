@@ -22,6 +22,7 @@
     * [ArmNN](#ArmNN)
     * [Rockchip RKNPU](#RKNPU)
     * [Xilinx Vitis-AI](#Vitis-AI)
+    * [AMD MIGraphX](#AMD-MIGraphX)
   * Options
     * [OpenMP](#OpenMP)
     * [OpenBLAS](#OpenBLAS)
@@ -207,6 +208,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
+---
 
 #### Jetson TX1/TX2/Nano (ARM64 Builds)
 
@@ -251,6 +253,18 @@ DNNL: `./build.sh --use_dnnl`
 
 
 ### nGraph
+
+#### Deprecation Notice
+
+| | |
+| --- | --- | 
+| Deprecation Begins	| June 1, 2020 |
+| Removal Date |	December 1, 2020 |
+
+Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
+
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
+
 See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
 #### Build Instructions
@@ -270,17 +284,20 @@ See more information on the nGraph Execution Provider [here](./docs/execution_pr
 See more information on the OpenVINO Execution Provider [here](./docs/execution_providers/OpenVINO-ExecutionProvider.md).
 
 #### Prerequisites
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.2** for the appropriate OS and target hardware :
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2020.3** for the appropriate OS and target hardware :
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2020.2/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvinotoolkit.org/2020.3/index.html) for detailed instructions.
+
+  *Although 2020.3 LTS is the recommended OpenVINO version, [OpenVINO 2020.2](https://docs.openvinotoolkit.org/2020.2/index.html) is also additionally supported.*
+
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.2/_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux.html#install-VPU. Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2020.3/_docs_install_guides_installing_openvino_linux_fpga.html)
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
    * For Linux run:
@@ -985,6 +1002,28 @@ e.g. using the paths from our example
 Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
 If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+---
+
+### AMD MIGraphX
+
+See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
+
+#### Prerequisites
+* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html) 
+   * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
+* Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
+   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
+
+#### Build Instructions
+
+##### Linux
+
+```
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
+```
+
+Dockerfile instructions are available [here](./dockerfiles#migraphx)
 
 ***
 

@@ -78,7 +78,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
         "Sequences longer than this will be truncated, and sequences shorter "
         "than this will be padded. Must match data generation.", cxxopts::value<int>()->default_value("1024"))
       ("optimizer", "Adam or Lamb", cxxopts::value<std::string>()->default_value("Adam"))
-      ("partition_optimizer", "Whether to partition the optimizer state for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("deepspeed_zero_stage", "Controls whether to partition state using the DeepSpeed ZeRO technique. "
+       "Stages 0 (disabled) and 1 (optimizer state partitioning) are supported.",
+       cxxopts::value<int>()->default_value("0"))
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
@@ -203,7 +205,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect optimizer type: it must be one of [Adam|Lamb]");
     }
 
-    params.partition_optimizer = flags["partition_optimizer"].as<bool>();
+    params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();

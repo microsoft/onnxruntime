@@ -116,6 +116,8 @@ def parse_arguments():
         help="""When running the Test phase, run onnx_test_running against
         available test data directories.""")
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe.")
+    parser.add_argument(
+        "--fuzz_testing", action='store_true', help="Enable Fuzz testing of the onnxruntime.")
 
     # generate documentaiton
     parser.add_argument(
@@ -260,6 +262,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument(
+        "--use_nnapi", action='store_true', help="Build with NNAPI support.")
+    parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
     parser.add_argument(
         "--use_preinstalled_eigen", action='store_true',
@@ -297,6 +301,9 @@ def parse_arguments():
         "--disable_ml_ops", action='store_true',
         help="Disable traditional ML ops (reduces binary size)")
     parser.add_argument(
+        "--disable_rtti", action='store_true',
+        help="Disable RTTI (reduces binary size)")
+    parser.add_argument(
         "--skip_onnx_tests", action='store_true', help="Explicitly disable "
         "all onnx related tests. Note: Use --skip_tests to skip all tests.")
     parser.add_argument(
@@ -314,7 +321,7 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
-        default='Visual Studio 15 2017',
+        default='Visual Studio 15 2017' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
     parser.add_argument(
@@ -413,8 +420,8 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
     completed_process = subprocess.run(
         args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
         env=my_env, shell=shell)
-    log.debug("Subprocess completed. Return code="
-              + str(completed_process.returncode))
+    log.debug("Subprocess completed. Return code=" +
+              str(completed_process.returncode))
     return completed_process
 
 
@@ -477,6 +484,14 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
+
+
+# We need to install Torch to test certain functionalities of the ORT Python package
+def install_torch():
+    # Command works for both Windows
+    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
+                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
+                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
 
 
 def check_md5(filename, expected_md5):
@@ -586,11 +601,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
         "-Donnxruntime_USE_NNAPI_DNNLIBRARY=" + ("ON" if args.use_dnnlibrary else "OFF"),
+        "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
                 args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
-                args.android or (args.ios and is_macOS()) or args.use_rknpu)
+                args.android or (args.ios and is_macOS())
+                or args.use_rknpu or args.use_nnapi)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -613,6 +630,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + (
             "ON" if args.disable_ml_ops else "OFF"),
+        "-Donnxruntime_DISABLE_RTTI=" + (
+            "ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
             "ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
@@ -655,8 +674,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
     if args.winml_root_namespace_override:
-        cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE="
-                       + args.winml_root_namespace_override]
+        cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" +
+                       args.winml_root_namespace_override]
 
     # temp turn on only for linux gpu build
     if not is_windows():
@@ -685,15 +704,24 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
     if args.android:
+        if args.use_dnnlibrary and args.use_nnapi:
+            raise BuildError(
+                "Only one of --use_dnnlibrary and --use_nnapi " +
+                "can be enabled"
+            )
+
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path
-            + "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
+            "/build/cmake/android.toolchain.cmake",
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
 
-    if is_macOS() and args.use_xcode:
-        cmake_args += ["-GXcode"]
+    if is_macOS():
+        if args.use_xcode:
+            cmake_args += ['-G', 'Xcode']
+        elif args.cmake_generator is not None:
+            cmake_args += ['-G', args.cmake_generator]
 
     if args.ios:
         if is_macOS():
@@ -774,6 +802,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += [
             "-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
 
+    if args.fuzz_testing:
+        if not (args.build_shared_lib and
+                is_windows() and
+                args.cmake_generator == 'Visual Studio 16 2019' and
+                args.use_full_protobuf):
+            raise BuildError(
+             "Fuzz test has only be tested with build shared libs option using MSVC on windows")
+        cmake_args += [
+            "-Donnxruntime_BUILD_UNIT_TESTS=ON",
+            "-Donnxruntime_FUZZ_TEST=ON",
+            "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
+
     if args.gen_doc:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
     else:
@@ -834,11 +874,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
         run_subprocess(
             cmake_args + [
-                "-Donnxruntime_ENABLE_MEMLEAK_CHECKER="
-                + ("ON" if config.lower() == 'debug' and not args.use_tvm
-                   and not args.use_ngraph and not args.use_openvino and
-                   not args.enable_msvc_static_runtime
-                   else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
+                "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
+                ("ON" if config.lower() == 'debug' and not args.use_tvm and not
+                 args.use_ngraph and not args.use_openvino and not
+                 args.enable_msvc_static_runtime
+                 else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
             cwd=config_build_dir)
 
 
@@ -928,8 +968,8 @@ def setup_cuda_vars(args):
 
             cuda_bin_path = os.path.join(cuda_home, 'bin')
             os.environ["CUDA_BIN_PATH"] = cuda_bin_path
-            os.environ["PATH"] += (os.pathsep + cuda_bin_path + os.pathsep
-                                   + os.path.join(cudnn_home, 'bin'))
+            os.environ["PATH"] += (os.pathsep + cuda_bin_path + os.pathsep +
+                                   os.path.join(cudnn_home, 'bin'))
             # Add version specific CUDA_PATH_Vx_y value as the
             # Visual Studio build files require that.
             version_file = os.path.join(cuda_home, 'version.txt')
@@ -946,8 +986,8 @@ def setup_cuda_vars(args):
                 m = re.match(r"CUDA Version (\d+).(\d+)", first_line)
                 if not m:
                     raise BuildError(
-                        "Couldn't read version from first line of "
-                        + version_file)
+                        "Couldn't read version from first line of " +
+                        version_file)
 
                 cuda_major_version = m.group(1)
                 minor = m.group(2)
@@ -962,8 +1002,8 @@ def setup_cuda_vars(args):
                     "compatible with CUDA. Will attempt to use.")
                 log.warning(
                     "Failed to get valid Visual C++ Tools version from "
-                    "VCToolsVersion environment variable value of '"
-                    + vc_ver_str + "'")
+                    "VCToolsVersion environment variable value of '" +
+                    vc_ver_str + "'")
                 log.warning(
                     "VCToolsVersion is set in a VS 2017 Developer Command "
                     "shell, or by running "
@@ -973,8 +1013,8 @@ def setup_cuda_vars(args):
                     "instructions on installing the Visual C++ 2017 14.11 "
                     "toolset if needed.")
 
-            elif (cuda_major_version == "9" and vc_ver[0] == "14"
-                  and int(vc_ver[1]) > 11):
+            elif (cuda_major_version == "9" and vc_ver[0] == "14" and
+                  int(vc_ver[1]) > 11):
                 raise BuildError(
                     "Visual C++ Tools version not supported by CUDA v9. You "
                     "must setup the environment to use the 14.11 toolset.",
@@ -1125,7 +1165,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell(
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            if args.use_dnnlibrary:
+            if args.use_dnnlibrary or args.use_nnapi:
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
             else:
@@ -1181,6 +1221,32 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
+
+            # For CUDA enabled builds test IOBinding feature
+            # Limit testing to Windows non-ARM builds for now
+            iobinding_test = False
+            if args.use_cuda and not (args.arm or args.arm64):
+                # We need to have Torch installed to test the IOBinding feature
+                # which currently uses Torch's allocator to allocate GPU memory for testing
+                iobinding_test = True
+
+                # Try install Torch on Windows
+                if is_windows():
+                    log.info("Attempting to install Torch to test ORT's IOBinding feature")
+                    install_torch()
+
+                try:
+                    import torch  # noqa
+                except ImportError as error:
+                    iobinding_test = False
+                    log.exception(error)
+                    log.warning(
+                        "Torch is not installed. "
+                        "The IOBinding tests will be skipped as it requires Torch.")
+
+            if iobinding_test:
+                log.info("Testing IOBinding feature")
+                run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
@@ -1513,8 +1579,11 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
         if not is_ninja:
             cmd_args += ['-T', 'host=x64']
         cmd_args += ['-G', args.cmake_generator]
-    elif is_macOS() and args.use_xcode:
-        cmd_args += ['-G', 'Xcode']
+    elif is_macOS():
+        if args.use_xcode:
+            cmd_args += ['-G', 'Xcode']
+        elif args.cmake_generator is not None:
+            cmd_args += ['-G', args.cmake_generator]
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
@@ -1573,8 +1642,8 @@ def generate_documentation(source_dir, build_dir, configs):
         # dependent on build configuration for including
         # execution propviders
         log.warning(
-            'The updated opkernel document file ' + str(opkernel_doc_path)
-            + ' is different from the checked in version. Consider '
+            'The updated opkernel document file ' + str(opkernel_doc_path) +
+            ' is different from the checked in version. Consider '
             'regenerating the file with CPU, DNNL and CUDA providers enabled.')
         log.debug('diff:\n' + str(docdiff))
 
@@ -1585,9 +1654,9 @@ def generate_documentation(source_dir, build_dir, configs):
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
         raise BuildError(
-            'The updated operator document file '
-            + str(operator_doc_path) + ' must be checked in.\n diff:\n'
-            + str(docdiff))
+            'The updated operator document file ' +
+            str(operator_doc_path) + ' must be checked in.\n diff:\n' +
+            str(docdiff))
 
 
 def main():

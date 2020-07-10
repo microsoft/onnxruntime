@@ -222,6 +222,7 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.quantization',
 ]
 
 package_data = {}

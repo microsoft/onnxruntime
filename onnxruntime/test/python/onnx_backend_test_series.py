@@ -80,7 +80,10 @@ def create_backend_test(testname=None):
                 '^test_dynamicquantizelinear_max_adjusted_expanded_cpu', '^test_dynamicquantizelinear_min_adjusted_cpu',
                 '^test_dynamicquantizelinear_min_adjusted_expanded_cpu',
                 '^test_range_float_type_positive_delta_expanded_cpu',
-                '^test_range_int32_type_negative_delta_expanded_cpu', '^test_operator_symbolic_override_nested_cpu'
+                '^test_range_int32_type_negative_delta_expanded_cpu', 
+                '^test_operator_symbolic_override_nested_cpu',
+                '^test_negative_log_likelihood_loss',
+                '^test_softmax_cross_entropy'
             ]
 
         filters = current_failing_tests + \

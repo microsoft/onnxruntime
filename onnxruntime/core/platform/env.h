@@ -134,6 +134,7 @@ class Env {
    * Gets the length of the specified file.
    */
   virtual common::Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const = 0;
+  virtual common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const = 0;
 
   /**
    * Copies the content of the file into the provided buffer.

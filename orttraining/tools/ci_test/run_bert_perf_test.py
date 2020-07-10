@@ -26,7 +26,7 @@ def main():
 
     Config = namedtuple('Config', ['use_mixed_precision', 'max_seq_length', 'batch_size', 'max_predictions_per_seq'])
     configs = [
-        Config(True, 128, 66, 20),
+        Config(True, 128, 64, 20),
         Config(True, 512, 10, 80),
         Config(False, 128, 33, 20),
         Config(False, 512, 5, 80)

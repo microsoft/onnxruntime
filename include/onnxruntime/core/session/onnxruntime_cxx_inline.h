@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Don't include this file directly. Please include "onnxruntime_cxx_api.h" instead.
+// Do not include this file directly. Please include "onnxruntime_cxx_api.h" instead.
+// If interested in trying out features of the new experimental C++ API, include "experimental_onnxruntime_cxx_api.h" instead.
+//
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
@@ -614,5 +616,15 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(Global<void>::api_.DisablePerSessionThreads(p_));
   return *this;
+}
+
+inline std::vector<std::string> GetAvailableProviders() {
+  int len;
+  char **providers;
+  const OrtApi& api = GetApi();
+  ThrowOnError(api.GetAvailableProviders(&providers, &len));
+  std::vector<std::string> available_providers(providers, providers + len);
+  ThrowOnError(api.ReleaseAvailableProviders(providers, len));
+  return available_providers;
 }
 }  // namespace Ort

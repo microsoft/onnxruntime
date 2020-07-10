@@ -231,21 +231,30 @@ class PosixEnv : public Env {
 
   Status GetFileLength(const PathChar* file_path, size_t& length) const override {
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
-    if (file_descriptor.Get() < 0) {
-      return ReportSystemError("open", file_path);
+    return GetFileLength(file_descriptor.Get(), length);
+  }
+
+  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+    using namespace common;
+    if (fd < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
     }
 
-    struct stat stbuf;
-    if (fstat(file_descriptor.Get(), &stbuf) != 0) {
-      return ReportSystemError("fstat", file_path);
+    struct stat buf;
+    int rc = fstat(fd, &buf);
+    if (rc < 0) {
+      return ReportSystemError("fstat", "");
     }
 
-    if (!S_ISREG(stbuf.st_mode)) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "GetFileLength: input is not a regular file");
+    if (buf.st_size < 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
     }
 
-    length = static_cast<size_t>(stbuf.st_size);
+    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    }
+
+    file_size = static_cast<size_t>(buf.st_size);
     return Status::OK();
   }
 

@@ -10,11 +10,13 @@
 namespace onnxruntime {
 struct FreeDimensionOverride;
 
+namespace training {
 namespace transformer_utils {
 
 /** Generates all pre-training transformers for this level. */
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(TransformerLevel level,
                                                                                const std::unordered_set<std::string>& weights_to_train,
+                                                                               bool enable_gelu_approximation,
                                                                                const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 /** Generates all predefined (both rule-based and non-rule-based) transformers for this level.
@@ -25,4 +27,5 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
                                                                     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
 }  // namespace transformer_utils
+}  // namespace training
 }  // namespace onnxruntime

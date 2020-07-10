@@ -8,6 +8,7 @@
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -377,7 +378,6 @@ static Status PrepareForReduce(const Tensor* X,
 }
 
 // `input_shape_override` is the input shape for compute purposes (if provided)
-// `input_shape_override` is the input shape for compute purposes (if provided)
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                                 /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
@@ -395,15 +395,15 @@ static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& in
   int64_t rank = prepare_reduce_metadata.rank;
   int64_t stride = prepare_reduce_metadata.stride;
 
-  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
-  // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
-
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     assert(output.Shape().Size() == 0);
     return Status::OK();
   }
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(output.MutableDataRaw(), 0, output.SizeInBytes()));
 
   IAllocatorUniquePtr<float> temp_X;
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
@@ -421,6 +421,7 @@ static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& in
           reinterpret_cast<CudaT*>(output.template MutableData<T>()),
           static_cast<int>(reduction_size),
           static_cast<int>(stride));
+
       return Status::OK();
     }
   }
@@ -604,9 +605,15 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                        prepare_reduce_metadata));
 
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
+  bool fast_reduction = fast_reduction_;
+  if (fast_reduction) {
+    auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+    if (ctx_internal && ctx_internal->GetUseDeterministicCompute())
+      fast_reduction = false;
+  }
 
   return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes_,
-                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction_);
+                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
 template <>
@@ -629,10 +636,6 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
   std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
 
-  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
-  // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
-
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     assert(Y->Shape().Size() == 0);
@@ -646,6 +649,10 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     }
     return Status::OK();
   }
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   size_t indices_bytes = 0;
   size_t workspace_bytes = 0;
@@ -706,10 +713,6 @@ Status ReduceKernel<true>::ComputeImpl<int8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(O
   std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
   std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
 
-  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
-  // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
-
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     assert(Y->Shape().Size() == 0);
@@ -725,6 +728,10 @@ Status ReduceKernel<true>::ComputeImpl<int8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(O
     }
     return Status::OK();
   }
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   size_t indices_bytes = 0;
   size_t workspace_bytes = 0;
@@ -785,10 +792,6 @@ Status ReduceKernel<true>::ComputeImpl<uint8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
   std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
 
-  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
-  // Therefore zeroing out the memory is required
-  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
-
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     assert(Y->Shape().Size() == 0);
@@ -804,6 +807,10 @@ Status ReduceKernel<true>::ComputeImpl<uint8_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     }
     return Status::OK();
   }
+
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
+  CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
 
   size_t indices_bytes = 0;
   size_t workspace_bytes = 0;
