@@ -58,7 +58,7 @@ void PTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexc
       if (!ScheduleNew()) {
         if (i == 0) {
           // This should be a rare case.
-		  // Log it. While existing Finish will be called which will take care of the cleanup
+          // Log it. While existing Finish will be called which will take care of the cleanup
           LOGF_DEFAULT(ERROR, "Could not schedule tasks for test case: %s\n", c_.GetTestCaseName().c_str());
         }
         break;
@@ -68,14 +68,14 @@ void PTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexc
   } catch (const std::exception& ex) {
     LOGF_DEFAULT(ERROR, "Cannot schedule tasks for test %s. Failing with error :%s\n", c_.GetTestCaseName().c_str(), ex.what());
   } catch (...) {
-    LOGF_DEFAULT(ERROR, "Cannot schedule tasks for test %s. Failing with error :%s\n", c_.GetTestCaseName().c_str());
+    LOGF_DEFAULT(ERROR, "Cannot schedule tasks for test %s.\n", c_.GetTestCaseName().c_str());
   }
 
   // If no task was scheduled then call Finish to perform cleanup
-  // Otherwise the last task to complete will call Finish  
+  // Otherwise the last task to complete will call Finish
   if (!atleast_one_run_scheduled) {
     Finish(pci);
-  }  
+  }
 }
 
 bool PTestRunner::ScheduleNew() {
@@ -487,9 +487,9 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) noexcept {
       for (size_t idx_data = 0; idx_data != data_count; ++idx_data) {
         RunTask(idx_data, nullptr);
       }
-    }    
+    }
   } catch (...) {
-    LOGS_DEFAULT(ERROR) << "SeqTestRunner::Start - Encountred exception with running tests" ;
+    LOGS_DEFAULT(ERROR) << "SeqTestRunner::Start - Encountred exception with running tests";
   }
 
   Finish(pci);
@@ -499,7 +499,7 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
                        size_t concurrent_runs, size_t repeat_count, PThreadPool tpool,
                        ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
   std::shared_ptr<TestCaseResult> ret;
-  size_t data_count = info.GetDataCount();  
+  size_t data_count = info.GetDataCount();
   try {
     std::string node_name = info.GetNodeName();
     auto sf2 = sf.Clone();
@@ -511,7 +511,7 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
       concurrent_runs = 1;
     }
 
-	DataRunner* r;
+    DataRunner* r;
     if (concurrent_runs > 1 && data_count > 1) {
       r = new PTestRunner(session_object.release(), info, tpool, on_finished);
     } else {
@@ -519,8 +519,8 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
     }
     r->Start(pci, concurrent_runs);
 
-	// Both Parallel and Sequential Test Runners call DataRunner::Finish which will delete itself and call on_finished callback
-	// At this point we know everything has strated without any exceptions so simply return.
+    // both PTestRunner and SeqTestRunner call DataRunner::Finish which will delete itself and call on_finished callback
+    // at this point we know everything has strated without any exceptions so simply return.
     return;
 
   } catch (const onnxruntime::NotImplementedException& ex) {
@@ -531,9 +531,9 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
     LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
     std::string node_name;
     ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
-  } 
+  }
 
-  // we will land here in case of session creation failures. 
+  // we will land here in case of session creation failures.
   // in all other cases DataRunner::Finish will call this.
   on_finished(ret, pci);
 }

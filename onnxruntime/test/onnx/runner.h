@@ -60,7 +60,7 @@ class DataRunner {
   virtual void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexcept = 0;
 
   void Finish(ORT_CALLBACK_INSTANCE pci) {
-    std::shared_ptr<TestCaseResult> res = result;	
+    std::shared_ptr<TestCaseResult> res = result;
     CALL_BACK on_finished_local = on_finished;
     res->SetSpentTime(spent_time_);
     const std::vector<EXECUTE_RESULT>& er = res->GetExcutionResult();
