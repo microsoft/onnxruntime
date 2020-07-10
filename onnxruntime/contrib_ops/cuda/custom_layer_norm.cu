@@ -1,4 +1,5 @@
-/* Modifications Copyright (c) Microsoft. */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include <cooperative_groups.h>
@@ -11,7 +12,8 @@ namespace cuda {
 namespace cg = cooperative_groups;
 using namespace onnxruntime::cuda;
 /*
-Custom kernel for Layer Normalization, adapted from https://github.com/microsoft/DeepSpeed.
+Custom kernel for Layer Normalization, adapted from 
+https://github.com/microsoft/DeepSpeed/blob/4a3234e0ab3a6b0039741d7ea2fe0c1b82584763/csrc/transformer/normalize_kernels.cu.
 This layer requires template parameters since it relies fairly heavily on unrolling loops.
 The kernel is invoked when the n2(number of elements to reduce) is a multiple of a power of 2. 
 Default behavior for our purposes uses 256 threads for floats, and 128 threads for __half. 
@@ -26,14 +28,13 @@ For specific launch constraints, see the launch functions.
 
 template <int row_stride, int iterations>
 __global__ void custom_layer_norm(
-  float* vals,
-  const float* residual,
-  const float* gamma,
-  const float* beta,
-  float epsilon,
-  float* invvars = nullptr,
-  float* means = nullptr) {
-
+    float* vals,
+    const float* residual,
+    const float* gamma,
+    const float* beta,
+    float epsilon,
+    float* invvars = nullptr,
+    float* means = nullptr) {
   constexpr int iteration_stride = row_stride / iterations;
 
   cg::thread_block b = cg::this_thread_block();
@@ -54,9 +55,9 @@ __global__ void custom_layer_norm(
   }
 
   for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
-    sum += WARP_SHFL_DOWN(sum, stride); 
+    sum += WARP_SHFL_DOWN(sum, stride);
   }
-  
+
   if (g.thread_rank() == 0) shr[gid] = sum;
 
   b.sync();
@@ -68,7 +69,7 @@ __global__ void custom_layer_norm(
 #endif
 
   for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
-    sum += WARP_SHFL_DOWN(sum, stride); 
+    sum += WARP_SHFL_DOWN(sum, stride);
   }
 
   sum = WARP_SHFL(sum, 0);
@@ -80,7 +81,7 @@ __global__ void custom_layer_norm(
   }
 
   for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
-    variance += WARP_SHFL_DOWN(variance, stride); 
+    variance += WARP_SHFL_DOWN(variance, stride);
   }
 
   if (g.thread_rank() == 0) shr[gid] = variance;
@@ -92,7 +93,7 @@ __global__ void custom_layer_norm(
   b.sync();
 
   for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
-    variance += WARP_SHFL_DOWN(variance, stride); 
+    variance += WARP_SHFL_DOWN(variance, stride);
   }
   variance = WARP_SHFL(variance, 0);
   variance /= row_stride;
@@ -102,22 +103,21 @@ __global__ void custom_layer_norm(
 
   for (int i = 0; i < iterations; i++) {
     vals_arr[i] = (vals_arr[i] - mean) * inv_variance;
-    vals_arr[i] = 
-      vals_arr[i] * gamma[i * iteration_stride + id] + beta[i * iteration_stride + id];
+    vals_arr[i] =
+        vals_arr[i] * gamma[i * iteration_stride + id] + beta[i * iteration_stride + id];
     vals[row * row_stride + i * iteration_stride + id] = vals_arr[i];
   }
 }
 
 template <int row_stride, int iterations>
 __global__ void custom_layer_norm(
-  __half* vals,
-  const __half* residual,
-  const __half* gamma,
-  const __half* beta,
-  float epsilon,
-  float* invvars = nullptr,
-  float* means = nullptr) {
-
+    __half* vals,
+    const __half* residual,
+    const __half* gamma,
+    const __half* beta,
+    float epsilon,
+    float* invvars = nullptr,
+    float* means = nullptr) {
 #if __CUDA_ARCH__ >= 700
   constexpr int iteration_stride = row_stride / iterations;
 
@@ -144,7 +144,7 @@ __global__ void custom_layer_norm(
   }
 
   for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
-    sum += WARP_SHFL_DOWN(sum, stride); 
+    sum += WARP_SHFL_DOWN(sum, stride);
   }
 
   if (g.thread_rank() == 0) shr[gid] = sum;
@@ -156,7 +156,7 @@ __global__ void custom_layer_norm(
   b.sync();
 
   for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
-    sum += WARP_SHFL_DOWN(sum, stride); 
+    sum += WARP_SHFL_DOWN(sum, stride);
   }
   sum = WARP_SHFL(sum, 0);
   float mean = sum / (row_stride * 2);
@@ -168,7 +168,7 @@ __global__ void custom_layer_norm(
   }
 
   for (int stride = 1; stride < GPU_WARP_SIZE; stride *= 2) {
-    variance += WARP_SHFL_DOWN(variance, stride); 
+    variance += WARP_SHFL_DOWN(variance, stride);
   }
 
   if (g.thread_rank() == 0) shr[gid] = variance;
@@ -180,7 +180,7 @@ __global__ void custom_layer_norm(
   b.sync();
 
   for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
-    variance += WARP_SHFL_DOWN(variance, stride); 
+    variance += WARP_SHFL_DOWN(variance, stride);
   }
   variance = WARP_SHFL(variance, 0);
   variance /= (row_stride * 2);
@@ -209,28 +209,27 @@ __global__ void custom_layer_norm(
 
 template <typename T, typename U>
 void launch_custom_layer_norm(
-  T* vals,
-  const T* residual,
-  const T* gamma,
-  const T* beta,
-  U epsilon,
-  int64_t n1,
-  int64_t n2,
-  U* invvars,
-  U* means);
+    T* vals,
+    const T* residual,
+    const T* gamma,
+    const T* beta,
+    U epsilon,
+    int64_t n1,
+    int64_t n2,
+    U* invvars,
+    U* means);
 
 template <>
 void launch_custom_layer_norm<float, float>(
-  float* vals,
-  const float* residual,
-  const float* gamma,
-  const float* beta,
-  float epsilon,
-  int64_t n1,
-  int64_t n2,
-  float* invvars,
-  float* means)
-{
+    float* vals,
+    const float* residual,
+    const float* gamma,
+    const float* beta,
+    float epsilon,
+    int64_t n1,
+    int64_t n2,
+    float* invvars,
+    float* means) {
   constexpr int threads = 256;
 
   dim3 grid_dim(n1);
@@ -240,38 +239,39 @@ void launch_custom_layer_norm<float, float>(
   // There are some limitations to call below functions, now just enumerate the situations.
   if (n2 == 768)
     custom_layer_norm<768, 3><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 512)
     custom_layer_norm<512, 2><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 1024)
     custom_layer_norm<1024, 4><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 1536)
     custom_layer_norm<1536, 6><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 2048)
     custom_layer_norm<2048, 8><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 2560)
     custom_layer_norm<2560, 10><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
-  else
-    throw std::runtime_error("Unsupport hidden_dim.");
+        vals, residual, gamma, beta, epsilon, invvars, means);
+  else {
+    //shouldn't reach here
+    ORT_THROW("Unsupported hidden_dim for custom LayerNorm implementation.");
+  }
 }
 
 template <>
 void launch_custom_layer_norm<__half, float>(
-  __half* vals,
-  const __half* residual,
-  const __half* gamma,
-  const __half* beta,
-  float epsilon,
-  int64_t n1,
-  int64_t n2,
-  float* invvars,
-  float* means)
-{
+    __half* vals,
+    const __half* residual,
+    const __half* gamma,
+    const __half* beta,
+    float epsilon,
+    int64_t n1,
+    int64_t n2,
+    float* invvars,
+    float* means) {
   constexpr int threads = 128;
 
   dim3 grid_dim(n1);
@@ -280,24 +280,26 @@ void launch_custom_layer_norm<__half, float>(
   // There are some limitations to call below functions, now just enumerate the situations.
   if (n2 == 768)
     custom_layer_norm<384, 3><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 512)
     custom_layer_norm<256, 2><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 1024)
     custom_layer_norm<512, 4><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 1536)
     custom_layer_norm<768, 6><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 2048)
     custom_layer_norm<1024, 8><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
+        vals, residual, gamma, beta, epsilon, invvars, means);
   else if (n2 == 2560)
     custom_layer_norm<1280, 10><<<grid_dim, block_dim, 0, 0>>>(
-      vals, residual, gamma, beta, epsilon, invvars, means);
-  else
-    throw std::runtime_error("Unsupport hidden_dim.");
+        vals, residual, gamma, beta, epsilon, invvars, means);
+  else {
+    //shouldn't reach here
+    ORT_THROW("Unsupported hidden_dim for custom LayerNorm implementation.");
+  }
 }
 
 }  //namespace cuda
