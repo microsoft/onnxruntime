@@ -8,7 +8,7 @@ namespace cuda {
 
 template <
     typename T, typename Func,
-    int32_t max_input_batch_size, size_t num_elements_per_thread>
+    int32_t max_input_batch_size, int32_t num_elements_per_thread>
 __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
     Func func,
     size_t N,
@@ -18,8 +18,11 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
 
   T inputs_buffer[num_elements_per_thread][max_input_batch_size];
 
+  int32_t element_count;
+  size_t element_idx;
+
 #pragma unroll
-  for (size_t element_count = 0, element_idx = base_idx;
+  for (element_count = 0, element_idx = base_idx;
        element_count < num_elements_per_thread;
        ++element_count, element_idx += blockDim.x) {
     if (element_idx < N) {
@@ -33,7 +36,7 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
   }
 
 #pragma unroll
-  for (size_t element_count = 0, element_idx = base_idx;
+  for (element_count = 0, element_idx = base_idx;
        element_count < num_elements_per_thread;
        ++element_count, element_idx += blockDim.x) {
     if (element_idx < N) {
@@ -63,9 +66,9 @@ void VariadicElementWiseNoBroadcastInputBatchImpl(
     size_t N,
     TArray<const T*, max_input_batch_size> inputs,
     T* output) {
-  constexpr size_t elements_per_thread = GridDim::maxElementsPerThread;
-  constexpr size_t threads_per_block = GridDim::maxThreadsPerBlock;
-  const size_t blocks_per_grid = CeilDiv(N, elements_per_thread * threads_per_block);
+  constexpr int32_t elements_per_thread = GridDim::maxElementsPerThread;
+  constexpr int32_t threads_per_block = GridDim::maxThreadsPerBlock;
+  const int32_t blocks_per_grid = CeilDiv(N, elements_per_thread * threads_per_block);
   VariadicElementWiseNoBroadcastInputBatchKernel<T, Func, max_input_batch_size, elements_per_thread>
       <<<blocks_per_grid, threads_per_block>>>(func, N, inputs, output);
 }
