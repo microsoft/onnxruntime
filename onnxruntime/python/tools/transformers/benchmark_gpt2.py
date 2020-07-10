@@ -17,8 +17,8 @@ import argparse
 import logging
 import torch
 import onnx
+from enum import Enum
 from transformers.modeling_utils import Conv1D
-from quantize import quantize, QuantizationMode
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Tokenizer, AutoConfig
 
 logger = logging.getLogger('')
@@ -48,6 +48,13 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
                                token_type_ids=None,
                                position_ids=position_ids)
 
+class Precision(Enum):
+    FLOAT32 = 'fp32'
+    FLOAT16 = 'fp16'
+    INT8 = 'int8'
+
+    def __str__(self):
+        return self.value
 
 PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
@@ -313,8 +320,13 @@ def parse_arguments():
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('--float16', required=False, action='store_true', help="convert model from float32 to float16")
-    parser.set_defaults(float16=False)
+    parser.add_argument("-p",
+                        "--precision",
+                        required=True,
+                        type=Precision,
+                        default=Precision.FLOAT32,
+                        choices=list(Precision),
+                        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
@@ -326,8 +338,6 @@ def parse_arguments():
                         help="past sequence lengths")
 
     parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
-
-    parser.add_argument("-q", "--quantize", required=False, action="store_true", help="Run quantization model")
 
     parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
@@ -447,6 +457,7 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, verbose, thread_num):
     return session
 
 def quantize_onnx_model(onnx_model_path, quantized_model_path):
+    from onnxruntime.quantization import quantize, QuantizationMode
     onnx_opt_model = onnx.load(onnx_model_path)
     quantized_onnx_model = quantize(onnx_opt_model, quantization_mode=QuantizationMode.IntegerOps, symmetric_weight=True, force_fusions=True)
     onnx.save(quantized_onnx_model, quantized_model_path)
@@ -484,8 +495,11 @@ def main():
     setup_logger(args.verbose)
 
     logger.info(f"Arguments:{args}")
-    if args.float16:
-        assert args.optimize_onnx and args.use_gpu, "--float16 requires --optimize_onnx --use_gpu"
+    if args.precision == Precision.FLOAT16:
+        assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
+
+    if args.precision == Precision.INT8:
+        assert not args.use_gpu, "quantization only supports CPU"
 
     torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
     print(torch.__config__.parallel_info())
@@ -532,17 +546,17 @@ def main():
                            opt_level=0,
                            optimization_options=None,
                            use_gpu=args.use_gpu)
-        if args.float16:
+        if args.precision == Precision.FLOAT16:
             m.convert_model_float32_to_float16(cast_input_output=False)
 
         filename_prefix = "gpt2{}_past{}".format("_lm" if use_LMHead else "",
                                                  "_mask" if args.use_attention_mask else "")
         onnx_model_path = os.path.join(
             output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu",
-                                               "fp16" if args.float16 else "fp32"))
+                                               args.precision))
         m.save_model_to_file(onnx_model_path)
 
-    if args.quantize:
+    if args.precision == Precision.INT8:
         print("quantizing model")
         quantize_onnx_model(onnx_model_path, onnx_model_path)
         conv1d_to_linear(model)
@@ -561,12 +575,12 @@ def main():
     if not args.disable_ort_io_binding:
         max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths), sequence_length,
                                               config, use_LMHead)
-        output_buffers = get_output_buffers(max_output_shapes, device, args.float16)
+        output_buffers = get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "model_name", "model_class", "gpu", "fp16", "use_attention_mask", "optimizer", "io_binding", "batch_size",
+            "model_name", "model_class", "gpu", "precision", "use_attention_mask", "optimizer", "io_binding", "batch_size",
             "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -577,7 +591,7 @@ def main():
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
                 dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                 config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                config.vocab_size, device, args.use_attention_mask, args.float16)
+                                                config.vocab_size, device, args.use_attention_mask, args.precision == Precision.FLOAT16)
                 output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead)
 
                 try:
@@ -598,7 +612,7 @@ def main():
                         "model_name": args.model_name,
                         "model_class": args.model_class,
                         "gpu": args.use_gpu,
-                        "fp16": args.float16,
+                        "precision": args.precision,
                         "use_attention_mask": args.use_attention_mask,
                         "optimizer": args.optimize_onnx,
                         "io_binding": not args.disable_ort_io_binding,
