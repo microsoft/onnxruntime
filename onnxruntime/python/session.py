@@ -34,12 +34,12 @@ class Session:
         self._sess = None
 
         # At this point, _sess object is still referenced by _sess_options,
-        # because of previously _sess_options = _sess.sess_options being executed in _load_model(). 
+        # because of previously _sess_options = _sess.sess_options being executed in _load_model().
         # Therefore, _sess reference count is not zero and not being released by python gc yet.
-        # 
-        # In order to make _sess reference count become 0 and being destroyed by python gc before creating new session object, 
-        # we need to reset _sess_options as well.
-        self._sess_options = None 
+        #
+        # In order to make _sess reference count become 0 and being destroyed by python gc before 
+        # creating new session object, we need to reset _sess_options as well.
+        self._sess_options = None
         self._sess_options = self._sess_options_initial
 
     def get_session_options(self):
@@ -92,7 +92,7 @@ class Session:
                 raise ValueError("Two input lists must have same length.")
 
             for option in provider_options:
-                if not isinstance(option, dict): 
+                if not isinstance(option, dict):
                     raise ValueError("Provider options must be list of python dict.")
 
                 for key, val in option.items():
