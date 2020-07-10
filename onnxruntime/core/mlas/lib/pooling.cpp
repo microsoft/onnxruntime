@@ -1196,6 +1196,8 @@ Return Value:
     bool AllPaddingIsZero = true;
     bool AllKernelsAreSmall = true;
 
+    ORT_ENFORCE(Dimensions <= 3, "Bad mlas work block dimensions");
+
     for (size_t dim = 0; dim < Dimensions; dim++) {
 
         WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
@@ -1224,7 +1226,7 @@ Return Value:
         InputSize *= WorkBlock.InputShape[dim];
         OutputSize *= WorkBlock.OutputShape[dim];
 
-        InputAndKernelShapeMatch &= (dim < 3 && WorkBlock.KernelShape[dim] == int64_t(WorkBlock.InputShape[dim]));
+        InputAndKernelShapeMatch &= (WorkBlock.KernelShape[dim] == int64_t(WorkBlock.InputShape[dim]));
         AllStridesAreOne &= (WorkBlock.StrideShape[dim] == 1);
         AllPaddingIsZero &= (WorkBlock.Padding[dim] == 0 && WorkBlock.Padding[dim + Dimensions] == 0);
         AllKernelsAreSmall &= (WorkBlock.KernelShape[dim] <= 32);
