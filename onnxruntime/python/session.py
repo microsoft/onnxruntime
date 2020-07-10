@@ -37,7 +37,7 @@ class Session:
         # because of previously _sess_options = _sess.sess_options being executed in _load_model().
         # Therefore, _sess reference count is not zero and not being released by python gc yet.
         #
-        # In order to make _sess reference count become 0 and being destroyed by python gc before 
+        # In order to make _sess reference count become 0 and being destroyed by python gc before
         # creating new session object, we need to reset _sess_options as well.
         self._sess_options = None
         self._sess_options = self._sess_options_initial
