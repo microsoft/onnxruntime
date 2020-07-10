@@ -1196,7 +1196,9 @@ Return Value:
     bool AllPaddingIsZero = true;
     bool AllKernelsAreSmall = true;
 
-    ORT_ENFORCE(Dimensions <= 3, "Bad mlas work block dimensions");
+    if (Dimensions > 3) {
+        throw std::runtime_error("Bad mlas WorkBlock dimensions");
+    }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
 

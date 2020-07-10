@@ -445,6 +445,7 @@ Status Sum_6<float>::Compute(OpKernelContext* ctx) const {
 
 template <>
 Status Sum_8<float>::Compute(OpKernelContext* context) const {
+  ORT_ENFORCE(nullptr != context, "Context must not be NULL");
   return BroadcastVariadic<float, float>(
       Node(), *context,
       [](EigenVectorMap<float> output, float input0, ConstEigenVectorMap<float> input1) { output = input0 + input1.array(); },
@@ -482,6 +483,7 @@ struct Min_8::ComputeImpl {
 };
 
 Status Min_8::Compute(OpKernelContext* context) const {
+  ORT_ENFORCE(nullptr != context, "Context must not be NULL");
   utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(context->Input<Tensor>(0)->GetElementType());
   return t_disp.Invoke(this, context);
@@ -517,6 +519,7 @@ struct Max_8::ComputeImpl {
 };
 
 Status Max_8::Compute(OpKernelContext* context) const {
+  ORT_ENFORCE(nullptr != context, "Context must not be NULL");
   utils::MLTypeCallDispatcherRet<Status, ComputeImpl, float, double, MLFloat16, int32_t, uint32_t, int64_t, uint64_t>
       t_disp(context->Input<Tensor>(0)->GetElementType());
   return t_disp.Invoke(this, context);
@@ -645,6 +648,7 @@ Status Mean_6<float>::Compute(OpKernelContext* ctx) const {
 
 template <>
 Status Mean_8<float>::Compute(OpKernelContext* context) const {
+  ORT_ENFORCE(nullptr != context, "Context must not be NULL");
   // Do a sum exactly the same as in Sum_8
   Status status = BroadcastVariadic<float, float>(
       Node(), *context,
