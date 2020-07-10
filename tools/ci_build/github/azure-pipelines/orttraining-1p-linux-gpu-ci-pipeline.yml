@@ -3,6 +3,7 @@ parameters:
     displayName: Conda Version
     type: string
     default: 4.8.0
+
 stages:
 - stage: Python_Packaging
 
@@ -13,6 +14,23 @@ stages:
     docker_image_prefix: onnxruntime-training
     linux_gpu_dockerfile: Dockerfile.ortrelease
     python.version: 3.6
+    BuildCommand: >
+      tools/ci_build/github/linux/run_dockerbuild.sh
+      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+      -x "
+      --enable_training
+      --config $(buildConfig)
+      --skip_onnx_tests
+      --build_wheel
+      --enable_nvtx_profile
+      "
+    Strategy: 
+      maxParallel: 2
+      matrix:
+        Debug:
+          buildConfig: Debug
+        Release:
+          buildConfig: Release
   jobs:
   - job: Linux_py_GPU_Wheels
     timeoutInMinutes: 0
@@ -24,21 +42,21 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: templates/set-py-packaging-variables-step.yml
+      # - template: templates/set-py-packaging-variables-step.yml
 
-      - task: CmdLine@2
-        inputs:
-          script: |
-            sudo docker build \
-              --pull \
-              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-              --build-arg BUILD_USER=onnxruntimedev \
-              --build-arg BUILD_UID=$(id -u) \
-              --build-arg PYTHON_VERSION=$(python.version) \
-              --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
-              --build-arg CONDA_VERSION="${{ parameters.conda_version }}" \
-              -f ${{ variables.linux_gpu_dockerfile }} .
-          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+      # - task: CmdLine@2
+      #   inputs:
+      #     script: |
+      #       sudo docker build \
+      #         --pull \
+      #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+      #         --build-arg BUILD_USER=onnxruntimedev \
+      #         --build-arg BUILD_UID=$(id -u) \
+      #         --build-arg PYTHON_VERSION=$(python.version) \
+      #         --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
+      #         --build-arg CONDA_VERSION="${{ parameters.conda_version }}" \
+      #         -f ${{ variables.linux_gpu_dockerfile }} .
+      #     workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
       #  - task: CmdLine@2
       #   inputs:
@@ -64,7 +82,9 @@ stages:
       #           --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
       #           ${{ variables.actual_extra_build_py_parameters }}
       #     workingDirectory: $(Build.SourcesDirectory)
-      
+      - script: ${{ variables.BuildCommand }}
+        displayName: 'Command Line Script'
+
       - task: AzureKeyVault@1
         inputs:
           azureSubscription: 'AIInfraBuild'
