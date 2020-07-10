@@ -30,7 +30,7 @@ stages:
     workspace:
       clean: all
     pool: Linux-GPU-CUDA10
-    Strategy: 
+    strategy: 
       maxParallel: 2
       matrix:
         Debug:
