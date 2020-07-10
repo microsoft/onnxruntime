@@ -90,15 +90,17 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.logging_steps = 10
 
     def test_bert_with_swag(self):
-        expected_acc = 0.7714685594321703
-        expected_loss = 0.7022780341538328
+        expected_acc = 0.7883135059482156
+        expected_loss = 0.6474186203172139
+
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
         assert_allclose(results['acc'], expected_acc)
         assert_allclose(results['loss'], expected_loss)
 
     def test_bert_fp16_with_swag(self):
-        expected_acc = 0.7684694591622513
-        expected_loss = 0.7017300290774664
+        expected_acc = 0.7882135359392183
+        expected_loss = 0.6469693916158167
+
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
         assert_allclose(results['acc'], expected_acc)
         assert_allclose(results['loss'], expected_loss)
