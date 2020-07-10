@@ -43,6 +43,9 @@ class DataRunner {
   //Time spent in Session::Run. It only make sense when SeqTestRunner was used
   ::onnxruntime::TIME_SPEC spent_time_;
 
+  // DataRunner destructor should not be made public. DataRunner owns itself and only it knows 
+  // when it can destoy itself. Multiple tasks share the session object owned by DataRunner and only 
+  // when all these tasks complete can it be destroyed.
   virtual ~DataRunner();
 
  private:

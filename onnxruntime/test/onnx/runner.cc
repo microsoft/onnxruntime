@@ -54,13 +54,16 @@ void PTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexc
   try {
     concurrent_runs = std::min<size_t>(std::max<size_t>(1, concurrent_runs), c_.GetDataCount());
     next_test_to_run = 0;
-    for (size_t i = 0; i != concurrent_runs; ++i) {
+    for (size_t i = 0; i < concurrent_runs; ++i) {
       if (!ScheduleNew()) {
         if (i == 0) {
           // This should be a rare case.
-          // Log it. While existing Finish will be called which will take care of the cleanup
-          LOGF_DEFAULT(ERROR, "Could not schedule tasks for test case: %s\n", c_.GetTestCaseName().c_str());
-        }
+          // Log an error. While exiting Finish will be called which will take care of the cleanup
+          LOGF_DEFAULT(ERROR, "No task scheduled for test case: %s\n", c_.GetTestCaseName().c_str());
+        } 
+        // In cases when concurrent_runs == number of test cases, before i reaches "concurrent_runs" 
+        // an older tasks may finish and schedule a new task from OnTaskFinished method so no task is left to be scheduled 
+        // from here.
         break;
       }
       atleast_one_run_scheduled = true;
@@ -511,6 +514,10 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
       concurrent_runs = 1;
     }
 
+    // DataRunner owns itself. In case of success or failures DataRunner will delete itself.
+    // In case of SeqTestRunner SeqTestRunner::Start will call DataRunner::Finish at the end and will delete itself.
+    // In case of PTestRunner on success the last task will call Finish and in cases of failure Start will itself call DataRunner::Finish
+    // before exiting. Start does not throw so we do not need to worry about this case.
     DataRunner* r;
     if (concurrent_runs > 1 && data_count > 1) {
       r = new PTestRunner(session_object.release(), info, tpool, on_finished);
@@ -520,13 +527,9 @@ void RunSingleTestCase(const ITestCase& info, Ort::Env& env, const Ort::SessionO
     r->Start(pci, concurrent_runs);
 
     // both PTestRunner and SeqTestRunner call DataRunner::Finish which will delete itself and call on_finished callback
-    // at this point we know everything has strated without any exceptions so simply return.
+    // at this point we know everything has started without any exceptions so simply return.
     return;
 
-  } catch (const onnxruntime::NotImplementedException& ex) {
-    LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
-    std::string node_name;
-    ret = std::make_shared<TestCaseResult>(data_count, EXECUTE_RESULT::NOT_SUPPORT, "");
   } catch (const Ort::Exception& ex) {
     LOGF_DEFAULT(ERROR, "Test %s failed:%s", info.GetTestCaseName().c_str(), ex.what());
     std::string node_name;
