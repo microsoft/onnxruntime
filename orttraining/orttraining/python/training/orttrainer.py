@@ -1,3 +1,4 @@
+import onnx
 import torch
 
 from . import ORTTrainerOptions
@@ -55,9 +56,11 @@ class ORTTrainer(object):
             training, and perform optimizations.
             :py:attr:`model_desc` must be consistent with the training :py:attr:`model` and have the following (:py:obj:`dict`) schema
             :py:obj:`{ 'inputs': [tuple(name, shape)], 'outputs': [tuple(name, shape, is_loss)]}`.
-            :py:attr:`name` is a string representing name of input or output of the model.
+            :py:attr:`name` is a string representing the name of input or output of the model.
             For :py:obj:`model_desc['inputs']` entries, :py:attr:`name` must match input names of the original PyTorch model's :py:meth:`torch.nn.Module.forward` method.
+            For ONNX models, both name and order of input names must match.
             For :py:obj:`model_desc['outputs']` entries, the order must match the original PyTorch's output as returned by :py:meth:`torch.nn.Module.forward` method.
+            For ONNX models, both name and order of output names must match.
             :py:attr:`shape` is a list of string or integers that describes the shape of the input/output.
             Each dimension size can be either a string or an int. String means the dimension size is dynamic, while integers mean static dimensions.
             An empty list implies a scalar.
@@ -88,7 +91,7 @@ class ORTTrainer(object):
                     ("loss", [], True),
                 ],
             }
-            optim_config = optim.LambCOnfig(param_groups = [ { 'params' : ['model_param0'], 'alpha' : 0.8, 'beta' : 0.7},
+            optim_config = optim.LambConfig(param_groups = [ { 'params' : ['model_param0'], 'alpha' : 0.8, 'beta' : 0.7},
                                                              { 'params' : ['model_param1' , 'model_param_2'], 'alpha' : 0.0}
                                                            ],
                                             alpha=0.9, beta=0.999)
@@ -122,10 +125,12 @@ class ORTTrainer(object):
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
             self._loss_fn = loss_fn
-        else:  # TODO: Perform specific test for ONNX model
+        elif isinstance(model, onnx.ModelProto):
             assert loss_fn is None, "'loss_fn' must not be specified when 'model' is an ONNX model"
             self._onnx_model = model
             self._loss_fn = None
+        else:
+            raise ValueError("'model' must be either 'torch.nn.Module' or 'onnx.ModelProto'")
 
         self.model_desc = _ORTTrainerModelDesc(model_desc)
         self.optim_config = optim_config
