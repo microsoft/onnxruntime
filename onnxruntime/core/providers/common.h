@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 
@@ -99,8 +98,13 @@ Status ComputePadAndOutputShape(
         *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
 
         // make sure padding is symmetric
-        if (ForceSymmetricAutoPadding)
-          pad_needed = math::roundUpPow2<int64_t, 2>(pad_needed);
+        if (ForceSymmetricAutoPadding) {
+          // Inlining from util/math.h to avoid bringing in the transitive dependencies.
+          auto roundUpPow2 = [](int64_t a, int64_t b) {
+            return (a + (b - 1)) & (~(b - 1));
+          };
+          pad_needed = roundUpPow2(pad_needed);
+        }
 
         if (pad_type == AutoPadType::SAME_LOWER) {
           *pad_head = (pad_needed + 1) / 2;
