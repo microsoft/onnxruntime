@@ -255,7 +255,7 @@ void BinaryElementWiseImpl(
         func,
         N);
   } else {
-    if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->size_ && rhs_padded_strides->size_)
+    if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->Size() && rhs_padded_strides->Size())
       _BinaryElementWise<T, T1, FuncT, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank_or_simple_broadcast,
           *lhs_padded_strides,
@@ -266,7 +266,7 @@ void BinaryElementWiseImpl(
           output_data,
           func,
           N);
-    else if (lhs_padded_strides && lhs_padded_strides->size_)
+    else if (lhs_padded_strides && lhs_padded_strides->Size())
       _BinaryElementWise<T, T1, FuncT, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_rank_or_simple_broadcast,
           *lhs_padded_strides,
