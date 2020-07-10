@@ -1085,8 +1085,10 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
 def adb_push(src, dest, **kwargs):
     return run_subprocess(['adb', 'push', src, dest], **kwargs)
 
+
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
+
 
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
