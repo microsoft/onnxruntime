@@ -842,6 +842,10 @@ Graph::Graph(const Model& owning_model,
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
     TypeProto t{TypeProtoFromTensorProto(tensor)};
 
+    if (!utils::HasElemType(t.tensor_type())) {
+      ORT_THROW("This is an invalid model. Tensor does not have type information.");
+    }
+
     if (ir_version_ < 4) {
       // initializers can have matching graph inputs but are treated as constant,
       // so we prefer the shape from the initializer
