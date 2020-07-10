@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 
