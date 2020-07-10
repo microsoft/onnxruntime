@@ -32,6 +32,8 @@
             python benchmark.py -e torchscript -g
         Run TorchScript on GPU for all models with fp16:
             python benchmark.py -e torchscript -g -p "fp16"
+        Run ONNXRuntime and TorchScript on CPU for all models with quantization:
+            python benchmark.py -e torchscript onnxruntime -p "int8" -o
 
     It is recommended to use run_benchmark.sh to launch benchmark.
 """
