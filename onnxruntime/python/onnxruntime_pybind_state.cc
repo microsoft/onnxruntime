@@ -122,8 +122,6 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_provider_options.h"
-#include <cuda.h>
-#include <cuda_runtime.h>
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
@@ -381,9 +379,10 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
     if (it != options_map.end()) {
         OrtDevice::DeviceId device_id;
         try {
-          device_id = std::stoi(it->second); 
+            int id = std::stoi(it->second);
+            device_id = static_cast<int8_t>(id);
         }
-        catch (const std::invalid_argument& ia) {
+        catch (...) {
             throw std::runtime_error("Please provide device id with integer.");
         }
 
@@ -414,11 +413,8 @@ void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProvider
           size = std::stoul(it->second, nullptr, 0);
 #endif
         }
-        catch (const std::invalid_argument& ia) {
-            throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
-        }
-        catch (const std::out_of_range& oor) {
-            throw std::runtime_error("Please provide cuda memory limitation size within the range.");
+        catch (...) {
+            throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
         }
         
         options.cuda_mem_limit = size; 
