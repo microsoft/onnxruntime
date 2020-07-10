@@ -1083,11 +1083,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
 
 
 def adb_push(source_dir, src, dest, **kwargs):
-    return run_subprocess(
-        [os.path.join(
-            source_dir, 'tools', 'ci_build',
-            'github', 'android', 'adb-push.sh'),
-         src, dest], **kwargs)
+    return run_subprocess(['adb', 'push', src, dest], **kwargs)
 
 
 def adb_shell(*args, **kwargs):
