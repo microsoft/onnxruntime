@@ -853,6 +853,39 @@ TEST(MathOpTest, Sum_8_Test2) {
 #endif
 }
 
+static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorShape& shape) {
+  using element_type = float;
+
+  OpTester test{"Sum", 8};
+
+  const auto& dims = shape.GetDims();
+  const std::vector<element_type> input_data(shape.Size(), 1);
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    test.AddInput<element_type>(MakeString("data_", i).c_str(), dims, input_data);
+  }
+
+  const std::vector<element_type> expected_output_data =
+      [&input_data, num_inputs]() {
+        std::vector<element_type> result;
+        std::transform(
+            input_data.begin(), input_data.end(), std::back_inserter(result),
+            [num_inputs](element_type value) { return num_inputs * value; });
+        return result;
+      }();
+
+  test.AddOutput<element_type>("sum", dims, expected_output_data);
+
+  test.Run();
+}
+
+TEST(MathOpTest, SumMultipleInputsNoBroadcasting) {
+  const TensorShape shape{3, 3, 3};
+  for (size_t num_inputs = 2; num_inputs < 10; ++num_inputs) {
+    TestSumMultipleInputsNoBroadcasting(num_inputs, shape);
+  }
+}
+
 TEST(MathOpTest, Min_6) {
   OpTester test("Min", 6);
   std::vector<int64_t> dims{3, 3};
