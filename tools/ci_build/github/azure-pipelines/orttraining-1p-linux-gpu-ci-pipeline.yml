@@ -24,6 +24,12 @@ stages:
       --build_wheel
       --enable_nvtx_profile
       "
+  jobs:
+  - job: Linux_py_GPU_Wheels
+    timeoutInMinutes: 0
+    workspace:
+      clean: all
+    pool: Linux-GPU-CUDA10
     Strategy: 
       maxParallel: 2
       matrix:
@@ -31,12 +37,6 @@ stages:
           buildConfig: Debug
         Release:
           buildConfig: Release
-  jobs:
-  - job: Linux_py_GPU_Wheels
-    timeoutInMinutes: 0
-    workspace:
-      clean: all
-    pool: Linux-GPU-CUDA10
     steps:
       - checkout: self
         clean: true
