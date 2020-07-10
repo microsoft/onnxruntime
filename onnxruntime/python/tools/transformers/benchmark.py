@@ -85,6 +85,7 @@ if "OMP_NUM_THREADS" not in os.environ:
 import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
+
 # use_cache is True by default in GPT2Model. Here we wrap a class to disable past state output.
 class GPT2ModelNoPastState(GPT2Model):
     def __init__(self, config):
@@ -99,6 +100,7 @@ def load_pretrained_model(model_name, config, cache_dir):
         return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
+
 class Precision(Enum):
     FLOAT32 = 'fp32'
     FLOAT16 = 'fp16'
@@ -107,7 +109,8 @@ class Precision(Enum):
     def __str__(self):
         return self.value
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, thread_num = -1):
+
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, thread_num=-1):
     import onnxruntime
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -244,12 +247,17 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
     else:
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
+
 def quantize_onnx_model(onnx_model_path, quantized_model_path):
     from onnxruntime.quantization import quantize, QuantizationMode
     onnx_opt_model = onnx.load(onnx_model_path)
-    quantized_onnx_model = quantize(onnx_opt_model, quantization_mode=QuantizationMode.IntegerOps, symmetric_weight=True, force_fusions=True)
+    quantized_onnx_model = quantize(onnx_opt_model,
+                                    quantization_mode=QuantizationMode.IntegerOps,
+                                    symmetric_weight=True,
+                                    force_fusions=True)
     onnx.save(quantized_onnx_model, quantized_model_path)
     logger.info(f"quantized model saved to:{quantized_model_path}")
+
 
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
                         fp16, use_raw_attention_mask, overwrite):
@@ -327,9 +335,11 @@ def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, pre
 
     if optimize_onnx or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
         model_type = MODELS[model_name][3]
-        optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision, False)
+        optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
+                                                  False)
         optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
-                            config.hidden_size, use_gpu, precision == Precision.FLOAT16, use_raw_attention_mask, overwrite)
+                            config.hidden_size, use_gpu, precision == Precision.FLOAT16, use_raw_attention_mask,
+                            overwrite)
 
         onnx_model_path = optimized_model_path
         if validate_onnx:
@@ -444,7 +454,10 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
             if not is_valid_onnx_model:
                 continue
 
-            ort_session = create_onnxruntime_session(onnx_model_file, use_gpu, enable_all_optimization=True, thread_num = thread_num)
+            ort_session = create_onnxruntime_session(onnx_model_file,
+                                                     use_gpu,
+                                                     enable_all_optimization=True,
+                                                     thread_num=thread_num)
             if ort_session is None:
                 continue
 
@@ -497,6 +510,7 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
 
     return results
 
+
 def _conv1d_to_linear(module):
     in_size, out_size = module.weight.shape
     linear = torch.nn.Linear(in_size, out_size)
@@ -518,11 +532,13 @@ def conv1d_to_linear(model):
         else:
             conv1d_to_linear(module)
 
+
 def quantize_model(model, dtype=torch.qint8):
     # TODO: mix of in-place and return, but results are different
     # Usage model = quantize_model(model)
     conv1d_to_linear(model)
     return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+
 
 def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
                 verbose):
@@ -696,13 +712,14 @@ def parse_arguments():
 
     parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="Run on cuda device")
 
-    parser.add_argument("-p",
-                        "--precision",
-                        required=True,
-                        type=Precision,
-                        default=Precision.FLOAT32,
-                        choices=list(Precision),
-                        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
+    parser.add_argument(
+        "-p",
+        "--precision",
+        required=True,
+        type=Precision,
+        default=Precision.FLOAT32,
+        choices=list(Precision),
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
 
     parser.add_argument("--verbose", required=False, action="store_true", help="Print more information")
 
@@ -771,6 +788,7 @@ def setup_logger(verbose):
         coloredlogs.install(fmt='%(message)s')
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
+
 def main():
     args = parse_arguments()
 
@@ -815,9 +833,9 @@ def main():
 
     if enable_onnxruntime:
         try:
-            results += run_onnxruntime(args.use_gpu, args.models, args.precision, args.batch_sizes, args.sequence_lengths,
-                                       args.test_times, args.input_counts, args.optimize_onnx, args.validate_onnx,
-                                       args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
+            results += run_onnxruntime(args.use_gpu, args.models, args.precision, args.batch_sizes,
+                                       args.sequence_lengths, args.test_times, args.input_counts, args.optimize_onnx,
+                                       args.validate_onnx, args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
                                        args.disable_ort_io_binding, args.use_raw_attention_mask, args.thread_num)
         except:
             logger.error(f"Exception", exc_info=True)

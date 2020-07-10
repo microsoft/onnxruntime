@@ -48,6 +48,7 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
                                token_type_ids=None,
                                position_ids=position_ids)
 
+
 class Precision(Enum):
     FLOAT32 = 'fp32'
     FLOAT16 = 'fp16'
@@ -56,9 +57,11 @@ class Precision(Enum):
     def __str__(self):
         return self.value
 
+
 PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
 MODEL_CLASSES = ['GPT2LMHeadModel', 'GPT2Model']
+
 
 def pytorch_inference(model, inputs, total_runs=100):
     logger.debug(f"start pytorch_inference")
@@ -320,13 +323,14 @@ def parse_arguments():
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument("-p",
-                        "--precision",
-                        required=True,
-                        type=Precision,
-                        default=Precision.FLOAT32,
-                        choices=list(Precision),
-                        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
+    parser.add_argument(
+        "-p",
+        "--precision",
+        required=True,
+        type=Precision,
+        default=Precision.FLOAT32,
+        choices=list(Precision),
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
@@ -456,12 +460,17 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, verbose, thread_num):
 
     return session
 
+
 def quantize_onnx_model(onnx_model_path, quantized_model_path):
     from onnxruntime.quantization import quantize, QuantizationMode
     onnx_opt_model = onnx.load(onnx_model_path)
-    quantized_onnx_model = quantize(onnx_opt_model, quantization_mode=QuantizationMode.IntegerOps, symmetric_weight=True, force_fusions=True)
+    quantized_onnx_model = quantize(onnx_opt_model,
+                                    quantization_mode=QuantizationMode.IntegerOps,
+                                    symmetric_weight=True,
+                                    force_fusions=True)
     onnx.save(quantized_onnx_model, quantized_model_path)
     logger.info(f"quantized model saved to:{quantized_model_path}")
+
 
 def _conv1d_to_linear(module):
     in_size, out_size = module.weight.shape
@@ -484,11 +493,13 @@ def conv1d_to_linear(model):
         else:
             conv1d_to_linear(module)
 
+
 def quantize_model(model, dtype=torch.qint8):
     # TODO: mix of in-place and return, but results are different
     # Usage model = quantize_model(model)
     conv1d_to_linear(model)
     return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+
 
 def main():
     args = parse_arguments()
@@ -519,7 +530,7 @@ def main():
     config = AutoConfig.from_pretrained(model_name, torchscript=False, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    
+
     # This scirpt does not support float16 for PyTorch.
     #if args.float16:
     #    model.half()
@@ -552,8 +563,7 @@ def main():
         filename_prefix = "gpt2{}_past{}".format("_lm" if use_LMHead else "",
                                                  "_mask" if args.use_attention_mask else "")
         onnx_model_path = os.path.join(
-            output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu",
-                                               args.precision))
+            output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu", args.precision))
         m.save_model_to_file(onnx_model_path)
 
     if args.precision == Precision.INT8:
@@ -580,8 +590,8 @@ def main():
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "model_name", "model_class", "gpu", "precision", "use_attention_mask", "optimizer", "io_binding", "batch_size",
-            "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
+            "model_name", "model_class", "gpu", "precision", "use_attention_mask", "optimizer", "io_binding",
+            "batch_size", "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
@@ -591,7 +601,8 @@ def main():
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
                 dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                 config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                config.vocab_size, device, args.use_attention_mask, args.precision == Precision.FLOAT16)
+                                                config.vocab_size, device, args.use_attention_mask,
+                                                args.precision == Precision.FLOAT16)
                 output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead)
 
                 try:
