@@ -43,51 +43,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // Need access to model_path_
-  for (const auto& tensor : graph_view.GetAllInitializedTensors()) {
-    if (tensor.second->has_data_location() &&
-        tensor.second->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS_DEFAULT(WARNING) << "NNAPI: Initializers with external data"
-                               " location are not currently supported";
-      return result;
-    }
-  }
-
-  // TODO, switch to use graph instead of model
-  // This method is based on that of TRT EP
-  // Construct modelproto from graph
-  onnxruntime::Model model(graph_view.Name(), true, ModelMetaData(),
-                           PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(),
-                           graph_view.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                           *GetLogger());
   std::unordered_set<std::string> all_node_inputs;
-  onnxruntime::Graph& graph_build = model.MainGraph();
   for (const auto& node : graph_view.Nodes()) {
-    std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto* input : node.InputDefs()) {
-      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
       all_node_inputs.insert(input->Name());
     }
-    for (auto* output : node.OutputDefs()) {
-      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    graph_build.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
-  }
-  //Add initializer to graph
-  const auto& init_tensors = graph_view.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    graph_build.AddInitializedTensor(*(tensor.second));
   }
 
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  nnapi::ModelBuilder builder(model_proto);
+  nnapi::ModelBuilder builder(graph_view);
   const auto supported_nodes_vector = builder.GetSupportedNodes();
 
   // Find inputs, initializers and outputs for each supported subgraph
@@ -179,9 +142,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
       if (all_node_inputs.find(it->first->Name()) != all_node_inputs.end()) {
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-      }
-
-      if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
+      } else if (std::find(graph_outputs.begin(), graph_outputs.end(), it->first) != graph_outputs.end()) {
         outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
       }
     }
@@ -218,16 +179,11 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     if (!func_body) {
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
-    const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
-    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
+    const Graph& graph_body = func_body->Body();
     {
-      nnapi::ModelBuilder builder(model_proto);
+      onnxruntime::GraphViewer graph_viewer(graph_body);
+      nnapi::ModelBuilder builder(graph_viewer);
       builder.SetUseNCHW(false);
       builder.SetUseFp16(false);
       std::unique_ptr<nnapi::Model> nnapi_model = builder.Compile();

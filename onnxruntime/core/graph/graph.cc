@@ -842,6 +842,10 @@ Graph::Graph(const Model& owning_model,
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
     TypeProto t{TypeProtoFromTensorProto(tensor)};
 
+    if (!utils::HasElemType(t.tensor_type())) {
+      ORT_THROW("This is an invalid model. Tensor does not have type information.");
+    }
+
     if (ir_version_ < 4) {
       // initializers can have matching graph inputs but are treated as constant,
       // so we prefer the shape from the initializer
@@ -2049,6 +2053,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
+	  InitFunctionBodyForNode(node);
+
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
@@ -2298,7 +2304,7 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
   name_to_initial_tensor_[tensor.name()] = tensor_added;
-
+  SetGraphResolveNeeded();
   if (!is_loaded_from_model_file_ && GetNodeArg(tensor.name()) == nullptr) {
     // make sure there is a NodeArg for the initializer as SetGraphInputsOutputs may add it to the graph inputs.
     // the shape will be set to the correct value in TypeCheckInputsAndInitializers as we don't yet know whether there
