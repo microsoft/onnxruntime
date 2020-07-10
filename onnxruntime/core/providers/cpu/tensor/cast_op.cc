@@ -49,6 +49,25 @@ inline void CastData<MLFloat16, float>(const Tensor* in, Tensor* out, const Tens
 #endif
 }
 
+template <>
+inline void CastData<float, BFloat16>(const Tensor* in, Tensor* out, const TensorShape& shape) {
+  auto out_data = out->template MutableData<BFloat16>();
+  auto shape_size = shape.Size();
+  auto in_vector = ConstEigenVectorMap<float>(in->template Data<float>(), shape_size);
+  auto output_vector = EigenVectorMap<BFloat16>(out_data, shape_size);
+  output_vector = in_vector.template cast<BFloat16>();
+}
+
+template <>
+inline void CastData<BFloat16, float>(const Tensor* in, Tensor* out, const TensorShape& shape) {
+  auto out_data = out->template MutableData<float>();
+  auto in_data = in->template Data<BFloat16>();
+  auto shape_size = shape.Size();
+  auto in_vector = ConstEigenVectorMap<BFloat16>(in_data, shape_size);
+  auto output_vector = EigenVectorMap<float>(out_data, shape_size);
+  output_vector = in_vector.unaryExpr([](BFloat16 val) { return val.ToFloat(); });
+}
+
 template <typename SrcType,
           typename DstType>
 inline void CastFloat16Data(const Tensor* in, Tensor* out, const TensorShape& shape, const AllocatorPtr& allocator) {
@@ -217,13 +236,20 @@ const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<int32_t>(),
     DataTypeImpl::GetTensorType<int64_t>(),
     DataTypeImpl::GetTensorType<MLFloat16>(),
-    DataTypeImpl::GetTensorType<std::string>()};
+    DataTypeImpl::GetTensorType<std::string>(),
+    DataTypeImpl::GetTensorType<BFloat16>()};
 
 #define ADD_FROM_CAST_OP(in_type)                                                                                                  \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                                        \
       Cast,                                                                                                                        \
       6,                                                                                                                           \
-      9,                                                                                                                           \
+      12,                                                                                                                          \
+      in_type,                                                                                                                     \
+      KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>()).TypeConstraint("T2", castOpTypeConstraints), \
+      Cast<in_type>);                                                                                                              \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                                                                  \
+      Cast,                                                                                                                        \
+      13,                                                                                                                          \
       in_type,                                                                                                                     \
       KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>()).TypeConstraint("T2", castOpTypeConstraints), \
       Cast<in_type>);                                                                                                              \
@@ -276,6 +302,13 @@ const std::vector<MLDataType> castOpTypeConstraints{
           if (!st.IsOK()) return st;                                                                                               \
         }                                                                                                                          \
         break;                                                                                                                     \
+      case TensorProto_DataType_BFLOAT16:                                                                                          \
+        if (std::is_same<in_type, float>::value) {                                                                                 \
+          CastData<float, BFloat16>(X, Y, shape);                                                                                  \
+        } else {                                                                                                                   \
+          ORT_THROW("Cast from non-float type to bfloat16  is not supported");                                                     \
+        }                                                                                                                          \
+        break;                                                                                                                     \
       case TensorProto_DataType_STRING:                                                                                            \
         CastToStringData<in_type>(X, Y, shape);                                                                                    \
         break;                                                                                                                     \
@@ -302,10 +335,16 @@ ADD_FROM_CAST_OP(double);
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cast,
     6,
-    9,
+    12,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()).TypeConstraint("T2", castOpTypeConstraints),
     Cast<MLFloat16>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cast,
+    13,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()).TypeConstraint("T2", castOpTypeConstraints),
+    Cast<MLFloat16>); 
 
 template <>
 Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
@@ -367,6 +406,29 @@ Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
   }
   return st;
 }
+
+template <>
+Status Cast<BFloat16>::Compute(OpKernelContext* context) const {
+  const auto* X = context->Input<Tensor>(0);
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, TensorShape(shape));
+  Status st;
+  switch (to_) {
+    case TensorProto_DataType_FLOAT:
+      CastData<BFloat16, float>(X, Y, shape);
+      break;
+    default:
+      ORT_THROW("Unexpected 'to' argument value of bfloat16 cast: ", to_);
+  }
+  return st;
+}
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cast,
+    13,
+    BFloat16,
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<BFloat16>()).TypeConstraint("T2", castOpTypeConstraints),
+    Cast<BFloat16>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Cast,
