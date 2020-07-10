@@ -43,6 +43,11 @@ class DataRunner {
   //Time spent in Session::Run. It only make sense when SeqTestRunner was used
   ::onnxruntime::TIME_SPEC spent_time_;
 
+  // DataRunner destructor should not be made public. DataRunner owns itself and only it knows 
+  // when it can destoy itself. Multiple tasks share the session object owned by DataRunner and only 
+  // when all these tasks complete can it be destroyed.
+  virtual ~DataRunner();
+
  private:
   OrtSession* session;
   CALL_BACK on_finished;
@@ -55,13 +60,11 @@ class DataRunner {
              TestCaseCallBack on_finished1);
   virtual void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ORT_CALLBACK_INSTANCE pci) noexcept = 0;
   void RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci);
-  virtual ~DataRunner();
-
-  virtual void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) = 0;
+  virtual void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexcept = 0;
 
   void Finish(ORT_CALLBACK_INSTANCE pci) {
     std::shared_ptr<TestCaseResult> res = result;
-    CALL_BACK callback = on_finished;
+    CALL_BACK on_finished_local = on_finished;
     res->SetSpentTime(spent_time_);
     const std::vector<EXECUTE_RESULT>& er = res->GetExcutionResult();
     for (size_t i = 0; i != er.size(); ++i) {
@@ -90,7 +93,7 @@ class DataRunner {
       break;
     }
     delete this;
-    callback(res, pci);
+    on_finished_local(res, pci);
   }
 };
 
@@ -101,7 +104,7 @@ class SeqTestRunner : public DataRunner {
  public:
   SeqTestRunner(OrtSession* session1, const ITestCase& c, size_t repeat_count, TestCaseCallBack on_finished1);
 
-  void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
+  void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexcept override;
   void OnTaskFinished(size_t, EXECUTE_RESULT, ORT_CALLBACK_INSTANCE) noexcept override {}
 };
 
@@ -112,7 +115,7 @@ class PTestRunner : public DataRunner {
   void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ORT_CALLBACK_INSTANCE pci) noexcept override;
 
  public:
-  void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) override;
+  void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) noexcept override;
 
   PTestRunner(OrtSession* session1, const ITestCase& c, PThreadPool tpool, TestCaseCallBack on_finished1);
 
