@@ -534,13 +534,6 @@ def conv1d_to_linear(model):
             conv1d_to_linear(module)
 
 
-def quantize_model(model, dtype=torch.qint8):
-    # TODO: mix of in-place and return, but results are different
-    # Usage model = quantize_model(model)
-    conv1d_to_linear(model)
-    return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
-
-
 def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
                 verbose):
     results = []
