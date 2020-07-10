@@ -647,6 +647,26 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
+Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
+  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
+  int64_t block_size;
+  int64_t blocks;
+  std::vector<int64_t> reduced_dims;
+  const Tensor* input = ctx->Input<Tensor>(0);
+  //override the attribute value with the input value for reduction_axes
+  const Tensor* axes_ = ctx->Input<Tensor>(1);
+
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
+
+  auto* output = ctx->Output(0, reduced_dims);
+
+  ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(),
+                no_transpose, blocks, block_size, transposed_input_data, ctx->GetOperatorThreadPool());
+
+  return Status::OK();
+}
+
+template <typename T>
 Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
   FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
   int64_t block_size;

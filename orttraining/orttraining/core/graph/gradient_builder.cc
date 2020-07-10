@@ -809,6 +809,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetReduceSumTrainingGradient) {
+  std::vector<NodeDef> result;
+  auto attributes = SrcNodeAttributes();
+  bool keepdims = true;
+  if (attributes.find("keepdims") != attributes.end() &&
+      attributes.at("keepdims").has_i()) {
+    keepdims = static_cast<bool>(attributes.at("keepdims").i());
+  }
+
+  ArgDef grad = GO(0);
+  if (!keepdims) {
+    //need to change and get axes from input
+    // std::vector<int64_t> axes_values = I(1);
+    std::vector<int64_t> axes_values =RetrieveValues<int64_t>(attributes.at("axes"));
+
+    grad = IA("Unqueezed_Grad");
+    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+  }
+
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("Shaped_X")}));
+  result.push_back(NodeDef("Expand", {grad, IA("Shaped_X")}, {GI(0)}));
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
   if (IsGradientRequiredForSrcNodeInput(1)) {
     ORT_THROW("GradientBuilder is not implemented for CUDA Pow's input exponent.");
