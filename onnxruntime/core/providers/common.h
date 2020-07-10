@@ -99,11 +99,8 @@ Status ComputePadAndOutputShape(
 
         // make sure padding is symmetric
         if (ForceSymmetricAutoPadding) {
-          // Inlining from util/math.h to avoid bringing in the transitive dependencies.
-          auto roundUpPow2 = [](int64_t a, int64_t b) {
-            return (a + (b - 1)) & (~(b - 1));
-          };
-          pad_needed = roundUpPow2(pad_needed);
+          // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
+          pad_needed = (pad_needed + 1) & ~1;
         }
 
         if (pad_type == AutoPadType::SAME_LOWER) {
