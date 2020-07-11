@@ -215,6 +215,12 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
       opt_configs_, graph_defs,
       optimizer_state_initializer_names));
 
+  //bugbug
+  ArgDef initial_delta_grad_norm_argdef;
+  ORT_RETURN_IF_ERROR(AddGradientNorm(
+    nodearg_name_generator, gradient_argdefs, graph_defs, initial_delta_grad_norm_argdef, "delta_initial_norm"));
+  optimizer_graph_outputs[OptimizerOutputKey::InitialDeltaNorm] = initial_delta_grad_norm_argdef.name;
+
   // Perform allreduce on deltas after step() for Adasum
   ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
 

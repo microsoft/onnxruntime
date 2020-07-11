@@ -17,6 +17,7 @@ enum class OptimizerOutputKey : int {
   DeltaAllIsFinite,
   //bugbug
   DeltaNorm,
+  InitialDeltaNorm
 };
 
 struct OptimizerOutputKeyHash {
