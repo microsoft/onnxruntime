@@ -1,3 +1,4 @@
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
 #include "helper.h"
@@ -13,60 +14,52 @@ void Shaper::Conv(const std::string& input_name,
                   const vector<int32_t>& onnx_dilations,
                   bool nchw,
                   const std::string& output_name) {
-  Shape weight_dimen =
-      shape_map_.at(weight_name);  // num_output, height, width, num_input
+  Shape input_dimen = shape_map_.at(input_name);
+  Shape weight_dimen = shape_map_.at(weight_name);  // num_output, height, width, num_input
 
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
   int32_t padding_top = onnx_pads[0];
   int32_t padding_bottom = onnx_pads[2];
-  int32_t stride_x = onnx_strides[1];
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
   int32_t stride_y = onnx_strides[0];
-  int32_t dilation_x = onnx_dilations[1];
+  int32_t stride_x = onnx_strides[1];
   int32_t dilation_y = onnx_dilations[0];
+  int32_t dilation_x = onnx_dilations[1];
 
-  // NHWC
-  Shape input_dimen = shape_map_.at(input_name);
-  Shape outputDimen;
-  if (nchw) {
-    outputDimen =
-        {
-            input_dimen[0],
-            weight_dimen[0],
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[3] == 0
-                ? 0
-                : (input_dimen[3] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-        };
-  } else {  // nhwc
-    outputDimen =
-        {
-            input_dimen[0],
-            input_dimen[1] == 0
-                ? 0
-                : (input_dimen[1] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-            weight_dimen[0],
-        };
+  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  const auto weight_size_y = weight_dimen[1];
+  const auto weight_size_x = weight_dimen[2];
+
+  int64_t output_size_y = 0;
+  if (0 != input_size_y) {
+    onnxruntime::ComputeOutputShape(input_size_y,
+                                    stride_y, weight_size_y, dilation_y,
+                                    padding_top, padding_bottom,
+                                    &output_size_y);
   }
 
-  shape_map_[output_name] = outputDimen;
+  int64_t output_size_x = 0;
+  if (0 != input_size_x) {
+    onnxruntime::ComputeOutputShape(input_size_x,
+                                    stride_x, weight_size_x, dilation_x,
+                                    padding_left, padding_right,
+                                    &output_size_x);
+  }
+
+  Shape output_dimen;
+  if (nchw) {
+    output_dimen = {input_dimen[0],
+                    weight_dimen[0],
+                    static_cast<uint32_t>(output_size_y),
+                    static_cast<uint32_t>(output_size_x)};
+  } else {  // nhwc
+    output_dimen = {input_dimen[0],
+                    static_cast<uint32_t>(output_size_y),
+                    static_cast<uint32_t>(output_size_x),
+                    weight_dimen[0]};
+  }
+  shape_map_[output_name] = output_dimen;
 
   if (!shaper_finalized_) {
     shape_ops_.push_back(
@@ -89,59 +82,52 @@ void Shaper::DepthwiseConv(const std::string& input_name,
                            const std::vector<int32_t>& onnx_dilations,
                            bool nchw,
                            const std::string& output_name) {
-  Shape weight_dimen =
-      shape_map_.at(weight_name);  // 1, height, width, num_output
+  Shape input_dimen = shape_map_.at(input_name);
+  Shape weight_dimen = shape_map_.at(weight_name);  // 1, height, width, num_output
 
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
   int32_t padding_top = onnx_pads[0];
   int32_t padding_bottom = onnx_pads[2];
-  int32_t stride_x = onnx_strides[1];
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
   int32_t stride_y = onnx_strides[0];
-  int32_t dilation_x = onnx_dilations[1];
+  int32_t stride_x = onnx_strides[1];
   int32_t dilation_y = onnx_dilations[0];
+  int32_t dilation_x = onnx_dilations[1];
 
-  // NHWC
-  Shape input_dimen = shape_map_.at(input_name);
-  Shape outputDimen;
-  if (nchw) {
-    outputDimen =
-        {
-            input_dimen[0],
-            weight_dimen[3],
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[3] == 0
-                ? 0
-                : (input_dimen[3] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-        };
-  } else {  // nhwc
-    outputDimen =
-        {
-            input_dimen[0],
-            input_dimen[1] == 0
-                ? 0
-                : (input_dimen[1] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-            weight_dimen[3],
-        };
+  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  const auto weight_size_y = weight_dimen[1];
+  const auto weight_size_x = weight_dimen[2];
+
+  int64_t output_size_y = 0;
+  if (0 != input_size_y) {
+    onnxruntime::ComputeOutputShape(input_size_y,
+                                    stride_y, weight_size_y, dilation_y,
+                                    padding_top, padding_bottom,
+                                    &output_size_y);
   }
-  shape_map_[output_name] = outputDimen;
+
+  int64_t output_size_x = 0;
+  if (0 != input_size_x) {
+    onnxruntime::ComputeOutputShape(input_size_x,
+                                    stride_x, weight_size_x, dilation_x,
+                                    padding_left, padding_right,
+                                    &output_size_x);
+  }
+
+  Shape output_dimen;
+  if (nchw) {
+    output_dimen = {input_dimen[0],
+                    weight_dimen[3],
+                    static_cast<uint32_t>(output_size_y),
+                    static_cast<uint32_t>(output_size_x)};
+  } else {  // nhwc
+    output_dimen = {input_dimen[0],
+                    static_cast<uint32_t>(output_size_y),
+                    static_cast<uint32_t>(output_size_x),
+                    weight_dimen[3]};
+  }
+  shape_map_[output_name] = output_dimen;
 
   if (!shaper_finalized_) {
     shape_ops_.push_back(
@@ -165,40 +151,48 @@ void Shaper::Pool(const std::string& input_name,
                   const std::string& output_name) {
   auto input_dimen = shape_map_.at(input_name);
 
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
   int32_t padding_top = onnx_pads[0];
   int32_t padding_bottom = onnx_pads[2];
-  int32_t stride_x = onnx_strides[1];
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
   int32_t stride_y = onnx_strides[0];
-  int32_t width = kernel_shape[1];
-  int32_t height = kernel_shape[0];
+  int32_t stride_x = onnx_strides[1];
 
-  Shape outputDimen;
-  if (nchw) {
-    outputDimen = {
-        input_dimen[0],
-        input_dimen[1],
-        input_dimen[2] == 0
-            ? 0
-            : (input_dimen[2] - height + padding_top + padding_bottom) / stride_y + 1,
-        input_dimen[3] == 0
-            ? 0
-            : (input_dimen[3] - width + padding_left + padding_right) / stride_x + 1,
-    };
-  } else {
-    outputDimen = {
-        input_dimen[0],
-        input_dimen[1] == 0
-            ? 0
-            : (input_dimen[1] - height + padding_top + padding_bottom) / stride_y + 1,
-        input_dimen[2] == 0
-            ? 0
-            : (input_dimen[2] - width + padding_left + padding_right) / stride_x + 1,
-        input_dimen[3]};
+  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  int32_t weight_size_y = kernel_shape[0];
+  int32_t weight_size_x = kernel_shape[1];
+
+  int64_t output_size_y = 0;
+  if (0 != input_size_y) {
+    onnxruntime::ComputeOutputShape(input_size_y,
+                                    stride_y, weight_size_y, 1 /* dilation_y */,
+                                    padding_top, padding_bottom,
+                                    &output_size_y);
   }
 
-  shape_map_[output_name] = outputDimen;
+  int64_t output_size_x = 0;
+  if (0 != input_size_x) {
+    onnxruntime::ComputeOutputShape(input_size_x,
+                                    stride_x, weight_size_x, 1 /* dilation_x */,
+                                    padding_left, padding_right,
+                                    &output_size_x);
+  }
+
+  Shape output_dimen;
+  if (nchw) {
+    output_dimen = {input_dimen[0],
+                    input_dimen[1],
+                    static_cast<uint32_t>(output_size_y),
+                    static_cast<uint32_t>(output_size_x)};
+  } else {  // nhwc
+    output_dimen = {input_dimen[0],
+                    static_cast<uint32_t>(output_size_y),
+                    static_cast<uint32_t>(output_size_x),
+                    input_dimen[3]};
+  }
+
+  shape_map_[output_name] = output_dimen;
 
   if (!shaper_finalized_) {
     shape_ops_.push_back(
