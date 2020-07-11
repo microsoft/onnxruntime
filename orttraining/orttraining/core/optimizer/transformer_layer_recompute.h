@@ -20,7 +20,7 @@ class TransformerLayerRecompute : public GraphTransformer {
 
   std::vector<const Node*> NodesBetweenEdges(Graph& graph, const NodeArg* start, const NodeArg* end) const;
 
-  void InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes) const;
+  void InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes, int priority) const;
 };
 
 }  // namespace onnxruntime

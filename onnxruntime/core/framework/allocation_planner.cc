@@ -722,7 +722,7 @@ class PlannerImpl {
 };  // namespace onnxruntime
 
 Status PlannerImpl::CreatePlan() {
-  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder();
+  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrderWithPriority();
 
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
 

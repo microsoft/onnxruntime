@@ -89,6 +89,9 @@ class GraphViewer {
   /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
 
+  
+  const std::vector<NodeIndex> GetNodesInTopologicalOrderWithPriority() const;
+
   /**
   Gets the NodeIndex values for the root nodes in the Graph.
   The root nodes are the topmost nodes in the Graph that receive inputs from the Graph inputs

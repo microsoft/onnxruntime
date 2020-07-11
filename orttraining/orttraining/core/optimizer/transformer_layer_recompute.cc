@@ -115,7 +115,7 @@ std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(Graph& gra
   return intersect_nodes;
 }
 
-void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes) const {
+void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::vector<const Node*>& nodes, int priority) const {
   auto initializers = graph.GetAllInitializedTensors();
 
   for (const Node* n : nodes) {
@@ -151,7 +151,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
                                            {&recomputed_output},
                                            {},
                                            kMSDomain);
-      recompute_node.SetPriority(-10);
+      recompute_node.SetPriority(priority);
       continue;
     }
 
@@ -189,7 +189,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
                                          recomputed_outputs,
                                          &node->GetAttributes(),
                                          node->Domain());
-    recompute_node.SetPriority(-10);
+    recompute_node.SetPriority(priority);
 
     // std::cout << "Added Node: " << node->Name() << "_recompute\n";
   }
@@ -203,7 +203,7 @@ Status TransformerLayerRecompute::ApplyImpl(Graph& graph, bool& modified, int /*
 
   for (size_t i = 0; i < start_end_edges.size(); ++i) {
     std::vector<const Node*> nodes = NodesBetweenEdges(graph, start_end_edges[i].first, start_end_edges[i].second);
-    InsertRecomputeNodes(graph, nodes);
+    InsertRecomputeNodes(graph, nodes, static_cast<int>(start_end_edges.size() - i));
   }
 
   modified = true;
