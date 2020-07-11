@@ -1,9 +1,10 @@
 class _OptimizerConfig(object):
     r"""Base class for optimizer configuration
 
-    This class is not an optimizer, but a mean to configure existing ones from ORT backend.
+    This class is not an optimizer, but a means to configure existing ones from ORT backend.
     Once the optimizer is configured, no user intervention is needed to update weights or zero gradients during training.
-    The 'parameter group' was inspired by `Pytorch <https://pytorch.org/docs/stable/optim.html#per-parameter-options>`_.
+    The 'parameter group' concept described at :py:attr:`.params` is borrowed from
+    `Pytorch <https://pytorch.org/docs/stable/optim.html#per-parameter-options>`_.
 
     Args:
         name (str): optimizer names.
@@ -17,6 +18,8 @@ class _OptimizerConfig(object):
             In other words, parameter groups override the default :py:attr:`.defaults`
             for specific model parameters.
             Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
+
+    In order to prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
 
     Example:
 
