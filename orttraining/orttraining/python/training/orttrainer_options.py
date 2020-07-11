@@ -113,6 +113,10 @@ class ORTTrainerOptions(object):
                     'required': False,
                     'default' : {},
                     'schema' : {
+                        'frozen_weights' : {
+                            'type' : 'list',
+                            'default' : []
+                        },
                         'grad_norm_clip' : {
                             'type' : 'boolean',
                             'default' : False
@@ -124,10 +128,6 @@ class ORTTrainerOptions(object):
                     'required': False,
                     'default' : {},
                     'schema' : {
-                        'frozen_weights' : {
-                            'type' : 'list',
-                            'default' : []
-                        },
                         'enable_internal_postprocess' : {
                             'type' : 'boolean',
                             'default' : True
@@ -180,12 +180,12 @@ class ORTTrainerOptions(object):
             can be specified by extending :py:class:`.LossScaler` class from scratch
         utils (dict):
             miscellaneous options
+        utils.frozen_weights (list of str, []):
+            list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is False):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         _internal_use (dict):
             internal, possibly undocumented, options that might be removed in the next release
-        _internal_use.frozen_weights (list, []):
-            list of model parameters to freeze (stop training)
         _internal_use.enable_internal_postprocess (bool, default is True):
             enable internal internal post processing of the ONNX model
         _internal_use.extra_postprocess (callable, default is None)
@@ -386,6 +386,10 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'default_setter': lambda _: {},
         'required': False,
         'schema': {
+            'frozen_weights': {
+                'type': 'list',
+                'default': []
+            },
             'grad_norm_clip': {
                 'type': 'boolean',
                 'default': False
@@ -397,10 +401,6 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'default_setter': lambda _: {},
         'required': False,
         'schema': {
-            'frozen_weights': {
-                'type': 'list',
-                'default': []
-            },
             'enable_internal_postprocess': {
                 'type': 'boolean',
                 'default': True

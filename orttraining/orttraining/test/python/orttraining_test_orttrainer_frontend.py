@@ -38,10 +38,10 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'loss_scaler': None
         },
         'utils': {
+            'frozen_weights': [],
             'grad_norm_clip': False
         },
         '_internal_use': {
-            'frozen_weights': [],
             'enable_internal_postprocess': True,
             'extra_postprocess': None
         }
