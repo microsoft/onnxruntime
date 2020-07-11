@@ -1279,6 +1279,59 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   }
 }
 
+Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfiguration::CutInfo>& cut_list,
+                          int pipeline_stage_size,
+                          std::set<int> status_check_stages = {}) {
+  auto model_uri = ORIGINAL_MODEL_PATH;
+
+  TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
+  pipe.do_partition = true;
+  pipe.cut_list = cut_list;
+
+  for (int i = 0; i < pipeline_stage_size; ++i) {
+    PathString output_file = GenerateFileNameWithIndex(ORT_TSTR("pipeline_partition_"), i, ORT_TSTR("_back.onnx"));
+
+    auto config = MakeBasicTrainingConfig();
+    config.pipeline_config = pipe;
+
+    config.distributed_config.world_rank = i;
+    config.distributed_config.world_size = pipeline_stage_size;
+    config.distributed_config.local_rank = i;
+    config.distributed_config.local_size = pipeline_stage_size;
+    config.distributed_config.data_parallel_size = 1;
+    config.distributed_config.horizontal_parallel_size = 1;
+    config.distributed_config.pipeline_parallel_size = pipeline_stage_size;
+    config.model_with_training_graph_path = output_file;
+
+    PathString backprop_model_file;
+    if (status_check_stages.count(i) > 0) {
+      auto status = BuildBackPropGraph(model_uri, config, backprop_model_file);
+      EXPECT_FALSE(status.IsOK());
+    } else {
+      EXPECT_THROW(BuildBackPropGraph(model_uri, config, backprop_model_file), OnnxRuntimeException);
+    }
+  }
+  return Status::OK();
+}
+
+TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
+  using CutEdge = TrainingSession::TrainingConfiguration::CutEdge;
+  using CutInfo = TrainingSession::TrainingConfiguration::CutInfo;
+
+  // Test with invalid cut edge
+  TrainingSession::TrainingConfiguration::CutInfo invalid_cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{invalid_cut_edge}, 2 /* pipeline_stage_size */));
+
+  // Test mis-matched cut list with stage size
+  TrainingSession::TrainingConfiguration::CutInfo cut_edge = {TrainingSession::TrainingConfiguration::CutEdge("T3")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<TrainingSession::TrainingConfiguration::CutInfo>{cut_edge}, 3 /* pipeline_stage_size */));
+
+  // Test unordered cut_info list
+  CutInfo cut0 = {CutEdge("T3")};
+  CutInfo cut1 = {CutEdge("T6")};
+  ASSERT_STATUS_OK(RunOnlinePartition(std::vector<CutInfo>{cut1, cut0}, 3 /* pipeline_stage_size */, {0, 2} /* status_check_stages */));
+}
+
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
  PathString filename_base = ORT_TSTR("testdata/test_training_model_");

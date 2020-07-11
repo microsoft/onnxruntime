@@ -1303,6 +1303,40 @@ Status ApplyPipelinePartitionToMainGraph(
   } else {
     ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, recv_nodes.back()));
   }
+
+  // Post check to ensure the curent partition is correct and matches with Send/Recv nodes inserted during split.
+  Node* send_node{nullptr};
+  Node* recv_node{nullptr};
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Send") {
+      send_node = &node;
+    } else if (node.OpType() == "Recv") {
+      recv_node = &node;
+    }
+  }
+
+  if (pipeline_stage_id == 0){
+    // For the first stage, there should be no recv node, and the send node contained in graph should match the first
+    // send_node inserted during split.
+    ORT_ENFORCE(recv_node == nullptr, "Error: first stage contains Recv node in forward pass.");
+    ORT_ENFORCE(send_node == send_nodes[0],
+                "Error: first stage doesn't contain the right Send node. Possibly CutInfo data is wrong.");
+  }
+  else if (pipeline_stage_id == split_count){
+    // For the last stage, there should be no send node, and the recv node contained in graph should match the last
+    // recv_node inserted during split.
+    ORT_ENFORCE(recv_node == recv_nodes.back(),
+                "Error: last stage doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
+    ORT_ENFORCE(send_node == nullptr, "Error: last stage contains Send node in forward pass.");
+  } else {
+    // For stages in the middle, i-th stage should contain recv node that matches the (i-1)-th inserted recv node, and the i-th
+    // inserted send node.
+    ORT_ENFORCE(recv_node == recv_nodes[pipeline_stage_id - 1],
+                "Error: stage ", pipeline_stage_id, " doesn't contain the right Recv node. Possibly CutInfo data is wrong.");
+    ORT_ENFORCE(send_node == send_nodes[pipeline_stage_id],
+                "Error: stage ", pipeline_stage_id, " doesn't contain the right Send node. Possibly CutInfo data is wrong.");
+  }
+
   return Status::OK();
 }
 
