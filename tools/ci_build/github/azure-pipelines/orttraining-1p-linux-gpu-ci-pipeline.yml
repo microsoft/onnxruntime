@@ -12,7 +12,7 @@ stages:
       --enable_training
       --wheel_name_suffix training
     docker_image_prefix: onnxruntime-training
-    linux_gpu_dockerfile: Dockerfile.ortrelease
+    linux_gpu_dockerfile: Dockerfile.ubuntu_gpu
     python.version: 3.6
     BuildCommand: >
       tools/ci_build/github/linux/run_dockerbuild.sh
