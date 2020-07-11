@@ -228,6 +228,11 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_ERROR(AddReducedGradientScalingNodes(nodearg_name_generator, gradient_argdefs, graph_defs, adasum_scale));
 
   //bugbug
+  ArgDef delta_grad_norm_argdef;
+  ORT_RETURN_IF_ERROR(AddGradientNorm(
+    nodearg_name_generator, gradient_argdefs, graph_defs, delta_grad_norm_argdef, "delta_norm"));
+  optimizer_graph_outputs[OptimizerOutputKey::DeltaNorm] = delta_grad_norm_argdef.name;
+
   //check if allreduced deltas are finite
   ArgDef adasum_global_grad_finite_argdef;
   if (opt_graph_config_.use_mixed_precision) {
