@@ -3,7 +3,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 //bugbug
-//#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/math/isfinite.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/adam.h"
@@ -54,6 +54,9 @@ __global__ void _AdamOptimizer_mode0(
 
   const T4 delta = -T4(*eta) * update;
 
+  if (!_IsFiniteScalar(T_GRAD(delta))) {
+    printf("#####delta not finite,: %f\n", static_cast<float>(delta));
+  }
   if (grads_out) {
     grads_out[id] = T_GRAD(delta * T4(65536.0f));
   }  
