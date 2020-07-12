@@ -222,7 +222,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   optimizer_graph_outputs[OptimizerOutputKey::InitialDeltaNorm] = initial_delta_grad_norm_argdef.name;
 
   // Perform allreduce on deltas after step() for Adasum
-  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
+  //ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
+  ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, static_cast<int64_t>(1)));
 
   // bugbug
   // If Adasum GPU hierarchical reduce is used, then scale resulting gradients by local size.
