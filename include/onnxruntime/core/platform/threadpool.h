@@ -226,7 +226,7 @@ class ThreadPool {
   // the implementation choice of whether this matches the number of threads created in
   // the pool.
   //
-  // Currently, a loop with degree-of-parlalelism N is supported by a pool of N-1 threads
+  // Currently, a loop with degree-of-parallelism N is supported by a pool of N-1 threads
   // working in combination with the thread initiating the loop.
   static int DegreeOfParallelism(const concurrency::ThreadPool* tp);
 

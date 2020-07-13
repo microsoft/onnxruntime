@@ -377,7 +377,7 @@ int ThreadPool::CurrentThreadId() const {
   } else {
     return -1;
   }
-}  // namespace concurrency
+}
 
 }  // namespace concurrency
 }  // namespace onnxruntime
