@@ -47,21 +47,14 @@ class MemPatternPlanner {
       best_offset = last_block.block_.offset_ + last_block.block_.size_;
     }
 
-    std::list<int>::iterator best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
-      if (allocs_[*it].block_.offset_ >= current || (allocs_[*it].program_counter_start_ > program_counter_end)) {
-        size_t gap = 0;
-        
-        if (allocs_[*it].block_.offset_ >= current) {
-          gap = allocs_[*it].block_.offset_ - current;
-        }
+      // This block can be re-used, consider it as a gap.
+      if(allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
+        continue;
 
-        if (allocs_[*it].program_counter_start_ > program_counter_end) {
-            gap += allocs_[*it].block_.size_;
-        }
-
+      if (allocs_[*it].block_.offset_ >= current) {
+        auto gap = allocs_[*it].block_.offset_ - current;
         if (gap >= size && (gap - size) < waste_bytes) {
-          best_fit_it = it;
           waste_bytes = gap - size;
           best_offset = current;
         }
@@ -73,6 +66,13 @@ class MemPatternPlanner {
     // the maximum size of the buffer.
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
     allocs_.emplace_back(ml_value_idx, program_counter_start, program_counter_end, MemoryBlock(best_offset, size));
+    std::list<int>::iterator best_fit_it = blocks_.end();
+    for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
+      if (allocs_[*it].block_.offset_ >= best_offset) {
+        break;
+      }
+    }
+
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));    
   }
 
@@ -141,10 +141,11 @@ class MemPatternPlanner {
     MemoryBlock block_;
     size_t program_counter_start_;
     size_t program_counter_end_;
+    bool reuse_;
     OrtValueAllocationBlock() = default;
-    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block) {}
+    OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false} {}
     OrtValueAllocationBlock(int index, size_t program_counter_start, size_t program_counter_end, const MemoryBlock& block) :
-      index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end) {}
+      index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}
   };
 
   std::vector<OrtValueAllocationBlock> allocs_;
