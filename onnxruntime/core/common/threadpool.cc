@@ -74,19 +74,19 @@ public:
     // does not need to be unique, but we aim for a good distribution, particularly in the case where
     // most/all of the thread pool's threads are active in the loop.  Threads outside the pool may
     // also be claiming work, with CurrentThreadId -1.
-    int num_threads = _tp.NumThreads();
-    int my_thread_idx = (_tp.CurrentThreadId() + 1) % num_threads;
-    assert(my_thread_idx >= 0 && my_thread_idx < num_threads);
+    int d_of_p = _tp.DegreeOfParallelism();
+    int my_thread_idx = (_tp.CurrentThreadId() + 1) % d_of_p;
+    assert(my_thread_idx >= 0 && my_thread_idx < d_of_p);
 
     int home_shard;
-    if (num_threads >= NUM_SHARDS) {
+    if (d_of_p >= NUM_SHARDS) {
       // More threads than shards => allocate them home shards round-robin, aiming to sprace the load across
       // the shards
       home_shard = my_thread_idx % NUM_SHARDS;
     } else {
       // Fewer threads than shards => spread the threads evenly across the shards, so each will work
       // on a run of successive shards before contention
-      home_shard = (my_thread_idx * NUM_SHARDS) / num_threads;
+      home_shard = (my_thread_idx * NUM_SHARDS) / d_of_p;
     }
     assert(home_shard >= 0 && home_shard < NUM_SHARDS);
     return home_shard;
