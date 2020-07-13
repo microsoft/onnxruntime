@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "contrib_ops/cuda/custom_layer_norm.cuh"
+
 #include <cooperative_groups.h>
-#include "custom_layer_norm.cuh"
+
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -300,6 +302,6 @@ void launch_custom_layer_norm<__half, float>(
   }
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
