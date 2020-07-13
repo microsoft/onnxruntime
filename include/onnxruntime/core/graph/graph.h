@@ -126,6 +126,14 @@ class Node {
     return common::Status::OK();
   }
 
+  /**
+  Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided function.
+  @param node_args Collection of NodeArgs returned by #MutableInputDefs() or #MutableOutputDefs()
+  @param func Function to call for each valid NodeArg in the node_args. The function is called with the NodeArg
+              and the index number in the container.
+  @returns common::Status with success or error information.
+  @remarks Returns immediately on error.
+  */
   static common::Status ForEachMutableWithIndex(std::vector<NodeArg*>& node_args,
                                                 std::function<common::Status(NodeArg& arg, size_t index)> func) {
     for (size_t index = 0; index < node_args.size(); ++index) {
