@@ -106,16 +106,6 @@ void ConvertTensorToBoolSignal(
   }
 }
 
-// Return mirror variables for node_arg with a different name.
-NodeArg& CreateNodeArg(Graph& graph, const NodeArg* base_arg) {
-  const auto& new_name = graph.GenerateNodeArgName(base_arg->Name());
-  ONNX_NAMESPACE::TypeProto type_proto(*(base_arg->TypeAsProto()));
-  if (graph.GetNodeArg(new_name) != nullptr) {
-    ORT_THROW("Node with name ", new_name, " already exists.");
-  }
-  return graph.GetOrCreateNodeArg(new_name, &type_proto);
-}
-
 // Return mirror variables for node_args.
 // The i-th output element mirrors node_args[i] but with a different name.
 std::vector<NodeArg*> CreateMirrorNodeArgs(
@@ -126,7 +116,7 @@ std::vector<NodeArg*> CreateMirrorNodeArgs(
 
   for (auto& node_arg : node_args) {
     // new_node_arg is a mirror variable of node_arg. They have the same type.
-    auto new_node_arg = &CreateNodeArg(graph, node_arg);
+    auto new_node_arg = &graph.CreateNodeArg(node_arg);
     new_node_args.push_back(new_node_arg);
   }
 
@@ -192,7 +182,7 @@ Node* AddBackwardRecord(Graph& graph,
   // Optimizer will be added after applying pipeline transformer. To support partial graph evaluation,
   // the added Record backward op will have its first passthrough input as output.
   ORT_ENFORCE(input_args.size() >= 2, "RecordEvent backward op at least have two inputs.");
-  auto& new_output = CreateNodeArg(graph, input_args[1]);  // the first input is signal, not passing through
+  auto& new_output = graph.CreateNodeArg(input_args[1]);  // the first input is signal, not passing through
   output_args.push_back(&new_output);
   new_output_names.push_back(new_output.Name());
 
@@ -302,7 +292,7 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
 
     // Add send forward op's output as record op's input and output
     for (auto& output : forward_send->MutableOutputDefs()) {
-      auto& new_output = CreateNodeArg(graph, output);
+      auto& new_output = graph.CreateNodeArg(output);
       output_args.push_back(&new_output);
       input_args.push_back(output);
     }
@@ -327,7 +317,7 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
                       std::end(record_node->MutableOutputDefs()));
 
     auto& input = backward_recv->MutableInputDefs()[0];
-    auto& new_output = CreateNodeArg(graph, input);
+    auto& new_output = graph.CreateNodeArg(input);
     output_args.push_back(&new_output);
     input = &new_output;
 
@@ -822,19 +812,19 @@ void AddNewScalarNodeArgAndInitializer(Graph& graph,
 // Given a node, this function finds all its connected nodes (consumer nodes and producer nodes) and
 // connected inputs and outputs in the given graph, then adds them to the containers passed in.
 Status FindAllConnectedNodes(Graph& graph,
-                             const Node* node,
-                             std::vector<const Node*>& connected_nodes,
-                             std::set<const NodeArg*>& connected_inputs,
-                             std::set<const NodeArg*>& connected_outputs
+                             Node* node,
+                             std::vector<Node*>& connected_nodes,
+                             std::set<NodeArg*>& connected_inputs,
+                             std::set<NodeArg*>& connected_outputs
                              ) {
   assert(node != nullptr);
-  ORT_THROW_IF_ERROR(node->ForEachWithIndex(
-      node->InputDefs(),
-      [&](const NodeArg& node_arg, size_t /*index*/) {
+  ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
+      node->MutableInputDefs(),
+      [&](NodeArg& node_arg, size_t /*index*/) {
         if (graph.IsInputsIncludingInitializers(&node_arg) || graph.IsInitializerTensor(node_arg.Name())) {
           connected_inputs.insert(&node_arg);
         } else {
-          const Node* producer_node = graph.GetProducerNode(node_arg.Name());
+          Node* producer_node = graph.GetMutableProducerNode(node_arg.Name());
           if (producer_node == nullptr) {
             // got nullptr as producer node. This could be because the input is a constant op which will be optimized
             // away. Print out this information and continue.
@@ -847,11 +837,11 @@ Status FindAllConnectedNodes(Graph& graph,
         return Status::OK();
       }));
 
-  ORT_THROW_IF_ERROR(node->ForEachWithIndex(
-      node->OutputDefs(),
-      [&](const NodeArg& node_arg, size_t /*index*/) {
+  ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
+      node->MutableOutputDefs(),
+      [&](NodeArg& node_arg, size_t /*index*/) {
         if (!graph.IsOutput(&node_arg)) {
-          std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
+          std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(node_arg.Name());
           connected_nodes.insert(std::end(connected_nodes), consumer_nodes.begin(), consumer_nodes.end());
 
         } else {
@@ -879,7 +869,7 @@ struct PipelineStageNodeGroup {
 // This applies to the case when initializer is used in multiple stages, say stage a and stage b (a<b). We will
 // keep the initializer in stage a and pass it down to b through the send nodes and recv nodes.
 common::Status AddPassthroughInitializer(Graph& graph,
-                                         const NodeArg* initializer,
+                                         NodeArg* initializer,
                                          const std::vector<PipelineStageNodeGroup>& node_groups,
                                          const std::vector<Node*>& send_nodes,
                                          const std::vector<Node*>& recv_nodes) {
@@ -894,7 +884,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
 
   auto dtype = initializer->TypeAsProto()->tensor_type().elem_type();
 
-  auto current_node_arg = const_cast<NodeArg*>(initializer);
+  auto current_node_arg = initializer;
 
   size_t node_group_index = 1;
   for (auto i = from_stage; i < to_stage; ++i) {
@@ -907,7 +897,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
 
     // Create a new node_arg for the recv, as the new node_arg from recv node should possess a different id
     // than the one in send
-    current_node_arg = &CreateNodeArg(graph, current_node_arg);
+    current_node_arg = &graph.CreateNodeArg(current_node_arg);
 
     // process recv node in cut i
     auto& recv_attributes = recv_nodes[i]->GetMutableAttributes();
@@ -935,23 +925,23 @@ common::Status AddPassthroughInitializer(Graph& graph,
 }
 
 void TraverseGraphWithConnectedElement(Graph& graph,
-                                       const Node* start_node,
-                                       std::set<const Node*>& visited_nodes,
-                                       std::set<const NodeArg*>& visited_inputs,
-                                       std::set<const NodeArg*>& visited_outputs) {
+                                       Node* start_node,
+                                       std::set<Node*>& visited_nodes,
+                                       std::set<NodeArg*>& visited_inputs,
+                                       std::set<NodeArg*>& visited_outputs) {
   assert(start_node != nullptr);
   visited_nodes.clear();
   visited_inputs.clear();
   visited_outputs.clear();
 
-  std::queue<const Node*> node_queue;
+  std::queue<Node*> node_queue;
   node_queue.push(start_node);
 
   while (!node_queue.empty()) {
     auto node = node_queue.front();
     node_queue.pop();
     if (visited_nodes.insert(node).second) {
-      std::vector<const Node*> connected_nodes;
+      std::vector<Node*> connected_nodes;
       ORT_THROW_IF_ERROR(FindAllConnectedNodes(graph, node, connected_nodes, visited_inputs, visited_outputs));
 
       for (auto n : connected_nodes) {
@@ -973,17 +963,17 @@ common::Status HandleSharedInitializer(Graph& graph,
   // the mapped vector reflects how many partitions this initializer's consumer nodes distribute.
   // If its size is greater than 1, it means this initializer is being used in more than one partition and
   // we need to proceed those cases.
-  std::map<const NodeArg*, std::vector<PipelineStageNodeGroup>> input_consumer_stage_map;
+  std::map<NodeArg*, std::vector<PipelineStageNodeGroup>> input_consumer_stage_map;
 
   for (size_t stage = 0; stage <= send_nodes.size(); ++stage) {
-    std::set<const Node*> visited_nodes;
-    std::set<const NodeArg*> visited_inputs;
-    std::set<const NodeArg*> visited_outputs;
+    std::set<Node*> visited_nodes;
+    std::set<NodeArg*> visited_inputs;
+    std::set<NodeArg*> visited_outputs;
 
     // send_nodes[i] is the Send op in i-th stage's forward pass. recv_nodes[i] is the Recv in the (i+1)-th stage's
     // forward pass. When not in last stage, traverse start from send node; otherwise start with the recv node as
     // send node doesn't exist in last partition's forward pass.
-    const Node* traverse_start_node = stage < send_nodes.size() ? send_nodes[stage] : recv_nodes.back();
+    Node* traverse_start_node = stage < send_nodes.size() ? send_nodes[stage] : recv_nodes.back();
     TraverseGraphWithConnectedElement(graph,
                                       traverse_start_node,
                                       visited_nodes,
@@ -1019,10 +1009,10 @@ common::Status HandleSharedInitializer(Graph& graph,
     // the way to last seen stage.
     if (entry.second.size() > 1) {
       ORT_RETURN_IF_ERROR(AddPassthroughInitializer(graph,
-                                entry.first, // initializer node_arg
-                                entry.second, // initializer consumer node groups
-                                send_nodes,
-                                recv_nodes));
+                                                    entry.first,   // initializer node_arg
+                                                    entry.second,  // initializer consumer node groups
+                                                    send_nodes,
+                                                    recv_nodes));
     }
   }
   return Status::OK();
@@ -1158,7 +1148,7 @@ common::Status SplitGraph(Graph& graph,
 
       element_types.add_ints(static_cast<int64_t>(dtype));
 
-      auto& new_receive_output = CreateNodeArg(graph, updated_node_arg);
+      auto& new_receive_output = graph.CreateNodeArg(updated_node_arg);
       const auto old_shape = *(updated_node_arg->Shape());
       new_receive_output.SetShape(old_shape);
       recv_output_args.push_back(&new_receive_output);
@@ -1223,11 +1213,11 @@ common::Status SplitGraph(Graph& graph,
 }
 
 // traverse the graph from start_node to get the set of nodes contains in this disconnected subgraph
-common::Status GenerateSubgraph(Graph& graph, const Node* start_node) {
+common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   assert(start_node != nullptr);
-  std::set<const Node*> visited_nodes;
-  std::set<const NodeArg*> visited_inputs;
-  std::set<const NodeArg*> visited_outputs;
+  std::set<Node*> visited_nodes;
+  std::set<NodeArg*> visited_inputs;
+  std::set<NodeArg*> visited_outputs;
 
   // BFS graph traverse
   TraverseGraphWithConnectedElement(graph, start_node,

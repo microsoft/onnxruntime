@@ -126,6 +126,17 @@ class Node {
     return common::Status::OK();
   }
 
+  static common::Status ForEachMutableWithIndex(std::vector<NodeArg*>& node_args,
+                                                std::function<common::Status(NodeArg& arg, size_t index)> func) {
+    for (size_t index = 0; index < node_args.size(); ++index) {
+      auto arg = node_args[index];
+      if (!arg->Exists())
+        continue;
+      ORT_RETURN_IF_ERROR(func(*arg, index));
+    }
+    return common::Status::OK();
+  }
+
   /** Gets the count of arguments for each of the Node's explicit inputs. */
   const std::vector<int>& InputArgCount() const noexcept { return definitions_.input_arg_count; }
 
@@ -624,15 +635,23 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-
     auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
-  /** Generate a unique name.in this Graph for a NodeArg */
+  /** Creates a mutable NodeArg owned by this graph with mirrored base_arg's TypeProto and name
+  @param base_arg The NodeArg the newly created NodeArg is mirrored based off.
+  @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
+  */
+  NodeArg& CreateNodeArg(const NodeArg* base_arg) {
+    ONNX_NAMESPACE::TypeProto type_proto(*(base_arg->TypeAsProto()));
+    return GetOrCreateNodeArg(GenerateNodeArgName(base_arg->Name()), &type_proto);
+  }
+
+  /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
-  /** Generate a unique name.in this Graph for a Node */
+  /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
   /** Add a Node to this Graph.
