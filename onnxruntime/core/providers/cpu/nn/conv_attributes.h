@@ -6,57 +6,10 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/providers/cpu/nn/autopad_type.h"
+#include "core/providers/common.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
-
-// helper function
-template <bool ForceSymmetricAutoPadding>
-Status ComputePadAndOutputShape(
-    const int64_t in_dim,
-    const int64_t stride,
-    const int64_t kernel,
-    const int64_t dilation,
-    AutoPadType pad_type,
-    int64_t* pad_head,
-    int64_t* pad_tail,
-    int64_t* out_dim) {
-  const int64_t dkernel = dilation * (kernel - 1) + 1;
-
-  if (pad_type == AutoPadType::NOTSET) {
-    *out_dim = static_cast<int64_t>(static_cast<float>(in_dim + *pad_head + *pad_tail - dkernel) / stride + 1);
-  } else {
-    switch (pad_type) {
-      case AutoPadType::VALID:
-        *pad_head = 0;
-        *pad_tail = 0;
-        *out_dim = (in_dim - dkernel) / stride + 1;
-        break;
-      case AutoPadType::SAME_UPPER:
-      case AutoPadType::SAME_LOWER: {
-        ORT_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
-        int64_t legacy_target_size = (in_dim + stride - 1) / stride;
-        int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
-        *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
-
-        // make sure padding is symmetric
-        if (ForceSymmetricAutoPadding)
-          pad_needed = math::roundUpPow2<int64_t, 2>(pad_needed);
-
-        if (pad_type == AutoPadType::SAME_LOWER) {
-          *pad_head = (pad_needed + 1) / 2;
-        } else {
-          *pad_head = pad_needed / 2;
-        }
-        *pad_tail = pad_needed - *pad_head;
-      } break;
-      default:
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "pad type not supported.");
-    }
-  }
-  return Status::OK();
-}
 
 // A helper struct holding attributes for Conv-family ops
 struct ConvAttributes {
