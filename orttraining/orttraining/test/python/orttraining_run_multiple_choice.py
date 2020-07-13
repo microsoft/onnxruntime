@@ -1,4 +1,5 @@
 # adapted from run_multiple_choice.py of huggingface transformers
+# https://github.com/huggingface/transformers/blob/master/examples/multiple-choice/run_multiple_choice.py
 
 import dataclasses
 import logging
