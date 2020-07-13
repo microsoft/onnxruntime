@@ -22,7 +22,7 @@ struct SubGraphContext {
   bool enable_batching = false;
   bool set_vpu_config = false;
   std::string subgraph_name;
-  std::vector<int> input_indexes;
+  std::unordered_map<std::string, int> input_names;
   std::unordered_map<std::string, int> output_names;
   std::string device_id;
   InferenceEngine::Precision precision;
