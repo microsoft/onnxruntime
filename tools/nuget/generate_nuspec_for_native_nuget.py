@@ -162,8 +162,6 @@ def generate_files(list, args):
     includes_directml = (is_dml_package or is_windowsai_package) and (args.target_architecture == 'x64'
                                                                       or args.target_architecture == 'x86')
 
-    includes_symbols = not is_windowsai_package
-
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
@@ -207,10 +205,9 @@ def generate_files(list, args):
         interop_dll = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll'
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
-        if includes_symbols:
-            interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb'
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
-                              '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
+        interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb'
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
+                          '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
@@ -218,16 +215,14 @@ def generate_files(list, args):
                       '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
                       '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-    if includes_symbols:
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
+                      '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
 
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        if includes_symbols:
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                              '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
+                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.2.1.0\\LICENSE.txt') +
                           '" target="DirectML_LICENSE.txt" />')
 
@@ -241,11 +236,10 @@ def generate_files(list, args):
                                                             'microsoft.ai.machinelearning.dll') +
                           '" target="runtimes\\win-' + args.target_architecture +
                           '\\native\\Microsoft.AI.MachineLearning.dll" />')
-        if includes_symbols:
-            files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
-                                                                'microsoft.ai.machinelearning.pdb') +
-                              '" target="runtimes\\win-' + args.target_architecture +
-                              '\\native\\Microsoft.AI.MachineLearning.pdb" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                                                            'microsoft.ai.machinelearning.pdb') +
+                          '" target="runtimes\\win-' + args.target_architecture +
+                          '\\native\\Microsoft.AI.MachineLearning.pdb" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process dnll.dll
