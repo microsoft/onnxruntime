@@ -205,29 +205,22 @@ def generate_files(list, args):
         interop_dll = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll'
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                           '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
-        interop_pdb = 'Microsoft.AI.MachineLearning.Interop\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb'
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
-                          '" target="lib\\netstandard2.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
 
     # Process runtimes
-    # Process onnxruntime import lib, dll, and pdb
+    # Process onnxruntime import lib, and dll
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.lib') +
                       '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
-                      '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
                       '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
 
     if includes_directml:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.dll') +
                           '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'DirectML.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.packages_path, 'DirectML.2.1.0\\LICENSE.txt') +
                           '" target="DirectML_LICENSE.txt" />')
 
     if includes_winml:
-        # Process microsoft.ai.machinelearning import lib, dll, and pdb
+        # Process microsoft.ai.machinelearning import lib, and dll
         files_list.append('<file src=' + '"' +
                           os.path.join(args.native_build_path, 'microsoft.ai.machinelearning.lib') +
                           '" target="runtimes\\win-' + args.target_architecture +
@@ -236,10 +229,6 @@ def generate_files(list, args):
                                                             'microsoft.ai.machinelearning.dll') +
                           '" target="runtimes\\win-' + args.target_architecture +
                           '\\native\\Microsoft.AI.MachineLearning.dll" />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
-                                                            'microsoft.ai.machinelearning.pdb') +
-                          '" target="runtimes\\win-' + args.target_architecture +
-                          '\\native\\Microsoft.AI.MachineLearning.pdb" />')
 
     if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
         # Process dnll.dll
