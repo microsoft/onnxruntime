@@ -6,7 +6,9 @@ class BaseModel(object):
     def __init__(self, model_name, providers):
         self.model_name_ = model_name 
         self.providers_ = providers
+        self.model_path_ = None
         self.session_ = None
+        self.session_options_ = onnxruntime.SessionOptions()
         self.onnx_zoo_test_data_dir_ = None
         self.test_data_num_ = 1
         self.outputs_ = []
@@ -28,10 +30,19 @@ class BaseModel(object):
     def get_decimal(self):
         return self.validate_decimal_
 
-    def create_session(self, model_path):
+    def get_session_options(self):
+        return self.session_options_
+
+    def set_session_options(self, session_options):
+        self.session_options_ = session_options 
+
+    def create_session(self, model_path=None):
+        if not model_path:
+            model_path = self.model_path_
+
         try: 
-            self.session_ = onnxruntime.InferenceSession(model_path, providers=self.providers_)
+            self.session_ = onnxruntime.InferenceSession(model_path, providers=self.providers_, sess_options=self.session_options_)
         except:
             model_new_path = model_path[:].replace(".onnx", "_new.onnx")
             subprocess.run("python3 ../symbolic_shape_infer.py --input " + model_path + " --output " + model_new_path + " --auto_merge", shell=True, check=True)     
-            self.session_ = onnxruntime.InferenceSession(model_new_path, providers=self.providers_)
+            self.session_ = onnxruntime.InferenceSession(model_new_path, providers=self.providers_, sess_options=self.session_options_)

@@ -13,12 +13,13 @@ class InceptionV2(BaseModel):
         self.inputs_ = []
         self.ref_outputs_ = []
 
-        if not os.path.exists("inception_v2/model.onnx"):
+        self.model_path_ = os.path.join(os.getcwd(), "inception_v2", "model.onnx")
+
+        if not os.path.exists(self.model_path_):
             subprocess.run("wget https://github.com/onnx/models/raw/master/vision/classification/inception_and_googlenet/inception_v2/model/inception-v2-7.tar.gz", shell=True, check=True)
             subprocess.run("tar zxf inception-v2-7.tar.gz", shell=True, check=True)
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "inception_v2") 
-        self.create_session("inception_v2/model.onnx")
 
     def preprocess(self):
         return

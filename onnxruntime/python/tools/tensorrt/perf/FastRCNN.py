@@ -16,15 +16,14 @@ class FastRCNN(BaseModel):
         self.ref_outputs_ = []
         self.validate_decimal_ = 3
 
-        if not os.path.exists("faster_rcnn_R_50_FPN_1x.onnx"):
+        self.model_path_ = os.path.join(os.getcwd(), "faster_rcnn_R_50_FPN_1x.onnx")
+
+        if not os.path.exists(self.model_path_):
             subprocess.run("wget https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.tar.gz", shell=True, check=True)
             subprocess.run("tar zxf FasterRCNN-10.tar.gz", shell=True, check=True)
 
         self.image_ = Image.open('dependencies/demo.jpg')
         self.onnx_zoo_test_data_dir_ = os.getcwd() 
-
-        self.create_session('faster_rcnn_R_50_FPN_1x.onnx')
-
 
     def preprocess(self):
         image = self.image_

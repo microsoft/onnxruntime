@@ -7,6 +7,8 @@ import coloredlogs
 import numpy as np
 import argparse
 import copy
+import json
+from perf_utils import analyze_profiling_file
 
 from BERTSquad import *
 from Resnet50 import *
@@ -21,14 +23,14 @@ from Shufflenet import *
 logger = logging.getLogger('')
 
 MODELS = {
-    "bert-squad": (BERTSquad, "bert-squad"),
-    "resnet50": (Resnet50, "resnet50"),
-    "resnet152": (Resnet152, "resnet152"),
-    "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    "ssd": (SSD, "ssd"),
-    "inception-v2": (InceptionV2, "inception-v2"),
-    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    # "bert-squad": (BERTSquad, "bert-squad"),
+    # "resnet50": (Resnet50, "resnet50"),
+    # "resnet152": (Resnet152, "resnet152"),
+    # "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    # "ssd": (SSD, "ssd"),
+    # "inception-v2": (InceptionV2, "inception-v2"),
+    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
     "shufflenet-v2": (Shufflenet, "shufflenet-v2"),
 }
 
@@ -47,12 +49,34 @@ def get_latency_result(runtimes, batch_size):
         "QPS": "{:.2f}".format(throughput),
     }
 
-def inference_ort(ort_session, inputs, result_template, repeat_times, batch_size):
-    result = {}
+def inference_ort_to_generate_profiling_file(model, ep, inputs):
+
+    print("11111111111111")
+    model.create_session()
+    print("22222222222222")
+    sess = model.get_session()
+    sess.set_providers([ep])
 
     # skip the 1st inference for TRT intentionally, since TRT engine creates subgraph which is expensive
-    runtimes = timeit.repeat(lambda: ort_session.inference(inputs), number=1, repeat=repeat_times+1)
-    runtimes = runtimes[1:]
+    model.inference(inputs)
+
+    options = onnxruntime.SessionOptions()
+    options.enable_profiling = True 
+    model.set_session_options(options)
+
+    print("33333333333333")
+    model.create_session()
+    print("44444444444444")
+    sess = model.get_session()
+    sess.set_providers([ep])
+
+    # use 2ed inference to generate profiling file
+    model.inference(inputs)
+
+def inference_ort(model, inputs, result_template, repeat_times, batch_size):
+    result = {}
+
+    runtimes = timeit.repeat(lambda: model.inference(inputs), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
@@ -101,12 +125,12 @@ def get_trt_version():
 # outputs: [[[test_data_0_output_0.pb], [test_data_0_output_1.pb] ...], [[test_data_1_output_0.pb], [test_data_1_output_1.pb] ...] ...]
 #
 def load_onnx_model_zoo_test_data(path):
+    print("Parsing inputs/outputs of test data in {} ...".format(path))
     p1 = subprocess.Popen(["find", path, "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
     stdout, sterr = p2.communicate()
     stdout = stdout.decode("ascii").strip()
     test_data_set_dir = stdout.split("\n") 
-    print(stdout)
     print(test_data_set_dir)
 
     inputs = []
@@ -218,6 +242,7 @@ def run_onnxruntime(args, models=MODELS):
         if not os.path.exists(path):
             os.mkdir(path)
         os.chdir(path)
+        path = os.getcwd()
 
         provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 
@@ -225,12 +250,20 @@ def run_onnxruntime(args, models=MODELS):
         logger.info("Initializing {} with {}...".format(name, provider_list))
         model = model_class(providers=provider_list)
         model_name = model.get_model_name()
-        
+
+        # read input/output of test data
+        test_data_dir = model.get_onnx_zoo_test_data_dir()
+        inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
 
         for ep in provider_list:
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
+            
+            # no need to do initializing for TRT if we only use CUDA ep
+            if ep == "CUDAExecutionProvider":
+                model = model_class(providers=[ep])
+
 
             # these settings are temporary
             sequence_length = 1
@@ -238,16 +271,16 @@ def run_onnxruntime(args, models=MODELS):
             batch_size = 1
             device_info = [] 
 
+            # enable profiling and do default inference
+            options = onnxruntime.SessionOptions()
+            options.enable_profiling = True 
+            model.set_session_options(options)
+            model.create_session()
             sess = model.get_session()
+            sess.set_providers([ep])
 
-            test_data_dir = model.get_onnx_zoo_test_data_dir()
-            inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
-
-            if ep == "CUDAExecutionProvider":
-                sess.set_providers([ep])
-                device_info.append(get_cuda_version())
-            elif ep == "TensorrtExecutionProvider":
-                device_info.append(get_cuda_version())
+            device_info.append(get_cuda_version())
+            if ep == "TensorrtExecutionProvider":
                 device_info.append(get_trt_version())
 
             result_template = {
@@ -277,6 +310,8 @@ def run_onnxruntime(args, models=MODELS):
             results.append(result)
 
         latency_results[model_name] = copy.deepcopy(latency_result)
+        
+        analyze_profiling_file(path)
 
         cleanup_files()
         os.chdir(pwd)
@@ -360,3 +395,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # analyze_profiling_file("bert-squad")

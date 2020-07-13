@@ -14,12 +14,13 @@ class Shufflenet(BaseModel):
         self.ref_outputs_ = []
         # self.validate_decimal_ = 3 
 
-        if not os.path.exists("model/test_shufflenetv2/model.onnx"):
+        self.model_path_ = os.path.join(os.getcwd(), "model", "test_shufflenetv2", "model.onnx")
+
+        if not os.path.exists(self.model_path_):
             subprocess.run("wget https://github.com/onnx/models/raw/master/vision/classification/shufflenet/model/shufflenet-v2-10.tar.gz", shell=True, check=True)
             subprocess.run("tar zxf shufflenet-v2-10.tar.gz", shell=True, check=True)
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "model/test_shufflenetv2") 
-        self.create_session("model/test_shufflenetv2/model.onnx")
 
 
     def preprocess(self):

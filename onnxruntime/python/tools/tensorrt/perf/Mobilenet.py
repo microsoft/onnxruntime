@@ -14,12 +14,13 @@ class Mobilenet(BaseModel):
         self.ref_outputs_ = []
         self.validate_decimal_ = 3 
 
-        if not os.path.exists("mobilenetv2-1.0/mobilenetv2-1.0.onnx"):
+        self.model_path_ = os.path.join(os.getcwd(), "mobilenetv2-1.0", "mobilenetv2-1.0.onnx")
+
+        if not os.path.exists(self.model_path_):
             subprocess.run("wget https://github.com/onnx/models/raw/master/vision/classification/mobilenet/model/mobilenetv2-7.tar.gz", shell=True, check=True)
             subprocess.run("tar zxf mobilenetv2-7.tar.gz", shell=True, check=True)
 
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "mobilenetv2-1.0") 
-        self.create_session("mobilenetv2-1.0/mobilenetv2-1.0.onnx")
 
 
     def preprocess(self):

@@ -21,23 +21,18 @@ class BERTSquad(BaseModel):
         self.extra_data_ = None 
         self.eval_examples_ = None 
 
+        self.model_path_ = os.path.join(os.getcwd(), "download_sample_10", "bertsquad10.onnx")
+
         if not os.path.exists("uncased_L-12_H-768_A-12/bert_config.json"):
             subprocess.run("wget -q https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip", shell=True, check=True)     
             subprocess.run("unzip uncased_L-12_H-768_A-12.zip", shell=True, check=True)
 
-        if not os.path.exists("download_sample_10/bertsquad10.onnx"):
+        if not os.path.exists(self.model_path_):
             subprocess.run("wget https://github.com/onnx/models/raw/master/text/machine_comprehension/bert-squad/model/bertsquad-10.tar.gz", shell=True, check=True)     
             subprocess.run("tar zxf bertsquad-10.tar.gz", shell=True, check=True)
 
-        #self.preprocess()
-
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "download_sample_10") 
-        self.create_session('download_sample_10/bertsquad10.onnx')
-        # try: 
-            # self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10.onnx')
-        # except:
-            # subprocess.run("python3 ../symbolic_shape_infer.py --input ./download_sample_10/bertsquad10.onnx --output ./download_sample_10/bertsquad10_new.onnx --auto_merge", shell=True, check=True)     
-            # self.session_ = ort.InferenceSession('./download_sample_10/bertsquad10_new.onnx', providers=['CUDAExecutionProvider'] )
+        # self.create_session()
 
     def preprocess(self):
         with open(self.input_file_) as json_file:
