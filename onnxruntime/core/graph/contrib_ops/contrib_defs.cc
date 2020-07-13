@@ -14,6 +14,155 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace ONNX_NAMESPACE {
+
+template<typename U>
+struct span {
+    class iterator {
+    public:
+        iterator(const U *ptr): ptr(ptr) {}
+        iterator operator++() { ++ptr; return *this; }
+        bool operator!=(const iterator& other) const { return ptr != other.ptr; }
+        const U& operator*() const { return *ptr; }
+    private:
+        U* ptr;
+    };
+
+    const U *data;
+    size_t n;
+
+    constexpr span() : data(), n() {}
+
+    template <size_t N>
+    constexpr span(const U (&arr)[N])
+    : data(arr), n(N) {}
+
+    iterator begin() const { return iterator(data); }
+    iterator end() const { return iterator(data + n); }
+    size_t size() const { return n; }
+    const U& operator[](size_t i) const { return data[i]; }
+};
+
+struct FormalParameter {
+    constexpr FormalParameter(
+            const char* name,
+            const char*,
+            const char* type_str,
+            OpSchema::FormalParameterOption param_option = OpSchema::FormalParameterOption::Single,
+            bool is_homogeneous = true,
+            int min_arity = 1) :
+            name(name),
+            type_str(type_str),
+            param_option(param_option),
+            is_homogeneous(is_homogeneous),
+            min_arity(min_arity)
+    {}
+
+    const char* name;
+    const char* type_str;
+    OpSchema::FormalParameterOption param_option;
+    bool is_homogeneous;
+    int min_arity;
+};
+
+struct Attribute {
+    constexpr Attribute(
+            const char* name,
+            const char*,
+            AttributeProto::AttributeType type,
+            bool required = true)
+            : name_(name),
+              type_(type),
+              required_(required) {}
+
+    const char* name_;
+    AttributeProto::AttributeType type_;
+    bool required_;
+
+    ONNX_NAMESPACE::OpSchema::Attribute toAttribute() const {
+        ONNX_NAMESPACE::OpSchema::Attribute attr(name_, "", type_, required_);
+    }
+};
+
+struct TypeConstraint {
+    constexpr TypeConstraint(
+            const char* type_param_str_,
+            span<const char* const> allowed_type_strs_,
+            const char* description_)
+            : type_param_str(type_param_str_),
+              allowed_type_strs(allowed_type_strs_) {}
+
+    const char* type_param_str;
+    span<const char * const> allowed_type_strs;
+};
+
+
+
+class CxOpSchema final {
+public:
+    constexpr CxOpSchema(const char* name, const char* file, int line)
+            : name_(name),
+              file_(file),
+              line_(line) {}
+
+    constexpr CxOpSchema& SetDomain(const char* domain) {
+        domain_ = domain;
+        return *this;
+    }
+
+    constexpr CxOpSchema& SinceVersion(OperatorSetVersion n) {
+        since_version_ = n;
+        return *this;
+    }
+
+    constexpr CxOpSchema& SetSupportLevel(OpSchema::SupportType supportType) {
+        support_ = supportType;
+        return *this;
+    }
+
+    constexpr CxOpSchema& Attrs(span<const Attribute> attributes) {
+        attributes_ = attributes;
+        return *this;
+    }
+
+    constexpr CxOpSchema& Inputs(span<const FormalParameter> inputs) {
+        inputs_ = inputs;
+        return *this;
+    }
+
+    constexpr CxOpSchema& Outputs(span<const FormalParameter> outputs) {
+        outputs_ = outputs;
+        return *this;
+    }
+
+    constexpr CxOpSchema& TypeConstraints(span<const TypeConstraint> type_constraints) {
+        type_constraints_ = type_constraints;
+        return *this;
+    }
+
+    using InferenceFunctionP = void(*)(InferenceContext&);
+    constexpr CxOpSchema& TypeAndShapeInferenceFunction(const InferenceFunctionP inference_function) {
+        inference_function_ = inference_function;
+        return *this;
+    }
+
+    const char * name_;
+    const char * file_;
+    const char * domain_ = ONNX_DOMAIN;
+    span<const FormalParameter> inputs_;
+    span<const FormalParameter> outputs_;
+    span<const Attribute> attributes_;
+    span<const TypeConstraint> type_constraints_;
+    bool allows_unchecked_attributes_ = false;
+    int line_ = 0;
+    OpSchema::SupportType support_{};
+    int min_input_ = 0;
+    int max_input_ = 0;
+    int min_output_ = 0;
+    int max_output_ = 0;
+    OperatorSetVersion since_version_ = 1;
+    InferenceFunctionP inference_function_{};
+};
+
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     bool use_dilation, bool require_kernel_shape,
@@ -290,276 +439,278 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
   };
 }
 
-static constexpr const char* contrib_ops_pads_doc =
-    "Padding for the beginning and ending along each spatial axis, it can take any value greater "
-    "than or equal to 0. The value represent the number of pixels added to the beginning "
-    "and end part of the corresponding axis. `pads` format should be as follow "
-    "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of pixels "
-    "added at the beginning of axis `i` and xi_end, the number of pixels added at "
-    "the end of axis `i`. This attribute cannot be used simultaneously with "
-    "auto_pad attribute. If not present, the padding defaults to 0 along start and end of each spatial axis."_docstring;
-static constexpr const char* contrib_ops_auto_pad_doc =
-    "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
-    "default value is NOTSET, which means explicit padding is used. "
-    "SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input."
-    "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
-    "beginning for SAME_LOWER. VALID mean no padding."_docstring;
+constexpr static ONNX_NAMESPACE::Attribute AttentionAttributes[] {
+        ONNX_NAMESPACE::Attribute("num_heads", "Number of attention heads", AttributeProto::INT)
+};
+constexpr static ONNX_NAMESPACE::FormalParameter AttentionInputs[] {
+        ONNX_NAMESPACE::FormalParameter("input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T"),
+        ONNX_NAMESPACE::FormalParameter("weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T"),
+        ONNX_NAMESPACE::FormalParameter("bias", "1D input tensor with shape (3 * hidden_size)", "T"),
+        ONNX_NAMESPACE::FormalParameter("mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional),
+        ONNX_NAMESPACE::FormalParameter("past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+};
+constexpr static ONNX_NAMESPACE::FormalParameter AttentionOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T"),
+        ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
+};
+constexpr static const char* tensor_int32[] {"tensor(int32)" };
+constexpr static const char* tensor_int8__tensor_uint8[] {"tensor(int8)", "tensor(uint8)"};
+constexpr static const char* tensor_float__tensor_float16[] {"tensor(float)", "tensor(float16)"};
+constexpr static ONNX_NAMESPACE::TypeConstraint AttentionTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float tensors."),
+        ONNX_NAMESPACE::TypeConstraint("M", tensor_int32, "Constrain mask index to integer types")
+};
+static void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    if (ctx.getNumOutputs() > 1) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    }
 
-void RegisterBertSchemas() {
-  static constexpr const char* Attention_ver1_doc = R"DOC(
-Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
-The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
-we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
-where value of each element is the end position, or valid length of actual sequence excluding padding. When input has 
-left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by 
-the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
-and present state are optional. Present state could appear in output even when past state is not in input.
-)DOC"_docstring;
+    if (hasInputShape(ctx, 0)) {
+        propagateShapeFromInputToOutput(ctx, 0, 0);
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(Attention_ver1_doc)
-      .Attr("num_heads", "Number of attention heads"_docstring, AttributeProto::INT)
-      .Attr("unidirectional",
-            "Whether every token can only attend to previous tokens. Default value is 0."_docstring,
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size"_docstring, "T")
-      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)"_docstring, "T")
-      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)"_docstring, "T")
-      .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size)."_docstring, "M", OpSchema::Optional)
-      .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)."_docstring, "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)"_docstring, "T")
-      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring, "T", OpSchema::Optional)
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types"_docstring)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (ctx.getNumOutputs() > 1) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
-        }
-
-        if (hasInputShape(ctx, 0)) {
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-
-          if (ctx.getNumOutputs() > 1) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& input_dims = input_shape.dim();
             if (input_dims.size() != 3) {
-              fail_shape_inference("Inputs 0 shall be 3 dimensions");
+                fail_shape_inference("Inputs 0 shall be 3 dimensions");
             }
 
             if (hasInputShape(ctx, 4)) {
-              auto& past_shape = getInputShape(ctx, 4);
-              auto& past_dims = past_shape.dim();
-              if (past_dims.size() != 5) {
-                fail_shape_inference("Inputs 4 shall be 5 dimensions");
-              }
-
-              if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
-                auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
-
-                ONNX_NAMESPACE::TensorShapeProto present_shape;
-                for (auto& dim : past_dims) {
-                  *present_shape.add_dim() = dim;
+                auto& past_shape = getInputShape(ctx, 4);
+                auto& past_dims = past_shape.dim();
+                if (past_dims.size() != 5) {
+                    fail_shape_inference("Inputs 4 shall be 5 dimensions");
                 }
-                present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
 
-                updateOutputShape(ctx, 1, present_shape);
-              }
+                if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
+                    auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+
+                    ONNX_NAMESPACE::TensorShapeProto present_shape;
+                    for (auto& dim : past_dims) {
+                        *present_shape.add_dim() = dim;
+                    }
+                    present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
+
+                    updateOutputShape(ctx, 1, present_shape);
+                }
             }
-          }
         }
-      });
+    }
+};
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Quantization of Multi-Head Self Attention."_docstring)
-      .Attr("num_heads", "Number of attention heads"_docstring, AttributeProto::INT)
-      .Attr("unidirectional",
-            "Whether every token can only attend to previous tokens. Default value is 0."_docstring,
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Input(
-          0,
-          "input",
-          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size"_docstring,
-          "T1")
-      .Input(
-          1,
-          "weight",
-          "2D input tensor with shape (hidden_size, 3 * hidden_size)"_docstring,
-          "T2")
-      .Input(
-          2,
-          "bias",
-          "1D input tensor with shape (3 * hidden_size)"_docstring,
-          "T3")
-      .Input(
-          3,
-          "input_scale",
-          "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization."_docstring,
-          "T3")
-      .Input(
-          4,
-          "weight_scale",
-          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
-          "T3")
-      .Input(
-          5,
-          "mask_index",
-          "Attention mask index with shape (batch_size)"_docstring,
-          "T4",
-          OpSchema::Optional)
-      .Input(
-          6,
-          "input_zero_point",
-          "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization."_docstring,
-          "T1",
-          OpSchema::Optional)
-      .Input(
-          7,
-          "weight_zero_point",
-          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization."_docstring,
-          "T2",
-          OpSchema::Optional)
-      .Input(
-          8,
-          "past",
-          "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)."_docstring,
-          "T3",
-          OpSchema::Optional)
-      .Output(
-          0,
-          "output",
-          "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring,
-          "T3")
-      .Output(
-          1,
-          "present",
-          "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring,
-          "T3",
-          OpSchema::Optional)
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors."_docstring)
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors."_docstring)
-      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types"_docstring)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+constexpr static ONNX_NAMESPACE::Attribute QAttentionAttributes[] {
+        ONNX_NAMESPACE::Attribute("num_heads", "Number of attention heads"_docstring, AttributeProto::INT),
+        ONNX_NAMESPACE::Attribute("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0."_docstring, AttributeProto::INT, static_cast<int64_t>(0))
+};
+constexpr static ONNX_NAMESPACE::FormalParameter QAttentionInputs[] {
+        ONNX_NAMESPACE::FormalParameter("input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size"_docstring, "T1"),
+        ONNX_NAMESPACE::FormalParameter("weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)"_docstring, "T2"),
+        ONNX_NAMESPACE::FormalParameter("bias", "1D input tensor with shape (3 * hidden_size)"_docstring, "T3"),
+        ONNX_NAMESPACE::FormalParameter("input_scale", "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization."_docstring, "T3"),
+        ONNX_NAMESPACE::FormalParameter("weight_scale", "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization."_docstring, "T3"),
+        ONNX_NAMESPACE::FormalParameter("mask_index", "Attention mask index with shape (batch_size)"_docstring, "T4", OpSchema::Optional),
+        ONNX_NAMESPACE::FormalParameter("input_zero_point", "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization."_docstring, "T1", OpSchema::Optional),
+        ONNX_NAMESPACE::FormalParameter("weight_zero_point", "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization."_docstring, "T2", OpSchema::Optional),
+        ONNX_NAMESPACE::FormalParameter("past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)."_docstring, "T3", OpSchema::Optional)
+};
+constexpr static ONNX_NAMESPACE::FormalParameter QAttentionOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T3"),
+        ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring, "T3", OpSchema::Optional)
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint QAttentionTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T1", tensor_int8__tensor_uint8, "Constrain input and output types to int8 tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T2", tensor_int8__tensor_uint8, "Constrain input and output types to int8 tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T3", tensor_float__tensor_float16, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T4", tensor_int32, "Constrain mask index to integer types"_docstring)
+};
+static void QAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    // Type inference
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
 
-        // Shape inference
-        // if the input shape doesn't exist, further shape inference is not possible
-        if (!hasNInputShapes(ctx, 1)) {
-          return;
-        }
-
-        ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
-
+    // Shape inference
+    // if the input shape doesn't exist, further shape inference is not possible
+    if (!hasNInputShapes(ctx, 1)) {
         return;
-      });
+    }
 
-  static constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(
-EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
-The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
-and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors.
-The last input mask is optional. If mask is provided, mask index (that is position of first 0 in mask, or number of words)
-will be calculated.)DOC"_docstring;
+    ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+}
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(EmbedLayerNormalization_ver1_doc)
-      .Attr("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
-      .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)"_docstring, "T1")
-      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)"_docstring, "T1")
-      .Input(2, "word_embedding", "2D with shape (,hidden_size)"_docstring, "T")
-      .Input(3, "position_embedding", "2D with shape (, hidden_size)"_docstring, "T")
-      .Input(4, "segment_embedding", "2D with shape (, hidden_size)"_docstring, "T")
-      .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)"_docstring, "T")
-      .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)"_docstring, "T")
-      .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)"_docstring, "T1", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)"_docstring, "T1")
-      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types"_docstring)
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types."_docstring)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 2, 0);
-        propagateElemTypeFromInputToOutput(ctx, 0, 1);
-        if (!hasInputShape(ctx, 0))
-          return;
+constexpr static ONNX_NAMESPACE::Attribute EmbedLayerNormalizationAttributes[] {
+        ONNX_NAMESPACE::Attribute("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter EmbedLayerNormalizationInputs[] {
+        ONNX_NAMESPACE::FormalParameter("input_ids", "2D words IDs with shape (batch_size, sequence_length)"_docstring, "T1"),
+        ONNX_NAMESPACE::FormalParameter("segment_ids", "2D segment IDs with shape (batch_size, sequence_length)"_docstring, "T1"),
+        ONNX_NAMESPACE::FormalParameter("word_embedding", "2D with shape (,hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("position_embedding", "2D with shape (, hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("segment_embedding", "2D with shape (, hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("gamma", "1D gamma tensor for layer normalization with shape (hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("beta", "1D beta tensor for layer normalization  with shape (hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("mask", "2D attention mask with shape (batch_size, sequence_length)"_docstring, "T1", OpSchema::Optional)
+};
+constexpr static ONNX_NAMESPACE::FormalParameter EmbedLayerNormalizationOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("mask_index", "1D mask_index tensor with shape (batch_size)"_docstring, "T1")
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint EmbedLayerNormalizationTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T1", tensor_int32, "Constrain input and output integer tensors types"_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output float tensors types."_docstring)
+};
+static void EmbedLayerNormalizationTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    propagateElemTypeFromInputToOutput(ctx, 2, 0);
+    propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    if (!hasInputShape(ctx, 0))
+        return;
 
-        auto& input_ids_shape = getInputShape(ctx, 0);
-        auto& input_ids_dims = input_ids_shape.dim();
+    auto& input_ids_shape = getInputShape(ctx, 0);
+    auto& input_ids_dims = input_ids_shape.dim();
 
-        // Note that both batch size and sequence length could be symbolic.
-        // So we only check dimension size here.
-        if (input_ids_dims.size() != 2) {
-          fail_shape_inference("Inputs 0 shall be 2 dimensions");
+    // Note that both batch size and sequence length could be symbolic.
+    // So we only check dimension size here.
+    if (input_ids_dims.size() != 2) {
+        fail_shape_inference("Inputs 0 shall be 2 dimensions");
+    }
+
+    // get hidden_size from the last dimension of embedding
+    auto& word_embedding_shape = getInputShape(ctx, 3);
+    auto& word_embedding_dims = word_embedding_shape.dim();
+    if (word_embedding_dims.size() != 2 ||
+        !word_embedding_dims[1].has_dim_value() ||
+        word_embedding_shape.dim(1).dim_value() <= 0) {
+        fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
+    }
+    int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
+
+    // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    for (auto& dim : input_ids_dims) {
+        *output_shape.add_dim() = dim;
+    }
+    output_shape.add_dim();
+    output_shape.mutable_dim(2)->set_dim_value(hidden_size);
+
+    updateOutputShape(ctx, 0, output_shape);
+
+    // mask_index shape is (batch_size)
+    ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+    *mask_index_shape.add_dim() = input_ids_dims[0];
+    updateOutputShape(ctx, 1, mask_index_shape);
+}
+
+constexpr static ONNX_NAMESPACE::FormalParameter FastGeluInputs[] {
+        ONNX_NAMESPACE::FormalParameter("X", "input tensor"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("bias", "bias tensor"_docstring, "T", OpSchema::Optional)
+};
+constexpr static ONNX_NAMESPACE::FormalParameter FastGeluOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("Y", "output tensor"_docstring, "T")
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint FastGeluTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float or half tensors."_docstring)
+};
+
+constexpr static ONNX_NAMESPACE::Attribute SkipLayerNormalizationAttributes[] {
+        ONNX_NAMESPACE::Attribute("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+};
+constexpr static ONNX_NAMESPACE::FormalParameter SkipLayerNormalizationInputs[] {
+        ONNX_NAMESPACE::FormalParameter("input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("gamma", "1D input tensor with shape (hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("beta", "1D skip tensor with shape (hidden_size"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("bias", "1D bias tensor with shape (hidden_size"_docstring, "T", OpSchema::Optional),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter SkipLayerNormalizationOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional),
+        ONNX_NAMESPACE::FormalParameter("inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional),
+};
+constexpr static const char* tensor_float[] {"tensor(float)"};
+constexpr static ONNX_NAMESPACE::TypeConstraint SkipLayerNormalizationTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float or half tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("U", tensor_float, "Constrain mean and inv_std_var to float tensors."_docstring)
+};
+
+static constexpr ONNX_NAMESPACE::CxOpSchema BertSchemas[] {
+    ONNX_NAMESPACE::CxOpSchema("Attention", "", 0)
+        .SetDomain(onnxruntime::kMSDomain)
+        .SinceVersion(1)
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Attrs(AttentionAttributes)
+        .Inputs(AttentionInputs)
+        .Outputs(AttentionOutputs)
+        .TypeConstraints(AttentionTypeConstraints)
+        .TypeAndShapeInferenceFunction(AttentionTypeAndShapeInference),
+    ONNX_NAMESPACE::CxOpSchema("QAttention", "", 0)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Attrs(QAttentionAttributes)
+        .Inputs(QAttentionInputs)
+        .Outputs(QAttentionOutputs)
+        .TypeConstraints(QAttentionTypeConstraints)
+        .TypeAndShapeInferenceFunction(QAttentionTypeAndShapeInference),
+    ONNX_NAMESPACE::CxOpSchema("EmbedLayerNormalization", "", 0)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Attrs(EmbedLayerNormalizationAttributes)
+        .Inputs(EmbedLayerNormalizationInputs)
+        .Outputs(EmbedLayerNormalizationOutputs)
+        .TypeConstraints(EmbedLayerNormalizationTypeConstraints)
+        .TypeAndShapeInferenceFunction(EmbedLayerNormalizationTypeAndShapeInference),
+    ONNX_NAMESPACE::CxOpSchema("FastGelu", "", 0)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Inputs(FastGeluInputs)
+        .Outputs(FastGeluOutputs)
+        .TypeConstraints(FastGeluTypeConstraints)
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput),
+    ONNX_NAMESPACE::CxOpSchema("SkipLayerNormalization", "", 0)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Attrs(SkipLayerNormalizationAttributes)
+        .Inputs(SkipLayerNormalizationInputs)
+        .Outputs(SkipLayerNormalizationOutputs)
+        .TypeConstraints(SkipLayerNormalizationTypeConstraints)
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput),
+};
+
+void Register(const ONNX_NAMESPACE::CxOpSchema& cx_schema) {
+    ONNX_NAMESPACE::OpSchema schema(cx_schema.name_, "", 0);
+    schema
+        .SetDomain(cx_schema.domain_)
+        .SinceVersion(cx_schema.since_version_)
+        .SetSupportLevel(cx_schema.support_);
+    for (const auto& attr : cx_schema.attributes_) {
+        schema.Attr(attr.toAttribute());
+    }
+    for (size_t i = 0; i < cx_schema.inputs_.size(); ++i) {
+        const auto& input = cx_schema.inputs_[i];
+        schema.Input(i, input.name, "", input.type_str, input.param_option, input.is_homogeneous, input.min_arity);
+    }
+    for (size_t i = 0; i < cx_schema.outputs_.size(); ++i) {
+        const auto& output = cx_schema.outputs_[i];
+        schema.Output(i, output.name, "", output.type_str, output.param_option, output.is_homogeneous, output.min_arity);
+    }
+    for (const auto& constrain : cx_schema.type_constraints_) {
+        std::vector<std::string> allowed_types;
+        allowed_types.reserve(constrain.allowed_type_strs.size());
+        for (const char * type : constrain.allowed_type_strs) {
+            allowed_types.emplace_back(type);
         }
+        schema.TypeConstraint(constrain.type_param_str, allowed_types, "");
+    }
+    schema.TypeAndShapeInferenceFunction(cx_schema.inference_function_);
+    ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce{schema};
+}
 
-        // get hidden_size from the last dimension of embedding
-        auto& word_embedding_shape = getInputShape(ctx, 3);
-        auto& word_embedding_dims = word_embedding_shape.dim();
-        if (word_embedding_dims.size() != 2 ||
-            !word_embedding_dims[1].has_dim_value() ||
-            word_embedding_shape.dim(1).dim_value() <= 0) {
-          fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
-        }
-        int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
-
-        // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        for (auto& dim : input_ids_dims) {
-          *output_shape.add_dim() = dim;
-        }
-        output_shape.add_dim();
-        output_shape.mutable_dim(2)->set_dim_value(hidden_size);
-
-        updateOutputShape(ctx, 0, output_shape);
-
-        // mask_index shape is (batch_size)
-        ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-        *mask_index_shape.add_dim() = input_ids_dims[0];
-        updateOutputShape(ctx, 1, mask_index_shape);
-      });
-
-  static constexpr const char* FastGelu_ver1_doc = R"DOC(
-GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC"_docstring;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(FastGelu_ver1_doc)
-      .Input(0, "X", "input tensor"_docstring, "T")
-      .Input(1, "bias", "bias tensor"_docstring, "T", OpSchema::Optional)
-      .Output(0, "Y", "output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring)
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Skip and Layer Normalization Fusion"_docstring)
-      .Attr("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Input(2, "gamma", "1D input tensor with shape (hidden_size)"_docstring, "T")
-      .Input(3, "beta", "1D skip tensor with shape (hidden_size"_docstring, "T")
-      .Input(4, "bias", "1D bias tensor with shape (hidden_size"_docstring, "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional)
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring)
-      .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors."_docstring)
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+void RegisterBertSchemas() {
+    for (auto& cx_schema : BertSchemas) {
+        Register(cx_schema);
+    }
 }
 
 void RegisterContribSchemas() {
@@ -2168,10 +2319,10 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_
           OPTIONAL_VALUE)
       .Attr(
           "auto_pad",
-          contrib_ops_auto_pad_doc,
+          "",
           AttributeProto::STRING,
           std::string("NOTSET"))
-      .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr(
           "ceil_mode",
           "Whether to use ceil or floor (default) to compute the output shape."_docstring,
