@@ -191,6 +191,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
       nnapi::ModelBuilder builder(graph_viewer);
       builder.SetUseNCHW(false);
       builder.SetUseFp16(false);
+      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::ALL_DEVICES);
+
       std::unique_ptr<nnapi::Model> nnapi_model = builder.Compile();
 
       // Build map from input name to its index in input definitions

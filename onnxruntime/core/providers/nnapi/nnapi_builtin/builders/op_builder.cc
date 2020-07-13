@@ -277,16 +277,14 @@ vector<int32_t> ComputeConvPads(
   int64_t padding_left = onnx_pads[1];
   int64_t padding_right = onnx_pads[3];
 
-  ORT_THROW_IF_ERROR(
-      ComputePad<false>(input_size_y,
-                        stride_y, weight_size_y, dilation_y,
-                        auto_pad_type,
-                        padding_top, padding_bottom));
-  ORT_THROW_IF_ERROR(
-      ComputePad<false>(input_size_x,
-                        stride_x, weight_size_x, dilation_x,
-                        auto_pad_type,
-                        padding_left, padding_right));
+  ORT_THROW_IF_ERROR(ComputePad(input_size_y,
+                                stride_y, weight_size_y, dilation_y,
+                                auto_pad_type,
+                                padding_top, padding_bottom));
+  ORT_THROW_IF_ERROR(ComputePad(input_size_x,
+                                stride_x, weight_size_x, dilation_x,
+                                auto_pad_type,
+                                padding_left, padding_right));
 
   return {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left),
           static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
@@ -1035,7 +1033,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   bool use_auto_pad = false;
-  int32_t nnapi_padding_code;
+  int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
   if (auto_pad_type != AutoPadType::NOTSET) {
     onnx_pads = ComputeConvPads(shaper[input], shaper[weight],
                                 onnx_pads, onnx_strides, onnx_dilations,
@@ -1045,6 +1043,14 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       use_auto_pad = true;
       nnapi_padding_code = (AutoPadType::VALID == auto_pad_type) ? ANEURALNETWORKS_PADDING_VALID
                                                                  : ANEURALNETWORKS_PADDING_SAME;
+    }
+  } else {
+    const auto same_upper_pads = ComputeConvPads(shaper[input], shaper[weight],
+                                                 onnx_pads, onnx_strides, onnx_dilations,
+                                                 AutoPadType::SAME_UPPER, use_nchw);
+    if (onnx_pads == same_upper_pads) {
+      use_auto_pad = true;
+      nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
     }
   }
 
@@ -1070,8 +1076,10 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
   // TODO support API 28
   input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
+  if (onnx_dilations[1] != 1 || onnx_dilations[0] != 1) {
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
+  }
 
   int32_t operationCode;
   if (conv2d) {

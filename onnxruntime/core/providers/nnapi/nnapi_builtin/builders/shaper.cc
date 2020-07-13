@@ -4,6 +4,9 @@
 #include "helper.h"
 #include "shaper.h"
 
+namespace onnxruntime {
+namespace nnapi {
+
 using std::string;
 using std::vector;
 
@@ -404,3 +407,6 @@ std::string Shape2String(const Shaper::Shape& shape) {
   os << "]";
   return os.str();
 }
+
+}  // namespace nnapi
+}  // namespace onnxruntime

@@ -70,11 +70,11 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
 
 // helper function
 
-template <bool ForceSymmetricAutoPadding>
-Status ComputePad(const int64_t in_dim,
-                  const int64_t stride, const int64_t kernel, const int64_t dilation,
-                  AutoPadType pad_type,
-                  int64_t& pad_head, int64_t& pad_tail) {
+inline Status ComputePad(const int64_t in_dim,
+                         const int64_t stride, const int64_t kernel, const int64_t dilation,
+                         AutoPadType pad_type,
+                         int64_t& pad_head, int64_t& pad_tail,
+                         bool force_symmetric_auto_padding = false) {
   switch (pad_type) {
     case AutoPadType::NOTSET:
       break;
@@ -91,7 +91,7 @@ Status ComputePad(const int64_t in_dim,
       int64_t legacy_target_size = (in_dim + stride - 1) / stride;
       int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
       // make sure padding is symmetric
-      if (ForceSymmetricAutoPadding) {
+      if (force_symmetric_auto_padding) {
         // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
         pad_needed = (pad_needed + 1) & ~1;
       }
@@ -117,14 +117,14 @@ inline int64_t ComputeOutputShape(const int64_t in_dim,
   return static_cast<int64_t>(static_cast<float>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
 }
 
-template <bool ForceSymmetricAutoPadding>
-Status ComputePadAndOutputShape(const int64_t in_dim,
-                                const int64_t stride, const int64_t kernel, const int64_t dilation,
-                                AutoPadType pad_type,
-                                int64_t& pad_head, int64_t& pad_tail,
-                                int64_t& out_dim) {
+inline Status ComputePadAndOutputShape(const int64_t in_dim,
+                                       const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                       AutoPadType pad_type,
+                                       int64_t& pad_head, int64_t& pad_tail,
+                                       int64_t& out_dim,
+                                       bool force_symmetric_auto_padding = false) {
   ORT_RETURN_IF_ERROR(
-      ComputePad<ForceSymmetricAutoPadding>(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail));
+      ComputePad(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail, force_symmetric_auto_padding));
   out_dim = ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
   return Status::OK();
 }

@@ -74,6 +74,8 @@ class ModelBuilder {
   // It is off by default
   void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
 
+  void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
+
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
   void ExecutePreference(
