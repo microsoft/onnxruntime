@@ -166,8 +166,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 
   // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
   // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
-  int num_threads = NumThreads();
-  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads), total));
+  int d_of_p = DegreeOfParallelism();
+  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), total));
   assert(num_work_items > 0);
 
   LoopCounter lc(*this, total, block_size);
@@ -326,14 +326,17 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
+  auto d_of_p = DegreeOfParallelism(this);
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
-      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n), cost, static_cast<int>(NumThreads())) == 1) {
+      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n),
+                                                                  cost,
+                                                                  d_of_p) == 1) {
     f(0, n);
     return;
   }
 
-  ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, NumThreads());
+  ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
   ParallelForFixedBlockSizeScheduling(n, block, f);
 }
 
