@@ -158,15 +158,6 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
     return;
   }
 }
-
-constexpr const char* operator "" _docstring(const char* string, size_t) {
-#ifdef __ONNX_NO_DOC_STRINGS
-    (void)string;
-    return "";
-#else
-    return string;
-#endif
-}
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -174,7 +165,6 @@ namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
-using ONNX_NAMESPACE::operator "" _docstring;
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize = 0) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
@@ -209,12 +199,7 @@ void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, in
 }
 
 std::function<void(OpSchema&)> QLinearMathDocGenerator(const char* name, const char* additionalDocumentation) {
-#ifdef __ONNX_NO_DOC_STRINGS
-  (void)name;
-  (void)additionalDocumentation;
-#endif
   return [=](OpSchema& schema) {
-#ifndef __ONNX_NO_DOC_STRINGS
     std::string doc = R"DOC(
 Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadcasting support).
 
@@ -223,44 +208,43 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
     ONNX_NAMESPACE::ReplaceAll(doc, "{name}", name);
     ONNX_NAMESPACE::ReplaceAll(doc, "{additionalDocumentation}", additionalDocumentation);
     schema.SetDoc(doc);
-#endif
-    schema.Input(0, "A", "First operand."_docstring, "T");
+    schema.Input(0, "A", "First operand.", "T");
     schema.Input(
         1,
         "A_scale",
-        "Input A's scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+        "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
         "tensor(float)");
     schema.Input(
         2,
         "A_zero_point",
-        "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+        "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
         "T",
         OpSchema::Optional);
     schema.Input(3, "B", "Second operand.", "T");
     schema.Input(
         4,
         "B_scale",
-        "Input B's scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+        "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
         "tensor(float)");
     schema.Input(
         5,
         "B_zero_point",
-        "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+        "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
         "T",
         OpSchema::Optional);
     schema.Input(
         6,
         "C_scale",
-        "Output scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+        "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
         "tensor(float)");
     schema.Input(
         7,
         "C_zero_point",
-        "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+        "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
         "T",
         OpSchema::Optional);
-    schema.Output(0, "C", "Result, has same element type as two inputs"_docstring, "T");
-    schema.TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to 8 bit signed and unsigned tensors."_docstring);
+    schema.Output(0, "C", "Result, has same element type as two inputs", "T");
+    schema.TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to 8 bit signed and unsigned tensors.");
     schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
       propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -290,23 +274,23 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
   };
 }
 
-static constexpr const char* contrib_ops_pads_doc =
+const char* contrib_ops_pads_doc =
     "Padding for the beginning and ending along each spatial axis, it can take any value greater "
     "than or equal to 0. The value represent the number of pixels added to the beginning "
     "and end part of the corresponding axis. `pads` format should be as follow "
     "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of pixels "
     "added at the beginning of axis `i` and xi_end, the number of pixels added at "
     "the end of axis `i`. This attribute cannot be used simultaneously with "
-    "auto_pad attribute. If not present, the padding defaults to 0 along start and end of each spatial axis."_docstring;
-static constexpr const char* contrib_ops_auto_pad_doc =
+    "auto_pad attribute. If not present, the padding defaults to 0 along start and end of each spatial axis.";
+const char* contrib_ops_auto_pad_doc =
     "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
     "default value is NOTSET, which means explicit padding is used. "
     "SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input."
     "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
-    "beginning for SAME_LOWER. VALID mean no padding."_docstring;
+    "beginning for SAME_LOWER. VALID mean no padding.";
 
 void RegisterBertSchemas() {
-  static constexpr const char* Attention_ver1_doc = R"DOC(
+  static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length),
 we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
@@ -314,27 +298,27 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by 
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
-)DOC"_docstring;
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Attention_ver1_doc)
-      .Attr("num_heads", "Number of attention heads"_docstring, AttributeProto::INT)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
-            "Whether every token can only attend to previous tokens. Default value is 0."_docstring,
+            "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size"_docstring, "T")
-      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)"_docstring, "T")
-      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)"_docstring, "T")
-      .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size)."_docstring, "M", OpSchema::Optional)
-      .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)."_docstring, "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)"_docstring, "T")
-      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring, "T", OpSchema::Optional)
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types"_docstring)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "T")
+      .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
+      .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
+      .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (ctx.getNumOutputs() > 1) {
@@ -378,76 +362,76 @@ and present state are optional. Present state could appear in output even when p
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Quantization of Multi-Head Self Attention."_docstring)
-      .Attr("num_heads", "Number of attention heads"_docstring, AttributeProto::INT)
+      .SetDoc("Quantization of Multi-Head Self Attention.")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
-            "Whether every token can only attend to previous tokens. Default value is 0."_docstring,
+            "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(
           0,
           "input",
-          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size"_docstring,
+          "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size",
           "T1")
       .Input(
           1,
           "weight",
-          "2D input tensor with shape (hidden_size, 3 * hidden_size)"_docstring,
+          "2D input tensor with shape (hidden_size, 3 * hidden_size)",
           "T2")
       .Input(
           2,
           "bias",
-          "1D input tensor with shape (3 * hidden_size)"_docstring,
+          "1D input tensor with shape (3 * hidden_size)",
           "T3")
       .Input(
           3,
           "input_scale",
-          "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.",
           "T3")
       .Input(
           4,
           "weight_scale",
-          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
           "T3")
       .Input(
           5,
           "mask_index",
-          "Attention mask index with shape (batch_size)"_docstring,
+          "Attention mask index with shape (batch_size)",
           "T4",
           OpSchema::Optional)
       .Input(
           6,
           "input_zero_point",
-          "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.",
           "T1",
           OpSchema::Optional)
       .Input(
           7,
           "weight_zero_point",
-          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
           "T2",
           OpSchema::Optional)
       .Input(
           8,
           "past",
-          "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)."_docstring,
+          "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
           "T3",
           OpSchema::Optional)
       .Output(
           0,
           "output",
-          "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring,
+          "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
           "T3")
       .Output(
           1,
           "present",
-          "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring,
+          "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)",
           "T3",
           OpSchema::Optional)
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors."_docstring)
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors."_docstring)
-      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types"_docstring)
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -463,31 +447,31 @@ and present state are optional. Present state could appear in output even when p
         return;
       });
 
-  static constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(
+  static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
 and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors.
 The last input mask is optional. If mask is provided, mask index (that is position of first 0 in mask, or number of words)
-will be calculated.)DOC"_docstring;
+will be calculated.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(EmbedLayerNormalization_ver1_doc)
-      .Attr("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
-      .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)"_docstring, "T1")
-      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)"_docstring, "T1")
-      .Input(2, "word_embedding", "2D with shape (,hidden_size)"_docstring, "T")
-      .Input(3, "position_embedding", "2D with shape (, hidden_size)"_docstring, "T")
-      .Input(4, "segment_embedding", "2D with shape (, hidden_size)"_docstring, "T")
-      .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)"_docstring, "T")
-      .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)"_docstring, "T")
-      .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)"_docstring, "T1", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)"_docstring, "T1")
-      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types"_docstring)
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types."_docstring)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+      .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
+      .Input(3, "position_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
+      .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
+      .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
+      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
         propagateElemTypeFromInputToOutput(ctx, 0, 1);
@@ -529,36 +513,36 @@ will be calculated.)DOC"_docstring;
         updateOutputShape(ctx, 1, mask_index_shape);
       });
 
-  static constexpr const char* FastGelu_ver1_doc = R"DOC(
-GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC"_docstring;
+  static const char* FastGelu_ver1_doc = R"DOC(
+GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(FastGelu_ver1_doc)
-      .Input(0, "X", "input tensor"_docstring, "T")
-      .Input(1, "bias", "bias tensor"_docstring, "T", OpSchema::Optional)
-      .Output(0, "Y", "output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring)
+      .Input(0, "X", "input tensor", "T")
+      .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Skip and Layer Normalization Fusion"_docstring)
-      .Attr("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
-      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Input(2, "gamma", "1D input tensor with shape (hidden_size)"_docstring, "T")
-      .Input(3, "beta", "1D skip tensor with shape (hidden_size"_docstring, "T")
-      .Input(4, "bias", "1D bias tensor with shape (hidden_size"_docstring, "T", OpSchema::Optional)
-      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional)
-      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring)
-      .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors."_docstring)
+      .SetDoc("Skip and Layer Normalization Fusion")
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
+      .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T")
+      .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 }
 
@@ -568,83 +552,84 @@ void RegisterContribSchemas() {
   // as production ops. In order to maintain backward compatibility when the experimental ops are removed from ONNX
   // they need to be added in onnxruntime as contrib ops.
   // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
-  static constexpr const char* Affine_ver1_doc = R"DOC(
+  static const char* Affine_ver1_doc = R"DOC(
 Affine takes one input data (Tensor<T>) and produces one output data
 (Tensor<T>) where the affine function, y = alpha * x + beta,
 is applied to the tensor elementwise.
-)DOC"_docstring;
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
       .SinceVersion(1)
       .SetDoc(Affine_ver1_doc)
-      .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f)
-      .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f)
-      .Input(0, "X", "1D input tensor"_docstring, "T")
-      .Output(0, "Y", "1D output tensor"_docstring, "T")
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, 1.0f)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, 0.0f)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D output tensor", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static constexpr const char* ParametricSoftplus_ver1_doc = R"DOC(
+  static const char* ParametricSoftplus_ver1_doc = R"DOC(
 ParametricSoftplus takes one input data (Tensor<T>) and produces one output data
 (Tensor<T>) where the softplus function, y = alpha * ln(exp(beta * x) + 1), is applied to
-the tensor elementwise.)DOC"_docstring;
+the tensor elementwise.
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
       .SinceVersion(1)
       .SetDoc(ParametricSoftplus_ver1_doc)
-      .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Input(0, "X", "1D input tensor"_docstring, "T")
-      .Output(0, "Y", "1D input tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D input tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static constexpr const char* ImageScaler_ver1_doc =
+  static const char* ImageScaler_ver1_doc =
       R"DOC(Scale and bias the input image. Bias values are stored in
-the same ordering as the image pixel format.)DOC"_docstring;
+the same ordering as the image pixel format.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
       .SinceVersion(1)
       .SetDoc(ImageScaler_ver1_doc)
-      .Attr("bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE)
-      .Attr("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f)
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same shape and type as input"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL_VALUE)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static constexpr const char* Crop_ver1_doc =
+  static const char* Crop_ver1_doc =
       R"DOC(Crop and image to the specified spatial dimensions. If scale is given,
 then optionally start the crop offset by the left/top border amounts.
-If scale is not provided, crop the borders as provided.)DOC"_docstring;
+If scale is not provided, crop the borders as provided.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
       .SinceVersion(1)
       .SetDoc(Crop_ver1_doc)
-      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE)
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced."_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring);
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.");
 
-  static constexpr const char* ThresholdedRelu_ver1_doc = R"DOC(
+  static const char* ThresholdedRelu_ver1_doc = R"DOC(
 ThresholdedRelu takes one input data (Tensor<T>) and produces one output data
 (Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise,
-is applied to the tensor elementwise. )DOC"_docstring;
+is applied to the tensor elementwise. )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ThresholdedRelu)
       .SinceVersion(1)
       .SetDoc(ThresholdedRelu_ver1_doc)
-      .Attr("alpha", "Threshold value"_docstring, AttributeProto::FLOAT, 1.0f)
-      .Input(0, "X", "Input tensor"_docstring, "T")
-      .Output(0, "Y", "Output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
+      .Attr("alpha", "Threshold value", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "X", "Input tensor", "T")
+      .Output(0, "Y", "Output tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static constexpr const char* DynamicSlice_ver1_doc = R"DOC(
+  static const char* DynamicSlice_ver1_doc = R"DOC(
 Produces a slice of the input tensor along multiple axes. Similar to numpy:
 https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
 Slices uses `axes`, `starts` and `ends` inputs to specify the start and end
@@ -676,27 +661,27 @@ Example 2:
   result = [
       [2, 3, 4],
   ]
-)DOC"_docstring;
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
       .SinceVersion(1)
       .SetDoc(DynamicSlice_ver1_doc)
-      .Input(0, "data", "Tensor of data to extract slices from."_docstring, "T")
-      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`"_docstring, "Tind")
-      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes"_docstring, "Tind")
-      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to."_docstring, "Tind", OpSchema::Optional)
-      .Output(0, "output", "Sliced data tensor."_docstring, "T")
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types."_docstring)
-      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types"_docstring);
+      .Input(0, "data", "Tensor of data to extract slices from.", "T")
+      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`", "Tind")
+      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes", "Tind")
+      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to.", "Tind", OpSchema::Optional)
+      .Output(0, "output", "Sliced data tensor.", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(1)
-      .Input(0, "shape", "The shape of filled tensor"_docstring, "T", OpSchema::Optional)
-      .Output(0, "X", "The filled tensor"_docstring, "T")
+      .Input(0, "shape", "The shape of filled tensor", "T", OpSchema::Optional)
+      .Output(0, "X", "The filled tensor", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .Attr("values", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
       .Attr("shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL_VALUE)
@@ -725,70 +710,72 @@ Example 2:
         }
       });
 
-  static constexpr const char* Scale_ver1_doc = R"DOC(
+  static const char* Scale_ver1_doc = R"DOC(
 Scale takes one input data (Tensor<float>) and produces one output data
-(Tensor<float>) whose value is the input data tensor scaled element-wise.)DOC"_docstring;
+(Tensor<float>) whose value is the input data tensor scaled element-wise.
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Scale)
       .SinceVersion(1)
-      .Input(0, "input", "Input data to be scaled"_docstring, "T")
-      .Output(0, "output", "Output data after scaling"_docstring, "T")
+      .Input(0, "input", "Input data to be scaled", "T")
+      .Output(0, "output", "Output data after scaling", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .SetDoc(Scale_ver1_doc)
-      .Attr("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static constexpr const char* GRUUnit_ver1_doc = R"DOC(
+  static const char* GRUUnit_ver1_doc = R"DOC(
 GRUUnit computes the activations of a standard GRU,
 in a sequence-length aware fashion.
 Concretely, given the (fused) inputs X (TxNxD), the previous hidden
 state (NxD), and the sequence lengths (N), computes the GRU
 activations, avoiding computation if the input is invalid (as in, the
-value at X[t][n] >= seqLengths[n].)DOC"_docstring;
+value at X[t][n] >= seqLengths[n].
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUUnit)
       .SinceVersion(1)
       .SetDoc(GRUUnit_ver1_doc)
       .Attr("drop_states",
             "Bool to determine if hidden state is zeroes or passed "
-            "along for timesteps past the given sequence_length."_docstring,
+            "along for timesteps past the given sequence_length.",
             AttributeProto::INT, OPTIONAL_VALUE)
       .Input(0, "hidden_prev", "The previous GRU hidden state.", "T")
       .Input(
           1,
           "gates",
           "Unactivated gate outputs from forget, update, "
-          "and output gates, pre-activation."_docstring,
+          "and output gates, pre-activation.",
           "T")
       .Input(
           2,
           "seq_lengths",
           "Array of sequence lengths.  "
-          "len(seq_lengths) should equal batch size N."_docstring,
+          "len(seq_lengths) should equal batch size N.",
           "T")
-      .Input(3, "t", "The timestep for this operation."_docstring, "T")
+      .Input(3, "t", "The timestep for this operation.", "T")
       .Output(
           0,
           "hidden",
-          "The new GRU hidden state calculated by this op."_docstring,
+          "The new GRU hidden state calculated by this op.",
           "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring);
+          "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(10)
       .Deprecate()
-      .Input(0, "shape", "The shape of filled tensor"_docstring, "T", OpSchema::Optional)
-      .Output(0, "X", "The filled tensor"_docstring, "T")
+      .Input(0, "shape", "The shape of filled tensor", "T", OpSchema::Optional)
+      .Output(0, "X", "The filled tensor", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .Attr("values", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
       .Attr("shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL_VALUE)
@@ -820,14 +807,14 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(Scale)
       .SinceVersion(10)
       .Deprecate()
-      .Input(0, "input", "Input data to be scaled"_docstring, "T")
-      .Output(0, "output", "Output data after scaling"_docstring, "T")
+      .Input(0, "input", "Input data to be scaled", "T")
+      .Output(0, "output", "Output data after scaling", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .SetDoc(Scale_ver1_doc)
-      .Attr("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUUnit)
@@ -836,107 +823,107 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
       .SetDoc(GRUUnit_ver1_doc)
       .Attr("drop_states",
             "Bool to determine if hidden state is zeroes or passed "
-            "along for timesteps past the given sequence_length."_docstring,
+            "along for timesteps past the given sequence_length.",
             AttributeProto::INT, OPTIONAL_VALUE)
-      .Input(0, "hidden_prev", "The previous GRU hidden state."_docstring, "T")
+      .Input(0, "hidden_prev", "The previous GRU hidden state.", "T")
       .Input(
           1,
           "gates",
           "Unactivated gate outputs from forget, update, "
-          "and output gates, pre-activation."_docstring,
+          "and output gates, pre-activation.",
           "T")
       .Input(
           2,
           "seq_lengths",
           "Array of sequence lengths.  "
-          "len(seq_lengths) should equal batch size N."_docstring,
+          "len(seq_lengths) should equal batch size N.",
           "T")
-      .Input(3, "t", "The timestep for this operation."_docstring, "T")
+      .Input(3, "t", "The timestep for this operation.", "T")
       .Output(
           0,
           "hidden",
-          "The new GRU hidden state calculated by this op."_docstring,
+          "The new GRU hidden state calculated by this op.",
           "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring);
+          "Constrain input and output types to float tensors.");
 
   ONNX_OPERATOR_SCHEMA(MeanVarianceNormalization)
       .SinceVersion(1)
-      .SetDoc(R"DOC(Perform mean variance normalization.)DOC"_docstring)
-      .Attr("across_channels", "If 1, mean and variance are computed across channels. Default is 0."_docstring, AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("normalize_variance", "If 0, normalize the mean only.  Default is 1."_docstring, AttributeProto::INT, static_cast<int64_t>(1))
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same shape and type as input"_docstring, "T")
+      .SetDoc(R"DOC(Perform mean variance normalization.)DOC")
+      .Attr("across_channels", "If 1, mean and variance are computed across channels. Default is 0.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("normalize_variance", "If 0, normalize the mean only.  Default is 1.", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_OPERATOR_SCHEMA(ScaledTanh)
       .SinceVersion(1)
-      .Attr("alpha", "Scaling value"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Scaling value"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Input(0, "input", "Input tensor"_docstring, "T")
+      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input", "Input tensor", "T")
       .Output(
           0,
           "output",
           "The scaled hyperbolic tangent values of the input tensor "
-          "computed element-wise"_docstring,
+          "computed element-wise",
           "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(Affine_ver1_doc)
-      .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f)
-      .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f)
-      .Input(0, "X", "1D input tensor"_docstring, "T")
-      .Output(0, "Y", "1D output tensor"_docstring, "T")
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, 1.0f)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, 0.0f)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D output tensor", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(ParametricSoftplus_ver1_doc)
-      .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Input(0, "X", "1D input tensor"_docstring, "T")
-      .Output(0, "Y", "1D input tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
+      .Attr("alpha", "Value of alpha", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("beta", "Value of beta", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "X", "1D input tensor", "T")
+      .Output(0, "Y", "1D input tensor", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(ImageScaler_ver1_doc)
-      .Attr("bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE)
-      .Attr("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f)
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same shape and type as input"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
+      .Attr("bias", "Bias applied to each channel, same size as C.", AttributeProto::FLOATS, OPTIONAL_VALUE)
+      .Attr("scale", "The scale to apply.", AttributeProto::FLOAT, 1.0f)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same shape and type as input", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(Crop_ver1_doc)
-      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS)
-      .Attr("scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE)
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced."_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
+      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder).", AttributeProto::INTS)
+      .Attr("scale", "A 1-D values of (height, width).", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Input(0, "input", "Input tensor of shape [N,C,H,W]", "T")
+      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1037,30 +1024,30 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
       .SinceVersion(10)
       .Deprecate()
       .SetDoc(DynamicSlice_ver1_doc)
-      .Input(0, "data", "Tensor of data to extract slices from."_docstring, "T")
-      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`"_docstring, "Tind")
-      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes"_docstring, "Tind")
-      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to."_docstring, "Tind", OpSchema::Optional)
-      .Output(0, "output", "Sliced data tensor."_docstring, "T")
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types."_docstring)
-      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types"_docstring);
+      .Input(0, "data", "Tensor of data to extract slices from.", "T")
+      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`", "Tind")
+      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes", "Tind")
+      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to.", "Tind", OpSchema::Optional)
+      .Output(0, "output", "Sliced data tensor.", "T")
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types");
 
   ONNX_OPERATOR_SCHEMA(ScaledTanh)
       .SinceVersion(10)
       .Deprecate()
-      .Attr("alpha", "Scaling value"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Scaling value"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Input(0, "input", "Input tensor"_docstring, "T")
+      .Attr("alpha", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Attr("beta", "Scaling value", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input", "Input tensor", "T")
       .Output(
           0,
           "output",
           "The scaled hyperbolic tangent values of the input tensor "
-          "computed element-wise"_docstring,
+          "computed element-wise",
           "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   // End of ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
@@ -1068,12 +1055,12 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(SampleOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "input"_docstring, "T")
-      .Output(0, "Y", "output"_docstring, "T")
+      .Input(0, "X", "input", "T")
+      .Output(0, "Y", "output", "T")
       .TypeConstraint(
           "T",
           ONNX_NAMESPACE::OpSchema::numeric_types_for_math_reduction(),
-          "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type."_docstring)
+          "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetDoc(R"DOC(
 Sample echo operator.)DOC");
@@ -1082,7 +1069,7 @@ Sample echo operator.)DOC");
   ONNX_CONTRIB_OPERATOR_SCHEMA(MaxpoolWithMask)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(For internal use.)DOC"_docstring)
+      .SetDoc(R"DOC(For internal use.)DOC")
       .Attr(
           "auto_pad",
           "",
@@ -1114,7 +1101,7 @@ Sample echo operator.)DOC");
           "Y",
           "",
           "T")
-      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors"_docstring)
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input0 and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
@@ -1124,41 +1111,41 @@ Sample echo operator.)DOC");
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
-      .Input(0, "X", "input tensor"_docstring, "T")
+      .Input(0, "X", "input tensor", "T")
       .Attr("signal_ndim", "", AttributeProto::INT)
       .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
-      .Output(0, "Y", "output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring);
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Irfft)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
-      .Input(0, "X", "input tensor"_docstring, "T")
+      .Input(0, "X", "input tensor", "T")
       .Attr("signal_ndim", "", AttributeProto::INT)
       .Attr("normalized", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onesided", "", AttributeProto::INT, static_cast<int64_t>(1))
-      .Output(0, "Y", "output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring);
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ComplexMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
-      .Input(0, "A", "input_0"_docstring, "T")
-      .Input(1, "B", "input_1"_docstring, "T")
-      .Output(0, "C", "output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring);
+      .Input(0, "A", "input_0", "T")
+      .Input(1, "B", "input_1", "T")
+      .Output(0, "C", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ComplexMulConj)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
-      .Input(0, "A", "input_0"_docstring, "T")
-      .Input(1, "B", "input_1"_docstring, "T")
-      .Output(0, "C", "output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors."_docstring);
+      .Input(0, "A", "input_0", "T")
+      .Input(1, "B", "input_1", "T")
+      .Output(0, "C", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvTransposeWithDynamicPads)
       .SetDomain(kMSDomain)
@@ -1210,7 +1197,7 @@ Sample echo operator.)DOC");
           "Y",
           "",
           "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors"_docstring)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::convTransposeWithDynamicPadsShapeInference);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
@@ -1218,7 +1205,7 @@ Sample echo operator.)DOC");
       .SinceVersion(1)
       .SetDoc(R"DOC(
 The fused convolution operator schema is the same as Conv besides it includes an attribute
-activation.)DOC"_docstring)
+activation.)DOC")
       .Attr(
           "auto_pad",
           "",
@@ -1280,7 +1267,7 @@ activation.)DOC"_docstring)
           "Y",
           "",
           "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors"_docstring)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
@@ -1291,28 +1278,28 @@ activation.)DOC"_docstring)
       .SinceVersion(1)
       .SetDoc(R"DOC(
 The FusedGemm operator schema is the same as Gemm besides it includes attributes
-activation and leaky_relu_alpha.)DOC"_docstring)
+activation and leaky_relu_alpha.)DOC")
       .Input(
           0,
           "A",
           "Input tensor A. "
           "The shape of A should be (M, K) if transA is 0, "
-          "or (K, M) if transA is non-zero."_docstring,
+          "or (K, M) if transA is non-zero.",
           "T")
       .Input(
           1,
           "B",
           "Input tensor B. "
           "The shape of B should be (K, N) if transB is 0, "
-          "or (N, K) if transB is non-zero."_docstring,
+          "or (N, K) if transB is non-zero.",
           "T")
       .Input(
           2,
           "C",
           "Input tensor C. "
-          "The shape of C should be unidirectional broadcastable to (M, N)."_docstring,
+          "The shape of C should be unidirectional broadcastable to (M, N).",
           "T")
-      .Output(0, "Y", "Output tensor of shape (M, N)."_docstring, "T")
+      .Output(0, "Y", "Output tensor of shape (M, N).", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)",
@@ -1322,25 +1309,25 @@ activation and leaky_relu_alpha.)DOC"_docstring)
            "tensor(uint64)",
            "tensor(int32)",
            "tensor(int64)"},
-          "Constrain input and output types to float/int tensors."_docstring)
+          "Constrain input and output types to float/int tensors.")
       .Attr(
           "transA",
-          "Whether A should be transposed"_docstring,
+          "Whether A should be transposed",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "transB",
-          "Whether B should be transposed"_docstring,
+          "Whether B should be transposed",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "alpha",
-          "Scalar multiplier for the product of input tensors A * B."_docstring,
+          "Scalar multiplier for the product of input tensors A * B.",
           AttributeProto::FLOAT,
           1.0f)
       .Attr(
           "beta",
-          "Scalar multiplier for input tensor C."_docstring,
+          "Scalar multiplier for input tensor C.",
           AttributeProto::FLOAT,
           1.0f)
       .Attr(
@@ -1389,13 +1376,13 @@ activation and leaky_relu_alpha.)DOC"_docstring)
   ONNX_CONTRIB_OPERATOR_SCHEMA(ExpandDims)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "input"_docstring, "T")
-      .Input(1, "axis", "Specified axis to insert a dimension"_docstring, "tensor(int32)")
-      .Output(0, "Y", "output"_docstring, "T")
+      .Input(0, "X", "input", "T")
+      .Input(1, "axis", "Specified axis to insert a dimension", "tensor(int32)")
+      .Output(0, "Y", "output", "T")
       .TypeConstraint(
           "T",
           ONNX_NAMESPACE::OpSchema::all_tensor_types(),
-          "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type."_docstring)
+          "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1427,16 +1414,16 @@ activation and leaky_relu_alpha.)DOC"_docstring)
         }
         updateOutputShape(ctx, 0, output_shape);
       })
-      .SetDoc(R"DOC(ExpandDims echo operator.)DOC"_docstring);
+      .SetDoc(R"DOC(ExpandDims echo operator.)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
-  static constexpr const char* QuantizeLinear_ver1_doc = R"DOC(
+  static const char* QuantizeLinear_ver1_doc = R"DOC(
 The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
 The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
 For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
-Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC"_docstring;
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
       .SetDomain(kMSDomain)
@@ -1445,40 +1432,40 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
           "axis",
           "The axis along which same quantization parameters are applied. It's optional."
           "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars."
-          "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors."_docstring,
+          "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
           AttributeProto::INT,
           false)
       .Input(
           0,
           "x",
-          "N-D full precision Input tensor to be quantized."_docstring,
+          "N-D full precision Input tensor to be quantized.",
           "T1")
       .Input(
           1,
           "y_scale",
           "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,"
           "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
-          "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'."_docstring,
+          "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T1")
       .Input(
           2,
           "y_zero_point",
           "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor"
-          "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'."_docstring,
+          "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T2")
       .Output(
           0,
           "y",
-          "N-D quantized output tensor. It has same shape as input 'x'."_docstring,
+          "N-D quantized output tensor. It has same shape as input 'x'.",
           "T2")
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)"},
-          "Constrain 'x', 'y_scale' to float tensors."_docstring)
+          "Constrain 'x', 'y_scale' to float tensors.")
       .TypeConstraint(
           "T2",
           {"tensor(int8)", "tensor(uint8)"},
-          "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors."_docstring)
+          "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.")
       .SetDoc(QuantizeLinear_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -1490,10 +1477,10 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
         updateOutputShape(ctx, 0, input_shape);
       });
 
-  static constexpr const char* DequantizeLinear_ver1_doc = R"DOC(
+  static const char* DequantizeLinear_ver1_doc = R"DOC(
 The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
 The dequantization formula is y = (x - x_zero_point) * x_scale.
-Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC"_docstring;
+Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
       .SetDomain(kMSDomain)
@@ -1501,39 +1488,39 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
       .Attr("axis",
             "The axis along which same quantization parameters are applied. It's optional."
             "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars."
-            "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors."_docstring,
+            "If it's specified, it means per 'axis' quantization and input 'x_scale' and 'x_zero_point' must be 1-D tensors.",
             AttributeProto::INT,
             false)
       .Input(
           0,
           "x",
-          "N-D quantized Input tensor to be de-quantized."_docstring,
+          "N-D quantized Input tensor to be de-quantized.",
           "T1")
       .Input(
           1,
           "x_scale",
           "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
-          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'."_docstring,
+          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T2")
       .Input(
           2,
           "x_zero_point",
           "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization."
-          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'."_docstring,
+          "If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T1")
       .Output(
           0,
           "y",
-          "N-D full precision output tensor. It has same shape as input 'x'."_docstring,
+          "N-D full precision output tensor. It has same shape as input 'x'.",
           "T2")
       .TypeConstraint(
           "T1",
           {"tensor(int8)", "tensor(uint8)"},
-          "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors."_docstring)
+          "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
       .TypeConstraint(
           "T2",
           {"tensor(float16)", "tensor(float)"},
-          "Constrain 'y', 'x_scale' to float tensors."_docstring)
+          "Constrain 'y', 'x_scale' to float tensors.")
       .SetDoc(DequantizeLinear_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto y_type = ctx.getOutputType(0);
@@ -1547,7 +1534,7 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
         updateOutputShape(ctx, 0, input_shape);
       });
 
-  static constexpr const char* Tokenizer_ver1_doc = R"DOC(
+  static const char* Tokenizer_ver1_doc = R"DOC(
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
   Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
@@ -1577,31 +1564,32 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
 If tokenizer removes the entire content of [C]-input, it will produce [[]].
 I.e. the output shape should be [C][0] or [N][C][0] if input shape was [N][C].
 If the tokenizer receives empty input of [0] then the output is [0] if empty input
-of [N, 0] then [N, 0].)DOC"_docstring;
+of [N, 0] then [N, 0].
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Tokenizer)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "Strings to tokenize"_docstring, "T")
-      .Output(0, "Y", "Tokenized strings"_docstring, "T")
+      .Input(0, "X", "Strings to tokenize", "T")
+      .Output(0, "Y", "Tokenized strings", "T")
       .TypeConstraint(
           "T",
           {"tensor(string)"},
-          "Input/Output is a string tensor"_docstring)
+          "Input/Output is a string tensor")
       .Attr(
           "mark",
-          "Boolean whether to mark the beginning/end character with start of text character (0x02)/end of text character (0x03)."_docstring,
+          "Boolean whether to mark the beginning/end character with start of text character (0x02)/end of text character (0x03).",
           AttributeProto::INT)
       .Attr(
           "pad_value",
-          "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers."_docstring,
+          "The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.",
           AttributeProto::STRING)
       .Attr(
           "tokenexp",
           "An optional string. Token's regular expression in basic POSIX format"
           " (http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
           " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
-          " 'tokenexp' and 'separators' should be set."_docstring,
+          " 'tokenexp' and 'separators' should be set.",
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
@@ -1610,12 +1598,12 @@ of [N, 0] then [N, 0].)DOC"_docstring;
           " Two consecutive segments in X connected by a separator would be divided into two tokens."
           " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
           " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
-          " one should set the 'separators' to [\"\"], which contains an empty string."_docstring,
+          " one should set the 'separators' to [\"\"], which contains an empty string.",
           AttributeProto::STRINGS,
           OPTIONAL_VALUE)
       .Attr(
           "mincharnum",
-          "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored"_docstring,
+          "Minimum number of characters allowed in the output. For example, if mincharnum is 2, tokens such as \"A\" and \"B\" would be ignored",
           AttributeProto::INT)
       .SetDoc(Tokenizer_ver1_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1660,17 +1648,17 @@ of [N, 0] then [N, 0].)DOC"_docstring;
       .SinceVersion(1)
       .SetDoc(R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
- The production MUST never overflow. The accumulation may overflow if and only if in 32 bits.)DOC"_docstring)
-      .Input(0, "A", "N-dimensional matrix A"_docstring, "T1")
-      .Input(1, "B", "N-dimensional matrix B"_docstring, "T2")
-      .Output(0, "Y", "Matrix multiply results from A * B"_docstring, "T3")
-      .TypeConstraint("T1", {"tensor(int16)", "tensor(uint16)"}, "Constrain input A data types as 16-bit integer tensor"_docstring)
-      .TypeConstraint("T2", {"tensor(int16)", "tensor(uint16)"}, "Constrain input B data types as 16-bit integer tensor"_docstring)
+ The production MUST never overflow. The accumulation may overflow if and only if in 32 bits.)DOC")
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
+      .Output(0, "Y", "Matrix multiply results from A * B", "T3")
+      .TypeConstraint("T1", {"tensor(int16)", "tensor(uint16)"}, "Constrain input A data types as 16-bit integer tensor")
+      .TypeConstraint("T2", {"tensor(int16)", "tensor(uint16)"}, "Constrain input B data types as 16-bit integer tensor")
       .TypeConstraint("T3",
                       {"tensor(int32)", "tensor(uint32)"},
                       "Constrain output Y data types as 32-bit integer tensor."
                       "T3 must be tensor(uint32) when both T1 and T2 are tensor(uint16),"
-                      "or must be tensor(int32) when either T1 or T2 is tensor(int16)."_docstring)
+                      "or must be tensor(int32) when either T1 or T2 is tensor(int16).")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto a_type = ctx.getInputType(0);
         auto b_type = ctx.getInputType(1);
@@ -1691,37 +1679,37 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
   ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicQuantizeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "A", "N-dimensional matrix A"_docstring, "T1")
-      .Input(1, "B", "N-dimensional matrix B"_docstring, "T2")
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
       .Input(
           2,
           "b_scale",
           "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
           "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of columns of input 'B'."_docstring,
+          "of elements should be equal to the number of columns of input 'B'.",
           "T1")
       .Input(
           3,
           "b_zero_point",
           "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
           "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of columns of input 'B'."_docstring,
+          "of elements should be equal to the number of columns of input 'B'.",
           "T2",
           OpSchema::Optional)
       .Input(4,
              "bias",
-             "1D input tensor, whose dimension is same as B's last dimension"_docstring,
+             "1D input tensor, whose dimension is same as B's last dimension",
              "T1",
              OpSchema::Optional)
-      .Output(0, "Y", "Matrix multiply results from A * B"_docstring, "T1")
+      .Output(0, "Y", "Matrix multiply results from A * B", "T1")
       .TypeConstraint(
           "T1",
           {"tensor(float)"},
-          "Constrain input A, b_scale and output Y data type as float tensor."_docstring)
+          "Constrain input A, b_scale and output Y data type as float tensor.")
       .TypeConstraint(
           "T2",
           {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input B data type to 8-bit integer tensor."_docstring)
+          "Constrain input B data type to 8-bit integer tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
@@ -1730,28 +1718,28 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulIntegerToFloat)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "A", "N-dimensional matrix A"_docstring, "T1")
-      .Input(1, "B", "N-dimensional matrix B"_docstring, "T2")
+      .Input(0, "A", "N-dimensional matrix A", "T1")
+      .Input(1, "B", "N-dimensional matrix B", "T2")
       .Input(
           2,
           "a_scale",
           "Scale of quantized input 'A'. It could be a scalar or a 1-D tensor, "
           "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of columns of input 'A'."_docstring,
+          "of elements should be equal to the number of columns of input 'A'.",
           "T3")
       .Input(
           3,
           "b_scale",
           "Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, "
           "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of columns of input 'B'."_docstring,
+          "of elements should be equal to the number of columns of input 'B'.",
           "T3")
       .Input(
           4,
           "a_zero_point",
           "Zero point tensor for input 'A'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
           "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of columns of input 'A'."_docstring,
+          "of elements should be equal to the number of columns of input 'A'.",
           "T1",
           OpSchema::Optional)
       .Input(
@@ -1759,58 +1747,59 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
           "b_zero_point",
           "Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
           "which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of columns of input 'B'."_docstring,
+          "of elements should be equal to the number of columns of input 'B'.",
           "T2",
           OpSchema::Optional)
       .Input(
           6,
           "bias",
-          "1D input tensor, whose dimension is same as B's last dimension"_docstring,
+          "1D input tensor, whose dimension is same as B's last dimension",
           "T3",
           OpSchema::Optional)
-      .Output(0, "Y", "Matrix multiply results from A * B"_docstring, "T3")
+      .Output(0, "Y", "Matrix multiply results from A * B", "T3")
       .TypeConstraint(
           "T1",
           {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input A data type to 8-bit integer tensor."_docstring)
+          "Constrain input A data type to 8-bit integer tensor.")
       .TypeConstraint(
           "T2",
           {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input B data type to 8-bit integer tensor."_docstring)
+          "Constrain input B data type to 8-bit integer tensor.")
       .TypeConstraint(
           "T3",
           {"tensor(float)"},
-          "Constrain input a_scale, b_scale and output Y data type as float tensor."_docstring)
+          "Constrain input a_scale, b_scale and output Y data type as float tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
       });
 
-  static constexpr const char* TransposeMatMul_doc = R"DOC(
-Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html)DOC"_docstring;
+  static const char* TransposeMatMul_doc = R"DOC(
+Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("TransposeMatMul"_docstring)
-      .Input(0, "A", "N-dimensional matrix A"_docstring, "T")
-      .Input(1, "B", "N-dimensional matrix B"_docstring, "T")
+      .SetDoc("TransposeMatMul")
+      .Input(0, "A", "N-dimensional matrix A", "T")
+      .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
           "transA",
-          "Whether A should be transposed on the last two dimensions before doing multiplication"_docstring,
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "transB",
-          "Whether B should be transposed on the last two dimensions before doing multiplication"_docstring,
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
           AttributeProto::INT,
           static_cast<int64_t>(0))
-      .Output(0, "Y", "Matrix multiply results"_docstring, "T")
+      .Output(0, "Y", "Matrix multiply results", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .SetDoc(TransposeMatMul_doc)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1928,35 +1917,35 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
 Computes the sum of the low-precision input tensor's element along the provided axes.
 The resulting tensor has the same rank as the input if keepdims equal 1. If keepdims equal 0,
 then the resulting tensor have the reduced dimension pruned. The above behavior is similar to numpy,
-with the exception that numpy default keepdims to False instead of True.)DOC"_docstring)
-      .Input(0, "data", "An input tensor."_docstring, "T1")
-      .Output(0, "reduced", "Reduced output tensor."_docstring, "T2")
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor."_docstring)
+with the exception that numpy default keepdims to False instead of True.)DOC")
+      .Input(0, "data", "An input tensor.", "T1")
+      .Output(0, "reduced", "Reduced output tensor.", "T2")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
       .TypeConstraint("T2",
                       {"tensor(int32)", "tensor(uint32)"},
                       "Constrain output data type to 32-bit integer tensor."
                       "T2 must be tensor(uint32) when T1 is tensor(uint8),"
-                      "or must be tensor(int32) when T1 is tensor(int8)."_docstring)
+                      "or must be tensor(int32) when T1 is tensor(int8).")
       .Attr(
           "axes",
-          "A list of integers, along which to reduce. The default is to reduce over all the dimensions of the input tensor."_docstring,
+          "A list of integers, along which to reduce. The default is to reduce over all the dimensions of the input tensor.",
           AttributeProto::INTS)
       .Attr(
           "keepdims",
-          "Keep the reduced dimension or not, default 1 mean keep reduced dimension."_docstring,
+          "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
           AttributeProto::INT);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAdd)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .FillUsing(QLinearMathDocGenerator("addition",
-                                         "C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point"_docstring));
+                                         "C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point"));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .FillUsing(QLinearMathDocGenerator("multiplication",
-                                         "C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point"_docstring));
+                                         "C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point"));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearReduceMean)
       .SetDomain(kMSDomain)
@@ -1972,39 +1961,40 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
 ```
 "Output = Dequantize(Input) -> ReduceMean on fp32 data -> Quantize(output)",
 
-```)DOC"_docstring)
-      .Input(0, "data", "An input tensor."_docstring, "T")
+```
+)DOC")
+      .Input(0, "data", "An input tensor.", "T")
       .Input(
           1,
           "data_scale",
-          "Input scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Input scale. It's a scalar, which means a per-tensor/layer quantization.",
           "tensor(float)")
       .Input(
           2,
           "data_zero_point",
-          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Input(
           3,
           "reduced_scale",
-          "Output scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
           "tensor(float)")
       .Input(
           4,
           "reduced_zero_point",
-          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
-      .Output(0, "reduced", "Reduced output tensor."_docstring, "T")
-      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors."_docstring)
+      .Output(0, "reduced", "Reduced output tensor.", "T")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
       .Attr(
           "axes",
-          "A list of integers, along which to reduce. The default is to reduce over all the dimensions of the input tensor."_docstring,
+          "A list of integers, along which to reduce. The default is to reduce over all the dimensions of the input tensor.",
           AttributeProto::INTS)
       .Attr(
           "keepdims",
-          "Keep the reduced dimension or not, default 1 mean keep reduced dimension."_docstring,
+          "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
           AttributeProto::INT)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2072,24 +2062,26 @@ The output of this op is the int32 accumulated result of the mul operation
 
 ```
 C (int32) = (A - A_zero_point) * (B - B_zero_point)
-```)DOC"_docstring)
-      .Input(0, "A", "First operand."_docstring, "T")
+```
+
+)DOC")
+      .Input(0, "A", "First operand.", "T")
       .Input(
           1,
           "A_zero_point",
-          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Input(2, "B", "Second operand.", "T")
       .Input(
           3,
           "B_zero_point",
-          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
-      .Output(0, "C", "Constrain output to 32 bit tensor"_docstring, "T1")
-      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors."_docstring)
-      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain output types to 32 bit tensors."_docstring)
+      .Output(0, "C", "Constrain output to 32 bit tensor", "T1")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain output types to 32 bit tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto c_type = ctx.getOutputType(0);
         c_type->mutable_tensor_type()->set_elem_type(
@@ -2146,7 +2138,8 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
 The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
 
 Input and output scales and zero points are used to convert the output to a new quantization range.
-Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_docstring;
+Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAveragePool)
       .SetDomain(kMSDomain)
@@ -2154,16 +2147,16 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_
       .SetDoc(QLinearAveragePoolDoc_ver1)
       .Attr(
           "count_include_pad",
-          "Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad."_docstring,
+          "Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "kernel_shape",
-          "The size of the kernel along each axis."_docstring,
+          "The size of the kernel along each axis.",
           AttributeProto::INTS)
       .Attr(
           "strides",
-          "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis."_docstring,
+          "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
           AttributeProto::INTS,
           OPTIONAL_VALUE)
       .Attr(
@@ -2174,7 +2167,7 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_
       .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr(
           "ceil_mode",
-          "Whether to use ceil or floor (default) to compute the output shape."_docstring,
+          "Whether to use ceil or floor (default) to compute the output shape.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Input(
@@ -2190,28 +2183,28 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_
           "size. Optionally, if dimension denotation is "
           "in effect, the operation expects the input "
           "data tensor to arrive with the dimension denotation "
-          "of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...]."_docstring,
+          "of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
           "T")
       .Input(
           1,
           "x_scale",
-          "Input scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Input scale. It's a scalar, which means a per-tensor/layer quantization.",
           "tensor(float)")
       .Input(
           2,
           "x_zero_point",
-          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Input(
           3,
           "y_scale",
-          "Output scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
           "tensor(float)")
       .Input(
           4,
           "y_zero_point",
-          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Output(
@@ -2220,12 +2213,12 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_
           "Output data tensor from average or max pooling across "
           "the input tensor. Dimensions will vary based "
           "on various kernel, stride, and pad sizes. Floor value of "
-          "the dimension is used"_docstring,
+          "the dimension is used",
           "T")
       .TypeConstraint(
           "T",
           {"tensor(uint8)", "tensor(int8)"},
-          "Constrain input and output types to 8 bit tensors."_docstring)
+          "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -2246,49 +2239,50 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output))DOC"_
   const char* QLinearLeakyReluDoc_ver1 = R"DOC(
 QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
 and produces one output data (Tensor<T>) where the function `f(x) = quantize(alpha * dequantize(x)) for dequantize(x) < 0`,
-`f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.)DOC"_docstring;
+`f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
+)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearLeakyRelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(QLinearLeakyReluDoc_ver1)
-      .Attr("alpha", "Coefficient of leakage."_docstring, AttributeProto::FLOAT, 0.01f)
+      .Attr("alpha", "Coefficient of leakage.", AttributeProto::FLOAT, 0.01f)
       .Input(0, "X", "Input tensor", "T")
       .Input(1, "X_scale",
-             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+             "Input X's scale. It's a scalar, which means a per-tensor/layer quantization.",
              "tensor(float)")
       .Input(2, "X_zero_point",
-             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+             "Input X's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
              "T", OpSchema::Optional)
       .Input(3, "Y_scale",
-             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+             "Output Y's scale. It's a scalar, which means a per-tensor/layer quantization.",
              "tensor(float)")
       .Input(4, "Y_zero_point",
-             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization."_docstring,
+             "Output Y's zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
              "T", OpSchema::Optional)
-      .Output(0, "Y", "Output tensor"_docstring, "T")
+      .Output(0, "Y", "Output tensor", "T")
       .TypeConstraint(
           "T",
           {"tensor(uint8)", "tensor(int8)"},
-          "Constrain input and output types to 8 bit tensors."_docstring)
+          "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.)DOC"_docstring)
-      .Input(0, "X", "An input tensor to hash."_docstring, "T1")
-      .Output(0, "Y", "32-bit hash value."_docstring, "T2")
-      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(uint64)", "tensor(int64)", "tensor(float)", "tensor(double)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode."_docstring)
-      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned and signed 32-bit integer tensor."_docstring)
+      .SetDoc(R"DOC(The underlying implementation is MurmurHash3_x86_32 generating low latency 32bits hash suitable for implementing lookup tables, Bloom filters, count min sketch or feature hashing.)DOC")
+      .Input(0, "X", "An input tensor to hash.", "T1")
+      .Output(0, "Y", "32-bit hash value.", "T2")
+      .TypeConstraint("T1", {"tensor(uint32)", "tensor(int32)", "tensor(uint64)", "tensor(int64)", "tensor(float)", "tensor(double)", "tensor(string)"}, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.")
+      .TypeConstraint("T2", {"tensor(uint32)", "tensor(int32)"}, "Constrain output type to unsigned and signed 32-bit integer tensor.")
       .Attr(
           "seed",
-          "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0."_docstring,
+          "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0.",
           AttributeProto::INT,
           (int64_t)0LL)
       .Attr(
           "positive",
-          "If value is 1, output type is uint32_t, else int32_t. Default value is 1."_docstring,
+          "If value is 1, output type is uint32_t, else int32_t. Default value is 1.",
           AttributeProto::INT,
           (int64_t)1LL)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -2314,17 +2308,17 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "data", "Tensor of rank r >= 1."_docstring, "T")
-      .Input(1, "indices", "Tensor of rank q >= 1."_docstring, "Tind")
-      .Output(0, "output", "Tensor of rank q-1+r-indices[-1]."_docstring, "T")
+      .Input(0, "data", "Tensor of rank r >= 1.", "T")
+      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
+      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
-          "Constrain input and output types to any tensor type."_docstring)
+          "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
           {"tensor(int32)", "tensor(int64)"},
-          "Constrain indice type to int32 or int64"_docstring)
+          "Constrain indice type to int32 or int64")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (!hasNInputShapes(ctx, 2)) {
@@ -2372,7 +2366,8 @@ Example 3:
 Example 4:
   data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
   indices = [[[0,1]],[[1,0]]]
-  output  = [[[2,3]],[[4,5]]])DOC"_docstring);
+  output  = [[[2,3]],[[4,5]]]
+)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(WordConvEmbedding)
       .SetDomain(kMSDomain)
@@ -2380,36 +2375,36 @@ Example 4:
       .Attr(
           "embedding_size",
           "Integer representing the embedding vector size for each word."
-          "If not provide, use the fileter size of conv weight"_docstring,
+          "If not provide, use the fileter size of conv weight",
           AttributeProto::INT,
           OPTIONAL_VALUE)
       .Attr(
           "conv_window_size",
           "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
           "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
-          "If not provide, use the first dimension of conv kernal shape."_docstring,
+          "If not provide, use the first dimension of conv kernal shape.",
           AttributeProto::INT,
           OPTIONAL_VALUE)
       .Attr(
           "char_embedding_size",
           "Integer representing the embedding vector size for each char."
-          "If not provide, use the char embedding size of embedding vector."_docstring,
+          "If not provide, use the char embedding size of embedding vector.",
           AttributeProto::INT,
           OPTIONAL_VALUE)
-      .Input(0, "Sequence", "Specify batchs of sequence words to embedding"_docstring, "T")
-      .Input(1, "W", "Specify weights of conv"_docstring, "T1")
-      .Input(2, "B", "Specify bias of conv"_docstring, "T1")
-      .Input(3, "C", "Specify embedding vector of char"_docstring, "T1")
-      .Output(0, "Y", "output"_docstring, "T1")
+      .Input(0, "Sequence", "Specify batchs of sequence words to embedding", "T")
+      .Input(1, "W", "Specify weights of conv", "T1")
+      .Input(2, "B", "Specify bias of conv", "T1")
+      .Input(3, "C", "Specify embedding vector of char", "T1")
+      .Output(0, "Y", "output", "T1")
       .TypeConstraint(
           "T",
           {"tensor(int32)"},
-          "Constrain to tensor(int32)."_docstring)
+          "Constrain to tensor(int32).")
       .TypeConstraint(
           "T1",
           {"tensor(float)"},
-          "Constrain to tensor(float)."_docstring)
-      .SetDoc(R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC"_docstring);
+          "Constrain to tensor(float).")
+      .SetDoc(R"DOC(The WordConvEmbedding takes in a batch of sequence words and embed each word to a vector.)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Pad)
       .SetDomain(kMSDomain)
@@ -2418,7 +2413,7 @@ Example 4:
           "mode",
           "Three modes: `constant`(default) - pads with a given constant value, "
           "`reflect` - pads with the reflection of the vector mirrored on the first and last values of the vector along each axis, "
-          "`edge` - pads with the edge values of array"_docstring,
+          "`edge` - pads with the edge values of array",
           AttributeProto::STRING,
           std::string("constant"))
       .Input(0, "data", "Input tensor.", "T")
@@ -2430,19 +2425,19 @@ Example 4:
           "`pads` should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]. "
           "`pads` format (1D example) should be as follow [x1_begin, x2_begin,...,x1_end, x2_end,...], "
           "where xi_begin is the number of pixels added at the beginning of axis `i` and "
-          "xi_end, the number of pixels added at the end of axis `i`."_docstring,
+          "xi_end, the number of pixels added at the end of axis `i`.",
           "tensor(int64)")
       .Input(
           2,
           "value",
-          "(Optional) A scalar or rank 1 tensor containing a single value to be filled if the mode chosen is `constant` (by default it is 0.0)."_docstring,
+          "(Optional) A scalar or rank 1 tensor containing a single value to be filled if the mode chosen is `constant` (by default it is 0.0).",
           "T",
           OpSchema::Optional)
-      .Output(0, "output", "Tensor after padding."_docstring, "T")
+      .Output(0, "output", "Tensor after padding.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2518,28 +2513,29 @@ Example 4:
                     [0.0, 0.0, 2.3, 3.4],
                     [0.0, 0.0, 4.5, 5.7],
                     ],
-                    ])DOC"_docstring);
+                    ]
+            )DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Unique)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "x", "A 1-D input tensor that is to be processed."_docstring, "T")
+      .Input(0, "x", "A 1-D input tensor that is to be processed.", "T")
       .Output(0, "y",
               "A 1-D tensor of the same type as 'x' "
               "containing all the unique values in 'x' sorted "
-              "in the same order that they occur in the input 'x'"_docstring,
+              "in the same order that they occur in the input 'x'",
               "T")
       .Output(1, "idx",
               "A 1-D INT64 tensor of the same size as 'x' "
               "containing the indices for each value in 'x' "
-              "in the output 'uniques'"_docstring,
+              "in the output 'uniques'",
               "tensor(int64)")
       .Output(2, "counts",
               "A 1-D INT64 tensor containing the "
               "the count of each element "
-              "of 'uniques' in the input 'x'"_docstring,
+              "of 'uniques' in the input 'x'",
               "tensor(int64)")
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type."_docstring)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Input can be of any tensor type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2582,7 +2578,8 @@ Example 4:
                 input_x = [2, 1, 1, 3, 4, 3]
                 output_uniques = [2, 1, 3, 4]
                 output_idx = [0, 1, 1, 2, 3, 2]
-                output_counts = [1, 2, 2, 1])DOC"_docstring);
+                output_counts = [1, 2, 2, 1]
+              )DOC");
 
   //see:https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
   ONNX_CONTRIB_OPERATOR_SCHEMA(CDist)
@@ -2592,14 +2589,14 @@ Example 4:
             "The distance metric to use. If a string, the distance function can be \"braycurtis\", \"canberra\", "
             "\"chebyshev\", \"cityblock\", \"correlation\", \"cosine\", \"dice\", \"euclidean\", \"hamming\", \"jaccard\", "
             "\"jensenshannon\", \"kulsinski\", \"mahalanobis\", \"matching\", \"minkowski\", \"rogerstanimoto\", \"russellrao\", "
-            "\"seuclidean\", \"sokalmichener\", \"sokalsneath\", \"sqeuclidean\", \"wminkowski\", \"yule\"."_docstring,
+            "\"seuclidean\", \"sokalmichener\", \"sokalsneath\", \"sqeuclidean\", \"wminkowski\", \"yule\".",
             AttributeProto::STRING, std::string("sqeuclidean"))
-      .Input(0, "A", "2D matrix with shape (M,N)"_docstring, "T")
-      .Input(1, "B", "2D matrix with shape (K,N)"_docstring, "T")
+      .Input(0, "A", "2D matrix with shape (M,N)", "T")
+      .Input(1, "B", "2D matrix with shape (K,N)", "T")
       .Output(0, "C",
-              "A 2D Matrix that represents the distance between each pair of the two collections of inputs."_docstring,
+              "A 2D Matrix that represents the distance between each pair of the two collections of inputs.",
               "T")
-      .TypeConstraint("T", {"tensor(float)", "tensor(double)"}, "Constrains input to only numeric types."_docstring);
+      .TypeConstraint("T", {"tensor(float)", "tensor(double)"}, "Constrains input to only numeric types.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(CropAndResize)
       .SetDomain(kMSDomain)
@@ -2607,13 +2604,13 @@ Example 4:
       .Attr(
           "mode",
           "The pooling method. Two modes are supported: 'bilinear' and 'nearest'. "
-          "Default is 'bilinear'."_docstring,
+          "Default is 'bilinear'.",
           AttributeProto::STRING,
           std::string("bilinear"))
       .Attr(
           "extrapolation_value",
           "Value used for extrapolation, when applicable. "
-          "Default is 0.0f. "_docstring,
+          "Default is 0.0f. ",
           AttributeProto::FLOAT,
           0.f)
       .Input(
@@ -2622,7 +2619,7 @@ Example 4:
           "Input data tensor from the previous operator; "
           "4-D feature map of shape (N, C, H, W), "
           "where N is the batch size, C is the number of channels, "
-          "and H and W are the height and the width of the data."_docstring,
+          "and H and W are the height and the width of the data.",
           "T1")
       .Input(
           1,
@@ -2631,35 +2628,35 @@ Example 4:
           "2-D input of shape (num_rois, 4) given as "
           "[[y1, x1, y2, x2], ...]. "
           "The RoIs' coordinates are normalized in the coordinate system of the input image. "
-          "Each coordinate set has a 1:1 correspondence with the 'batch_indices' input."_docstring,
+          "Each coordinate set has a 1:1 correspondence with the 'batch_indices' input.",
           "T1")
       .Input(
           2,
           "batch_indices",
           "1-D tensor of shape (num_rois,) with each element denoting "
-          "the index of the corresponding image in the batch."_docstring,
+          "the index of the corresponding image in the batch.",
           "T2")
       .Input(
           3,
           "crop_size",
           "1-D tensor of 2 elements: [crop_height, crop_width]. "
-          "All cropped image patches are resized to this size. Both crop_height and crop_width need to be positive."_docstring,
+          "All cropped image patches are resized to this size. Both crop_height and crop_width need to be positive.",
           "T2")
       .Output(
           0,
           "Y",
           "RoI pooled output, 4-D tensor of shape "
           "(num_rois, C, crop_height, crop_width). The r-th batch element Y[r-1] "
-          "is a pooled feature map corresponding to the r-th RoI X[r-1]."_docstring,
+          "is a pooled feature map corresponding to the r-th RoI X[r-1].",
           "T1")
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain types to float tensors."_docstring)
+          "Constrain types to float tensors.")
       .TypeConstraint(
           "T2",
           {"tensor(int32)"},
-          "Constrain types to int tensors."_docstring)
+          "Constrain types to int tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         if (!hasNInputShapes(ctx, 4)) {
           return;
@@ -2690,7 +2687,7 @@ Example 4:
         Returns a tensor with crops from the input image at positions defined at the bounding box locations in boxes.
         The cropped boxes are all resized (with bilinear or nearest neighbor interpolation) to
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
-        The resizing is corner aligned.)DOC"_docstring);
+        The resizing is corner aligned.)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
@@ -2698,26 +2695,26 @@ Example 4:
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("LayerNormalization")
       .Attr("axis",
-            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs)."_docstring,
+            "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .Attr("epsilon",
-            "The epsilon value to use to avoid division by zero."_docstring,
+            "The epsilon value to use to avoid division by zero.",
             AttributeProto::FLOAT, 1e-5f)
       .AllowUncheckedAttributes()
-      .Input(0, "X", "Input data tensor from the previous layer."_docstring, "T")
-      .Input(1, "scale", "Scale tensor."_docstring, "T")
-      .Input(2, "B", "Bias tensor."_docstring, "T")
-      .Output(0, "Y", "Output data tensor."_docstring, "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional)
+      .Input(0, "X", "Input data tensor from the previous layer.", "T")
+      .Input(1, "scale", "Scale tensor.", "T")
+      .Input(2, "B", "Bias tensor.", "T")
+      .Output(0, "Y", "Output data tensor.", "T")
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors."_docstring)
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)"},
-          "Constrain mean and inv_std_var to be float tensors."_docstring)
+          "Constrain mean and inv_std_var to be float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2753,47 +2750,47 @@ Example 4:
     RegisterNchwcSchemas();
   }
 
-  static constexpr const char* Gelu_ver1_doc =
+  static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
 the expected transformation of a stochastic regularizer which randomly applies
 the identity or zero map to a neuron's input. The GELU nonlinearity weights
-inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC"_docstring;
+inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Gelu_ver1_doc)
-      .Input(0, "X", "The input data as Tensor."_docstring, "T")
-      .Output(0, "Y", "The output."_docstring, "T")
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  static constexpr const char* BiasGelu_ver1_doc =
+  static const char* BiasGelu_ver1_doc =
       R"DOC(Bias Gelu.
-It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC"_docstring;
+It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(BiasGelu_ver1_doc)
-      .Input(0, "A", "The normal input data."_docstring, "T")
-      .Input(1, "B", "The bias input data that is a 1D tensor."_docstring, "T")
-      .Output(0, "C", "The output."_docstring, "T")
+      .Input(0, "A", "The normal input data.", "T")
+      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
+      .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   // Used to be ONNX 1.7 Inverse(12)
   // Comment out docs not to increase the binary size
   //
-  //  static constexpr const char* Inverse_ver1_doc = R"DOC(
+  //  static const char* Inverse_ver1_doc = R"DOC(
   //Calculates inverse of a square matrix or batches of square matrices.
   //Inverse takes one input tensor of shape `[*, M, M]`, where `*` is zero or more batch dimensions,
   //and the inner-most 2 dimensions form square matrices. These matrices must be invertible (full-rank).
@@ -2806,14 +2803,14 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible."_docstring, "T")
-      .Output(0, "Y", "Output tensor of the same type and shape as the input tensor."_docstring, "T")
+      .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
+      .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)",
            "tensor(float)",
            "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         using namespace ONNX_NAMESPACE;
