@@ -47,6 +47,7 @@ struct TrainingParameters {
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
+  bool use_invertible_layernorm_grad = false;
 };
 
 struct TrainingConfigurationResult {
@@ -144,6 +145,8 @@ TrainingConfigurationResult ConfigureSessionForTraining(
     config.optimizer_config = opt;
   }
 
+  config.gradient_graph_config.use_invertible_layernorm_grad = parameters.use_invertible_layernorm_grad;
+
   training::TrainingSession::TrainingConfigurationResult config_result{};
 
   OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
@@ -177,7 +180,8 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
-      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs);
+      .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
+      .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())

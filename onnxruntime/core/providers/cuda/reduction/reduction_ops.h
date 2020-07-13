@@ -51,7 +51,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
         fast_reduction_(false) {
     // We need to cast away the const as PerThreadCudnnHandle() is currently a non-const method
     // TODO: Clean up the CUDAExecutionProvider interface to avoid this
-    cuda_ep_ = const_cast<CUDAExecutionProvider*>(dynamic_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
+    cuda_ep_ = const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
   }
 
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "attention_quant.h"
-#include "contrib_ops/cpu/bert/attention_helper.h"
+#include "core/framework/op_kernel.h"
+#include "contrib_ops/cpu/bert/attention_cpu_base.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/qmath.h"
@@ -15,30 +15,90 @@ using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 namespace contrib {
+
+template <typename T>
+class QAttention : public OpKernel, public AttentionCPUBase {
+ public:
+  QAttention(const OpKernelInfo& info);
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  void TryPackWeights(const OpKernelInfo& info);
+
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  BufferUniquePtr packed_weights_;
+  size_t packed_weights_size_;
+#endif
+};
+
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T, QInput, QWeight)                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      QAttention,                                                        \
-      kMSDomain,                                                         \
-      1,                                                                 \
-      T##_##QInput##_##QWeight,                                          \
-      kCpuExecutionProvider,                                             \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<QInput>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<QWeight>())  \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
-      QAttention<T, QInput, QWeight>);
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QAttention,
+    kMSDomain,
+    1,
+    float,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QAttention<float>);
 
-REGISTER_KERNEL_TYPED(float, uint8_t, int8_t)
-REGISTER_KERNEL_TYPED(float, uint8_t, uint8_t)
-
-template <typename T, typename QInput, typename QWeight>
-QAttention<T, QInput, QWeight>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
+template <typename T>
+QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
+  TryPackWeights(info);
 }
 
-template <typename T, typename QInput, typename QWeight>
-Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
+template <typename T>
+void QAttention<T>::TryPackWeights(const OpKernelInfo& info) {
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+  // Check if the weights tensor is constant.
+  const Tensor* weights;
+  if (!info.TryGetConstantInput(1, &weights)) {
+    return;
+  }
+
+  const auto& weights_dims = weights->Shape().GetDims();
+  if (weights_dims.size() != 2) {
+    return;
+  }
+
+  const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
+  const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
+  const size_t head_size = hidden_size / num_heads_;
+
+  // Bail out if the weights shape has an expected shape.
+  if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
+    return;
+  }
+
+  const auto* weights_data = static_cast<const uint8_t*>(weights->DataRaw());
+  const bool weights_is_signed = weights->IsDataType<int8_t>();
+
+  packed_weights_size_ = MlasGemmPackBSize(head_size, hidden_size, weights_is_signed);
+  if (packed_weights_size_ == 0) {
+    return;
+  }
+
+  const size_t loop_len = 3 * num_heads_;
+  auto alloc = info.GetAllocator(0, OrtMemTypeDefault);
+  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
+  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+
+  for (size_t i = 0; i < loop_len; i++) {
+    MlasGemmPackB(head_size, hidden_size, weights_data, hidden_size_x3, weights_is_signed, packed_weights_data);
+    packed_weights_data += packed_weights_size_;
+    weights_data += head_size;
+  }
+#else
+  ORT_UNUSED_PARAMETER(info);
+#endif
+}
+
+template <typename T>
+Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Input and output shapes:
   //   Input  0 - input             : (batch_size, sequence_length, hidden_size)
   //   Input  1 - weights           : (hidden_size, 3 * hidden_size)
@@ -74,19 +134,18 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   T dequant_scale = input_scale * weight_scale;
 
-  QInput input_zero_point = 0;
+  uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
                       "input zero point must be a scalar or 1D tensor of size 1.");
-    input_zero_point = *i_zp_tensor->template Data<QInput>();
+    input_zero_point = *i_zp_tensor->template Data<uint8_t>();
   }
 
-  QWeight weight_zero_point = 0;
+  uint8_t weight_zero_point = 0;
   if (w_zp_tensor != nullptr) {
-    // CUDA only support symmetric quantization for Attention
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(w_zp_tensor),
                       "weight zero point must be a scalar or 1D tensor of size 1.");
-    weight_zero_point = *w_zp_tensor->template Data<QWeight>();
+    weight_zero_point = *static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
   }
 
   const auto& shape = input->Shape();
@@ -114,9 +173,10 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
-    const auto input_data = input->template Data<QInput>();
-    const auto weights_data = weights->template Data<QWeight>();
-    const auto bias_data = bias->template Data<T>();
+    const auto* input_data = input->template Data<uint8_t>();
+    const auto* weights_data = static_cast<const uint8_t*>(weights->DataRaw());
+    const bool weights_is_signed = weights->IsDataType<int8_t>();
+    const auto* bias_data = bias->template Data<T>();
 
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(hidden_size);
@@ -135,6 +195,28 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxNxH)          (B.)S x NH            S x NH
         // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
+#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
+        if (packed_weights_) {
+          const auto* packed_weight =
+            static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+          MlasGemm(
+              sequence_length,                // M      = S
+              head_size,                      // N      = H
+              hidden_size,                    // K      = NH
+              input_data + input_offset,      // A
+              hidden_size,                    // lda    = NH
+              input_zero_point,               // input zero point
+              packed_weight,                  // B
+              weight_zero_point,              // weight zero point
+              weights_is_signed,              // weight data type
+              qkv_dest + qkv_offset,          // C
+              head_size,                      // ldc
+              &dequant_scale,                 // output scale
+              bias_data + weights_offset,     // bias
+              nullptr);                       // use single-thread
+          continue;
+        }
+#endif
         QGemm(sequence_length,                // M      = S
               head_size,                      // N      = H
               hidden_size,                    // K      = NH
@@ -144,6 +226,7 @@ Status QAttention<T, QInput, QWeight>::Compute(OpKernelContext* context) const {
               weights_data + weights_offset,  // B
               3 * hidden_size,                // ldb    = 3NH
               weight_zero_point,              // weight zero point
+              weights_is_signed,              // weight data type
               qkv_dest + qkv_offset,          // C
               head_size,                      // ldc
               &dequant_scale,                 // output scale
