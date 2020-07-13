@@ -65,7 +65,6 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-
 template <typename T, typename U, bool use_mean>
 __device__ void cuLoadWriteStridedInputs(
     const int i1_block,
@@ -298,7 +297,7 @@ __global__ void cuComputeGradInput(
     const U c_mean = use_mean ? mean[i1] : U(0);
     const U c_invvar = invvar[i1];
     const T* k_input = use_mean ? input + i1 * n2 : nullptr;
-    const T* k_output = use_mean ? nullptr: output + i1 * n2;
+    const T* k_output = use_mean ? nullptr : output + i1 * n2;
     const T* k_dout = dout + i1 * n2;
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
@@ -430,22 +429,22 @@ __global__ void cuComputeGradInput(
 
 template <typename T, typename U>
 void HostLayerNormGradient(
-  const cudaDeviceProp& prop,
-  const T* dout,
-  const T* input,
-  const T* output,
-  const T* gamma,
-  const T* beta,
-  const U* mean,
-  const U* invvar,
-  int64_t n1,
-  int64_t n2,
-  T* grad_input,
-  T* grad_gamma,
-  T* grad_beta,
-  U* part_grad_gamma,
-  U* part_grad_beta,
-  const int part_size) {
+    const cudaDeviceProp& prop,
+    const T* dout,
+    const T* input,
+    const T* output,
+    const T* gamma,
+    const T* beta,
+    const U* mean,
+    const U* invvar,
+    int64_t n1,
+    int64_t n2,
+    T* grad_input,
+    T* grad_gamma,
+    T* grad_beta,
+    U* part_grad_gamma,
+    U* part_grad_beta,
+    const int part_size) {
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
 
@@ -457,28 +456,28 @@ void HostLayerNormGradient(
 
   if (mean == nullptr) {
     cuComputePartGradGammaBeta<T, U, false><<<blocks2, threads2, nshared2, 0>>>(
-      dout,
-      input,
-      output,
-      gamma,
-      beta,
-      mean,
-      invvar,
-      n1, n2,
-      part_grad_gamma,
-      part_grad_beta);
+        dout,
+        input,
+        output,
+        gamma,
+        beta,
+        mean,
+        invvar,
+        n1, n2,
+        part_grad_gamma,
+        part_grad_beta);
   } else {
     cuComputePartGradGammaBeta<T, U, true><<<blocks2, threads2, nshared2, 0>>>(
-      dout,
-      input,
-      output,
-      gamma,
-      beta,
-      mean,
-      invvar,
-      n1, n2,
-      part_grad_gamma,
-      part_grad_beta);
+        dout,
+        input,
+        output,
+        gamma,
+        beta,
+        mean,
+        invvar,
+        n1, n2,
+        part_grad_gamma,
+        part_grad_beta);
   }
 
   const dim3 threads3(warp_size, 8, 1);
@@ -500,15 +499,15 @@ void HostLayerNormGradient(
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
   if (mean == nullptr) {
     cuComputeGradInput<T, U, false><<<blocks1, threads1, nshared, 0>>>(
-      dout,
-      input,
-      output,
-      gamma,
-      beta,
-      mean,
-      invvar,
-      n1, n2,
-      grad_input);
+        dout,
+        input,
+        output,
+        gamma,
+        beta,
+        mean,
+        invvar,
+        n1, n2,
+        grad_input);
   } else {
     cuComputeGradInput<T, U, true><<<blocks1, threads1, nshared, 0>>>(
         dout,
@@ -523,9 +522,9 @@ void HostLayerNormGradient(
   }
 }
 
-#define LAYERNORMGRAD_IMPL(T, U)                                                                                                              \
-  template void HostLayerNormGradient(const cudaDeviceProp& prop, const T* dout, const T* input, const T* output,                             \
-                                      const T* gamma, const T* beta, const U* mean, const U* invvar, int64_t n1, int64_t n2,                  \
+#define LAYERNORMGRAD_IMPL(T, U)                                                                                             \
+  template void HostLayerNormGradient(const cudaDeviceProp& prop, const T* dout, const T* input, const T* output,            \
+                                      const T* gamma, const T* beta, const U* mean, const U* invvar, int64_t n1, int64_t n2, \
                                       T* grad_input, T* grad_gamma, T* grad_beta, U* part_grad_gamma, U* part_grad_beta, const int part_size);
 
 LAYERNORMGRAD_IMPL(float, float)

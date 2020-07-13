@@ -38,14 +38,14 @@ __global__ void custom_layer_norm(
   constexpr int iteration_stride = row_stride / iterations;
 
   cg::thread_block b = cg::this_thread_block();
-  cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+  cg::thread_block_tile<GPU_WARP_SIZE> g = cg::tiled_partition<GPU_WARP_SIZE>(b);
 
   int row = blockIdx.x;
   int id = threadIdx.x;
-  int gid = id / 32;
+  int gid = id / GPU_WARP_SIZE;
 
   float vals_arr[iterations];
-  __shared__ float shr[iteration_stride >> 5];
+  __shared__ float shr[iteration_stride >> GPU_WARP_SIZE_LOG2];
 
   float sum = 0.f;
 #pragma unroll
@@ -62,20 +62,18 @@ __global__ void custom_layer_norm(
 
   b.sync();
 
-  if (g.thread_rank() < (iteration_stride >> 5)) sum = shr[g.thread_rank()];
+  if (g.thread_rank() < (iteration_stride >> GPU_WARP_SIZE_LOG2)) sum = shr[g.thread_rank()];
 
-#if __CUDA_ARCH__ < 700
   b.sync();
-#endif
 
-  for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+  for (int stride = 1; stride < (iteration_stride >> GPU_WARP_SIZE_LOG2); stride *= 2) {
     sum += WARP_SHFL_DOWN(sum, stride);
   }
 
   sum = WARP_SHFL(sum, 0);
   float mean = sum / row_stride;
   if (g.thread_rank() == 0) means[row] = mean;
-  float inv_variance, variance = 0.f;
+  float variance = 0.f;
   for (int i = 0; i < iterations; i++) {
     variance += (vals_arr[i] - mean) * (vals_arr[i] - mean);
   }
@@ -88,17 +86,17 @@ __global__ void custom_layer_norm(
 
   b.sync();
 
-  if (g.thread_rank() < (iteration_stride >> 5)) variance = shr[g.thread_rank()];
+  if (g.thread_rank() < (iteration_stride >> GPU_WARP_SIZE_LOG2)) variance = shr[g.thread_rank()];
 
   b.sync();
 
-  for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+  for (int stride = 1; stride < (iteration_stride >> GPU_WARP_SIZE_LOG2); stride *= 2) {
     variance += WARP_SHFL_DOWN(variance, stride);
   }
   variance = WARP_SHFL(variance, 0);
   variance /= row_stride;
   variance += epsilon;
-  inv_variance = rsqrtf(variance);
+  const float inv_variance = rsqrtf(variance);
   if (g.thread_rank() == 0) invvars[row] = inv_variance;
 
   for (int i = 0; i < iterations; i++) {
@@ -122,15 +120,15 @@ __global__ void custom_layer_norm(
   constexpr int iteration_stride = row_stride / iterations;
 
   cg::thread_block b = cg::this_thread_block();
-  cg::thread_block_tile<32> g = cg::tiled_partition<32>(b);
+  cg::thread_block_tile<GPU_WARP_SIZE> g = cg::tiled_partition<GPU_WARP_SIZE>(b);
 
   int row = blockIdx.x;
   int id = threadIdx.x;
-  int gid = id >> 5;
+  int gid = id >> GPU_WARP_SIZE_LOG2;
 
   __half2 vals_arr[iterations];
   float2 vals_f[iterations];
-  __shared__ float shr[iteration_stride >> 5];
+  __shared__ float shr[iteration_stride >> GPU_WARP_SIZE_LOG2];
 
   __half2* vals_cast = reinterpret_cast<__half2*>(vals);
   const __half2* residual_cast = reinterpret_cast<const __half2*>(residual);
@@ -151,17 +149,17 @@ __global__ void custom_layer_norm(
 
   b.sync();
 
-  if (g.thread_rank() < (iteration_stride >> 5)) sum = shr[g.thread_rank()];
+  if (g.thread_rank() < (iteration_stride >> GPU_WARP_SIZE_LOG2)) sum = shr[g.thread_rank()];
 
   b.sync();
 
-  for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+  for (int stride = 1; stride < (iteration_stride >> GPU_WARP_SIZE_LOG2); stride *= 2) {
     sum += WARP_SHFL_DOWN(sum, stride);
   }
   sum = WARP_SHFL(sum, 0);
   float mean = sum / (row_stride * 2);
 
-  float inv_variance, variance = 0.f;
+  float variance = 0.f;
   for (int i = 0; i < iterations; i++) {
     variance += (vals_f[i].x - mean) * (vals_f[i].x - mean);
     variance += (vals_f[i].y - mean) * (vals_f[i].y - mean);
@@ -175,17 +173,17 @@ __global__ void custom_layer_norm(
 
   b.sync();
 
-  if (g.thread_rank() < (iteration_stride >> 5)) variance = shr[g.thread_rank()];
+  if (g.thread_rank() < (iteration_stride >> GPU_WARP_SIZE_LOG2)) variance = shr[g.thread_rank()];
 
   b.sync();
 
-  for (int stride = 1; stride < (iteration_stride >> 5); stride *= 2) {
+  for (int stride = 1; stride < (iteration_stride >> GPU_WARP_SIZE_LOG2); stride *= 2) {
     variance += WARP_SHFL_DOWN(variance, stride);
   }
   variance = WARP_SHFL(variance, 0);
   variance /= (row_stride * 2);
   variance += epsilon;
-  inv_variance = rsqrt(variance);
+  const float inv_variance = rsqrt(variance);
 
   __half2 mean_h = __float2half2_rn(mean);
   __half2 variance_h = __float2half2_rn(variance);

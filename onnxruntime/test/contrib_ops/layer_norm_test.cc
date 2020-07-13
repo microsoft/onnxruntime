@@ -28,7 +28,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
                           int64_t axis = -1,
                           int64_t keep_dims = 1,
                           double error_tolerance = 1e-4,
-                          bool test_fp16=false) {
+                          bool test_fp16 = false) {
   const std::vector<int64_t>& n_x_m_dims = x_dims;
   std::vector<int64_t> n_dims, m_dims;
   ASSERT_TRUE(SplitDims(n_x_m_dims, axis, n_dims, m_dims).IsOK());
@@ -54,7 +54,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   std::vector<float> scale_data = random.Uniform<float>(m_dims, k_random_data_min, k_random_data_max);
   std::vector<float> B_data = random.Uniform<float>(m_dims, k_random_data_min, k_random_data_max);
 
-  if(test_fp16){
+  if (test_fp16) {
     std::vector<MLFloat16> X_data_half(X_data.size());
     std::vector<MLFloat16> scale_data_half(scale_data.size());
     std::vector<MLFloat16> B_data_half(B_data.size());
@@ -68,8 +68,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
     std::vector<MLFloat16> Y_data = FillZeros<MLFloat16>(n_x_m_dims);
     test.AddOutput<MLFloat16>("output", n_x_m_dims, Y_data);
-  }
-  else{
+  } else {
     test.AddInput<float>("X", n_x_m_dims, X_data);
     test.AddInput<float>("scale", m_dims, scale_data, true);
     test.AddInput<float>("B", m_dims, B_data, true);
@@ -81,7 +80,6 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   std::vector<float> mean_data = FillZeros<float>(stats_dims);
   std::vector<float> var_data = FillZeros<float>(stats_dims);
 
-  
   test.AddOutput<float>("mean", stats_dims, mean_data);
   test.AddOutput<float>("var", stats_dims, var_data);
 

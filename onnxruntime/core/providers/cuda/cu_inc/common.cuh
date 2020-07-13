@@ -259,6 +259,7 @@ struct GridDim {
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = 32;
+constexpr int GPU_WARP_SIZE_LOG2 = 5;
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff)

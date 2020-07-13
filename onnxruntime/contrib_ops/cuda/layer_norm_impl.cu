@@ -107,8 +107,8 @@ __device__ void cuWelfordMuSigma2(
       U curr = static_cast<U>(lvals[l]);
       cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
     }
-    // intra-warp reductions
-    #pragma unroll
+// intra-warp reductions
+#pragma unroll
     for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
       U muB = WARP_SHFL_DOWN(mu, stride);
       U countB = WARP_SHFL_DOWN(count, stride);
@@ -202,8 +202,8 @@ __device__ void cuWelfordMuSigma2(
       float curr = static_cast<float>(lvals[l]);
       cuWelfordOnlineSum(curr, mu, sigma2, count);
     }
-    // intra-warp reductions
-    #pragma unroll
+// intra-warp reductions
+#pragma unroll
     for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
       float muB = WARP_SHFL_DOWN(mu, stride);
       float countB = WARP_SHFL_DOWN(count, stride);
@@ -356,24 +356,23 @@ void HostApplyLayerNorm(
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
-  
+
   bool custom_supported_dim = std::find(std::begin(SUPPORTED_REDUCTION_DIM), std::end(SUPPORTED_REDUCTION_DIM), n2) != std::end(SUPPORTED_REDUCTION_DIM);
   bool supported_half2 = (prop.major >= 7) || !(std::is_same<T, half>::value);
-  if(custom_supported_dim && supported_half2){
-    launch_custom_layer_norm<T,U>(
-      output,
-      input,
-      gamma,
-      beta,
-      U(epsilon),
-      n1,
-      n2,
-      invvar,
-      mean);
-  }
-  else{
+  if (custom_supported_dim && supported_half2) {
+    launch_custom_layer_norm<T, U>(
+        output,
+        input,
+        gamma,
+        beta,
+        static_cast<U>(epsilon),
+        n1,
+        n2,
+        invvar,
+        mean);
+  } else {
     const dim3 threads(warp_size, 4, 1);
-    const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
+    const dim3 blocks(1, std::min(static_cast<uint64_t>(n1), maxGridY), 1);
     int nshared =
         threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
     cuApplyLayerNorm<<<blocks, threads, nshared, 0>>>(
@@ -382,7 +381,7 @@ void HostApplyLayerNorm(
         invvar,
         input,
         n1, n2,
-        U(epsilon),
+        static_cast<U>(epsilon),
         gamma, beta);
   }
 }
@@ -402,7 +401,7 @@ void HostApplyLayerNorm(
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
-  
+
   const dim3 threads(warp_size, 4, 1);
   const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
   int nshared =
@@ -415,10 +414,9 @@ void HostApplyLayerNorm(
       n1, n2,
       epsilon,
       gamma, beta);
-  
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U)                                                                       \
+#define LAYERNORM_LINEAR_IMPL(T, U)                                                                                                   \
   template void HostApplyLayerNorm(const cudaDeviceProp& prop, T* output, U* mean, U* invvar, const T* input, int64_t n1, int64_t n2, \
                                    double epsilon, const T* gamma, const T* beta);
 
