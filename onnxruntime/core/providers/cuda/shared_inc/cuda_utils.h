@@ -57,6 +57,7 @@ struct TArray {
   }
 
   TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
+    static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 
@@ -87,9 +88,9 @@ struct TArray {
     return data_;
   }
 
-  static constexpr int32_t GetCapacity() { return capacity; };
+  static constexpr int32_t Capacity() { return capacity; };
 
- public:  // TODO make these private
+ private:
   int32_t size_;
   T data_[capacity];
 };
