@@ -109,6 +109,21 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
+
+void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
+  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+  filtered_weight_names_to_train.clear();
+  for (const auto& name: weight_names_to_train) {
+    auto nodes = model_->MainGraph().GetConsumerNodes(name);
+    if (!nodes.empty())
+      filtered_weight_names_to_train.insert(name);
+    else
+      LOGS(*session_logger_, WARNING) << "Couldn't find any consumer node for weight " << name << ", exclude it from training.";
+  }
+}
+
+const std::string TrainingSession::training_mode_string_ = "training_mode";
+
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
   ORT_RETURN_IF(
@@ -116,6 +131,9 @@ Status TrainingSession::ConfigureForTraining(
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
 
   if (is_configured_) return Status::OK();
+
+  std::unordered_set<std::string> filtered_config_weight_names_to_train;
+  FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
 
   TrainingConfigurationResult config_result{};
 
@@ -186,8 +204,8 @@ Status TrainingSession::ConfigureForTraining(
   // For case we use GetTrainableModelInitializers to get trainable weights such as C++ frontend, it may get more initializers
   // than trainable weights here as it's before transformers. So the constant folding may miss some nodes we actually can fold.
   std::unordered_set<std::string> trainable_initializers =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   if (config.weight_names_to_not_train.size() > 0) {
     LOGS(*session_logger_, INFO) << "Excluding following weights from trainable list as specified in configuration:";
@@ -201,8 +219,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // derive actual set of weights to train
   std::unordered_set<std::string> weight_names_to_train =
-      !config.weight_names_to_train.empty()
-          ? config.weight_names_to_train
+      !filtered_config_weight_names_to_train.empty()
+          ? filtered_config_weight_names_to_train
           : GetTrainableModelInitializers(config.immutable_weights, loss_name);
   for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
     weight_names_to_train.erase(weight_name_to_not_train);
@@ -293,8 +311,8 @@ Status TrainingSession::ConfigureForTraining(
     }
   }
 
-  // Set eval feed names for Dropout ratio.
-  ORT_RETURN_IF_ERROR(SetDropoutEvalFeedNames());
+  // Set eval feed names for nodes that differ between training and inferencing.
+  ORT_RETURN_IF_ERROR(SetEvalFeedNames());
 
   // add Tensorboard
   if (config.tensorboard_config.has_value()) {
@@ -811,17 +829,37 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
 common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io_binding) {
   // Override initializers in eval mode.
   if (!run_options.training_mode) {
-    // override all dropout raiots to 0
-    for (auto& drop_ratio : dropout_eval_feeds_) {
-      OrtValue feed_value;
-      // We allocate on CPU first, copy will be taken care off downstream.
-      const auto& session_state = GetSessionState();
-      auto default_cpu_alloc_info = session_state.GetExecutionProviders().GetDefaultCpuMemoryInfo();
-      auto cpu_allocator = session_state.GetAllocator(default_cpu_alloc_info);
-
-      feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+    std::vector<std::pair<std::string, OrtValue>> new_feeds;
+    if (!dropout_eval_feeds_.empty()) {
+      // override all dropout ratios to 0
+      for (auto& drop_ratio : dropout_eval_feeds_) {
+        OrtValue feed_value;
+        // We allocate on CPU first, copy will be taken care of downstream.
+        auto cpu_allocator = GetSessionState().GetExecutionProviders()
+                            .Get(onnxruntime::kCpuExecutionProvider)
+                            ->GetAllocator(0, OrtMemTypeDefault);
+        feed_value = onnxruntime::MakeScalarMLValue<float>(cpu_allocator, 0.f, true /*is_1d*/);
+        // Bind new feed to graph input.
+        new_feeds.emplace_back(drop_ratio, feed_value);
+      }
+    }
+    else {
+      auto& input_names = io_binding.GetInputNames();
+      if (GetSessionState().GetInputNodeInfoMap().find(training_mode_string_) != GetSessionState().GetInputNodeInfoMap().end() &&
+          std::find(input_names.begin(), input_names.end(), training_mode_string_) == input_names.end()) {
+        // Set training_mode input to false
+        OrtValue training_mode_feed_value;
+        // We allocate on CPU first, copy will be taken care of downstream.
+        auto cpu_allocator = GetSessionState().GetExecutionProviders()
+                            .Get(onnxruntime::kCpuExecutionProvider)
+                            ->GetAllocator(0, OrtMemTypeDefault);
+        training_mode_feed_value = onnxruntime::MakeScalarMLValue<bool>(cpu_allocator, false, true /*is_1d*/);
+        new_feeds.emplace_back(training_mode_string_, training_mode_feed_value);
+      }
+    }
+    for (auto& new_feed : new_feeds) {
       // Bind new feed to graph input.
-      ORT_RETURN_IF_ERROR(io_binding.BindInput(drop_ratio, feed_value));
+      ORT_RETURN_IF_ERROR(io_binding.BindInput(new_feed.first, new_feed.second));
     }
   }
 
@@ -829,33 +867,50 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
   return InferenceSession::Run(run_options, io_binding);
 }
 
-common::Status TrainingSession::Run(IOBinding& io_binding) {
-  RunOptions run_options;
-  // Set training_mode to true in training session by default.
-  run_options.training_mode = true;
-  return Run(run_options, io_binding);
-}
-
-static const std::unordered_set<std::string> Dropout_Nodes = {
+static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
+    // TODO remove this once ONNX TrainableDropout is completely deprecated.
     "TrainableDropout",
+    "Dropout",
 };
-// TODO remove this once ONNX properly supports training_mode input.
-Status TrainingSession::SetDropoutEvalFeedNames() {
+Status TrainingSession::SetEvalFeedNames() {
   Graph& graph = model_->MainGraph();
 
-  // add ratio node to graph input for overriding.
   GraphAugmenter::GraphDefs defs{};
 
-  for (const auto& node : graph.Nodes()) {
-    auto it = Dropout_Nodes.find(node.OpType());
-    if (it != Dropout_Nodes.cend()) {
-      auto& ratio_name = node.InputDefs()[1]->Name();
-      dropout_eval_feeds_.insert(ratio_name);
-      ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-                  "Input: " + ratio_name + " should not have any producer node.");
-      defs.AddGraphInputs({ratio_name});
+  for (auto& node : graph.Nodes()) {
+    auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
+    if(it != Nodes_Need_Eval_Feeds.cend()) {
+      // The opset is < 12, add each ratio input to graph inputs for overriding.
+      // Needs to be removed when TrainableDropout is deprecated.
+      if(it->compare("TrainableDropout") == 0) {
+        auto& ratio_name = node.InputDefs()[1]->Name();
+        dropout_eval_feeds_.insert(ratio_name);
+        ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
+        "Input: " + ratio_name + " should not have any producer node.");
+        defs.AddGraphInputs({ratio_name});
+      }
+      // Found an opset-12 dropout node, replace initializer name.
+      else if(node.InputArgCount().size() > 2) {
+        auto& mode_input = node.MutableInputDefs()[2];
+        const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
+        if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {
+          // training_mode initializer has not been added before, add it here.
+          // Ideally we want only 1 training_mode initializer to control all relevant nodes.
+          const ONNX_NAMESPACE::TensorProto* original_mode_initializer = nullptr;
+          ORT_ENFORCE(graph.GetInitializedTensor(mode_input->Name(), original_mode_initializer) == true,
+                      "Dropout's input: " + mode_input->Name() + " must be an initializer.");
+          ONNX_NAMESPACE::TensorProto new_mode_initializer(*original_mode_initializer);
+          new_mode_initializer.set_name(training_mode_string_);
+          defs.AddInitializers({new_mode_initializer});
+        }
+        mode_input = &model_->MainGraph().GetOrCreateNodeArg(training_mode_string_, mode_input->TypeAsProto());
+        // Set training_mode as graph input if any node that needs eval feed is found,
+        // it's okay to add it multiple times since it will be de-dup'ed downstream.
+        defs.AddGraphInputs({training_mode_string_});
+      }
     }
   }
+  
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
   return DoPostLoadProcessing(*model_);
 }
