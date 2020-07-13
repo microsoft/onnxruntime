@@ -5,13 +5,15 @@
 #include <onnx/onnx_pb.h>
 #include <unordered_set>
 
+#include <core/graph/graph_viewer.h>
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
-#include "op_builder.h"
 #include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {
+
+class IOpBuilder;
 
 class ModelBuilder {
  public:
@@ -26,7 +28,7 @@ class ModelBuilder {
     CPU_ONLY,      // use CPU only
   };
 
-  ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto);
+  ModelBuilder(const GraphViewer& graph_view);
   ~ModelBuilder() = default;
 
   std::vector<std::vector<int>> GetSupportedNodes();
@@ -42,7 +44,7 @@ class ModelBuilder {
                     const std::vector<bool>& is_nhwc_vec);
 
   // Find if an output has a fuseable activation (Relu)
-  int32_t FindActivation(const std::string& output);
+  int32_t FindActivation(const Node& node, const NodeArg& output);
 
   // Add an NNAPI scalar operand
   uint32_t AddOperandFromScalar(bool value);
@@ -89,11 +91,10 @@ class ModelBuilder {
   const std::unordered_set<std::string>&
   GetFusedActivations() const { return fused_activations_; }
 
-  const std::unordered_map<std::string,
-                           const ONNX_NAMESPACE::TensorProto&>&
+  const std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>&
   GetInitializerTensors() const { return initializers_; }
 
-  const ONNX_NAMESPACE::ModelProto& GetOnnxModel() const { return model_proto_; }
+  const Graph& GetOnnxGraph() const { return graph_view_.GetGraph(); }
 
   void RegisterNHWCOperand(const std::string& name);
   bool IsOperandNHWC(const std::string& name);
@@ -109,7 +110,7 @@ class ModelBuilder {
 
  private:
   const NnApi* nnapi_{nullptr};
-  ONNX_NAMESPACE::ModelProto& model_proto_;
+  const GraphViewer& graph_view_;
   std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};
@@ -149,7 +150,7 @@ class ModelBuilder {
 
   uint32_t next_index_ = 0;
 
-  bool IsNodeSupported(const ONNX_NAMESPACE::NodeProto& node);
+  bool IsNodeSupported(const Node& node);
 
   // Convert the onnx model to ANeuralNetworksModel
   void Prepare();
@@ -171,7 +172,7 @@ class ModelBuilder {
                          const android::nn::wrapper::OperandType& operand_type,
                          bool is_nhwc);
 
-  IOpBuilder* GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node);
+  IOpBuilder* GetOpBuilder(const Node& node);
 };
 
 }  // namespace nnapi
