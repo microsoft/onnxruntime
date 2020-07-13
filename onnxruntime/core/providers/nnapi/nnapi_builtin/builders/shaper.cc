@@ -1,4 +1,5 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+
 #include "helper.h"
 #include "shaper.h"
 
@@ -374,6 +375,41 @@ void Shaper::Concat(const std::vector<std::string>& input_names,
     shape_ops_.push_back(
         [input_names, axis, output_name](Shaper& shaper) {
           shaper.Concat(input_names, axis, output_name);
+        });
+  }
+}
+
+void Shaper::Squeeze(const std::string& input_name,
+                     const std::vector<int32_t>& axes,
+                     const std::string& output_name) {
+  std::vector<uint32_t> input_dimen = shape_map_.at(input_name);
+  int32_t input_size = input_dimen.size();
+  size_t axes_size = axes.size();
+  std::unordered_set<int32_t> axes_to_be_squeezed;
+  if (axes_size == 0) {
+    for (int32_t idx = 0; idx < input_size; ++idx) {
+      if (input_dimen[idx] == 1)
+        axes_to_be_squeezed.insert(idx);
+    }
+  } else {
+    for (const auto& axis : axes)
+      axes_to_be_squeezed.insert(axis);
+  }
+
+  // Make output dimensions
+  std::vector<uint32_t> output_dimen;
+  output_dimen.reserve(input_size - axes_to_be_squeezed.size());
+  for (int32_t i = 0; i < input_size; i++) {
+    if (!Contains(axes_to_be_squeezed, i))
+      output_dimen.push_back(input_dimen[i]);
+  }
+
+  shape_map_[output_name] = output_dimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, axes, output_name](Shaper& shaper) {
+          shaper.Squeeze(input_name, axes, output_name);
         });
   }
 }

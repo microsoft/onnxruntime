@@ -24,7 +24,9 @@ else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
 
-${PYTHON_EXE} -m pip install protobuf
+# We ping typing to the most recent version that does not deal
+# with Python 3.5 version so we test reasonably modern version
+${PYTHON_EXE} -m pip install protobuf typing==3.7.4.1
 
 version2tag=(5af210ca8a1c73aa6bae8754c9346ec54d0a756e-onnx123
              bae6333e149a59a3faa9c4d9c44974373dcf5256-onnx130

@@ -115,13 +115,13 @@ Return Value:
     //
 
     this->GemmFloatKernel = MlasGemmFloatKernelSse;
-    this->GemmU8S8Operation = MlasGemmU8X8OperationSse;
-    this->GemmU8U8Operation = MlasGemmU8X8OperationSse;
 
 #if defined(MLAS_TARGET_AMD64)
 
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->GemmDoubleKernel = MlasGemmDoubleKernelSse;
+    this->GemmU8S8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>;
+    this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
@@ -138,6 +138,9 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
+    this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
+    this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
+
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
@@ -197,10 +200,12 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
-                this->GemmU8S8Operation = MlasGemmU8S8OperationAvx2;
+                this->GemmU8S8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
+                this->GemmU8S8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
                 this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
-                this->GemmU8U8Operation = MlasGemmU8U8OperationAvx2;
+                this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8U8_KERNEL_AVX2>;
+                this->GemmU8U8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
@@ -213,6 +218,8 @@ Return Value:
                 this->LogisticKernelRoutine = MlasLogisticKernelFma3;
                 this->TanhKernelRoutine = MlasTanhKernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
+                this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
+                this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
 
 #if !defined(MLAS_AVX512F_UNSUPPORTED)
@@ -257,7 +264,8 @@ Return Value:
 
                         if ((Cpuid7[2] & 0x800) != 0) {
 
-                            this->GemmU8U8Operation = MlasGemmU8S8OperationAvx2;
+                            this->GemmU8U8Operation = MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
+                            this->GemmU8U8PackedOperation = MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                         }

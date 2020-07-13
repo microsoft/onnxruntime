@@ -1,34 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gradient_schema_defs.h"
-#include "gradient_builder_registry.h"
-#include "gradient_builder.h"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/gradient_builder.h"
+#include "orttraining/core/graph/gradient_config.h"
 
 namespace onnxruntime {
 namespace training {
 
-GradientDef GetGradientForOp(const Node* node,
+GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
+                             const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
-  // REVIEW(mzs): The below condition does not seem correct, it needs to be >= GRADIENT_OP_VERSION
-  // but changing it will break bunch of tests since many operators like sqrt are version 6,
-  // yet have a grad operator. However changing the opset requires changing the operator
-  // so merely adding the gradient operator does not warrant a version update. If we leave
-  // the condition as it is it will not work for operators with gradient that have a version
-  // higher than 9, example Slice has version 1, 10 and 11. The grad operator is defined
-  // for version 10 and 11.
-  //
+                               
   // REVIEW(bahuang): We don't have a version control for forward to backward op mapping.
   // Current SliceGrad(kMSDomain, 1) only supports Slice(kOnnxDomain, 10/11) because adding grad operator for versions
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
 
-  /*ORT_ENFORCE(
-      node->Op()->SinceVersion() <= GRADIENT_OP_VERSION,
-      "Gradients are supported for opset version" + std::to_string(node->Op()->SinceVersion()) +
-          "Upgrade your model to use opset" + std::to_string(GRADIENT_OP_VERSION));
-          */
   auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
+                                                                            gradient_graph_config,
                                                                             node,
                                                                             output_args_need_grad,
                                                                             input_args_need_grad);
