@@ -128,6 +128,8 @@ class ModelBuilder {
   std::unordered_set<std::string> operands_;
   std::unordered_set<std::string> fused_activations_;
 
+  std::vector<int32_t> nnapi_operations_;
+
   std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
 
@@ -156,6 +158,7 @@ class ModelBuilder {
   void Prepare();
 
   void GetTargetDevices();
+  void LogOperationsSupportedByTargetDevices();
   void GetAllInitializers();
   void PreprocessInitializers();
   void RegisterInitializers();

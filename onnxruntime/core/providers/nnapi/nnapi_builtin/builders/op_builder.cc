@@ -50,7 +50,8 @@ void AddTransposeOperator(ModelBuilder& model_builder,
 
   input_indices.push_back(perm_idx);  // permutation
   shaper.Transpose(input, perm, output);
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  OperandType output_operand_type = operand_types.at(input);
+  output_operand_type.SetDimensions(shaper[output]);
   model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
                              {output_operand_type}, {output_is_nhwc});
 }
@@ -171,9 +172,11 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
                                      std::to_string(shape.size()));
 
   // TODO support other data types
+  const uint8_t* src = nullptr;
   Type type;
   if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     type = Type::TENSOR_FLOAT32;
+    src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
   } else {
     ORT_THROW("The initializer of graph doesn't have valid type: " + name);
   }
@@ -186,9 +189,10 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
   else
     dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
 
-  const float* src = GetTensorFloatData(tensor);
-  float* buffer = new float[Product(shape)];
   const OperandType operand_type(type, dest_shape);
+  std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
+  uint8_t* buffer = buffer_holder.get();
+  size_t element_size = operand_type.GetElementByteSize();
   for (uint32_t out = 0; out < out_t; out++) {
     for (uint32_t in = 0; in < in_t; in++) {
       for (uint32_t h = 0; h < h_t; h++) {
@@ -211,15 +215,15 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
                         out;
           }
 
-          buffer[nnapi_idx] = src[onnx_idx];
+          for (size_t i = 0; i < element_size; i++) {
+            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i];
+          }
         }
       }
     }
   }
 
-  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
-  delete[] buffer;
-  return operand_idx;
+  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
 // TODO, replace this with more efficient code in optimizers
@@ -236,8 +240,10 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
 
   // TODO support other data types
   Type type;
+  const uint8_t* src = nullptr;
   if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     type = Type::TENSOR_FLOAT32;
+    src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
   } else {
     ORT_THROW("The initializer of graph doesn't have valid type: " + name);
   }
@@ -245,17 +251,18 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
   auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
   const OperandType operand_type(type, dest_shape);
-  const float* src = GetTensorFloatData(tensor);
-  float* buffer = new float[Product(shape)];
+  std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
+  uint8_t* buffer = buffer_holder.get();
+  size_t element_size = operand_type.GetElementByteSize();
   for (uint32_t x = 0; x < x_t; x++) {
     for (uint32_t y = 0; y < y_t; y++) {
-      buffer[y * x_t + x] = src[x * y_t + y];
+      for (size_t i = 0; i < element_size; i++) {
+        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i];
+      }
     }
   }
-  auto operand_idx = model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 
-  delete[] buffer;
-  return operand_idx;
+  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
 #pragma endregion helpers
@@ -981,11 +988,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
   bool hasBias = (node.InputDefs().size() >= 3);
   std::string bias = hasBias ? node.InputDefs()[2]->Name() : weight + "_bias";
-
-  uint32_t bias_idx_val;
-  if (hasBias) {
-    bias_idx_val = operand_indices.at(bias);
-  } else {
+  if (!hasBias) {
     const auto weight_dimen = shaper[weight];
     Shape bias_dimen;
     if (conv2d)
@@ -1000,14 +1003,13 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
         buffer[i] = 0.f;
       }
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
-      bias_idx_val = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, buffer.data(), bias_operand_type);
+      model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type);
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
   }
 
-  input_indices.push_back(bias_idx_val);
+  input_indices.push_back(operand_indices.at(bias));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
@@ -1569,6 +1571,67 @@ void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices, {output},
                              {output_operand_type}, {false});
+}
+
+#pragma endregion
+
+#pragma region op_quantizelinear
+
+class QuantizeLinearOpBuilder : public BaseOpBuilder {
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
+    return 29;
+  }
+
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+};
+
+bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  const auto input_defs(node.InputDefs());
+
+  const auto scale_name = input_defs[1]->Name();
+  if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
+    const auto& tensor = model_builder.GetInitializerTensors().at(scale_name);
+    if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
+      LOGS_DEFAULT(VERBOSE) << "QuantizeLinear does not support per-channel quantization";
+    }
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "The scale of QuantizeLinear must be known";
+    return false;
+  }
+
+  if (input_defs.size() == 3) {  // has zero_point input
+    const auto zero_point_name = input_defs[2]->Name();
+    if (Contains(model_builder.GetInitializerTensors(), zero_point_name)) {
+      const auto& tensor = model_builder.GetInitializerTensors().at(zero_point_name);
+      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "QuantizeLinear does not support per-channel quantization";
+      }
+
+      int32_t zero_point_type;
+      if (!GetType(*input_defs[2], zero_point_type))
+        return false;
+
+      if (zero_point_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+        LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                              << "] zero point type: [" << zero_point_type
+                              << "] is not supported for now";
+        return false;
+      }
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "The zero point of QuantizeLinear must be known or empty";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+  (void)model_builder;
+  (void)node;
 }
 
 #pragma endregion

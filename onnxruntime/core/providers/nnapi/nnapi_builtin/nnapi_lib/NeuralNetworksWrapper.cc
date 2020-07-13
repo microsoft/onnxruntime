@@ -21,7 +21,7 @@ namespace android {
 namespace nn {
 namespace wrapper {
 
-bool isScalarType(const Type& type) {
+bool IsScalarType(const Type& type) {
   return type == Type::FLOAT16 || type == Type::FLOAT32 || type == Type::INT32 || type == Type::BOOL || type == Type::UINT32;
 }
 
@@ -51,7 +51,7 @@ SymmPerChannelQuantParams& SymmPerChannelQuantParams::operator=(const SymmPerCha
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(d) {
   if (dimensions.empty()) {
-    if (!isScalarType(type)) {
+    if (!IsScalarType(type)) {
       dimensions = {1};
     }
   }
@@ -68,6 +68,13 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, const SymmPerChannelQuantParams& cq)
     : dimensions(d) {
   assert(type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL);
+
+  if (dimensions.empty()) {
+    if (!IsScalarType(type)) {
+      dimensions = {1};
+    }
+  }
+
   channel_quant = std::make_unique<SymmPerChannelQuantParams>(cq);
   operandType = {
       .type = static_cast<int32_t>(type),
@@ -81,9 +88,11 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, const SymmPe
 OperandType::OperandType(const OperandType& other) {
   type = other.type;
   dimensions = other.dimensions;
-  channel_quant = std::make_unique<SymmPerChannelQuantParams>(*other.channel_quant);
+  if (other.channel_quant)
+    channel_quant = std::make_unique<SymmPerChannelQuantParams>(*other.channel_quant);
+
   if (dimensions.empty()) {
-    if (!isScalarType(type)) {
+    if (!IsScalarType(type)) {
       dimensions = {1};
     }
   }
@@ -96,9 +105,11 @@ OperandType& OperandType::operator=(const OperandType& other) {
   if (this != &other) {
     type = other.type;
     dimensions = other.dimensions;
-    channel_quant = std::make_unique<SymmPerChannelQuantParams>(*other.channel_quant);
+    if (other.channel_quant)
+      channel_quant = std::make_unique<SymmPerChannelQuantParams>(*other.channel_quant);
+
     if (dimensions.empty()) {
-      if (!isScalarType(type)) {
+      if (!IsScalarType(type)) {
         dimensions = {1};
       }
     }
@@ -147,6 +158,17 @@ size_t OperandType::GetElementByteSize() const {
 
 size_t OperandType::GetOperandBlobByteSize() const {
   return Product(dimensions) * GetElementByteSize();
+}
+
+void OperandType::SetDimensions(const std::vector<uint32_t>& d) {
+  dimensions = d;
+  if (dimensions.empty()) {
+    if (!IsScalarType(type)) {
+      dimensions = {1};
+    }
+  }
+  operandType.dimensionCount = dimensions.size();
+  operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
 }
 
 }  // namespace wrapper
