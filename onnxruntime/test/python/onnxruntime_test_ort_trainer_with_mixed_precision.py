@@ -48,10 +48,6 @@ class TestOrtTrainer(unittest.TestCase):
         actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
 
-        torch.set_printoptions(precision=3)
-        print(actual_losses)
-        print(actual_eval_loss)
-
         rtol = 1e-02
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
