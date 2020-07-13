@@ -74,7 +74,7 @@ public:
     // does not need to be unique, but we aim for a good distribution, particularly in the case where
     // most/all of the thread pool's threads are active in the loop.  Threads outside the pool may
     // also be claiming work, with CurrentThreadId -1.
-    int d_of_p = _tp.DegreeOfParallelism();
+    int d_of_p = ThreadPool::DegreeOfParallelism();
     int my_thread_idx = (_tp.CurrentThreadId() + 1) % d_of_p;
     assert(my_thread_idx >= 0 && my_thread_idx < d_of_p);
 
