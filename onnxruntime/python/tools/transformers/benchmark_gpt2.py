@@ -16,6 +16,9 @@ import psutil
 import argparse
 import logging
 import torch
+import onnx
+from enum import Enum
+from transformers.modeling_utils import Conv1D
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Tokenizer, AutoConfig
 
 logger = logging.getLogger('')
@@ -46,28 +49,18 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
                                position_ids=position_ids)
 
 
+class Precision(Enum):
+    FLOAT32 = 'fp32'
+    FLOAT16 = 'fp16'
+    INT8 = 'int8'
+
+    def __str__(self):
+        return self.value
+
+
 PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
 MODEL_CLASSES = ['GPT2LMHeadModel', 'GPT2Model']
-
-
-def dump_environment():
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.info("OMP_NUM_THREADS={}".format(os.environ["OMP_NUM_THREADS"]))
-    else:
-        logger.info("no environment variable of OMP_NUM_THREADS")
-
-    if "OMP_WAIT_POLICY" in os.environ:
-        logger.info("OMP_WAIT_POLICY={}".format(os.environ["OMP_WAIT_POLICY"]))
-    else:
-        logger.info("no environment variable of OMP_WAIT_POLICY")
-
-
-def setup_environment():
-    # ATTENTION: these environment variables must be set before importing onnxruntime.
-    os.environ["OMP_NUM_THREADS"] = str(psutil.cpu_count(logical=True))
-    os.environ["OMP_WAIT_POLICY"] = 'ACTIVE'
-    dump_environment()
 
 
 def pytorch_inference(model, inputs, total_runs=100):
@@ -330,8 +323,14 @@ def parse_arguments():
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('--float16', required=False, action='store_true', help="convert model from float32 to float16")
-    parser.set_defaults(float16=False)
+    parser.add_argument(
+        "-p",
+        "--precision",
+        required=True,
+        type=Precision,
+        default=Precision.FLOAT32,
+        choices=list(Precision),
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
@@ -343,6 +342,8 @@ def parse_arguments():
                         help="past sequence lengths")
 
     parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
+
+    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -439,14 +440,13 @@ def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_at
     return export_model_path
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, verbose):
+def create_onnxruntime_session(onnx_model_path, use_gpu, verbose, thread_num):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession
         sess_options = SessionOptions()
-        if not use_gpu:
-            sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+        sess_options.intra_op_num_threads = thread_num
+        logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
 
         if verbose:
             sess_options.log_severity_level = 0
@@ -461,15 +461,59 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, verbose):
     return session
 
 
+def quantize_onnx_model(onnx_model_path, quantized_model_path):
+    from onnxruntime.quantization import quantize, QuantizationMode
+    onnx_opt_model = onnx.load(onnx_model_path)
+    quantized_onnx_model = quantize(onnx_opt_model,
+                                    quantization_mode=QuantizationMode.IntegerOps,
+                                    symmetric_weight=True,
+                                    force_fusions=True)
+    onnx.save(quantized_onnx_model, quantized_model_path)
+    logger.info(f"quantized model saved to:{quantized_model_path}")
+
+
+def _conv1d_to_linear(module):
+    in_size, out_size = module.weight.shape
+    linear = torch.nn.Linear(in_size, out_size)
+    linear.weight.data = module.weight.data.T.contiguous()
+    linear.bias.data = module.bias.data
+    return linear
+
+
+def conv1d_to_linear(model):
+    '''in-place
+    This is for Dynamic Quantization, as Conv1D is not recognized by PyTorch, convert it to nn.Linear
+    '''
+    for name in list(model._modules):
+        module = model._modules[name]
+        if isinstance(module, Conv1D):
+            linear = _conv1d_to_linear(module)
+            model._modules[name] = linear
+            print(name)
+        else:
+            conv1d_to_linear(module)
+
+
+def quantize_model(model, dtype=torch.qint8):
+    # TODO: mix of in-place and return, but results are different
+    # Usage model = quantize_model(model)
+    conv1d_to_linear(model)
+    return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+
+
 def main():
     args = parse_arguments()
     setup_logger(args.verbose)
 
     logger.info(f"Arguments:{args}")
-    if args.float16:
-        assert args.optimize_onnx and args.use_gpu, "--float16 requires --optimize_onnx --use_gpu"
+    if args.precision == Precision.FLOAT16:
+        assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
 
-    dump_environment()
+    if args.precision == Precision.INT8:
+        assert not args.use_gpu, "quantization only supports CPU"
+
+    torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
+    print(torch.__config__.parallel_info())
 
     cache_dir = args.cache_dir
     if not os.path.exists(cache_dir):
@@ -486,7 +530,7 @@ def main():
     config = AutoConfig.from_pretrained(model_name, torchscript=False, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    
+
     # This scirpt does not support float16 for PyTorch.
     #if args.float16:
     #    model.half()
@@ -496,8 +540,6 @@ def main():
     export_model_path = export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, args.use_attention_mask,
                                     args.verbose)
 
-    # setup environment variables before importing onnxruntime.
-    setup_environment()
     import onnxruntime
 
     if args.use_gpu:
@@ -515,17 +557,23 @@ def main():
                            opt_level=0,
                            optimization_options=None,
                            use_gpu=args.use_gpu)
-        if args.float16:
+        if args.precision == Precision.FLOAT16:
             m.convert_model_float32_to_float16(cast_input_output=False)
 
         filename_prefix = "gpt2{}_past{}".format("_lm" if use_LMHead else "",
                                                  "_mask" if args.use_attention_mask else "")
         onnx_model_path = os.path.join(
-            output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu",
-                                               "fp16" if args.float16 else "fp32"))
+            output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu", args.precision))
         m.save_model_to_file(onnx_model_path)
 
-    session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose)
+    if args.precision == Precision.INT8:
+        print("quantizing model")
+        quantize_onnx_model(onnx_model_path, onnx_model_path)
+        conv1d_to_linear(model)
+        model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+        print("finished")
+
+    session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose, args.thread_num)
     if session is None:
         return
 
@@ -537,13 +585,13 @@ def main():
     if not args.disable_ort_io_binding:
         max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths), sequence_length,
                                               config, use_LMHead)
-        output_buffers = get_output_buffers(max_output_shapes, device, args.float16)
+        output_buffers = get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "model_name", "model_class", "gpu", "fp16", "use_attention_mask", "optimizer", "io_binding", "batch_size",
-            "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
+            "model_name", "model_class", "gpu", "precision", "use_attention_mask", "optimizer", "io_binding",
+            "batch_size", "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
@@ -553,7 +601,8 @@ def main():
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
                 dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                 config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                config.vocab_size, device, args.use_attention_mask, args.float16)
+                                                config.vocab_size, device, args.use_attention_mask,
+                                                args.precision == Precision.FLOAT16)
                 output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead)
 
                 try:
@@ -574,7 +623,7 @@ def main():
                         "model_name": args.model_name,
                         "model_class": args.model_class,
                         "gpu": args.use_gpu,
-                        "fp16": args.float16,
+                        "precision": args.precision,
                         "use_attention_mask": args.use_attention_mask,
                         "optimizer": args.optimize_onnx,
                         "io_binding": not args.disable_ort_io_binding,
