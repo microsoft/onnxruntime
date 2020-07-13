@@ -97,7 +97,7 @@ stages:
           script: |
             echo $(DockerPassword) > password.txt
             cat password.txt | docker login --username jingywatest --password-stdin jingywatest.azurecr.io
-            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
+            docker tag onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 jingywatest.azurecr.io/test/onnxruntime-training-1p:$(Build.BuildId)
             docker push jingywatest.azurecr.io/test/onnxruntime-training-1p:latest
 
       - task: CopyFiles@2
