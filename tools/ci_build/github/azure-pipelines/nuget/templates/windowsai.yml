@@ -146,25 +146,25 @@ jobs:
         $x64_nuget_package_name = $nupkgs[0].Name
         $x64_nuget_package = $nupkgs[0].FullName
         $x64_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $x64_nupkg_unzipped_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($x64_nuget_package))
+        $x64_nupkg_unzipped_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_nupkg_unzipped_directory)
 
         $nupkgs = (Get-ChildItem ..\nuget-artifact-x86 -Filter Microsoft.AI.MachineLearning*.nupkg -Recurse)
         $x86_nuget_package = $nupkgs[0].FullName
         $x86_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $x86_nupkg_unzipped_directory = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($x86_nuget_package))
+        $x86_nupkg_unzipped_directory = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_nupkg_unzipped_directory)
 
         $nupkgs = (Get-ChildItem ..\nuget-artifact-arm64 -Filter Microsoft.AI.MachineLearning*.nupkg -Recurse)
         $arm64_nuget_package = $nupkgs[0].FullName
         $arm64_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $arm64_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($arm64_nuget_package))
+        $arm64_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_nupkg_unzipped_directory)
 
         $nupkgs = (Get-ChildItem ..\nuget-artifact-arm -Filter Microsoft.AI.MachineLearning*.nupkg -Recurse)
         $arm_nuget_package = $nupkgs[0].FullName
         $arm_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $arm_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($arm_nuget_package))
+        $arm_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_nupkg_unzipped_directory)
 
         $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
@@ -219,25 +219,25 @@ jobs:
         $x64_nuget_package_name = $nupkgs[0].Name
         $x64_nuget_package = $nupkgs[0].FullName
         $x64_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $x64_nupkg_unzipped_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($x64_nuget_package))
+        $x64_nupkg_unzipped_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'symbols', [System.IO.Path]::GetFileNameWithoutExtension($x64_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x64_nuget_package, $x64_nupkg_unzipped_directory)
 
         $nupkgs = (Get-ChildItem ..\nuget-artifact-x86 -Filter Microsoft.AI.MachineLearning*.snupkg -Recurse)
         $x86_nuget_package = $nupkgs[0].FullName
         $x86_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $x86_nupkg_unzipped_directory = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($x86_nuget_package))
+        $x86_nupkg_unzipped_directory = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory_root, 'symbols', [System.IO.Path]::GetFileNameWithoutExtension($x86_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($x86_nuget_package, $x86_nupkg_unzipped_directory)
 
         $nupkgs = (Get-ChildItem ..\nuget-artifact-arm64 -Filter Microsoft.AI.MachineLearning*.snupkg -Recurse)
         $arm64_nuget_package = $nupkgs[0].FullName
         $arm64_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $arm64_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($arm64_nuget_package))
+        $arm64_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory_root, 'symbols', [System.IO.Path]::GetFileNameWithoutExtension($arm64_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_nuget_package, $arm64_nupkg_unzipped_directory)
 
         $nupkgs = (Get-ChildItem ..\nuget-artifact-arm -Filter Microsoft.AI.MachineLearning*.snupkg -Recurse)
         $arm_nuget_package = $nupkgs[0].FullName
         $arm_nupkg_unzipped_directory_root = $nupkgs[0].Directory.FullName
-        $arm_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory_root, [System.IO.Path]::GetFileName($arm_nuget_package))
+        $arm_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory_root, 'symbols', [System.IO.Path]::GetFileNameWithoutExtension($arm_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_nuget_package, $arm_nupkg_unzipped_directory)
 
         $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'native')
