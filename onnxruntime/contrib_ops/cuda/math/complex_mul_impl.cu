@@ -53,18 +53,18 @@ __global__ void _ElementWiseWithStrideTwo(
       // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
       CUDA_LONG offset = id;
 #pragma unroll
-      for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+      for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
         if (dim >= output_rank) {
           break;
         }
         int q, r;
-        fdm_output_strides.data_[dim].divmod(offset, q, r);
+        fdm_output_strides[dim].divmod(offset, q, r);
         if (lhs_need_compute) {
-          lhs_index += static_cast<int>(lhs_padded_strides.data_[dim]) * q;
+          lhs_index += static_cast<int>(lhs_padded_strides[dim]) * q;
         }
 
         if (rhs_need_compute) {
-          rhs_index += static_cast<int>(rhs_padded_strides.data_[dim]) * q;
+          rhs_index += static_cast<int>(rhs_padded_strides[dim]) * q;
         }
         offset = r;
       }
@@ -109,7 +109,7 @@ void ComplexMul_Impl(
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->size_ && rhs_padded_strides->size_)
+  if (lhs_padded_strides && rhs_padded_strides && lhs_padded_strides->Size() && rhs_padded_strides->Size())
     _ElementWiseWithStrideTwo<T, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
@@ -122,7 +122,7 @@ void ComplexMul_Impl(
         lhs_size,
         rhs_size,
         is_conj);
-  else if (lhs_padded_strides && lhs_padded_strides->size_)
+  else if (lhs_padded_strides && lhs_padded_strides->Size())
     _ElementWiseWithStrideTwo<T, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         output_rank_or_simple_broadcast,
         *lhs_padded_strides,
