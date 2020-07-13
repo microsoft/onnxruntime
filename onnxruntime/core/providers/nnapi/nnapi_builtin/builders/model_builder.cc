@@ -170,6 +170,32 @@ void ModelBuilder::GetTargetDevices() {
   }
 }
 
+void ModelBuilder::LogOperationsSupportedByTargetDevices() {
+  // getSupportedOperationsForDevices is only supported on API 29+
+  if (GetAndroidSdkVer() < 29)
+    return;
+
+  if (nnapi_target_devices_.empty())
+    return;
+
+  const auto nnapi_model_size = nnapi_operations_.size();
+  std::unique_ptr<bool[]> nnapi_ops_support_flags(new bool[nnapi_model_size]);
+
+  THROW_ON_ERROR_WITH_NOTE(
+      nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
+          nnapi_model_->model_, nnapi_target_devices_.data(), nnapi_target_devices_.size(),
+          nnapi_ops_support_flags.get()),
+      "Checking supported operations for devices");
+
+  std::string out = "";
+  for (size_t i = 0; i < nnapi_model_size; i++) {
+    out += "[" + std::to_string(i) + ", " + std::to_string(nnapi_operations_[i]) +
+           ", " + std::to_string(nnapi_ops_support_flags[i]) + "],";
+  }
+
+  LOGS_DEFAULT(VERBOSE) << "Op support on target devices, [" << out;
+}
+
 void ModelBuilder::GetAllInitializers() {
   for (const auto& pair : graph_view_.GetAllInitializedTensors()) {
     initializers_.emplace(pair.first, *pair.second);
@@ -421,6 +447,8 @@ void ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indic
           nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
           output_indices.size(), &output_indices[0]),
       "op = " + std::to_string(op));
+
+  nnapi_operations_.push_back(op);
 }
 
 std::unique_ptr<Model> ModelBuilder::Compile() {
@@ -445,6 +473,8 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
   THROW_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_finish(nnapi_model_->model_),
       "on model finish");
+
+  LogOperationsSupportedByTargetDevices();
 
   if (!nnapi_target_devices_.empty()) {
     THROW_ON_ERROR_WITH_NOTE(
