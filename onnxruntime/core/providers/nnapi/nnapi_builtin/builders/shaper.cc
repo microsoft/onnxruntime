@@ -133,8 +133,8 @@ void Shaper::Pool(const std::string& input_name,
   auto input_dimen = shape_map_.at(input_name);
   const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
   const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
-  int32_t weight_size_y = kernel_shape[0];
-  int32_t weight_size_x = kernel_shape[1];
+  const auto weight_size_y = kernel_shape[0];
+  const auto weight_size_x = kernel_shape[1];
 
   uint32_t output_size_y, output_size_x;
   std::tie(output_size_y, output_size_x) =

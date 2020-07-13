@@ -3,6 +3,7 @@
 
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
+#include <core/providers/common.h>
 #include <onnx/onnx_pb.h>
 
 #include "helper.h"
@@ -256,6 +257,39 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
 
   delete[] buffer;
   return operand_idx;
+}
+
+vector<int32_t> ComputeConvPads(
+    const Shape& input_dimen, const Shape& weight_dimen,
+    const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
+    AutoPadType auto_pad_type, bool nchw) {
+  const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  const int32_t weight_size_y = weight_dimen[1];
+  const int32_t weight_size_x = weight_dimen[2];
+  const int32_t stride_y = onnx_strides[0];
+  const int32_t stride_x = onnx_strides[1];
+  const int32_t dilation_y = onnx_dilations[0];
+  const int32_t dilation_x = onnx_dilations[1];
+
+  int64_t padding_top = onnx_pads[0];
+  int64_t padding_bottom = onnx_pads[2];
+  int64_t padding_left = onnx_pads[1];
+  int64_t padding_right = onnx_pads[3];
+
+  ORT_THROW_IF_ERROR(
+      ComputePad<false>(input_size_y,
+                        stride_y, weight_size_y, dilation_y,
+                        auto_pad_type,
+                        padding_top, padding_bottom));
+  ORT_THROW_IF_ERROR(
+      ComputePad<false>(input_size_x,
+                        stride_x, weight_size_x, dilation_x,
+                        auto_pad_type,
+                        padding_left, padding_right));
+
+  return {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left),
+          static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
 }
 
 #pragma endregion helpers
@@ -899,10 +933,6 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
 bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   NodeAttrHelper helper(node);
-  if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
-    LOGS_DEFAULT(VERBOSE) << "SAME_LOWER auto_pad is not supported";
-    return false;
-  }
 
   const auto group = helper.Get("group", 1);
   const auto weight_name = node.InputDefs()[1]->Name();
@@ -937,7 +967,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
 
   // onnx pads are in the order top, left, bottom, right
   // while nnapi pads is in the order left, right, top, bottom
-  const auto onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
+  auto onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
 
   // onnx dilations is in the order height, width
   // while nnapi dilations are in the order width, height
@@ -968,15 +998,11 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   const auto& weight_tensor = initializers.at(weight);
   bool depthwise_conv2d = (weight_tensor.dims()[1] == 1);
 
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));
-
+  // Pre-process weights
   if (conv2d) {
-    input_indices.push_back(AddInitializerInNewLayout(
-        model_builder, weight, L_0231));
+    AddInitializerInNewLayout(model_builder, weight, L_0231);
   } else {  // depthwise_conv2d
-    input_indices.push_back(AddInitializerInNewLayout(
-        model_builder, weight, L_1230));
+    AddInitializerInNewLayout(model_builder, weight, L_1230);
   }
 
   bool hasBias = (node.InputDefs().size() >= 3);
@@ -1007,11 +1033,33 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     }
   }
 
+  const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+  bool use_auto_pad = false;
+  int32_t nnapi_padding_code;
+  if (auto_pad_type != AutoPadType::NOTSET) {
+    onnx_pads = ComputeConvPads(shaper[input], shaper[weight],
+                                onnx_pads, onnx_strides, onnx_dilations,
+                                auto_pad_type, use_nchw);
+
+    if (AutoPadType::VALID == auto_pad_type || AutoPadType::SAME_UPPER == auto_pad_type) {
+      use_auto_pad = true;
+      nnapi_padding_code = (AutoPadType::VALID == auto_pad_type) ? ANEURALNETWORKS_PADDING_VALID
+                                                                 : ANEURALNETWORKS_PADDING_SAME;
+    }
+  }
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  input_indices.push_back(operand_indices.at(weight));
   input_indices.push_back(bias_idx_val);
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+  if (use_auto_pad) {
+    input_indices.push_back(model_builder.AddOperandFromScalar(nnapi_padding_code));
+  } else {
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+  }
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
   if (!conv2d && depthwise_conv2d) {
