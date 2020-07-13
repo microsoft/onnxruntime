@@ -15,6 +15,40 @@ namespace nnapi {
 using namespace android::nn::wrapper;
 using std::vector;
 
+std::vector<ANeuralNetworksDevice*> GetTargetDevicesHelper(const NnApi* nnapi,
+                                                           ModelBuilder::TargetDeviceOption option,
+                                                           int32_t android_version) {
+  std::vector<ANeuralNetworksDevice*> target_devices;
+  // GetTargetDevices is only supported on API 29+
+  if (android_version < 29)
+    return target_devices;
+
+  const std::string nnapi_cpu("nnapi-reference");
+  uint32_t num_devices = 0;
+  THROW_ON_ERROR_WITH_NOTE(nnapi->ANeuralNetworks_getDeviceCount(&num_devices),
+                           "Getting count of available devices");
+
+  for (uint32_t i = 0; i < num_devices; i++) {
+    ANeuralNetworksDevice* device = nullptr;
+    const char* device_name = nullptr;
+    THROW_ON_ERROR_WITH_NOTE(nnapi->ANeuralNetworks_getDevice(i, &device),
+                             "Getting " + std::to_string(i) + "th device");
+
+    THROW_ON_ERROR_WITH_NOTE(nnapi->ANeuralNetworksDevice_getName(device, &device_name),
+                             "Getting " + std::to_string(i) + "th device's name");
+
+    bool device_is_cpu = nnapi_cpu == device_name;
+    if (option == ModelBuilder::TargetDeviceOption::ALL_DEVICES ||
+        (option == ModelBuilder::TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
+        (option == ModelBuilder::TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
+      target_devices.push_back(device);
+      LOGS_DEFAULT(VERBOSE) << "Target device [" << device_name << "] added";
+    }
+  }
+
+  return target_devices;
+}
+
 ModelBuilder::ModelBuilder(const GraphViewer& graph_view)
     : nnapi_(NnApiImplementation()), graph_view_(graph_view) {
   GetAllInitializers();
@@ -140,37 +174,13 @@ static size_t GetPaddedByteSize(size_t size) {
 }
 
 void ModelBuilder::GetTargetDevices() {
-  // GetTargetDevices is only supported on API 29+
-  if (GetAndroidSdkVer() < 29)
-    return;
-
-  if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
-    return;
-
-  const std::string nnapi_cpu("nnapi-reference");
-  uint32_t num_devices = 0;
-  THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDeviceCount(&num_devices),
-                           "Getting count of available devices");
-
-  for (uint32_t i = 0; i < num_devices; i++) {
-    ANeuralNetworksDevice* device = nullptr;
-    const char* device_name = nullptr;
-    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDevice(i, &device),
-                             "Getting " + std::to_string(i) + "th device");
-
-    THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
-                             "Getting " + std::to_string(i) + "th device's name");
-
-    bool device_is_cpu = nnapi_cpu == device_name;
-    if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
-        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
-      nnapi_target_devices_.push_back(device);
-      LOGS_DEFAULT(VERBOSE) << "Target device [" << device_name << "] added";
-    }
-  }
+  nnapi_target_devices_ = GetTargetDevicesHelper(nnapi_, target_device_option_, GetAndroidSdkVer());
 }
 
 void ModelBuilder::LogOperationsSupportedByTargetDevices() {
+  if (!log_op_target_device_support_)
+    return;
+
   // getSupportedOperationsForDevices is only supported on API 29+
   if (GetAndroidSdkVer() < 29)
     return;
