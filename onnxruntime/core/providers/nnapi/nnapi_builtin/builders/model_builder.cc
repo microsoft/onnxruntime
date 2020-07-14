@@ -174,6 +174,9 @@ static size_t GetPaddedByteSize(size_t size) {
 }
 
 void ModelBuilder::GetTargetDevices() {
+  if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
+    return;
+
   nnapi_target_devices_ = GetTargetDevicesHelper(nnapi_, target_device_option_, GetAndroidSdkVer());
 }
 
