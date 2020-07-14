@@ -77,9 +77,11 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : False
                         },
-                        'enable_partition_optimizer' : {
-                            'type' : 'boolean',
-                            'default' : False
+                        'deepspeed_zero_stage' : {
+                            'type' : 'integer',
+                            'min' : 0,
+                            'max' : 1,
+                            'default' : 0
                         },
                         'enable_adasum' : {
                             'type' : 'boolean',
@@ -161,8 +163,8 @@ class ORTTrainerOptions(object):
         distributed.allreduce_post_accumulation (bool, default is False):
             True enables overlap of AllReduce with computation, while False,
             postpone AllReduce until all gradients are ready
-        distributed.enable_partition_optimizer (bool, default is False):
-            enable or disable partition of optimizer state (ZeRO algorithm)
+        distributed.deepspeed_zero_stage (int, default is 0):
+            select which stage of DeepSpeed ZeRO technique to use. Stage 0 means disabled.
         distributed.enable_adasum (bool, default is False):
             enable `Adasum <https://github.com/horovod/horovod/pull/1484>`_
             algorithm for AllReduce
@@ -349,9 +351,11 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': False
             },
-            'enable_partition_optimizer': {
-                'type': 'boolean',
-                'default': False
+            'deepspeed_zero_stage' : {
+                'type' : 'integer',
+                'min' : 0,
+                'max' : 1,
+                'default' : 0,
             },
             'enable_adasum': {
                 'type': 'boolean',

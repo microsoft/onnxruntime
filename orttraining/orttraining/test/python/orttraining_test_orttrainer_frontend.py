@@ -29,7 +29,7 @@ def testORTTrainerOptionsDefaultValues(test_input):
             'world_size': 1,
             'local_rank': 0,
             'allreduce_post_accumulation': False,
-            'enable_partition_optimizer': False,
+            'deepspeed_zero_stage': 0,
             'enable_adasum': False
         },
         'lr_scheduler': None,
