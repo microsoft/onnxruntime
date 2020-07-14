@@ -6,7 +6,7 @@
 namespace onnxruntime {
 
 // Dropout
-#define REGISTER_KERNEL_TYPED(OpName, VER, T1, T2, Trainable)         \
+#define REGISTER_KERNEL_TYPED(OpName, VER, T1, T2)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       OpName,                                                         \
       kOnnxDomain,                                                    \
@@ -17,7 +17,7 @@ namespace onnxruntime {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T2>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()), \
-      Dropout<T1, T2, Trainable>);
+      Dropout<T1, T2>);
 
 // REVIEW(mzs): ConstEigenVectorArrayMap.cast<MLFLoat16) does not seem to be supported.
 // However these types work on GPU implementation.
@@ -25,8 +25,8 @@ namespace onnxruntime {
 // REGISTER_KERNEL_TYPED(MLFloat16, float)
 // REGISTER_KERNEL_TYPED(MLFloat16, double)
 
-REGISTER_KERNEL_TYPED(Dropout, 12, float, float, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, float, double, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, double, float, false)
-REGISTER_KERNEL_TYPED(Dropout, 12, double, double, false)
+REGISTER_KERNEL_TYPED(Dropout, 12, float, float)
+REGISTER_KERNEL_TYPED(Dropout, 12, float, double)
+REGISTER_KERNEL_TYPED(Dropout, 12, double, float)
+REGISTER_KERNEL_TYPED(Dropout, 12, double, double)
 }  // namespace onnxruntime
