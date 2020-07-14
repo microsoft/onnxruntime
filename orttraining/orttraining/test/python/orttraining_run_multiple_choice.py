@@ -28,7 +28,7 @@ from orttraining_transformer_trainer import ORTTransformerTrainer
 
 import torch
 
-from utils_multiple_choice import MultipleChoiceDataset, Split, processors
+from utils_multiple_choice import MultipleChoiceDataset, Split, SwagProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class DataTrainingArguments:
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
 
-    task_name: str = field(metadata={"help": "The name of the task to train on: " + ", ".join(processors.keys())})
+    task_name: str = field(metadata={"help": "The name of the task to train on."})
     data_dir: str = field(metadata={"help": "Should contain the data files for the task."})
     max_seq_length: int = field(
         default=128,
@@ -111,7 +111,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
             max_seq_length=self.max_seq_length)
 
-        training_args = TrainingArguments(output_dir=self.output_dir + "/" + task_name, do_train=True, do_eval=True,
+        training_args = TrainingArguments(output_dir=os.path.join(self.output_dir, task_name), do_train=True, do_eval=True,
             per_gpu_train_batch_size=self.train_batch_size,
             per_gpu_eval_batch_size=self.eval_batch_size,
             learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,local_rank=self.local_rank,
@@ -138,7 +138,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         onnxruntime.set_seed(training_args.seed)
 
         try:
-            processor = processors[data_args.task_name]()
+            processor = SwagProcessor()
             label_list = processor.get_labels()
             num_labels = len(label_list)
         except KeyError:
@@ -168,6 +168,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
                 data_dir=data_args.data_dir,
                 tokenizer=tokenizer,
                 task=data_args.task_name,
+                processor=processor,
                 max_seq_length=data_args.max_seq_length,
                 overwrite_cache=data_args.overwrite_cache,
                 mode=Split.train,
@@ -180,6 +181,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
                 data_dir=data_args.data_dir,
                 tokenizer=tokenizer,
                 task=data_args.task_name,
+                processor=processor,
                 max_seq_length=data_args.max_seq_length,
                 overwrite_cache=data_args.overwrite_cache,
                 mode=Split.dev,
