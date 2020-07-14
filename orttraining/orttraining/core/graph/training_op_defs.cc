@@ -949,7 +949,7 @@ Example 4:
           updateOutputShape(ctx, 0, TensorShapeProto());
         }
 
-        if(ctx.getNumOutputs() == 2) {
+        if (ctx.getNumOutputs() == 2) {
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
           if (hasInputShape(ctx, 0)) {
             propagateShapeFromInputToOutput(ctx, 0, 1);
@@ -1026,7 +1026,7 @@ Example 4:
              "the case during training.",
              "T1",
              OpSchema::Optional)
-      .Input(4, "training_mode", 
+      .Input(4, "training_mode",
              "If set to true then it indicates dropout is being used for "
              "training. It is an optional value hence unless specified explicitly, it is false. "
              "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
@@ -1145,11 +1145,11 @@ Example 4:
              "T1",
              OpSchema::Optional)
       .Input(3, "training_mode",
-            "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
-            "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
-            "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
-            "T2",
-            OpSchema::Optional)
+             "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+             "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+             "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+             "T2",
+             OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -1166,6 +1166,25 @@ Example 4:
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("BroadcastGradientArgs")
+      .AllowUncheckedAttributes()
+      .Input(0, "a_tensor", "The 1st input as Tensor.", "T")
+      .Input(1, "b_tensor", "The 2nd input as Tensor.", "T")
+      .Output(0, "a_axes", "The broadcast axes of 1st input.", "TInt64")
+      .Output(1, "b_axes", "The broadcast axes of 2nd input.", "TInt64")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to numeric tensors.")
+      .TypeConstraint(
+          "TInt64",
+          {"tensor(int64)"},
+          "Constrain output type to 64-bit integer.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)
