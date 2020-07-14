@@ -16,17 +16,21 @@ namespace contrib {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BroadcastGradientArgs<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
+// REGISTER_KERNEL_TYPED(float)
+// REGISTER_KERNEL_TYPED(double)
+REGISTER_KERNEL_TYPED(int64_t)
 
 template <typename T>
 Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
   const Tensor* a_tensor = context->Input<Tensor>(0);
   const Tensor* b_tensor = context->Input<Tensor>(1);
-  const std::vector<int64_t>& A_dims = a_tensor->Shape().GetDims();
-  const std::vector<int64_t>& B_dims = b_tensor->Shape().GetDims();
+  // const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->template Data<SrcT>());
+  const int64_t* A_dims = a_tensor->template Data<int64_t>();
+  const int64_t* B_dims = b_tensor->template Data<int64_t>();
 
-  int ndim = int(std::max(A_dims.size(), B_dims.size()));
+  const int a_size = a_tensor->Shape().Size();
+  const int b_size = b_tensor->Shape().Size();
+  int ndim = int(std::max(a_size, b_size));
   // output shapes shall match its corresponding inputs
   const TensorShape op_shape = {1, ndim};
   Tensor* A_axes = context->Output(0, op_shape);
@@ -36,8 +40,8 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
   if (!A_axes && !B_axes)
     return Status::OK();
 
-  int i = int(A_dims.size() - 1);
-  int j = int(B_dims.size() - 1);
+  int i = int(a_size - 1);
+  int j = int(b_size - 1);
   int k = ndim - 1;
   int a_idx = 0, b_idx = 0;
 

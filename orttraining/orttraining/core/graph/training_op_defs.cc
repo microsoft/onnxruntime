@@ -1179,7 +1179,7 @@ Example 4:
       .Output(1, "b_axes", "The broadcast axes of 2nd input.", "TInt64")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(int64)"},
           "Constrain input types to numeric tensors.")
       .TypeConstraint(
           "TInt64",
