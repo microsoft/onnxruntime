@@ -12,6 +12,7 @@ from perf_utils import analyze_profiling_file
 
 from BERTSquad import *
 from Resnet50 import *
+from Resnet101 import *
 from Resnet152 import *
 from FastRCNN import *
 from MaskRCNN import *
@@ -19,19 +20,38 @@ from SSD import *
 from InceptionV2 import *
 from Mobilenet import *
 from Shufflenet import *
+from Squeezenet import *
+from EmotionFerplus import *
+from Googlenet import *
+from Alexnet import *
+from Caffenet import *
+from RcnnIlsvrc13 import *
+from TinyYolov2 import *
+from Vgg import *
+from Zfnet512 import *
 
 logger = logging.getLogger('')
 
 MODELS = {
     # "bert-squad": (BERTSquad, "bert-squad"),
     # "resnet50": (Resnet50, "resnet50"),
+    # "resnet101": (Resnet101, "resnet101"),
     # "resnet152": (Resnet152, "resnet152"),
     # "fast-rcnn": (FastRCNN, "fast-rcnn"),
     # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
     # "ssd": (SSD, "ssd"),
     # "inception-v2": (InceptionV2, "inception-v2"),
     # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    "shufflenet-v2": (Shufflenet, "shufflenet-v2"),
+    #"shufflenet-v2": (Shufflenet, "shufflenet-v2"),
+    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    # "bvlc-caffenet": (Alexnet, "bvlc-caffenet"),
+    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    # "vgg19-bn": (Vgg, "vgg19-bn"),
+    "zfnet512": (Zfnet512, "zfnet512"),
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -185,8 +205,12 @@ def load_onnx_model_zoo_test_data(path):
 def validate(all_ref_outputs, all_outputs, decimal):
     print('Reference {} results.'.format(len(all_ref_outputs)))
     print('Predicted {} results.'.format(len(all_outputs)))
-    # print(np.array(all_ref_outputs).shape)
-    # print(np.array(all_outputs).shape)
+    print(np.array(all_ref_outputs).shape)
+    print(np.array(all_outputs).shape)
+
+    if np.array(all_ref_outputs).shape != np.array(all_outputs).shape:
+        print("output result shares are not the same!")
+
     # print(all_ref_outputs)
     # print(all_outputs)
 
@@ -277,11 +301,13 @@ def run_onnxruntime(args, models=MODELS):
             model.set_session_options(options)
             model.create_session()
             sess = model.get_session()
-            sess.set_providers([ep])
 
             device_info.append(get_cuda_version())
             if ep == "TensorrtExecutionProvider":
                 device_info.append(get_trt_version())
+                sess.set_providers(provider_list)
+            elif ep == "CUDAExecutionProvider":
+                sess.set_providers([ep])
 
             result_template = {
                 "engine": "onnxruntime",
@@ -310,9 +336,11 @@ def run_onnxruntime(args, models=MODELS):
             results.append(result)
 
         latency_results[model_name] = copy.deepcopy(latency_result)
-        
-        analyze_profiling_file(path)
 
+        sess = model.get_session()
+        sess.end_profiling()
+        analyze_profiling_file(path)
+        
         cleanup_files()
         os.chdir(pwd)
 
@@ -395,4 +423,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # analyze_profiling_file("bert-squad")
+    # analyze_profiling_file("emotion-ferplus")

@@ -1,8 +1,9 @@
 import subprocess
 import json
 import pprint
+# import os
 
-debug = True
+debug = False 
 
 def parse_file(f):
     import re
@@ -57,9 +58,10 @@ def parse_file(f):
                         provider_op_map[provider] = op_map
 
 
-    # if debug:
-        # pp = pprint.PrettyPrinter(indent=4)
-        # pp.pprint(provider_op_map_first_run)
+    if debug:
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(provider_op_map_first_run)
+        pp.pprint(provider_op_map)
 
     if model_run_flag:
         return provider_op_map 
