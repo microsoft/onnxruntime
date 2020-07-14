@@ -125,9 +125,9 @@ struct ConvAttributes {
           kernel_shape[dim],
           dilations_p[dim],
           auto_pad,
-          &pads_p->at(dim),
-          &pads_p->at(input_shape.NumDimensions() + dim),
-          &dim_size));
+          pads_p->at(dim),
+          pads_p->at(input_shape.NumDimensions() + dim),
+          dim_size));
       if (dim_size <= 0) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input shape: " + input_shape.ToString());
       }
