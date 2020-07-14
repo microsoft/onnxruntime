@@ -47,138 +47,72 @@ class ThreadPoolTempl;
 
 namespace concurrency {
 
-// Scheduling strategies for ParallelFor. The strategy governs how the given
-// units of work are distributed among the available threads in the
-// threadpool.
-enum class SchedulingStrategy {
-  // The Adaptive scheduling strategy adaptively chooses the shard sizes based
-  // on the cost of each unit of work, and the cost model of the underlying
-  // threadpool device.
-  //
-  // The 'cost_per_unit' is an estimate of the number of CPU cycles (or
-  // nanoseconds if not CPU-bound) to complete a unit of work. Overestimating
-  // creates too many shards and CPU time will be dominated by per-shard
-  // overhead, such as Context creation. Underestimating may not fully make
-  // use of the specified parallelism, and may also cause inefficiencies due
-  // to load balancing issues and stragglers.
-  kAdaptive,
-  // The Fixed Block Size scheduling strategy shards the given units of work
-  // into shards of fixed size. In case the total number of units is not
-  // evenly divisible by 'block_size', at most one of the shards may be of
-  // smaller size. The exact number of shards may be found by a call to
-  // NumShardsUsedByFixedBlockSizeScheduling.
-  //
-  // Each shard may be executed on a different thread in parallel, depending
-  // on the number of threads available in the pool. Note that when there
-  // aren't enough threads in the pool to achieve full parallelism, function
-  // calls will be automatically queued.
-  kFixedBlockSize
-};
-
-// Contains additional parameters for either the Adaptive or the Fixed Block
-// Size scheduling strategy.
-class SchedulingParams {
-  public:
-  explicit SchedulingParams(SchedulingStrategy strategy, optional<int64_t> cost_per_unit,
-                            optional<std::ptrdiff_t> block_size)
-      : strategy_(strategy), cost_per_unit_(cost_per_unit), block_size_(block_size) {
-  }
-
-  SchedulingStrategy strategy() const {
-    return strategy_;
-  }
-  optional<int64_t> cost_per_unit() const {
-    return cost_per_unit_;
-  }
-  optional<std::ptrdiff_t> block_size() const {
-    return block_size_;
-  }
-
-  private:
-  // The underlying Scheduling Strategy for which this instance contains
-  // additional parameters.
-  SchedulingStrategy strategy_;
-
-  // The estimated cost per unit of work in number of CPU cycles (or
-  // nanoseconds if not CPU-bound). Only applicable for Adaptive scheduling
-  // strategy.
-  optional<int64_t> cost_per_unit_;
-
-  // The block size of each shard. Only applicable for Fixed Block Size
-  // scheduling strategy.
-  optional<std::ptrdiff_t> block_size_;
-};
-
-class IThreadPoolService {
-public:
-  virtual ~IThreadPoolService() {}
-
-  // Schedules fn() for execution in the pool of threads.
-  virtual void Schedule(std::function<void()> fn) = 0;
-
-  // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
-  // with these parameters.
-  virtual int NumShardsUsedByFixedBlockSizeScheduling(
-    std::ptrdiff_t total,
-    std::ptrdiff_t block_size) const = 0;
-
-  virtual void ParallelFor(
-    std::ptrdiff_t total,
-    double cost_per_unit,
-    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn) = 0;
-
-  virtual void ParallelFor(
-    std::ptrdiff_t total,
-    const TensorOpCost& cost_per_unit,
-    const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn) = 0;
-
-  // Similar to ParallelFor above, but takes the specified scheduling strategy
-  // into account.
-  virtual void ParallelFor(
-    std::ptrdiff_t total,
-    const SchedulingParams& scheduling_params,
-    const std::function<void(std::ptrdiff_t, std::ptrdiff_t)>& fn) = 0;
-
-  // Returns the number of threads in the pool. Preferably use the static version of this API instead.
-  virtual int NumThreads() const = 0;
-
-  // Returns current thread id between 0 and NumThreads() - 1, if called from a
-  // thread in the pool. Returns -1 otherwise.
-  virtual int CurrentThreadId() const = 0;
-
-  // Directly schedule the 'total' tasks to the underlying threadpool, without
-  // cutting them by halves
-  virtual void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) = 0;
-};
-
-class ServiceLocator {
-public:
-  static void SetService(std::unique_ptr<IThreadPoolService> thread_pool_service) {
-    GetInstance().thread_pool_service_ = std::move(thread_pool_service);
-  }
-
-  template <typename TService>
-  static TService* GetService() {
-    return GetInstance().thread_pool_service_.get();
-  }
-
-private:
-  ServiceLocator() = default;
-
-  static ServiceLocator& GetInstance() {
-    static ServiceLocator instance;
-    return instance;
-  }
-
-private:
-  std::unique_ptr<IThreadPoolService> thread_pool_service_;
-};
-
 class ExtendedThreadPoolInterface;
 class BatchHandle;
 
 class ThreadPool {
  public:
+  // Scheduling strategies for ParallelFor. The strategy governs how the given
+  // units of work are distributed among the available threads in the
+  // threadpool.
+  enum class SchedulingStrategy {
+    // The Adaptive scheduling strategy adaptively chooses the shard sizes based
+    // on the cost of each unit of work, and the cost model of the underlying
+    // threadpool device.
+    //
+    // The 'cost_per_unit' is an estimate of the number of CPU cycles (or
+    // nanoseconds if not CPU-bound) to complete a unit of work. Overestimating
+    // creates too many shards and CPU time will be dominated by per-shard
+    // overhead, such as Context creation. Underestimating may not fully make
+    // use of the specified parallelism, and may also cause inefficiencies due
+    // to load balancing issues and stragglers.
+    kAdaptive,
+    // The Fixed Block Size scheduling strategy shards the given units of work
+    // into shards of fixed size. In case the total number of units is not
+    // evenly divisible by 'block_size', at most one of the shards may be of
+    // smaller size. The exact number of shards may be found by a call to
+    // NumShardsUsedByFixedBlockSizeScheduling.
+    //
+    // Each shard may be executed on a different thread in parallel, depending
+    // on the number of threads available in the pool. Note that when there
+    // aren't enough threads in the pool to achieve full parallelism, function
+    // calls will be automatically queued.
+    kFixedBlockSize
+  };
+
+  // Contains additional parameters for either the Adaptive or the Fixed Block
+  // Size scheduling strategy.
+  class SchedulingParams {
+   public:
+    explicit SchedulingParams(SchedulingStrategy strategy, optional<int64_t> cost_per_unit,
+                              optional<std::ptrdiff_t> block_size)
+        : strategy_(strategy), cost_per_unit_(cost_per_unit), block_size_(block_size) {
+    }
+
+    SchedulingStrategy strategy() const {
+      return strategy_;
+    }
+    optional<int64_t> cost_per_unit() const {
+      return cost_per_unit_;
+    }
+    optional<std::ptrdiff_t> block_size() const {
+      return block_size_;
+    }
+
+   private:
+    // The underlying Scheduling Strategy for which this instance contains
+    // additional parameters.
+    SchedulingStrategy strategy_;
+
+    // The estimated cost per unit of work in number of CPU cycles (or
+    // nanoseconds if not CPU-bound). Only applicable for Adaptive scheduling
+    // strategy.
+    optional<int64_t> cost_per_unit_;
+
+    // The block size of each shard. Only applicable for Fixed Block Size
+    // scheduling strategy.
+    optional<std::ptrdiff_t> block_size_;
+  };
 #ifdef _WIN32
   using NAME_CHAR_TYPE = wchar_t;
 #else
