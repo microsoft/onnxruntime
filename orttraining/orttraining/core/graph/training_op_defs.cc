@@ -1173,18 +1173,14 @@ Example 4:
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("BroadcastGradientArgs")
       .AllowUncheckedAttributes()
-      .Input(0, "a_tensor", "The 1st input as Tensor.", "T")
-      .Input(1, "b_tensor", "The 2nd input as Tensor.", "T")
-      .Output(0, "a_axes", "The broadcast axes of 1st input.", "TInt64")
-      .Output(1, "b_axes", "The broadcast axes of 2nd input.", "TInt64")
+      .Input(0, "a_tensor", "The 1st input shape as Tensor.", "T")
+      .Input(1, "b_tensor", "The 2nd input shape as Tensor.", "T")
+      .Output(0, "a_axes", "The broadcast axes of 1st input.", "T")
+      .Output(1, "b_axes", "The broadcast axes of 2nd input.", "T")
       .TypeConstraint(
           "T",
           {"tensor(int64)"},
-          "Constrain input types to numeric tensors.")
-      .TypeConstraint(
-          "TInt64",
-          {"tensor(int64)"},
-          "Constrain output type to 64-bit integer.");
+          "Constrain input and output types to 64-bit integer.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)
