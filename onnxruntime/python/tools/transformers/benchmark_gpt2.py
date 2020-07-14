@@ -30,10 +30,7 @@ class MyGPT2Model(GPT2Model):
         super().__init__(config)
 
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids,
-                               position_ids=position_ids,
-                               attention_mask=attention_mask,
-                               past=past)
+        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
 
 
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
@@ -41,10 +38,7 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         super().__init__(config)
 
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids,
-                               position_ids=position_ids,
-                               attention_mask=attention_mask,
-                               past=past)
+        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
 
 
 class Precision(Enum):
@@ -58,8 +52,7 @@ class Precision(Enum):
 
 PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
-MODEL_CLASSES = {'GPT2LMHeadModel' : (MyGPT2LMHeadModel, 'logits'),
-                 'GPT2Model': (MyGPT2Model, 'last_state')}
+MODEL_CLASSES = {'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits'), 'GPT2Model': (MyGPT2Model, 'last_state')}
 
 
 def pytorch_inference(model, inputs, total_runs=100):
@@ -119,7 +112,6 @@ def get_dummy_inputs(batch_size, past_sequence_length, sequence_length, num_atte
     float_type = torch.float16 if float16 else torch.float32
     past_shape = [2, batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
 
-
     past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
     input_ids = torch.randint(low=0,
                               high=vocab_size - 1,
@@ -135,7 +127,7 @@ def get_dummy_inputs(batch_size, past_sequence_length, sequence_length, num_atte
     # Deduce position_ids from attention mask
     position_ids = (attention_mask.long().cumsum(-1) - 1)
     position_ids.masked_fill_(position_ids < 0, 0)
-    position_ids = position_ids[:,past_sequence_length:]
+    position_ids = position_ids[:, past_sequence_length:]
 
     return input_ids, position_ids, attention_mask, past
 
@@ -319,8 +311,6 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
-
-
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
@@ -332,12 +322,9 @@ def parse_arguments():
         default=Precision.FLOAT32,
         choices=list(Precision),
         help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
- 
 
     parser.add_argument('--torchscript', required=False, action='store_true', help="use Torchscript")
     parser.set_defaults(torchscript=False)
-
-
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
@@ -395,7 +382,6 @@ def export_onnx(model, config, device, onnx_model_path, verbose):
 
     dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
 
-
     input_list = [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past
     with torch.no_grad():
         outputs = model(*input_list)
@@ -424,22 +410,20 @@ def export_onnx(model, config, device, onnx_model_path, verbose):
     dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'total_seq_len'}
     dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
 
-
     logger.info(
         f"Shapes: input_ids={dummy_input_ids.shape} past={dummy_past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
     )
 
-    torch.onnx.export(
-        model,
-        args=tuple(input_list),
-        f=onnx_model_path,
-        input_names=['input_ids', 'position_ids', 'attention_mask'] + past_names,
-        output_names=output_names,
-        example_outputs=outputs,
-        dynamic_axes=dynamic_axes,
-        opset_version=11,
-        do_constant_folding=True,
-        verbose=verbose)
+    torch.onnx.export(model,
+                      args=tuple(input_list),
+                      f=onnx_model_path,
+                      input_names=['input_ids', 'position_ids', 'attention_mask'] + past_names,
+                      output_names=output_names,
+                      example_outputs=outputs,
+                      dynamic_axes=dynamic_axes,
+                      opset_version=11,
+                      do_constant_folding=True,
+                      verbose=verbose)
     return onnx_model_path
 
 
@@ -544,7 +528,6 @@ def main():
     onnx_model_path = os.path.join(output_dir, model_name)
     export_onnx(model, config, device, onnx_model_path, args.verbose)
 
-
     import onnxruntime
 
     if args.use_gpu:
@@ -580,15 +563,15 @@ def main():
 
     if args.torchscript:
         dummy_inputs = get_dummy_inputs(batch_size=1,
-                                    past_sequence_length=1,
-                                    sequence_length=1,
-                                    num_attention_heads=config.num_attention_heads,
-                                    hidden_size=config.hidden_size,
-                                    num_layer=config.n_layer,
-                                    vocab_size=config.vocab_size,
-                                    device=device,
-                                    float16=False)
-        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past  = dummy_inputs
+                                        past_sequence_length=1,
+                                        sequence_length=1,
+                                        num_attention_heads=config.num_attention_heads,
+                                        hidden_size=config.hidden_size,
+                                        num_layer=config.n_layer,
+                                        vocab_size=config.vocab_size,
+                                        device=device,
+                                        float16=False)
+        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
         model = torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
 
     # One word is generated for each inference. This length does not include that of past state.
@@ -615,8 +598,9 @@ def main():
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
                 dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                 config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                config.vocab_size, device,  args.precision == Precision.FLOAT16)
-                output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, args.model_class)
+                                                config.vocab_size, device, args.precision == Precision.FLOAT16)
+                output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
+                                                  args.model_class)
 
                 try:
                     latencies = inference(model,
