@@ -1513,7 +1513,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     auto& sub_sess = subs[sub_id];
     sub_sess.so.enable_profiling = true;
-    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex(ORT_TSTR("pipeline"), sub_id, ORT_TSTR(""));
+    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex(ORT_TSTR("pipeline"), static_cast<int>(sub_id), ORT_TSTR(""));
 
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
