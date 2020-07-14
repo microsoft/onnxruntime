@@ -1604,12 +1604,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
             string modelOutputPath = Path.Combine(Directory.GetCurrentDirectory(), "optimized-squeezenet.onnx");
             // Set the optimized model file path to assert that no exception are thrown.
-            SessionOptions options = new SessionOptions();
-            options.OptimizedModelFilePath = modelOutputPath;
-            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
-            var session = new InferenceSession(modelPath, options);
-            Assert.NotNull(session);
-            Assert.True(File.Exists(modelOutputPath));
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.OptimizedModelFilePath = modelOutputPath;
+                options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
+                using (var session = new InferenceSession(modelPath, options))
+                {
+                    Assert.NotNull(session);
+                    Assert.True(File.Exists(modelOutputPath));
+                }
+            }
         }
 
         [GpuFact]
@@ -1649,6 +1653,85 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     var tensorOut = res.First().AsTensor<float>();
                     Assert.True(tensorOut.SequenceEqual(tensorIn));
+                }
+            }
+        }
+
+        void TestCPUAllocator(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_cpu = new MemoryInfo(MemoryInfo.CPU_allocator, AllocatorType.ArenaAllocator, device_id, MemoryType.Default))
+            {
+                Assert.NotEqual(info_cpu.Pointer, IntPtr.Zero);
+                Assert.Equal("Cpu", info_cpu.Name);
+                Assert.Equal(device_id, info_cpu.Id);
+                Assert.Equal(AllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
+                Assert.Equal(MemoryType.Default, info_cpu.GetMemoryType());
+
+                using (var allocator = new MemoryAllocator(session, info_cpu))
+                {
+                    Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
+                    var alloc_info = allocator.Info;
+                    Assert.True(info_cpu.CompareMemoryInfo(alloc_info));
+
+                    int size = 1024;
+                    MemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
+                    Assert.Equal(chunk.Size, size);
+                    Assert.True(chunk.Info.CompareMemoryInfo(alloc_info));
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+
+#if USE_CUDA
+        void TestCUDAAllocator(InferenceSession session)
+        {
+            int device_id = 0;
+            using (var info_cuda = new MemoryInfo(MemoryInfo.CUDA_allocator, AllocatorType.ArenaAllocator, device_id, MemoryType.Default))
+            {
+                Assert.NotEqual(info_cuda.Pointer, IntPtr.Zero);
+                Assert.Equal("Cuda", info_cuda.Name);
+                Assert.Equal(device_id, info_cuda.Id);
+                Assert.Equal(AllocatorType.ArenaAllocator, info_cuda.GetAllocatorType());
+                Assert.Equal(MemoryType.Default, info_cuda.GetMemoryType());
+
+                using (var allocator = new MemoryAllocator(session, info_cuda))
+                {
+                    Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
+                    var alloc_info = allocator.Info;
+                    Assert.True(info_cuda.CompareMemoryInfo(alloc_info));
+
+                    int size = 1024;
+                    MemoryAllocation chunk = allocator.Allocate(size);
+                    Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
+                    Assert.Equal(chunk.Size, size);
+                    Assert.True(chunk.Info.CompareMemoryInfo(alloc_info));
+                    chunk.Dispose();
+                    alloc_info.Dispose();
+                }
+            }
+        }
+#endif
+
+        [Fact]
+        private void TestAllocator()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            // Set the optimized model file path to assert that no exception are thrown.
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.AppendExecutionProvider_CPU(1);
+#if USE_CUDA
+                options.AppendExecutionProvider_CUDA(0);
+#endif
+                using (var session = new InferenceSession(modelPath, options))
+                {
+                    TestCPUAllocator(session);
+#if USE_CUDA
+                    TestCUDAAllocator(session);
+#endif
                 }
             }
         }

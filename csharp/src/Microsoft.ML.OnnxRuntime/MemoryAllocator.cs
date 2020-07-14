@@ -172,7 +172,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(_pointer, other._pointer, out result));
             return (result == 0);
         }
-
+        #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
             if (disposing && _owned)
@@ -187,6 +187,7 @@ namespace Microsoft.ML.OnnxRuntime
             GC.SuppressFinalize(this);
         }
         // We intentionally do not provider an finalizer for the class
+        #endregion
     }
 
     /// <summary>
@@ -229,6 +230,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        public MemoryInfo Info
+        {
+            get
+            {
+                return _allocator.Info;
+            }
+        }
+        #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
@@ -242,6 +251,7 @@ namespace Microsoft.ML.OnnxRuntime
             Dispose(true);
             GC.SuppressFinalize(this);
         }
+        #endregion
     }
 
     public class MemoryAllocator : IDisposable
@@ -324,6 +334,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorFree(_pointer, allocation));
         }
 
+        #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
             if (disposing && _owned)
@@ -339,5 +350,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         // We intentionally do not provider an finalizer for the class
+        #endregion
     }
 }
