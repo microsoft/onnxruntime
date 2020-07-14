@@ -455,7 +455,9 @@ constexpr static ONNX_NAMESPACE::FormalParameter AttentionOutputs[] {
 };
 constexpr static const char* tensor_int32[] {"tensor(int32)" };
 constexpr static const char* tensor_int8__tensor_uint8[] {"tensor(int8)", "tensor(uint8)"};
+constexpr static const char* tensor_float[] {"tensor(float)"};
 constexpr static const char* tensor_float__tensor_float16[] {"tensor(float)", "tensor(float16)"};
+constexpr static const char* tensor_float__tensor_float16__tensor_double[] {"tensor(float)", "tensor(float16)", "tensor(double)"};
 constexpr static ONNX_NAMESPACE::TypeConstraint AttentionTypeConstraints[] {
         ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float tensors."),
         ONNX_NAMESPACE::TypeConstraint("M", tensor_int32, "Constrain mask index to integer types")
@@ -625,7 +627,6 @@ constexpr static ONNX_NAMESPACE::FormalParameter SkipLayerNormalizationOutputs[]
         ONNX_NAMESPACE::FormalParameter("mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional),
         ONNX_NAMESPACE::FormalParameter("inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional),
 };
-constexpr static const char* tensor_float[] {"tensor(float)"};
 constexpr static ONNX_NAMESPACE::TypeConstraint SkipLayerNormalizationTypeConstraints[] {
         ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float or half tensors."_docstring),
         ONNX_NAMESPACE::TypeConstraint("U", tensor_float, "Constrain mean and inv_std_var to float tensors."_docstring)
@@ -713,73 +714,102 @@ void RegisterBertSchemas() {
     }
 }
 
+constexpr static ONNX_NAMESPACE::Attribute AffineAttributes[] {
+        ONNX_NAMESPACE::Attribute("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f),
+        ONNX_NAMESPACE::Attribute("beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter AffineInputs[] {
+        ONNX_NAMESPACE::FormalParameter("X", "1D input tensor"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter AffineOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("Y", "1D output tensor"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint AffineTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+};
+
+constexpr static ONNX_NAMESPACE::Attribute ParametricSoftplusAttributes[] {
+        ONNX_NAMESPACE::Attribute("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE),
+        ONNX_NAMESPACE::Attribute("beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter ParametricSoftplusInputs[] {
+        ONNX_NAMESPACE::FormalParameter("X", "1D input tensor"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter ParametricSoftplusOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("Y", "1D output tensor"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint ParametricSoftplusTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+};
+
+constexpr static ONNX_NAMESPACE::Attribute ImageScalerAttributes[] {
+        ONNX_NAMESPACE::Attribute("bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE),
+        ONNX_NAMESPACE::Attribute("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter ImageScalerInputs[] {
+        ONNX_NAMESPACE::FormalParameter("input", "Input tensor of shape [N,C,H,W]"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter ImageScalerOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "Result, has same shape and type as input"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint ImageScalerTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+};
+
+constexpr static ONNX_NAMESPACE::Attribute CropAttributes[] {
+        ONNX_NAMESPACE::Attribute("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE),
+        ONNX_NAMESPACE::Attribute("scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter CropInputs[] {
+        ONNX_NAMESPACE::FormalParameter("input", "Input tensor of shape [N,C,H,W]"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter CropOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "Result, has same type as input, with H and W dimensions reduced."_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint CropTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+};
+
+static constexpr ONNX_NAMESPACE::CxOpSchema ContribSchemas[]{
+    ONNX_NAMESPACE::CxOpSchema("Affine", "", 0)
+        .SinceVersion(1)
+        .Attrs(AffineAttributes)
+        .Inputs(AffineInputs)
+        .Outputs(AffineOutputs)
+        .TypeConstraints(AffineTypeConstraints)
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput),
+    ONNX_NAMESPACE::CxOpSchema("ParametricSoftplus", "", 0)
+        .SinceVersion(1)
+        .Attrs(ParametricSoftplusAttributes)
+        .Inputs(ParametricSoftplusInputs)
+        .Outputs(ParametricSoftplusOutputs)
+        .TypeConstraints(ParametricSoftplusTypeConstraints)
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput),
+    ONNX_NAMESPACE::CxOpSchema("ImageScaler", "", 0)
+        .SinceVersion(1)
+        .Attrs(ImageScalerAttributes)
+        .Inputs(ImageScalerInputs)
+        .Outputs(ImageScalerOutputs)
+        .TypeConstraints(ImageScalerTypeConstraints)
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput),
+    ONNX_NAMESPACE::CxOpSchema("Crop", "", 0)
+        .SinceVersion(1)
+        .Attrs(CropAttributes)
+        .Inputs(CropInputs)
+        .Outputs(CropOutputs)
+        .TypeConstraints(CropTypeConstraints),
+};
+
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
   // Experimental operators do not have version history. However, RS5 takes bunch of experimental operators
   // as production ops. In order to maintain backward compatibility when the experimental ops are removed from ONNX
   // they need to be added in onnxruntime as contrib ops.
   // ONNX exp ops(Affine, Crop, ParametricSoftplus, ImageScaler, ThresholdedRelu, DynamicSlice, ScaledTanh, MVN) old version history maintenance
-  static constexpr const char* Affine_ver1_doc = R"DOC(
-Affine takes one input data (Tensor<T>) and produces one output data
-(Tensor<T>) where the affine function, y = alpha * x + beta,
-is applied to the tensor elementwise.
-)DOC"_docstring;
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
-      .SinceVersion(1)
-      .SetDoc(Affine_ver1_doc)
-      .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f)
-      .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f)
-      .Input(0, "X", "1D input tensor"_docstring, "T")
-      .Output(0, "Y", "1D output tensor"_docstring, "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  static constexpr const char* ParametricSoftplus_ver1_doc = R"DOC(
-ParametricSoftplus takes one input data (Tensor<T>) and produces one output data
-(Tensor<T>) where the softplus function, y = alpha * ln(exp(beta * x) + 1), is applied to
-the tensor elementwise.)DOC"_docstring;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
-      .SinceVersion(1)
-      .SetDoc(ParametricSoftplus_ver1_doc)
-      .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
-      .Input(0, "X", "1D input tensor"_docstring, "T")
-      .Output(0, "Y", "1D input tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  static constexpr const char* ImageScaler_ver1_doc =
-      R"DOC(Scale and bias the input image. Bias values are stored in
-the same ordering as the image pixel format.)DOC"_docstring;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
-      .SinceVersion(1)
-      .SetDoc(ImageScaler_ver1_doc)
-      .Attr("bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE)
-      .Attr("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f)
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same shape and type as input"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  static constexpr const char* Crop_ver1_doc =
-      R"DOC(Crop and image to the specified spatial dimensions. If scale is given,
-then optionally start the crop offset by the left/top border amounts.
-If scale is not provided, crop the borders as provided.)DOC"_docstring;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
-      .SinceVersion(1)
-      .SetDoc(Crop_ver1_doc)
-      .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE)
-      .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
-      .Output(0, "output", "Result, has same type as input, with H and W dimensions reduced."_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring);
+    for (auto& cx_schema : ContribSchemas) {
+        Register(cx_schema);
+    }
 
   static constexpr const char* ThresholdedRelu_ver1_doc = R"DOC(
 ThresholdedRelu takes one input data (Tensor<T>) and produces one output data
@@ -1046,7 +1076,6 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(Affine)
       .SinceVersion(10)
       .Deprecate()
-      .SetDoc(Affine_ver1_doc)
       .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f)
       .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f)
       .Input(0, "X", "1D input tensor"_docstring, "T")
@@ -1060,7 +1089,6 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(ParametricSoftplus)
       .SinceVersion(10)
       .Deprecate()
-      .SetDoc(ParametricSoftplus_ver1_doc)
       .Attr("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
       .Attr("beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE)
       .Input(0, "X", "1D input tensor"_docstring, "T")
@@ -1071,7 +1099,6 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(ImageScaler)
       .SinceVersion(10)
       .Deprecate()
-      .SetDoc(ImageScaler_ver1_doc)
       .Attr("bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE)
       .Attr("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
@@ -1082,7 +1109,6 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(Crop)
       .SinceVersion(10)
       .Deprecate()
-      .SetDoc(Crop_ver1_doc)
       .Attr("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS)
       .Attr("scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE)
       .Input(0, "input", "Input tensor of shape [N,C,H,W]"_docstring, "T")
