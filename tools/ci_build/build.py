@@ -1471,8 +1471,8 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
             # temporarily disable -x invocations on Windows as they
             # are causing instability in CI
             if not is_windows():
-                run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
-                run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
+                #run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
+                #run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
                 run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
                 run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
 
