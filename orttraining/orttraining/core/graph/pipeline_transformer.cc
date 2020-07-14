@@ -935,6 +935,8 @@ common::Status AddPassthroughInitializer(Graph& graph,
   return Status::OK();
 }
 
+// Traverse the graph to find out all connected elements in the graph from start_node. The traverse treats the graph as an
+// undirected graph.
 void TraverseGraphWithConnectedElement(Graph& graph,
                                        Node* start_node,
                                        std::set<Node*>& visited_nodes,
