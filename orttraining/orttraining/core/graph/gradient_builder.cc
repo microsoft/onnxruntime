@@ -821,8 +821,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceSumTrainingGradient) {
   ArgDef grad = GO(0);
   if (!keepdims) {
     //need to change and get axes from input
-    // std::vector<int64_t> axes_values = I(1);
-    std::vector<int64_t> axes_values =RetrieveValues<int64_t>(attributes.at("axes"));
+    //std::vector<int64_t> axes_values = I(1);
+    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
 
     grad = IA("Unqueezed_Grad");
     result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));

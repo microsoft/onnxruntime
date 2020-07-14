@@ -139,6 +139,10 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 11);
 
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumTraining, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSumTraining, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumTraining, 12);
+
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1, 10);
@@ -653,10 +657,16 @@ Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
   int64_t blocks;
   std::vector<int64_t> reduced_dims;
   const Tensor* input = ctx->Input<Tensor>(0);
-  //override the attribute value with the input value for reduction_axes
-  const Tensor* axes_ = ctx->Input<Tensor>(1);
 
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
+  //override the attribute value with the input value for reduction_axes
+  const Tensor* axesTensor = ctx->Input<Tensor>(1);
+  ORT_ENFORCE(axesTensor->Shape().NumDimensions() == 1,
+              "An axes tensor must be a vector tensor.");
+  auto nDims = static_cast<size_t>(axesTensor->Shape()[0]);
+  const auto* data = axesTensor->template Data<int64_t>();
+  std::vector<int64_t> axes(data, data + nDims);
+
+  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes, keepdims_, reduced_dims, true);
 
   auto* output = ctx->Output(0, reduced_dims);
 

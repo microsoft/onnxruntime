@@ -1134,8 +1134,9 @@ Example 4:
             ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
         std::vector<int64_t> axes;
         auto axes_proto = ctx.getInputData(1);
-        if (axes_proto)
-          axes.assign(axes_proto->int64_data().begin(), axes_proto->int64_data().end());
+        if (axes_proto) {
+          axes = ParseData<int64_t>(axes_proto);
+        }        
         
         for (size_t i = 0; i < axes.size(); ++i) {
           if (axes[i] < 0)
