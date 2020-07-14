@@ -38,17 +38,9 @@ void RunBroadcastGradientArgsTest(const char* op, const std::vector<int64_t>& A_
                                   const std::vector<int64_t>& B_axes_true) {
   OpTester t{op, k_opset_version, kMSDomain};
 
-  // const auto A_size = std::accumulate(
-  //     A_shape.begin(), A_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
-  // std::vector<float> A_tensor(A_size);
-  // std::iota(A_tensor.begin(), A_tensor.end(), 1.0f);
   std::vector<int64_t> A_shape = {1, (int64_t)A_shape_tensor.size()};
   t.AddInput("a_tensor", A_shape, A_shape_tensor);
 
-  // const auto B_size = std::accumulate(
-  //     B_shape.begin(), B_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
-  // std::vector<float> B_tensor(B_size);
-  // std::iota(B_tensor.begin(), B_tensor.end(), 1.0f);
   std::vector<int64_t> B_shape = {1, (int64_t)B_shape_tensor.size()};
   t.AddInput("b_tensor", B_shape, B_shape_tensor);
 
@@ -80,7 +72,6 @@ void RunBroadcastGradientArgsTest(const char* op, const std::vector<int64_t>& A_
     }
   };
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  // execution_providers.push_back(DefaultCudaExecutionProvider());
   execution_providers.push_back(DefaultCpuExecutionProvider());
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
