@@ -723,6 +723,7 @@ void OpTester::Run(
         kDmlExecutionProvider,
         kAclExecutionProvider,
         kArmNNExecutionProvider,
+        kNnapiExecutionProvider,
     };
 
     bool has_run = false;
@@ -807,7 +808,8 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider)
+              provider_type == onnxruntime::kNupharExecutionProvider ||
+              provider_type == onnxruntime::kNnapiExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {

@@ -66,6 +66,7 @@ class ORTGlueTest(unittest.TestCase):
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "glue_test_output/")
         self.cache_dir = '/tmp/glue/'
         self.logging_steps = 10
+        self.rtol = 1e-02
 
     def test_roberta_with_mrpc(self):
         expected_acc = 0.8676470588235294
@@ -74,10 +75,10 @@ class ORTGlueTest(unittest.TestCase):
         expected_loss = 0.3022572344862947
 
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_roberta_fp16_with_mrpc(self):
         expected_acc = 0.8995098039215687
@@ -86,10 +87,10 @@ class ORTGlueTest(unittest.TestCase):
         expected_loss = 0.32052762967114357
 
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_with_mrpc(self):
         expected_acc = 0.8553921568627451
@@ -98,10 +99,10 @@ class ORTGlueTest(unittest.TestCase):
         expected_loss = 0.42737212419217707
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_fp16_with_mrpc(self):
         expected_acc = 0.8651960784313726
@@ -110,10 +111,10 @@ class ORTGlueTest(unittest.TestCase):
         expected_loss = 0.38716790532948925
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):

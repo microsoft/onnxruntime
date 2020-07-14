@@ -535,7 +535,8 @@ MlasFindMinMaxElement(
     );
 
 //
-// LengthA == LengthB, or (LengthA == 1 or LengthB == 1), broadcasting semantic
+// InputA is of size N,
+// Input B is of size 1 if IsScalarB == true, otherwise it is of size N
 //
 template<typename DataType>
 void
@@ -550,6 +551,6 @@ MlasQLinearAdd(
     float ScaleC,
     int32_t ZeroPointC,
     DataType* OutputC,
-    size_t LengthA,
-    size_t LengthB
+    size_t N,
+    bool IsScalarB
     );

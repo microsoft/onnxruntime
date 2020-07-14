@@ -18,7 +18,7 @@ class TestOrtTrainer(unittest.TestCase):
         actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
 
-        rtol = 1e-04
+        rtol = 1e-02
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
@@ -35,7 +35,7 @@ class TestOrtTrainer(unittest.TestCase):
             use_simple_model_desc=False,
             use_internel_loss_scale=True)
 
-        rtol = 1e-04
+        rtol = 1e-02
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
@@ -48,7 +48,7 @@ class TestOrtTrainer(unittest.TestCase):
         actual_losses, actual_all_finites, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=4, use_mixed_precision=True, allreduce_post_accumulation=False, use_simple_model_desc=False)
 
-        rtol = 1e-04
+        rtol = 1e-02
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
