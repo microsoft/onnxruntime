@@ -109,11 +109,10 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
-
 void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
-  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+                                          std::unordered_set<std::string>& filtered_weight_names_to_train) {
   filtered_weight_names_to_train.clear();
-  for (const auto& name: weight_names_to_train) {
+  for (const auto& name : weight_names_to_train) {
     auto nodes = model_->MainGraph().GetConsumerNodes(name);
     if (!nodes.empty())
       filtered_weight_names_to_train.insert(name);
@@ -229,8 +228,8 @@ Status TrainingSession::ConfigureForTraining(
     for (const auto& weight_name : weight_names_to_train) {
       weight_names_stream << "  " << weight_name << "\n";
     }
-    LOGS(*session_logger_, INFO) << "Training weights:\n"
-                                 << weight_names_stream.str();
+    LOGS(*session_logger_, WARNING) << "Training weights:\n"
+                                    << weight_names_stream.str();
   }
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
@@ -815,8 +814,7 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
 
   for (auto output : output_producer_node->OutputDefs()) {
-    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type()
-        && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type() && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       return true;
     }
   }

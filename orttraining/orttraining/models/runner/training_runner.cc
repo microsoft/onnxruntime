@@ -698,7 +698,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
   const bool session_can_see_loss = params_.pipeline_parallel_size == 1 ||
                                     pipeline_context_.pipeline_stage_id == params_.pipeline_parallel_size - 1;
   if (session_can_see_loss &&
-      !params_.is_perf_test &&
+      // !params_.is_perf_test &&
       weight_update_step_count_ % params_.display_loss_steps == 0) {
     if (params_.error_function) {
       params_.error_function(feed_names, feeds, fetch_names, fetches, weight_update_step_count_);

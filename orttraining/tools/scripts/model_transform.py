@@ -61,9 +61,9 @@ def get_node_index(model, node):
     i = 0
     while i < len(model.graph.node):
         if model.graph.node[i] == node:
-            break;
+            break
         i += 1
-    return i if i < len(model.graph.node) else None;
+    return i if i < len(model.graph.node) else None
 
 def add_const(model, name, output, t_value = None, f_value = None):
     const_node = model.graph.node.add()

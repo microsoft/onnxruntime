@@ -140,7 +140,30 @@ Status GradientGraphBuilder::Build() {
     gradient_graph_defs.AddInitializers({tensor_proto});
   }
 
-  NodeSet reachable_nodes = ReverseBFS(y_nodes_);
+  NodeSet gradient_required_nodes(x_nodes_);
+  deque<const Node*> queue1(x_nodes_.begin(), x_nodes_.end());
+
+  while (!queue1.empty()) {
+    const Node* n = queue1.front();
+    queue1.pop_front();
+    for (auto edge_it = n->OutputEdgesBegin(); edge_it != n->OutputEdgesEnd(); ++edge_it) {
+      const Node& node = edge_it->GetNode();
+      if (gradient_required_nodes.find(&node) == gradient_required_nodes.end()) {
+        queue1.push_back(&node);
+        //std::cout << node.Name() << " reachable from " << n->Name() << std::endl;
+        gradient_required_nodes.insert(&node);
+      }
+    }
+  }
+
+  NodeSet y_reachable_nodes = ReverseBFS(y_nodes_);
+  NodeSet reachable_nodes;
+  for (const auto n : y_reachable_nodes) {
+    if (gradient_required_nodes.find(n) != gradient_required_nodes.end()) {
+      reachable_nodes.insert(n);
+      //std::cout << "shared reachable: " << n->Name() << std::endl;
+    }
+  }
 
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable(reachable_nodes));
 

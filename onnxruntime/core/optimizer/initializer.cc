@@ -33,7 +33,7 @@ Status Initializer::ReadExternalRawData(
   ORT_RETURN_IF_NOT(
       external_data_length == 0 ||
           external_data_length == actual_tensor_data_length,
-      "TensorProto external data size mismatch. ",
+      "TensorProto ", tensor_proto.name(), " external data size mismatch. ",
       "Computed size: ", actual_tensor_data_length,
       ", external_data.length: ", external_data_length);
 
