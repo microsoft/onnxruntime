@@ -164,7 +164,7 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   const int64_t num_blocks = input_shape[axis_parsed];
   const int64_t block_slice = reduced_cols / k;
 
-  int64_t tp_threads = concurrency::ThreadPool::NumThreads(threadpool);
+  int64_t tp_threads = concurrency::ThreadPool::DegreeOfParallelism(threadpool);
   int64_t num_threads = std::min(tp_threads, rows);  // split on rows so can't have more threads than rows
 
   // rough attempt to make sure there's enough work for each thread. if there's insufficient work the usage of
