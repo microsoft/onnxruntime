@@ -797,11 +797,6 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
       return false;
     }
 
-    if (helper.Get("auto_pad", "NOTSET") != "NOTSET") {
-      LOGS_DEFAULT(VERBOSE) << "auto_pad is not supported";
-      return false;
-    }
-
     if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
       LOGS_DEFAULT(VERBOSE) << "Only pooling 2d is supported";
       return false;
@@ -873,33 +868,68 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     op_type = ANEURALNETWORKS_MAX_POOL_2D;
 
   vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
+  bool use_auto_pad = false;
+  int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
+  const auto& input_shape = shaper[input];
   if (op == "AveragePool" || op == "MaxPool") {
     kernel_shape = helper.Get("kernel_shape", vector<int32_t>{0, 0});
     onnx_strides = helper.Get("strides", vector<int>{1, 1});
     onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
+    const auto weight_dimen = vector<uint32_t>{static_cast<uint32_t>(kernel_shape[2]),
+                                               static_cast<uint32_t>(kernel_shape[3])};
+    const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+    if (auto_pad_type != AutoPadType::NOTSET) {
+      onnx_pads = ComputeConvPads(input_shape, weight_dimen,
+                                  onnx_pads, onnx_strides, {1, 1} /* onnx_dilations */,
+                                  auto_pad_type, use_nchw);
+
+      if (AutoPadType::VALID == auto_pad_type || AutoPadType::SAME_UPPER == auto_pad_type) {
+        use_auto_pad = true;
+        nnapi_padding_code = (AutoPadType::VALID == auto_pad_type) ? ANEURALNETWORKS_PADDING_VALID
+                                                                   : ANEURALNETWORKS_PADDING_SAME;
+      }
+    } else {
+      const auto same_upper_pads = ComputeConvPads(input_shape, weight_dimen,
+                                                   onnx_pads, onnx_strides, {1, 1} /* onnx_dilations */,
+                                                   AutoPadType::SAME_UPPER, use_nchw);
+      if (onnx_pads == same_upper_pads) {
+        use_auto_pad = true;
+        nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
+      }
+    }
   } else {  // (op == "GlobalAveragePool" || op == "GlobalMaxPool")
+    use_auto_pad = true;
+    nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
     onnx_strides = vector<int32_t>{1, 1};
     onnx_pads = vector<int32_t>{0, 0, 0, 0};
     if (model_builder.UseNCHW())
-      kernel_shape = vector<int32_t>{static_cast<int32_t>(shaper[input][2]),
-                                     static_cast<int32_t>(shaper[input][3])};
+      kernel_shape = vector<int32_t>{static_cast<int32_t>(input_shape[2]),
+                                     static_cast<int32_t>(input_shape[3])};
     else
-      kernel_shape = vector<int32_t>{static_cast<int32_t>(shaper[input][1]),
-                                     static_cast<int32_t>(shaper[input][2])};
+      kernel_shape = vector<int32_t>{static_cast<int32_t>(input_shape[1]),
+                                     static_cast<int32_t>(input_shape[2])};
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
-  input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+
+  if (use_auto_pad) {
+    input_indices.push_back(model_builder.AddOperandFromScalar(nnapi_padding_code));
+  } else {
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[1]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[3]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
+    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
+  }
+
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
   input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[0]));
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+
+  // TODO support API 28
   input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
 
   shaper.Pool(input,
@@ -1058,6 +1088,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(operand_indices.at(weight));
   input_indices.push_back(bias_idx_val);
+
   if (use_auto_pad) {
     input_indices.push_back(model_builder.AddOperandFromScalar(nnapi_padding_code));
   } else {
@@ -1066,16 +1097,21 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[0]));
     input_indices.push_back(model_builder.AddOperandFromScalar(onnx_pads[2]));
   }
+
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
+
   if (!conv2d && depthwise_conv2d) {
     int32_t depthwiseMultiplier = shaper[weight][3] / group;
     input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
   }
+
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
+
   // TODO support API 28
   input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+
   if (onnx_dilations[1] != 1 || onnx_dilations[0] != 1) {
     input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
     input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
