@@ -186,6 +186,11 @@ file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_tools_featurizers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/featurizer_ops/*.py"
 )
+file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
+)
+list(REMOVE_ITEM onnxruntime_python_quantization_src
+  "${ONNXRUNTIME_ROOT}/python/tools/quantization/test_calibrate.py")
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
 )
@@ -204,6 +209,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/
@@ -243,6 +249,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_featurizers_src}
       $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/tools/featurizer_ops/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_src}
+      $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${test_data_target}>

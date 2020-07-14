@@ -40,7 +40,7 @@ class Conv : public onnxruntime::Conv<T> {
  public:
   explicit Conv(const OpKernelInfo& info) : onnxruntime::Conv<T>(info), conv_attrs_(info) {
     provider_ = (const_cast<ACLExecutionProvider*>(
-        dynamic_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~Conv() {
