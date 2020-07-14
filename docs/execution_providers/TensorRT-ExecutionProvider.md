@@ -92,4 +92,4 @@ export ORT_TENSORRT_FP16_ENABLE=1
 export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
 
 ### Specify TensorRT engine cache path
-export ORT_TENSORRT_ENGINE_CACHE_PATH="cache";
+export ORT_TENSORRT_ENGINE_CACHE_PATH="cache"
