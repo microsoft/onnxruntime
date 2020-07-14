@@ -195,12 +195,16 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_runtime_path_new
 
         $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
-        New-Item -Path $merged_nuget_path -ItemType Directory
+        if (!(Test-Path $merged_nuget_path)) {
+            New-Item -Path $merged_nuget_path -ItemType Directory
+        }
 
         $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
 
         $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
-        New-Item -Path $zip_tool_directory -ItemType Directory
+        if (!(Test-Path $zip_tool_directory)) {
+            New-Item -Path $zip_tool_directory -ItemType Directory
+        }
 
         $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
 
@@ -261,13 +265,17 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.pdb'))   $arm_runtime_path_new
 
         $merged_nuget_path = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'merged')
-        New-Item -Path $merged_nuget_path -ItemType Directory
+        if (!(Test-Path $merged_nuget_path)) {
+            New-Item -Path $merged_nuget_path -ItemType Directory
+        }
 
         $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
 
         $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
-        New-Item -Path $zip_tool_directory -ItemType Directory
-
+        if (!(Test-Path $zip_tool_directory)) {
+             New-Item -Path $zip_tool_directory -ItemType Directory
+        }
+        
         $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
 
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
