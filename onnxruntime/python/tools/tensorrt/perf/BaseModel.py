@@ -42,7 +42,15 @@ class BaseModel(object):
 
         try: 
             self.session_ = onnxruntime.InferenceSession(model_path, providers=self.providers_, sess_options=self.session_options_)
+            return
         except:
+            print("Use symbolic_shape_infer.py")
+        
+        try:
             model_new_path = model_path[:].replace(".onnx", "_new.onnx")
             subprocess.run("python3 ../symbolic_shape_infer.py --input " + model_path + " --output " + model_new_path + " --auto_merge", shell=True, check=True)     
             self.session_ = onnxruntime.InferenceSession(model_new_path, providers=self.providers_, sess_options=self.session_options_)
+            return
+        except Exception as e:
+            print(e)
+            raise

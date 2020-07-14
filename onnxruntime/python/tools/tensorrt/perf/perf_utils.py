@@ -108,6 +108,7 @@ def analyze_profiling_file(path):
         pp.pprint(cuda_op_map)
 
 
+    # % of TRT ops
     total_ops = 0
     total_cuda_and_cpu_ops = 0 
     for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
@@ -122,6 +123,16 @@ def analyze_profiling_file(path):
     if total_ops == 0:
         print("Error ...")
 
+    if len(trt_op_map) == 0:
+        total_cuda_and_cpu_ops = total_ops
+
+    ratio_of_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
+    print(total_cuda_and_cpu_ops)
+    print(total_ops)
+    print(ratio_of_trt)
+
+
+    # % of TRT execution time
     total_execution_time = 0
     total_trt_execution_time = 0 
     for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]:
@@ -138,17 +149,16 @@ def analyze_profiling_file(path):
             total_execution_time += total_time
 
 
-    ratio_of_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
-    print(total_cuda_and_cpu_ops)
-    print(total_ops)
-    print(ratio_of_trt)
 
-    ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
+    if total_execution_time == 0:
+        ratio_of_trt_execution_time = 0
+    else:
+        ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
     print(total_trt_execution_time)
     print(total_execution_time)
     print(ratio_of_trt_execution_time)
 
-    return total_ops - total_cuda_and_cpu_ops, total_cuda_and_cpu_ops, ratio_of_trt, ratio_of_trt_execution_time
+    return (total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_trt, ratio_of_trt_execution_time
 
            
 

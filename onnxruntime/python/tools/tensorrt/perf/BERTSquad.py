@@ -68,11 +68,11 @@ class BERTSquad(BaseModel):
             print(input_meta)
 
         if input_list:
-            unique_ids_raw_output = input_list[0][0]
-            input_ids = input_list[0][1] 
-            input_mask = input_list[0][2] 
-            segment_ids = input_list[0][3] 
-            print(unique_ids_raw_output)
+            # unique_ids_raw_output = input_list[0][0]
+            # input_ids = input_list[0][1] 
+            # input_mask = input_list[0][2] 
+            # segment_ids = input_list[0][3] 
+            # print(unique_ids_raw_output)
 
             outputs = []
             for test_data in input_list:

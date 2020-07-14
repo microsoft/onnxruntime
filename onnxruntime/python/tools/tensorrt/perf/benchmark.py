@@ -9,6 +9,7 @@ import argparse
 import copy
 import json
 from perf_utils import analyze_profiling_file
+import pprint
 
 from BERTSquad import *
 from Resnet50 import *
@@ -17,9 +18,11 @@ from Resnet152 import *
 from FastRCNN import *
 from MaskRCNN import *
 from SSD import *
+from InceptionV1 import *
 from InceptionV2 import *
 from Mobilenet import *
-from Shufflenet import *
+from ShufflenetV2 import *
+from ShufflenetV1 import *
 from Squeezenet import *
 from EmotionFerplus import *
 from Googlenet import *
@@ -27,22 +30,33 @@ from Alexnet import *
 from Caffenet import *
 from RcnnIlsvrc13 import *
 from TinyYolov2 import *
+from YoloV3 import *
+from YoloV4 import *
 from Vgg import *
 from Zfnet512 import *
+from Retinanet import *
+from Resnet101DucHdc import *
+from ArcFace import *
+# from SuperResolution import *
+from FastNeural import *
+from BiDAF import *
+from GPT2 import *
 
 logger = logging.getLogger('')
 
 MODELS = {
     # "bert-squad": (BERTSquad, "bert-squad"),
-    # "resnet50": (Resnet50, "resnet50"),
-    # "resnet101": (Resnet101, "resnet101"),
-    # "resnet152": (Resnet152, "resnet152"),
-    # "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    # "ssd": (SSD, "ssd"),
+    "resnet50": (Resnet50, "resnet50"),
+    "resnet101": (Resnet101, "resnet101"),
+    "resnet152": (Resnet152, "resnet152"),
+    "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    "ssd": (SSD, "ssd"),
+    # "inception-v1": (InceptionV1, "inception-v1"),
     # "inception-v2": (InceptionV2, "inception-v2"),
     # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    #"shufflenet-v2": (Shufflenet, "shufflenet-v2"),
+    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
     # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
     # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
     # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
@@ -51,7 +65,16 @@ MODELS = {
     # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
     # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     # "vgg19-bn": (Vgg, "vgg19-bn"),
-    "zfnet512": (Zfnet512, "zfnet512"),
+    # "zfnet512": (Zfnet512, "zfnet512"),
+    # "retinanet": (Retinanet, "retinanet"),
+    # "yolov3": (YoloV3, "yolov3"),
+    # "yolov4": (YoloV4, "yolov4"),
+    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    # # "Arc-Face": (ArcFace, "arc-face"),
+    # # "Super-Resolution": (SuperResolution, "super-resolution"),
+    "Fast-Neural": (FastNeural, "Fast-Neural"),
+    # "BiDAF": (BiDAF, "BiDAF"),
+    # "GPT2": (GPT2, "GPT2"),
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -96,7 +119,8 @@ def inference_ort_to_generate_profiling_file(model, ep, inputs):
 def inference_ort(model, inputs, result_template, repeat_times, batch_size):
     result = {}
 
-    runtimes = timeit.repeat(lambda: model.inference(inputs), number=1, repeat=repeat_times)
+    runtimes = timeit.repeat(lambda: model.inference(inputs), number=1, repeat=repeat_times+1)
+    runtimes[:] = runtimes[1:]
     result.update(result_template)
     result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
@@ -162,7 +186,7 @@ def load_onnx_model_zoo_test_data(path):
         os.chdir(test_data_dir)
 
         # load inputs
-        p1 = subprocess.Popen(["find", ".", "-name", "input_*"], stdout=subprocess.PIPE)
+        p1 = subprocess.Popen(["find", ".", "-name", "input*"], stdout=subprocess.PIPE)
         p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
         stdout, sterr = p2.communicate()
         stdout = stdout.decode("ascii").strip()
@@ -179,7 +203,7 @@ def load_onnx_model_zoo_test_data(path):
         inputs.append(input_data_pb)
 
         # load outputs 
-        p1 = subprocess.Popen(["find", ".", "-name", "output_*"], stdout=subprocess.PIPE)
+        p1 = subprocess.Popen(["find", ".", "-name", "output*"], stdout=subprocess.PIPE)
         p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
         stdout, sterr = p2.communicate()
         stdout = stdout.decode("ascii").strip()
@@ -205,30 +229,35 @@ def load_onnx_model_zoo_test_data(path):
 def validate(all_ref_outputs, all_outputs, decimal):
     print('Reference {} results.'.format(len(all_ref_outputs)))
     print('Predicted {} results.'.format(len(all_outputs)))
-    print(np.array(all_ref_outputs).shape)
-    print(np.array(all_outputs).shape)
+    print('decimal {}'.format(decimal))
+    # print(np.array(all_ref_outputs).shape)
+    # print(np.array(all_outputs).shape)
 
-    if np.array(all_ref_outputs).shape != np.array(all_outputs).shape:
-        print("output result shares are not the same!")
+    # if np.array(all_ref_outputs).shape != np.array(all_outputs).shape:
+        # print("output result shares are not the same!")
 
     # print(all_ref_outputs)
     # print(all_outputs)
+    try:
+        for i in range(len(all_outputs)):
+            ref_outputs = all_ref_outputs[i]
+            outputs = all_outputs[i]
 
-    for i in range(len(all_outputs)):
-        ref_outputs = all_ref_outputs[i]
-        outputs = all_outputs[i]
+            for j in range(len(outputs)):
+                ref_output = ref_outputs[j]
+                output = outputs[j]
+                # print(ref_output)
+                # print(output)
 
-        for j in range(len(outputs)):
-            ref_output = ref_outputs[j]
-            output = outputs[j]
-            # print(ref_output)
-            # print(output)
-
-            # Compare the results with reference outputs up to x decimal places
-            for ref_o, o in zip(ref_output, output):
-                np.testing.assert_almost_equal(ref_o, o, decimal)
+                # Compare the results with reference outputs up to x decimal places
+                for ref_o, o in zip(ref_output, output):
+                    np.testing.assert_almost_equal(ref_o, o, decimal)
+    except Exception as e:
+        print(e)
+        return False
 
     print('ONNX Runtime outputs are similar to reference outputs!')
+    return True
 
 def cleanup_files():
     files = []
@@ -250,12 +279,22 @@ def cleanup_files():
     for f in files:
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
+def update_fail_model(model_name, ep, ep_fail_for_model):
+    if not model_name in ep_fail_for_model:
+        ep_fail_for_model[model_name] = [ep]
+    else:
+        ep_fail_for_model[model_name].append(ep)
+
 
 def run_onnxruntime(args, models=MODELS):
     import onnxruntime
 
     results = []
     latency_results = {} 
+    ep_fail_for_model = {}
+    profiling_metrics = {}
+    provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+
     for name in models.keys():
         info = models[name] 
         model_class = info[0]
@@ -267,26 +306,28 @@ def run_onnxruntime(args, models=MODELS):
             os.mkdir(path)
         os.chdir(path)
         path = os.getcwd()
+        subprocess.Popen(["rm", "-f", "onnxruntime_profile_*"], stdout=subprocess.PIPE)
 
-        provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+        inputs = []
+        ref_outputs = []
 
-        # create onnxruntime inference session
-        logger.info("Initializing {} with {}...".format(name, provider_list))
-        model = model_class(providers=provider_list)
-        model_name = model.get_model_name()
+        for i in range(len(provider_list)):
+            ep = provider_list[i]
+            ep_fails_flag = False
 
-        # read input/output of test data
-        test_data_dir = model.get_onnx_zoo_test_data_dir()
-        inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
-
-        for ep in provider_list:
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
-            
-            # no need to do initializing for TRT if we only use CUDA ep
-            if ep == "CUDAExecutionProvider":
-                model = model_class(providers=[ep])
+                
+            # create onnxruntime inference session
+            logger.info("Initializing {} with {}...".format(name, provider_list[i:]))
+            model = model_class(providers=provider_list[i:])
+            model_name = model.get_model_name()
+
+            # read input/output of test data
+            if not inputs or not ref_outputs:
+                test_data_dir = model.get_onnx_zoo_test_data_dir()
+                inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
 
 
             # these settings are temporary
@@ -295,19 +336,21 @@ def run_onnxruntime(args, models=MODELS):
             batch_size = 1
             device_info = [] 
 
-            # enable profiling and do default inference
+            # enable profiling
             options = onnxruntime.SessionOptions()
             options.enable_profiling = True 
             model.set_session_options(options)
-            model.create_session()
+            try: 
+                model.create_session()
+            except:
+                ep_fails_flag = True
+                update_fail_model(model_name, ep, ep_fail_for_model)
+                continue
             sess = model.get_session()
 
             device_info.append(get_cuda_version())
             if ep == "TensorrtExecutionProvider":
                 device_info.append(get_trt_version())
-                sess.set_providers(provider_list)
-            elif ep == "CUDAExecutionProvider":
-                sess.set_providers([ep])
 
             result_template = {
                 "engine": "onnxruntime",
@@ -328,23 +371,32 @@ def run_onnxruntime(args, models=MODELS):
             logger.info(sess.get_providers())
 
             result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
-            latency_result[ep] = result["average_latency_ms"]
+            if not validate(ref_outputs, model.get_outputs(), model.get_decimal()):
+                ep_fails_flag = True
+                update_fail_model(model_name, ep, ep_fail_for_model)
+                continue
 
-            validate(ref_outputs, model.get_outputs(), model.get_decimal())
+            latency_result[ep] = result["average_latency_ms"]
 
             logger.info(result)
             results.append(result)
+            latency_results[model_name] = copy.deepcopy(latency_result)
 
-        latency_results[model_name] = copy.deepcopy(latency_result)
 
         sess = model.get_session()
         sess.end_profiling()
-        analyze_profiling_file(path)
-        
+        if not ep_fails_flag:
+            total_ops_in_trt, total_ops, ratio_of_ops_in_trt, ratio_of_execution_time_in_trt = analyze_profiling_file(path)
+            profiling_metrics[model_name] = {}
+            profiling_metrics[model_name]['total_ops_in_trt'] = total_ops_in_trt
+            profiling_metrics[model_name]['total_ops'] = total_ops
+            profiling_metrics[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+            profiling_metrics[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
         cleanup_files()
+
         os.chdir(pwd)
 
-    return results, latency_results
+    return results, latency_results, ep_fail_for_model, profiling_metrics
 
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
@@ -408,19 +460,29 @@ def main():
     args = parse_arguments()
     setup_logger(False)
 
-    results, latency_results = run_onnxruntime(args)
+    results, latency_results, failing_models, profiling_metrics = run_onnxruntime(args)
 
-    time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
-    output_details(results, csv_filename)
-    csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
-    output_latency_comparison(latency_results, csv_filename)
-    print(latency_results)
+    print("models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(MODELS)))
+    if len(failing_models) > 0:
+        print("EPs don't support the following models:\n")
+        print(failing_models)
 
-    # csv_filename = args.result_csv or f"benchmark_summary_{time_stamp}.csv"
-    # output_summary(results, csv_filename, args)
+    if len(profiling_metrics) > 0:
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(profiling_metrics)
+
+    if results:
+        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
+        output_details(results, csv_filename)
+
+    if latency_results:
+        csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
+        output_latency_comparison(latency_results, csv_filename)
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(latency_results)
+    
 
 
 if __name__ == "__main__":
     main()
-    # analyze_profiling_file("emotion-ferplus")
