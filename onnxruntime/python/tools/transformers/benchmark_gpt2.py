@@ -16,9 +16,13 @@ import psutil
 import argparse
 import logging
 import torch
+import onnx
+from enum import Enum
+from transformers.modeling_utils import Conv1D
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Tokenizer, AutoConfig
 
 logger = logging.getLogger('')
+
 
 # Wrap a class for Onnx model export.
 class MyGPT2Model(GPT2Model):
@@ -43,29 +47,19 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
                                past=past)
 
 
+class Precision(Enum):
+    FLOAT32 = 'fp32'
+    FLOAT16 = 'fp16'
+    INT8 = 'int8'
+
+    def __str__(self):
+        return self.value
+
+
 PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
-# Mapping from model class name to a tuple of model class and first output name
 MODEL_CLASSES = {'GPT2LMHeadModel' : (MyGPT2LMHeadModel, 'logits'),
                  'GPT2Model': (MyGPT2Model, 'last_state')}
-
-def dump_environment():
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.info("OMP_NUM_THREADS={}".format(os.environ["OMP_NUM_THREADS"]))
-    else:
-        logger.info("no environment variable of OMP_NUM_THREADS")
-
-    if "OMP_WAIT_POLICY" in os.environ:
-        logger.info("OMP_WAIT_POLICY={}".format(os.environ["OMP_WAIT_POLICY"]))
-    else:
-        logger.info("no environment variable of OMP_WAIT_POLICY")
-
-
-def setup_environment():
-    # ATTENTION: these environment variables must be set before importing onnxruntime.
-    os.environ["OMP_NUM_THREADS"] = str(psutil.cpu_count(logical=True))
-    os.environ["OMP_WAIT_POLICY"] = 'ACTIVE'
-    dump_environment()
 
 
 def pytorch_inference(model, inputs, total_runs=100):
@@ -78,7 +72,6 @@ def pytorch_inference(model, inputs, total_runs=100):
     past = [p.to(dtype=torch.float32) for p in past]
 
     input_list = [input_ids, position_ids, attention_mask] + past
-
     latency = []
     with torch.no_grad():
         for _ in range(total_runs):
@@ -125,6 +118,7 @@ def get_dummy_inputs(batch_size, past_sequence_length, sequence_length, num_atte
                      vocab_size, device, float16):
     float_type = torch.float16 if float16 else torch.float32
     past_shape = [2, batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
+
 
     past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
     input_ids = torch.randint(low=0,
@@ -325,14 +319,25 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
+
+
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
+
+    parser.add_argument(
+        "-p",
+        "--precision",
+        required=True,
+        type=Precision,
+        default=Precision.FLOAT32,
+        choices=list(Precision),
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
+ 
 
     parser.add_argument('--torchscript', required=False, action='store_true', help="use Torchscript")
     parser.set_defaults(torchscript=False)
 
-    parser.add_argument('--float16', required=False, action='store_true', help="convert model from float32 to float16")
-    parser.set_defaults(float16=False)
+
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
@@ -344,6 +349,8 @@ def parse_arguments():
                         help="past sequence lengths")
 
     parser.add_argument("-r", "--result_csv", required=False, default=None, help="CSV file for saving summary results.")
+
+    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -394,7 +401,6 @@ def export_onnx(model, config, device, onnx_model_path, verbose):
         outputs = model(*input_list)
 
     past_names = [f'past_{i}' for i in range(num_layer)]
-
     present_names = [f'present_{i}' for i in range(num_layer)]
 
     # GPT2Model outputs last_state; GPT2LMHeadModel outputs logits (prediction_scores)
@@ -418,6 +424,7 @@ def export_onnx(model, config, device, onnx_model_path, verbose):
     dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'total_seq_len'}
     dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
 
+
     logger.info(
         f"Shapes: input_ids={dummy_input_ids.shape} past={dummy_past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
     )
@@ -436,14 +443,13 @@ def export_onnx(model, config, device, onnx_model_path, verbose):
     return onnx_model_path
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, verbose):
+def create_onnxruntime_session(onnx_model_path, use_gpu, verbose, thread_num):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession
         sess_options = SessionOptions()
-        if not use_gpu:
-            sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+        sess_options.intra_op_num_threads = thread_num
+        logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
 
         if verbose:
             sess_options.log_severity_level = 0
@@ -458,15 +464,59 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, verbose):
     return session
 
 
+def quantize_onnx_model(onnx_model_path, quantized_model_path):
+    from onnxruntime.quantization import quantize, QuantizationMode
+    onnx_opt_model = onnx.load(onnx_model_path)
+    quantized_onnx_model = quantize(onnx_opt_model,
+                                    quantization_mode=QuantizationMode.IntegerOps,
+                                    symmetric_weight=True,
+                                    force_fusions=True)
+    onnx.save(quantized_onnx_model, quantized_model_path)
+    logger.info(f"quantized model saved to:{quantized_model_path}")
+
+
+def _conv1d_to_linear(module):
+    in_size, out_size = module.weight.shape
+    linear = torch.nn.Linear(in_size, out_size)
+    linear.weight.data = module.weight.data.T.contiguous()
+    linear.bias.data = module.bias.data
+    return linear
+
+
+def conv1d_to_linear(model):
+    '''in-place
+    This is for Dynamic Quantization, as Conv1D is not recognized by PyTorch, convert it to nn.Linear
+    '''
+    for name in list(model._modules):
+        module = model._modules[name]
+        if isinstance(module, Conv1D):
+            linear = _conv1d_to_linear(module)
+            model._modules[name] = linear
+            print(name)
+        else:
+            conv1d_to_linear(module)
+
+
+def quantize_model(model, dtype=torch.qint8):
+    # TODO: mix of in-place and return, but results are different
+    # Usage model = quantize_model(model)
+    conv1d_to_linear(model)
+    return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+
+
 def main():
     args = parse_arguments()
     setup_logger(args.verbose)
 
     logger.info(f"Arguments:{args}")
-    if args.float16:
-        assert args.optimize_onnx and args.use_gpu, "--float16 requires --optimize_onnx --use_gpu"
+    if args.precision == Precision.FLOAT16:
+        assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
 
-    dump_environment()
+    if args.precision == Precision.INT8:
+        assert not args.use_gpu, "quantization only supports CPU"
+
+    torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
+    print(torch.__config__.parallel_info())
 
     cache_dir = args.cache_dir
     if not os.path.exists(cache_dir):
@@ -490,25 +540,11 @@ def main():
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
 
-    if args.torchscript:
-        dummy_inputs = get_dummy_inputs(batch_size=1,
-                                    past_sequence_length=1,
-                                    sequence_length=1,
-                                    num_attention_heads=config.num_attention_heads,
-                                    hidden_size=config.hidden_size,
-                                    num_layer=config.n_layer,
-                                    vocab_size=config.vocab_size,
-                                    device=device,
-                                    float16=False)
-        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past  = dummy_inputs
-        model = torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
-
     model_name = "{}_{}_past_mask.onnx".format(args.model_name, args.model_class)
     onnx_model_path = os.path.join(output_dir, model_name)
     export_onnx(model, config, device, onnx_model_path, args.verbose)
 
-    # setup environment variables before importing onnxruntime.
-    setup_environment()
+
     import onnxruntime
 
     if args.use_gpu:
@@ -524,16 +560,36 @@ def main():
                            opt_level=0,
                            optimization_options=None,
                            use_gpu=args.use_gpu)
-        if args.float16:
+        if args.precision == Precision.FLOAT16:
             m.convert_model_float32_to_float16(cast_input_output=False)
 
-        filename_suffix = '_{}_{}.onnx'.format("gpu" if args.use_gpu else "cpu", "fp16" if args.float16 else "fp32")
+        filename_suffix = '_{}_{}.onnx'.format("gpu" if args.use_gpu else "cpu", args.precision)
         onnx_model_path = onnx_model_path.replace(".onnx", filename_suffix)
         m.save_model_to_file(onnx_model_path)
 
-    session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose)
+    if args.precision == Precision.INT8:
+        print("quantizing model")
+        quantize_onnx_model(onnx_model_path, onnx_model_path)
+        conv1d_to_linear(model)
+        model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+        print("finished")
+
+    session = create_onnxruntime_session(onnx_model_path, args.use_gpu, args.verbose, args.thread_num)
     if session is None:
         return
+
+    if args.torchscript:
+        dummy_inputs = get_dummy_inputs(batch_size=1,
+                                    past_sequence_length=1,
+                                    sequence_length=1,
+                                    num_attention_heads=config.num_attention_heads,
+                                    hidden_size=config.hidden_size,
+                                    num_layer=config.n_layer,
+                                    vocab_size=config.vocab_size,
+                                    device=device,
+                                    float16=False)
+        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past  = dummy_inputs
+        model = torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
 
     # One word is generated for each inference. This length does not include that of past state.
     sequence_length = 1
@@ -543,12 +599,12 @@ def main():
     if not args.disable_ort_io_binding:
         max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths), sequence_length,
                                               config, args.model_class)
-        output_buffers = get_output_buffers(max_output_shapes, device, args.float16)
+        output_buffers = get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "model_name", "model_class", "gpu", "fp16", "optimizer", "io_binding", "batch_size",
+            "model_name", "model_class", "gpu", "precision", "optimizer", "io_binding", "batch_size",
             "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -559,7 +615,7 @@ def main():
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
                 dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                 config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                config.vocab_size, device, args.float16)
+                                                config.vocab_size, device,  args.precision == Precision.FLOAT16)
                 output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, args.model_class)
 
                 try:
@@ -580,7 +636,7 @@ def main():
                         "model_name": args.model_name,
                         "model_class": args.model_class,
                         "gpu": args.use_gpu,
-                        "fp16": args.float16,
+                        "precision": args.precision,
                         "optimizer": args.optimize_onnx,
                         "io_binding": not args.disable_ort_io_binding,
                         "batch_size": batch_size,
