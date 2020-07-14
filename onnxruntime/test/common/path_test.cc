@@ -229,7 +229,7 @@ TEST(PathTest, Concat) {
         ASSERT_STATUS_OK(Path::Parse(ToPathString(a), p_a));
         ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
 
-        EXPECT_EQ(p_a.Concat(b).ToPathString(), p_expected_a.ToPathString());
+        EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
       };
 
   check_concat("/a/b", "c", "/a/bc");
