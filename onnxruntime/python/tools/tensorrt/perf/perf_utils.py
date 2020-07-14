@@ -75,7 +75,6 @@ def parse_file(f):
 #         ratio of ops executed in TRT,
 #         ratio of execution time in TRT
 #
-#
 def analyze_profiling_file(path):
     print("Analying profiling files in {} ...".format(path))
     p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
@@ -94,7 +93,6 @@ def analyze_profiling_file(path):
             if op_map:
                 data.append(op_map)
 
-    # pp.pprint(data)
     trt_op_map = {}
     cuda_op_map = {}
 
@@ -122,14 +120,20 @@ def analyze_profiling_file(path):
 
     if total_ops == 0:
         print("Error ...")
+        raise
 
     if len(trt_op_map) == 0:
         total_cuda_and_cpu_ops = total_ops
 
-    ratio_of_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
-    print(total_cuda_and_cpu_ops)
-    print(total_ops)
-    print(ratio_of_trt)
+    #
+    # equation of % TRT ops: 
+    # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
+    #
+    ratio_of_ops_in_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
+    if debug:
+        print("total_cuda_and_cpu_ops: {}".format(total_cuda_and_cpu_ops))
+        print("total_ops: {}".format(total_ops))
+        print("ratio_of_ops_in_trt: {}".format(ratio_of_ops_in_trt))
 
 
     # % of TRT execution time
@@ -154,11 +158,13 @@ def analyze_profiling_file(path):
         ratio_of_trt_execution_time = 0
     else:
         ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
-    print(total_trt_execution_time)
-    print(total_execution_time)
-    print(ratio_of_trt_execution_time)
 
-    return (total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_trt, ratio_of_trt_execution_time
+    if debug:
+        print("total_trt_execution_time: {}".format(total_trt_execution_time))
+        print("total_execution_time: {}".format(total_execution_time))
+        print("ratio_of_trt_execution_time: {}".format(ratio_of_trt_execution_time))
+
+    return (total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt, ratio_of_trt_execution_time
 
            
 

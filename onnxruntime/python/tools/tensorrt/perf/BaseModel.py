@@ -36,6 +36,11 @@ class BaseModel(object):
     def set_session_options(self, session_options):
         self.session_options_ = session_options 
 
+    def get_input_name(self):
+        if self.session_:
+            return self.session_.get_inputs()
+        return None
+
     def create_session(self, model_path=None):
         if not model_path:
             model_path = self.model_path_

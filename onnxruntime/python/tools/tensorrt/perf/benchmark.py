@@ -45,35 +45,35 @@ from GPT2 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    # "bert-squad": (BERTSquad, "bert-squad"),
+    "bert-squad": (BERTSquad, "bert-squad"),
     "resnet50": (Resnet50, "resnet50"),
     "resnet101": (Resnet101, "resnet101"),
     "resnet152": (Resnet152, "resnet152"),
     "fast-rcnn": (FastRCNN, "fast-rcnn"),
     "mask-rcnn": (MaskRCNN, "mask-rcnn"),
     "ssd": (SSD, "ssd"),
-    # "inception-v1": (InceptionV1, "inception-v1"),
-    # "inception-v2": (InceptionV2, "inception-v2"),
-    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
-    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
-    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
-    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
-    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
-    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    # "bvlc-caffenet": (Alexnet, "bvlc-caffenet"),
-    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
-    # "vgg19-bn": (Vgg, "vgg19-bn"),
-    # "zfnet512": (Zfnet512, "zfnet512"),
-    # "retinanet": (Retinanet, "retinanet"),
-    # "yolov3": (YoloV3, "yolov3"),
-    # "yolov4": (YoloV4, "yolov4"),
-    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    # # "Arc-Face": (ArcFace, "arc-face"),
-    # # "Super-Resolution": (SuperResolution, "super-resolution"),
+    "inception-v1": (InceptionV1, "inception-v1"),
+    "inception-v2": (InceptionV2, "inception-v2"),
+    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
+    "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    "bvlc-caffenet": (Alexnet, "bvlc-caffenet"),
+    "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    "vgg19-bn": (Vgg, "vgg19-bn"),
+    "zfnet512": (Zfnet512, "zfnet512"),
+    "retinanet": (Retinanet, "retinanet"),
+    "yolov3": (YoloV3, "yolov3"),
+    "yolov4": (YoloV4, "yolov4"),
+    "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    # "Arc-Face": (ArcFace, "arc-face"),
+    # "Super-Resolution": (SuperResolution, "super-resolution"),
     "Fast-Neural": (FastNeural, "Fast-Neural"),
-    # "BiDAF": (BiDAF, "BiDAF"),
+    "BiDAF": (BiDAF, "BiDAF"),
     # "GPT2": (GPT2, "GPT2"),
 }
 
@@ -92,29 +92,6 @@ def get_latency_result(runtimes, batch_size):
         "QPS": "{:.2f}".format(throughput),
     }
 
-def inference_ort_to_generate_profiling_file(model, ep, inputs):
-
-    print("11111111111111")
-    model.create_session()
-    print("22222222222222")
-    sess = model.get_session()
-    sess.set_providers([ep])
-
-    # skip the 1st inference for TRT intentionally, since TRT engine creates subgraph which is expensive
-    model.inference(inputs)
-
-    options = onnxruntime.SessionOptions()
-    options.enable_profiling = True 
-    model.set_session_options(options)
-
-    print("33333333333333")
-    model.create_session()
-    print("44444444444444")
-    sess = model.get_session()
-    sess.set_providers([ep])
-
-    # use 2ed inference to generate profiling file
-    model.inference(inputs)
 
 def inference_ort(model, inputs, result_template, repeat_times, batch_size):
     result = {}
@@ -259,6 +236,26 @@ def validate(all_ref_outputs, all_outputs, decimal):
     print('ONNX Runtime outputs are similar to reference outputs!')
     return True
 
+# def inference_ort_to_generate_profiling_file(model, ep, inputs):
+
+    # model.create_session()
+    # sess = model.get_session()
+    # sess.set_providers([ep])
+
+    # # skip the 1st inference for TRT intentionally, since TRT engine creates subgraph which is expensive
+    # model.inference(inputs)
+
+    # options = onnxruntime.SessionOptions()
+    # options.enable_profiling = True 
+    # model.set_session_options(options)
+
+    # model.create_session()
+    # sess = model.get_session()
+    # sess.set_providers([ep])
+
+    # # use 2ed inference to generate profiling file
+    # model.inference(inputs)
+
 def cleanup_files():
     files = []
     p = subprocess.Popen(["find", ".", "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
@@ -279,20 +276,31 @@ def cleanup_files():
     for f in files:
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
-def update_fail_model(model_name, ep, ep_fail_for_model):
-    if not model_name in ep_fail_for_model:
-        ep_fail_for_model[model_name] = [ep]
+def remove_profiling_files(path):
+    files = []
+    p = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    files = files + stdout.split("\n") 
+
+    for f in files:
+        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
+
+def update_fail_model(model_name, ep, ep_model_fail_map):
+    if not model_name in ep_model_fail_map:
+        ep_model_fail_map[model_name] = [ep]
     else:
-        ep_fail_for_model[model_name].append(ep)
+        ep_model_fail_map[model_name].append(ep)
 
 
 def run_onnxruntime(args, models=MODELS):
     import onnxruntime
 
     results = []
-    latency_results = {} 
-    ep_fail_for_model = {}
-    profiling_metrics = {}
+    latency_comparison_map = {} 
+    ep_model_fail_map = {}
+    profile_metrics_map = {}
+
     provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 
     for name in models.keys():
@@ -306,21 +314,25 @@ def run_onnxruntime(args, models=MODELS):
             os.mkdir(path)
         os.chdir(path)
         path = os.getcwd()
-        subprocess.Popen(["rm", "-f", "onnxruntime_profile_*"], stdout=subprocess.PIPE)
+        
+        # cleanup files before running a new inference
+        remove_profiling_files(path)
 
         inputs = []
         ref_outputs = []
 
         for i in range(len(provider_list)):
             ep = provider_list[i]
-            ep_fails_flag = False
+            ep_fail_flag = False
 
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
                 continue
                 
+            start_time = datetime.now()
+
             # create onnxruntime inference session
-            logger.info("Initializing {} with {}...".format(name, provider_list[i:]))
+            logger.info("\nInitializing {} with {}...".format(name, provider_list[i:]))
             model = model_class(providers=provider_list[i:])
             model_name = model.get_model_name()
 
@@ -343,9 +355,10 @@ def run_onnxruntime(args, models=MODELS):
             try: 
                 model.create_session()
             except:
-                ep_fails_flag = True
-                update_fail_model(model_name, ep, ep_fail_for_model)
+                ep_fail_flag = True
+                update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
+
             sess = model.get_session()
 
             device_info.append(get_cuda_version())
@@ -365,44 +378,57 @@ def run_onnxruntime(args, models=MODELS):
                 "batch_size": batch_size,
                 "sequence_length": sequence_length,
                 "datetime": str(datetime.now()),
+                "total_time": None,
             }
 
             logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
 
+
+            if model.get_input_name():
+                logger.info("Model inputs name:")
+                for input_meta in model.get_input_name():
+                    logger.info(input_meta)
+
+            # model inference
             result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
+
+            end_time = datetime.now()
+            result["total_time"] = str(end_time - start_time) 
+
             if not validate(ref_outputs, model.get_outputs(), model.get_decimal()):
-                ep_fails_flag = True
-                update_fail_model(model_name, ep, ep_fail_for_model)
+                ep_fail_flag = True
+                update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
             latency_result[ep] = result["average_latency_ms"]
 
             logger.info(result)
             results.append(result)
-            latency_results[model_name] = copy.deepcopy(latency_result)
+            latency_comparison_map[model_name] = copy.deepcopy(latency_result)
 
 
         sess = model.get_session()
         sess.end_profiling()
-        if not ep_fails_flag:
-            total_ops_in_trt, total_ops, ratio_of_ops_in_trt, ratio_of_execution_time_in_trt = analyze_profiling_file(path)
-            profiling_metrics[model_name] = {}
-            profiling_metrics[model_name]['total_ops_in_trt'] = total_ops_in_trt
-            profiling_metrics[model_name]['total_ops'] = total_ops
-            profiling_metrics[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-            profiling_metrics[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
-        cleanup_files()
 
+        if not ep_fail_flag:
+            total_ops_in_trt, total_ops, ratio_of_ops_in_trt, ratio_of_execution_time_in_trt = analyze_profiling_file(path)
+            profile_metrics_map[model_name] = {}
+            profile_metrics_map[model_name]['total_ops_in_trt'] = total_ops_in_trt
+            profile_metrics_map[model_name]['total_ops'] = total_ops
+            profile_metrics_map[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+            profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+
+        cleanup_files()
         os.chdir(pwd)
 
-    return results, latency_results, ep_fail_for_model, profiling_metrics
+    return results, latency_comparison_map, ep_model_fail_map, profile_metrics_map
 
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "engine", "version", "device", "device_info", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
-            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
+            "sequence_length", "datetime", "total_time", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
@@ -459,28 +485,39 @@ def setup_logger(verbose):
 def main():
     args = parse_arguments()
     setup_logger(False)
+    pp = pprint.PrettyPrinter(indent=4)
 
-    results, latency_results, failing_models, profiling_metrics = run_onnxruntime(args)
+    perf_start_time = datetime.now()
+    results, latency_comparison_map, failing_models, profile_metrics_map = run_onnxruntime(args)
+    perf_end_time = datetime.now()
 
-    print("models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(MODELS)))
+    logger.info("\nTotal time for running/profiling all models: {}".format(perf_end_time - perf_start_time))
+    logger.info(list(MODELS.keys()))
+
+    logger.info("\nTotal models: {}".format(len(MODELS)))
+    logger.info("Fail models: {}".format(len(failing_models)))
+    logger.info("Models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(MODELS) - len(failing_models)))
+
     if len(failing_models) > 0:
-        print("EPs don't support the following models:\n")
-        print(failing_models)
+        logger.info("\nFailing EPs and Models:")
+        logger.info(failing_models)
 
-    if len(profiling_metrics) > 0:
-        pp = pprint.PrettyPrinter(indent=4)
-        pp.pprint(profiling_metrics)
+    if len(profile_metrics_map) > 0:
+        logger.info("\nTRT related metrics:")
+        pp.pprint(profile_metrics_map)
+
+    if latency_comparison_map:
+        logger.info("\nCUDA/TRT inference time comparison:")
+        pp.pprint(latency_comparison_map)
 
     if results:
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
         output_details(results, csv_filename)
 
-    if latency_results:
+    if latency_comparison_map:
         csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
-        output_latency_comparison(latency_results, csv_filename)
-        pp = pprint.PrettyPrinter(indent=4)
-        pp.pprint(latency_results)
+        output_latency_comparison(latency_comparison_map, csv_filename)
     
 
 
