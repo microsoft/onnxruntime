@@ -821,13 +821,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     //  Create output to index and type maps
+    const auto& graph_output = model_proto.graph().output();
     for (int i = 0; i < num_outputs; ++i) {
       const std::string& output_name = trt_network->getOutput(i)->getName();
       const auto& iter = output_map.find(output_name);
       if (iter != output_map.end()) {
         output_indexes[output_name] = iter->second;
-      }
-      const auto& graph_output = model_proto.graph().output();
+      }      
       const auto& tensor_type = graph_output[i].type().tensor_type();
       output_types[output_name] = tensor_type.elem_type();
     }
@@ -1202,7 +1202,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
         output_tensor[i] = ort.KernelContext_GetOutput(context, output_index, output_shapes.data(), output_shapes.size());
 
-        int output_type;
+        int output_type = 0;
         const auto& type_iter = output_types.find(output_name);
         if (type_iter != output_types.end()) {
           output_type = type_iter->second;
