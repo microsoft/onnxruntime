@@ -66,54 +66,56 @@ class ORTGlueTest(unittest.TestCase):
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "glue_test_output/")
         self.cache_dir = '/tmp/glue/'
         self.logging_steps = 10
+        self.rtol = 1e-02
+
 
     def test_roberta_with_mrpc(self):
-        expected_acc = 0.8897058823529411
-        expected_f1 = 0.9200710479573712
-        expected_acc_and_f1 = 0.9048884651551561
-        expected_loss = 0.2911236987394445
+        expected_acc = 0.8676470588235294
+        expected_f1 = 0.9035714285714286
+        expected_acc_and_f1 = 0.885609243697479
+        expected_loss = 0.3022572344862947
 
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_roberta_fp16_with_mrpc(self):
-        expected_acc = 0.8921568627450981
-        expected_f1 = 0.9219858156028369
-        expected_acc_and_f1 = 0.9070713391739675
-        expected_loss = 0.3033953265232198
+        expected_acc = 0.8995098039215687
+        expected_f1 = 0.9279437609841829
+        expected_acc_and_f1 = 0.9137267824528758
+        expected_loss = 0.32052762967114357
 
         results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_with_mrpc(self):
-        expected_acc = 0.8529411764705882
-        expected_f1 = 0.896551724137931
-        expected_acc_and_f1 = 0.8747464503042597
-        expected_loss = 0.4139287974320206
+        expected_acc = 0.8553921568627451
+        expected_f1 = 0.8970331588132635
+        expected_acc_and_f1 = 0.8762126578380043
+        expected_loss = 0.42737212419217707
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_fp16_with_mrpc(self):
-        expected_acc = 0.8627450980392157
-        expected_f1 = 0.9047619047619047
-        expected_acc_and_f1 = 0.8837535014005602
-        expected_loss = 0.41143255315574945
+        expected_acc = 0.8651960784313726
+        expected_f1 = 0.9063032367972743
+        expected_acc_and_f1 = 0.8857496576143234
+        expected_loss = 0.38716790532948925
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-        assert_allclose(results['acc'], expected_acc)
-        assert_allclose(results['f1'], expected_f1)
-        assert_allclose(results['acc_and_f1'], expected_acc_and_f1)
-        assert_allclose(results['loss'], expected_loss)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):
