@@ -92,7 +92,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     TypeProto* masked_lm_float_type_proto = GetMaskedLMTypeProto(prediction_arg,
                                                                  ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                                  graph_defs);
-    new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
+    new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto),
                                     ArgDef(masked_lm_ids, masked_lm_int64_type_proto),
                                     ArgDef(masked_lm_weights, masked_lm_float_type_proto)},  // Inputs
@@ -111,7 +111,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                                                     graph_defs);
 
-    new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
+    new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",
                                    {ArgDef(prediction_next_sentence),
                                     ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
                                    {ArgDef(nsp_loss, GetLossTypeProto(graph_defs)),
