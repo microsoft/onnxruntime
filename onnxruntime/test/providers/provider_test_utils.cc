@@ -546,7 +546,7 @@ std::vector<MLValue> OpTester::ExecuteModel(
   if (!status.IsOK()) {
     return {};
   }
-
+  Model::Save(model, "/tmp/run_graph_OptesterExecuteModel.onnx");
   RunOptions default_run_options{};
   default_run_options.run_tag = op_;
   default_run_options.run_log_verbosity_level = 1;

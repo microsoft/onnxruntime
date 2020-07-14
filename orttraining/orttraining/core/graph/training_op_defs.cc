@@ -1128,8 +1128,8 @@ Example 4:
           }
         }
       });
-      
-    ONNX_CONTRIB_OPERATOR_SCHEMA(SplitTraining)
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SplitTraining)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -1166,7 +1166,7 @@ Example 4:
           return;
         }
         std::vector<int64_t> split = ParseData<int64_t>(split_proto);
-        
+
         if (!ctx.getInputType(0)->tensor_type().has_shape()) {
           return;
         }
@@ -1206,7 +1206,7 @@ Example 4:
               ->mutable_dim(axis)
               ->set_dim_value(split[i]);
         }
-        
+
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
