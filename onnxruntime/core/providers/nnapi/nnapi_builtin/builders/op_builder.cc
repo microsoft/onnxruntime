@@ -265,8 +265,8 @@ vector<int32_t> ComputeConvPads(
     AutoPadType auto_pad_type, bool nchw) {
   const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
   const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
-  const int32_t weight_size_y = weight_dimen[1];
-  const int32_t weight_size_x = weight_dimen[2];
+  const int32_t weight_size_y = weight_dimen[0];
+  const int32_t weight_size_x = weight_dimen[1];
   const int32_t stride_y = onnx_strides[0];
   const int32_t stride_x = onnx_strides[1];
   const int32_t dilation_y = onnx_dilations[0];
@@ -875,8 +875,8 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     kernel_shape = helper.Get("kernel_shape", vector<int32_t>{0, 0});
     onnx_strides = helper.Get("strides", vector<int>{1, 1});
     onnx_pads = helper.Get("pads", vector<int>{0, 0, 0, 0});
-    const auto weight_dimen = vector<uint32_t>{static_cast<uint32_t>(kernel_shape[2]),
-                                               static_cast<uint32_t>(kernel_shape[3])};
+    const auto weight_dimen = vector<uint32_t>{static_cast<uint32_t>(kernel_shape[0]),
+                                               static_cast<uint32_t>(kernel_shape[1])};
     const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
     if (auto_pad_type != AutoPadType::NOTSET) {
       onnx_pads = ComputeConvPads(input_shape, weight_dimen,
@@ -902,12 +902,13 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
     onnx_strides = vector<int32_t>{1, 1};
     onnx_pads = vector<int32_t>{0, 0, 0, 0};
-    if (model_builder.UseNCHW())
+    if (use_nchw) {
       kernel_shape = vector<int32_t>{static_cast<int32_t>(input_shape[2]),
                                      static_cast<int32_t>(input_shape[3])};
-    else
+    } else {
       kernel_shape = vector<int32_t>{static_cast<int32_t>(input_shape[1]),
                                      static_cast<int32_t>(input_shape[2])};
+    }
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
