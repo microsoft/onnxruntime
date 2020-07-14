@@ -14,7 +14,7 @@ struct BinaryElementwisePreparation {
   const Tensor* lhs_tensor = nullptr;
   const Tensor* rhs_tensor = nullptr;
   Tensor* output_tensor = nullptr;
-  int32_t output_rank_or_simple_broadcast = 0; // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
+  int32_t output_rank_or_simple_broadcast = 0;  // for no_broadcast|left_scalar|right_scalar cases, output_rank uses SimpleBroadcast enums
 
   TArray<int64_t> lhs_padded_strides;
   TArray<int64_t> rhs_padded_strides;
@@ -42,8 +42,8 @@ struct BinaryElementwisePreparation {
     // early return if one operand is scalar
     if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
       output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() == 1
-                                                                ? SimpleBroadcast::LeftScalar
-                                                                : SimpleBroadcast::RightScalar);
+                                                                 ? SimpleBroadcast::LeftScalar
+                                                                 : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
 
@@ -76,7 +76,7 @@ struct BinaryElementwisePreparation {
 
     if (lhs_shape != output_shape) {
       TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
-      lhs_padded_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
+      lhs_padded_strides.SetSize(out_rank);
       auto offset = out_rank - lhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
@@ -88,7 +88,7 @@ struct BinaryElementwisePreparation {
 
     if (rhs_shape != output_shape) {
       TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), out_rank);
-      rhs_padded_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
+      rhs_padded_strides.SetSize(out_rank);
       auto offset = out_rank - rhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
@@ -99,7 +99,7 @@ struct BinaryElementwisePreparation {
     }
 
     TensorPitches original_output_strides(output_shape.GetDims());
-    fdm_output_strides.size_ = gsl::narrow_cast<int32_t>(out_rank);
+    fdm_output_strides.SetSize(out_rank);
     for (auto i = 0; i < out_rank; ++i) {
       fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
     }
@@ -107,6 +107,12 @@ struct BinaryElementwisePreparation {
     return Status::OK();
   }
 };
+
+Status ComputeOutputShape(
+    const std::string& node_name,
+    const TensorShape& lhs_shape,
+    const TensorShape& rhs_shape,
+    TensorShape& out_shape);
 
 Status BinaryElementwiseBroadcastPrepare(
     const Tensor* lhs_tensor,
@@ -204,54 +210,6 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
  public:
   PRelu(const OpKernelInfo& info) : BinaryElementwise(info) {
   }
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T, typename CudaT>
-class VariadicInputBase : public CudaKernel {
- public:
-  VariadicInputBase(const OpKernelInfo& info) : CudaKernel(info) {}
-
-  Status ComputeInternal(OpKernelContext*) const override {
-    return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
-  }
-
-  typedef void (*ImplCompute)(int32_t output_rank_or_simple_broadcast,
-                              const TArray<int64_t>* lhs_padded_strides,
-                              const CudaT* lhs_data,
-                              const TArray<int64_t>* rhs_padded_strides,
-                              const CudaT* rhs_data,
-                              const TArray<fast_divmod>* fdm_output_strides,
-                              const fast_divmod& fdm_H,
-                              const fast_divmod& fdm_C,
-                              CudaT* output_data,
-                              size_t count);
-
-  Status ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const;
-};
-
-// Sum allows varadic inputs, and it uses binary elementwise Add in implementation
-template <typename T>
-class Sum final : public VariadicInputBase<T, typename ToCudaType<T>::MappedType> {
- public:
-  Sum(const OpKernelInfo& info) : VariadicInputBase<T, typename ToCudaType<T>::MappedType>(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Max final : public VariadicInputBase<T, typename ToCudaType<T>::MappedType> {
- public:
-  Max(const OpKernelInfo& info) : VariadicInputBase<T, typename ToCudaType<T>::MappedType>(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Min final : public VariadicInputBase<T, typename ToCudaType<T>::MappedType> {
- public:
-  Min(const OpKernelInfo& info) : VariadicInputBase<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

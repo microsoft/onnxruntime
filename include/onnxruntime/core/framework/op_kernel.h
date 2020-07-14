@@ -89,6 +89,14 @@ class OpKernelContext {
     }
   }
 
+  // Fetch a required input, enforcing that it is present.
+  template <typename T>
+  const T& RequiredInput(int index) const {
+    const T* input_ptr = Input<T>(index);
+    ORT_ENFORCE(input_ptr, "Required input at index ", index, " is not present.");
+    return *input_ptr;
+  }
+
   // Fetch output (non-tensor) with specified index.
   template <typename T>
   T* Output(int index) {
@@ -103,6 +111,13 @@ class OpKernelContext {
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
+
+  // Fetch a required tensor output, enforcing that it is present.
+  Tensor& RequiredOutput(int index, const TensorShape& shape) {
+    Tensor* output_ptr = Output(index, shape);
+    ORT_ENFORCE(output_ptr, "Required output at index ", index, " is not present.");
+    return *output_ptr;
+  }
 
   // Fetch a sparse-tensor output corresponding to the specified index.
   // num_values must specify the number of non-zero values (commonly known as NNZ/nnz),

@@ -187,7 +187,6 @@ void LearningModelBinding::Clear() try {
   auto device = m_session.Device().as<winmlp::LearningModelDevice>();
   CWinMLAutoLock lock(!device->IsCpuDevice() ? session->GetDMLEPLock() : nullptr);
 
-  m_session.as<winmlp::LearningModelSession>()->CheckClosed();
   inputs_.clear();
   input_names_.clear();
   outputs_.clear();

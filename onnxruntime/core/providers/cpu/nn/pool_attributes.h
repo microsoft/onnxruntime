@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor_shape.h"
-#include "core/providers/cpu/nn/autopad_type.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 

@@ -1,9 +1,42 @@
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+
 #include "helper.h"
 #include "shaper.h"
 
 using std::string;
 using std::vector;
+
+std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y, const uint32_t input_size_x,
+                                                     const uint32_t weight_size_y, const uint32_t weight_size_x,
+                                                     const vector<int32_t>& onnx_pads,
+                                                     const vector<int32_t>& onnx_strides,
+                                                     const vector<int32_t>& onnx_dilations) {
+  int32_t padding_top = onnx_pads[0];
+  int32_t padding_bottom = onnx_pads[2];
+  int32_t padding_left = onnx_pads[1];
+  int32_t padding_right = onnx_pads[3];
+  int32_t stride_y = onnx_strides[0];
+  int32_t stride_x = onnx_strides[1];
+  int32_t dilation_y = onnx_dilations[0];
+  int32_t dilation_x = onnx_dilations[1];
+
+  int64_t output_size_y =
+      0 == input_size_y
+          ? 0
+          : onnxruntime::ComputeOutputShape(input_size_y,
+                                            stride_y, weight_size_y, dilation_y,
+                                            padding_top, padding_bottom);
+
+  int64_t output_size_x =
+      0 == input_size_x
+          ? 0
+          : onnxruntime::ComputeOutputShape(input_size_x,
+                                            stride_x, weight_size_x, dilation_x,
+                                            padding_left, padding_right);
+
+  return std::make_pair(static_cast<uint32_t>(output_size_y), static_cast<uint32_t>(output_size_x));
+}
 
 void Shaper::Conv(const std::string& input_name,
                   const std::string& weight_name,
@@ -12,60 +45,27 @@ void Shaper::Conv(const std::string& input_name,
                   const vector<int32_t>& onnx_dilations,
                   bool nchw,
                   const std::string& output_name) {
-  Shape weight_dimen =
-      shape_map_.at(weight_name);  // num_output, height, width, num_input
-
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
-  int32_t padding_top = onnx_pads[0];
-  int32_t padding_bottom = onnx_pads[2];
-  int32_t stride_x = onnx_strides[1];
-  int32_t stride_y = onnx_strides[0];
-  int32_t dilation_x = onnx_dilations[1];
-  int32_t dilation_y = onnx_dilations[0];
-
-  // NHWC
   Shape input_dimen = shape_map_.at(input_name);
-  Shape outputDimen;
+  Shape weight_dimen = shape_map_.at(weight_name);  // num_output, height, width, num_input
+
+  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  const auto weight_size_y = weight_dimen[1];
+  const auto weight_size_x = weight_dimen[2];
+
+  uint32_t output_size_y, output_size_x;
+  std::tie(output_size_y, output_size_x) =
+      ComputeConvOutputShape(input_size_y, input_size_x,
+                             weight_size_y, weight_size_x,
+                             onnx_pads, onnx_strides, onnx_dilations);
+  Shape output_dimen;
   if (nchw) {
-    outputDimen =
-        {
-            input_dimen[0],
-            weight_dimen[0],
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[3] == 0
-                ? 0
-                : (input_dimen[3] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-        };
+    output_dimen = {input_dimen[0], weight_dimen[0], output_size_y, output_size_x};
   } else {  // nhwc
-    outputDimen =
-        {
-            input_dimen[0],
-            input_dimen[1] == 0
-                ? 0
-                : (input_dimen[1] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-            weight_dimen[0],
-        };
+    output_dimen = {input_dimen[0], output_size_y, output_size_x, weight_dimen[0]};
   }
 
-  shape_map_[output_name] = outputDimen;
+  shape_map_[output_name] = output_dimen;
 
   if (!shaper_finalized_) {
     shape_ops_.push_back(
@@ -88,59 +88,27 @@ void Shaper::DepthwiseConv(const std::string& input_name,
                            const std::vector<int32_t>& onnx_dilations,
                            bool nchw,
                            const std::string& output_name) {
-  Shape weight_dimen =
-      shape_map_.at(weight_name);  // 1, height, width, num_output
-
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
-  int32_t padding_top = onnx_pads[0];
-  int32_t padding_bottom = onnx_pads[2];
-  int32_t stride_x = onnx_strides[1];
-  int32_t stride_y = onnx_strides[0];
-  int32_t dilation_x = onnx_dilations[1];
-  int32_t dilation_y = onnx_dilations[0];
-
-  // NHWC
   Shape input_dimen = shape_map_.at(input_name);
-  Shape outputDimen;
+  Shape weight_dimen = shape_map_.at(weight_name);  // 1, height, width, num_output
+
+  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  const auto weight_size_y = weight_dimen[1];
+  const auto weight_size_x = weight_dimen[2];
+
+  uint32_t output_size_y, output_size_x;
+  std::tie(output_size_y, output_size_x) =
+      ComputeConvOutputShape(input_size_y, input_size_x,
+                             weight_size_y, weight_size_x,
+                             onnx_pads, onnx_strides, onnx_dilations);
+
+  Shape output_dimen;
   if (nchw) {
-    outputDimen =
-        {
-            input_dimen[0],
-            weight_dimen[3],
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[3] == 0
-                ? 0
-                : (input_dimen[3] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-        };
+    output_dimen = {input_dimen[0], weight_dimen[3], output_size_y, output_size_x};
   } else {  // nhwc
-    outputDimen =
-        {
-            input_dimen[0],
-            input_dimen[1] == 0
-                ? 0
-                : (input_dimen[1] - ((weight_dimen[1] - 1) * dilation_y + 1) +
-                   padding_top + padding_bottom) /
-                          stride_y +
-                      1,
-            input_dimen[2] == 0
-                ? 0
-                : (input_dimen[2] - ((weight_dimen[2] - 1) * dilation_x + 1) +
-                   padding_left + padding_right) /
-                          stride_x +
-                      1,
-            weight_dimen[3],
-        };
+    output_dimen = {input_dimen[0], output_size_y, output_size_x, weight_dimen[3]};
   }
-  shape_map_[output_name] = outputDimen;
+  shape_map_[output_name] = output_dimen;
 
   if (!shaper_finalized_) {
     shape_ops_.push_back(
@@ -163,41 +131,24 @@ void Shaper::Pool(const std::string& input_name,
                   bool nchw,
                   const std::string& output_name) {
   auto input_dimen = shape_map_.at(input_name);
+  const auto input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const auto input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  int32_t weight_size_y = kernel_shape[0];
+  int32_t weight_size_x = kernel_shape[1];
 
-  int32_t padding_left = onnx_pads[1];
-  int32_t padding_right = onnx_pads[3];
-  int32_t padding_top = onnx_pads[0];
-  int32_t padding_bottom = onnx_pads[2];
-  int32_t stride_x = onnx_strides[1];
-  int32_t stride_y = onnx_strides[0];
-  int32_t width = kernel_shape[1];
-  int32_t height = kernel_shape[0];
-
-  Shape outputDimen;
+  uint32_t output_size_y, output_size_x;
+  std::tie(output_size_y, output_size_x) =
+      ComputeConvOutputShape(input_size_y, input_size_x,
+                             weight_size_y, weight_size_x,
+                             onnx_pads, onnx_strides, {1, 1} /* onnx_dilations */);
+  Shape output_dimen;
   if (nchw) {
-    outputDimen = {
-        input_dimen[0],
-        input_dimen[1],
-        input_dimen[2] == 0
-            ? 0
-            : (input_dimen[2] - height + padding_top + padding_bottom) / stride_y + 1,
-        input_dimen[3] == 0
-            ? 0
-            : (input_dimen[3] - width + padding_left + padding_right) / stride_x + 1,
-    };
-  } else {
-    outputDimen = {
-        input_dimen[0],
-        input_dimen[1] == 0
-            ? 0
-            : (input_dimen[1] - height + padding_top + padding_bottom) / stride_y + 1,
-        input_dimen[2] == 0
-            ? 0
-            : (input_dimen[2] - width + padding_left + padding_right) / stride_x + 1,
-        input_dimen[3]};
+    output_dimen = {input_dimen[0], input_dimen[1], output_size_y, output_size_x};
+  } else {  // nhwc
+    output_dimen = {input_dimen[0], output_size_y, output_size_x, input_dimen[3]};
   }
 
-  shape_map_[output_name] = outputDimen;
+  shape_map_[output_name] = output_dimen;
 
   if (!shaper_finalized_) {
     shape_ops_.push_back(
@@ -374,6 +325,41 @@ void Shaper::Concat(const std::vector<std::string>& input_names,
     shape_ops_.push_back(
         [input_names, axis, output_name](Shaper& shaper) {
           shaper.Concat(input_names, axis, output_name);
+        });
+  }
+}
+
+void Shaper::Squeeze(const std::string& input_name,
+                     const std::vector<int32_t>& axes,
+                     const std::string& output_name) {
+  std::vector<uint32_t> input_dimen = shape_map_.at(input_name);
+  int32_t input_size = input_dimen.size();
+  size_t axes_size = axes.size();
+  std::unordered_set<int32_t> axes_to_be_squeezed;
+  if (axes_size == 0) {
+    for (int32_t idx = 0; idx < input_size; ++idx) {
+      if (input_dimen[idx] == 1)
+        axes_to_be_squeezed.insert(idx);
+    }
+  } else {
+    for (const auto& axis : axes)
+      axes_to_be_squeezed.insert(axis);
+  }
+
+  // Make output dimensions
+  std::vector<uint32_t> output_dimen;
+  output_dimen.reserve(input_size - axes_to_be_squeezed.size());
+  for (int32_t i = 0; i < input_size; i++) {
+    if (!Contains(axes_to_be_squeezed, i))
+      output_dimen.push_back(input_dimen[i]);
+  }
+
+  shape_map_[output_name] = output_dimen;
+
+  if (!shaper_finalized_) {
+    shape_ops_.push_back(
+        [input_name, axes, output_name](Shaper& shaper) {
+          shaper.Squeeze(input_name, axes, output_name);
         });
   }
 }

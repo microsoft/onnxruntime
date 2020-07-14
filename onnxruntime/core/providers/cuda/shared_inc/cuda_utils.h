@@ -51,14 +51,28 @@ struct TArray {
   }
 
   TArray(int32_t size) : size_(size), data_() {
-    ORT_ENFORCE(size <= capacity, "TArray size was set to ", size, ", exeeding the capacity limit of ", capacity);
+    ORT_ENFORCE(
+        0 <= size && size <= capacity,
+        "TArray size must be within range [0, ", capacity, "]. Actual: ", size);
   }
 
-  TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size()))  {
+  TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
+    static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 
-  T& operator[](int32_t index) {
+  void SetSize(int32_t size) {
+    ORT_ENFORCE(
+        0 <= size && size <= capacity,
+        "TArray size must be within range [0, ", capacity, "]. Actual: ", size);
+    size_ = size;
+  }
+
+  __host__ __device__ int32_t Size() const {
+    return size_;
+  }
+
+  __host__ __device__ T& operator[](int32_t index) {
     return data_[index];
   }
 
@@ -66,8 +80,17 @@ struct TArray {
     return data_[index];
   }
 
-  static constexpr int32_t GetCapacity() { return capacity; };
+  __host__ __device__ T* Data() {
+    return data_;
+  }
 
+  __host__ __device__ const T* Data() const {
+    return data_;
+  }
+
+  static constexpr int32_t Capacity() { return capacity; };
+
+ private:
   int32_t size_;
   T data_[capacity];
 };
