@@ -831,7 +831,7 @@ Status FindAllConnectedNodes(Graph& graph,
   ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableInputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
-        if (graph.IsInputsIncludingInitializers(&node_arg) || graph.IsInitializerTensor(node_arg.Name())) {
+        if (graph.IsInputsIncludingInitializers(&node_arg) || graph.IsInitializedTensor(node_arg.Name())) {
           connected_inputs.insert(&node_arg);
         } else {
           Node* producer_node = graph.GetMutableProducerNode(node_arg.Name());
@@ -993,7 +993,7 @@ common::Status HandleSharedInitializer(Graph& graph,
 
     for (const auto input : visited_inputs) {
       // If the node is an input instead of an initializer, continue
-      if (!graph.IsInitializerTensor(input->Name())){
+      if (!graph.IsInitializedTensor(input->Name())){
         continue;
       }
 

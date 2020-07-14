@@ -513,7 +513,7 @@ class Graph {
   void RemoveInitializedTensor(const std::string& tensor_name);
 
   /** Check if a given name is an initializer tensor's name in this graph. */
-  bool IsInitializerTensor(const std::string& name) const;
+  bool IsInitializedTensor(const std::string& name) const;
 
   /** Replaces the initializer tensor with the same name as the given initializer tensor.
   The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
