@@ -69,51 +69,63 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
 }
 
 // helper function
+
 template <bool ForceSymmetricAutoPadding>
-Status ComputePadAndOutputShape(
-    const int64_t in_dim,
-    const int64_t stride,
-    const int64_t kernel,
-    const int64_t dilation,
-    AutoPadType pad_type,
-    int64_t* pad_head,
-    int64_t* pad_tail,
-    int64_t* out_dim) {
-  const int64_t dkernel = dilation * (kernel - 1) + 1;
+Status ComputePad(const int64_t in_dim,
+                  const int64_t stride, const int64_t kernel, const int64_t dilation,
+                  AutoPadType pad_type,
+                  int64_t& pad_head, int64_t& pad_tail) {
+  switch (pad_type) {
+    case AutoPadType::NOTSET:
+      break;
+    case AutoPadType::VALID: {
+      pad_head = 0;
+      pad_tail = 0;
+    } break;
+    case AutoPadType::SAME_UPPER:
+    case AutoPadType::SAME_LOWER: {
+      if (1 != dilation)
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                      "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
 
-  if (pad_type == AutoPadType::NOTSET) {
-    *out_dim = static_cast<int64_t>(static_cast<float>(in_dim + *pad_head + *pad_tail - dkernel) / stride + 1);
-  } else {
-    switch (pad_type) {
-      case AutoPadType::VALID:
-        *pad_head = 0;
-        *pad_tail = 0;
-        *out_dim = (in_dim - dkernel) / stride + 1;
-        break;
-      case AutoPadType::SAME_UPPER:
-      case AutoPadType::SAME_LOWER: {
-        ORT_ENFORCE(dilation == 1, "Dilation not supported for AutoPadType::SAME_UPPER or AutoPadType::SAME_LOWER.");
-        int64_t legacy_target_size = (in_dim + stride - 1) / stride;
-        int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
-        *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
+      int64_t legacy_target_size = (in_dim + stride - 1) / stride;
+      int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      // make sure padding is symmetric
+      if (ForceSymmetricAutoPadding) {
+        // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
+        pad_needed = (pad_needed + 1) & ~1;
+      }
 
-        // make sure padding is symmetric
-        if (ForceSymmetricAutoPadding) {
-          // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
-          pad_needed = (pad_needed + 1) & ~1;
-        }
+      if (pad_type == AutoPadType::SAME_LOWER)
+        pad_head = (pad_needed + 1) / 2;
+      else
+        pad_head = pad_needed / 2;
 
-        if (pad_type == AutoPadType::SAME_LOWER) {
-          *pad_head = (pad_needed + 1) / 2;
-        } else {
-          *pad_head = pad_needed / 2;
-        }
-        *pad_tail = pad_needed - *pad_head;
-      } break;
-      default:
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "pad type not supported.");
-    }
+      pad_tail = pad_needed - pad_head;
+    } break;
+    default:
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "ComputePad: pad type not supported.");
   }
+
+  return Status::OK();
+}
+
+inline int64_t ComputeOutputShape(const int64_t in_dim,
+                                  const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                  const int64_t pad_head, const int64_t pad_tail) {
+  const int64_t dkernel = dilation * (kernel - 1) + 1;
+  return static_cast<int64_t>(static_cast<float>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
+}
+
+template <bool ForceSymmetricAutoPadding>
+Status ComputePadAndOutputShape(const int64_t in_dim,
+                                const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                AutoPadType pad_type,
+                                int64_t& pad_head, int64_t& pad_tail,
+                                int64_t& out_dim) {
+  ORT_RETURN_IF_ERROR(
+      ComputePad<ForceSymmetricAutoPadding>(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail));
+  out_dim = ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
   return Status::OK();
 }
 

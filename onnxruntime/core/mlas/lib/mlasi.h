@@ -774,7 +774,7 @@ MlasGetMaximumThreadCount(
     return 1;
 #endif
 #else
-	return onnxruntime::concurrency::ThreadPool::NumThreads(ThreadPool);
+    return onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(ThreadPool);
 #endif
 }
 
