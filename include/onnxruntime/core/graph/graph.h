@@ -647,15 +647,6 @@ class Graph {
     return *(result.first->second);
   }
 
-  /** Creates a mutable NodeArg owned by this graph with mirrored base_arg's TypeProto and name
-  @param base_arg The NodeArg the newly created NodeArg is mirrored based off.
-  @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
-  */
-  NodeArg& CreateNodeArg(const NodeArg* base_arg) {
-    ONNX_NAMESPACE::TypeProto type_proto(*(base_arg->TypeAsProto()));
-    return GetOrCreateNodeArg(GenerateNodeArgName(base_arg->Name()), &type_proto);
-  }
-
   /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 

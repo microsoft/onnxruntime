@@ -4,7 +4,10 @@
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include <queue>
 
+#include "core/graph/graph_utils.h"
+
 using namespace onnxruntime::common;
+using namespace onnxruntime::graph_utils;
 
 namespace onnxruntime {
 namespace training {
@@ -116,7 +119,8 @@ std::vector<NodeArg*> CreateMirrorNodeArgs(
 
   for (auto& node_arg : node_args) {
     // new_node_arg is a mirror variable of node_arg. They have the same type.
-    auto new_node_arg = &graph.CreateNodeArg(node_arg);
+    assert(node_arg);
+    auto new_node_arg = &CreateNodeArg(graph, *node_arg);
     new_node_args.push_back(new_node_arg);
   }
 
@@ -182,7 +186,10 @@ Node* AddBackwardRecord(Graph& graph,
   // Optimizer will be added after applying pipeline transformer. To support partial graph evaluation,
   // the added Record backward op will have its first passthrough input as output.
   ORT_ENFORCE(input_args.size() >= 2, "RecordEvent backward op at least have two inputs.");
-  auto& new_output = graph.CreateNodeArg(input_args[1]);  // the first input is signal, not passing through
+
+  // RecordEvent doesn't have optional input, so it cannot be nullptr.
+  assert(input_args[1]);
+  auto& new_output = CreateNodeArg(graph, *input_args[1]);  // the first input is signal, not passing through
   output_args.push_back(&new_output);
   new_output_names.push_back(new_output.Name());
 
@@ -209,12 +216,10 @@ Node* AddForwardWait(Graph& graph,
   auto update_wait_input_output = [&](NodeArg* old_input,
                                       std::vector<NodeArg*>& input_args,
                                       std::vector<NodeArg*>& output_args) -> NodeArg& {
+    assert(old_input);
     input_args.push_back(old_input);
 
-    const auto& new_name = graph.GenerateNodeArgName(old_input->Name());
-    ONNX_NAMESPACE::TypeProto type_proto(*(old_input->TypeAsProto()));
-
-    auto& wait_output = graph.GetOrCreateNodeArg(new_name, &type_proto);
+    auto& wait_output = CreateNodeArg(graph, *old_input);
     output_args.push_back(&wait_output);
 
     return wait_output;
@@ -292,7 +297,9 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
 
     // Add send forward op's output as record op's input and output
     for (auto& output : forward_send->MutableOutputDefs()) {
-      auto& new_output = graph.CreateNodeArg(output);
+      // send doesn't have optional output, so the node cannot be nullptr.
+      assert(output);
+      auto& new_output = CreateNodeArg(graph, *output);
       output_args.push_back(&new_output);
       input_args.push_back(output);
     }
@@ -317,7 +324,10 @@ Status AddOrSkipForwardRecordBackwardWait(Graph& graph,
                       std::end(record_node->MutableOutputDefs()));
 
     auto& input = backward_recv->MutableInputDefs()[0];
-    auto& new_output = graph.CreateNodeArg(input);
+
+    // recv node doesn't have optional input, so the node cannot be nullptr.
+    assert(input);
+    auto& new_output = CreateNodeArg(graph, *input);
     output_args.push_back(&new_output);
     input = &new_output;
 
@@ -817,7 +827,7 @@ Status FindAllConnectedNodes(Graph& graph,
                              std::set<NodeArg*>& connected_inputs,
                              std::set<NodeArg*>& connected_outputs
                              ) {
-  assert(node != nullptr);
+  assert(node);
   ORT_THROW_IF_ERROR(node->ForEachMutableWithIndex(
       node->MutableInputDefs(),
       [&](NodeArg& node_arg, size_t /*index*/) {
@@ -873,7 +883,7 @@ common::Status AddPassthroughInitializer(Graph& graph,
                                          const std::vector<PipelineStageNodeGroup>& node_groups,
                                          const std::vector<Node*>& send_nodes,
                                          const std::vector<Node*>& recv_nodes) {
-  assert(initializer != nullptr);
+  assert(initializer);
   ORT_ENFORCE(node_groups.size() >= 2, "Initializer ", initializer->Name(), " is not shared across stages.");
 
   const size_t from_stage = node_groups.front().stage_id;
@@ -897,7 +907,8 @@ common::Status AddPassthroughInitializer(Graph& graph,
 
     // Create a new node_arg for the recv, as the new node_arg from recv node should possess a different id
     // than the one in send
-    current_node_arg = &graph.CreateNodeArg(current_node_arg);
+    assert(current_node_arg);
+    current_node_arg = &CreateNodeArg(graph, *current_node_arg);
 
     // process recv node in cut i
     auto& recv_attributes = recv_nodes[i]->GetMutableAttributes();
@@ -929,7 +940,7 @@ void TraverseGraphWithConnectedElement(Graph& graph,
                                        std::set<Node*>& visited_nodes,
                                        std::set<NodeArg*>& visited_inputs,
                                        std::set<NodeArg*>& visited_outputs) {
-  assert(start_node != nullptr);
+  assert(start_node);
   visited_nodes.clear();
   visited_inputs.clear();
   visited_outputs.clear();
@@ -1141,6 +1152,7 @@ common::Status SplitGraph(Graph& graph,
       if (exiting_updated_node_arg != updated_node_args.end()) {
         updated_node_arg = exiting_updated_node_arg->second;
       }
+      assert(updated_node_arg);
 
       send_input_args.push_back(updated_node_arg);
 
@@ -1148,7 +1160,7 @@ common::Status SplitGraph(Graph& graph,
 
       element_types.add_ints(static_cast<int64_t>(dtype));
 
-      auto& new_receive_output = graph.CreateNodeArg(updated_node_arg);
+      auto& new_receive_output = CreateNodeArg(graph, *updated_node_arg);
       const auto old_shape = *(updated_node_arg->Shape());
       new_receive_output.SetShape(old_shape);
       recv_output_args.push_back(&new_receive_output);
@@ -1214,7 +1226,7 @@ common::Status SplitGraph(Graph& graph,
 
 // traverse the graph from start_node to get the set of nodes contains in this disconnected subgraph
 common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
-  assert(start_node != nullptr);
+  assert(start_node);
   std::set<Node*> visited_nodes;
   std::set<NodeArg*> visited_inputs;
   std::set<NodeArg*> visited_outputs;
