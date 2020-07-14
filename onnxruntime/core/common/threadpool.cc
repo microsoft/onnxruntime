@@ -74,19 +74,19 @@ public:
     // does not need to be unique, but we aim for a good distribution, particularly in the case where
     // most/all of the thread pool's threads are active in the loop.  Threads outside the pool may
     // also be claiming work, with CurrentThreadId -1.
-    int num_threads = _tp.NumThreads();
-    int my_thread_idx = (_tp.CurrentThreadId() + 1) % num_threads;
-    assert(my_thread_idx >= 0 && my_thread_idx < num_threads);
+    int d_of_p = ThreadPool::DegreeOfParallelism(&_tp);
+    int my_thread_idx = (_tp.CurrentThreadId() + 1) % d_of_p;
+    assert(my_thread_idx >= 0 && my_thread_idx < d_of_p);
 
     int home_shard;
-    if (num_threads >= NUM_SHARDS) {
+    if (d_of_p >= NUM_SHARDS) {
       // More threads than shards => allocate them home shards round-robin, aiming to sprace the load across
       // the shards
       home_shard = my_thread_idx % NUM_SHARDS;
     } else {
       // Fewer threads than shards => spread the threads evenly across the shards, so each will work
       // on a run of successive shards before contention
-      home_shard = (my_thread_idx * NUM_SHARDS) / num_threads;
+      home_shard = (my_thread_idx * NUM_SHARDS) / d_of_p;
     }
     assert(home_shard >= 0 && home_shard < NUM_SHARDS);
     return home_shard;
@@ -126,13 +126,26 @@ private:
 #pragma warning(pop) /* Padding added in LoopCounterShard, LoopCounter */
 #endif
 
-ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options, const NAME_CHAR_TYPE* name, int num_threads,
+ThreadPool::ThreadPool(Env* env,
+                       const ThreadOptions& thread_options,
+                       const NAME_CHAR_TYPE* name,
+                       int degree_of_parallelism,
                        bool low_latency_hint)
     : thread_options_(thread_options) {
-  ORT_ENFORCE(num_threads >= 1);
-  extended_eigen_threadpool_ =
-      onnxruntime::make_unique<ThreadPoolTempl<Env>>(name, num_threads, low_latency_hint, *env, thread_options_);
-  underlying_threadpool_ = extended_eigen_threadpool_.get();
+  // In the current implementation, a thread pool with degree_of_parallelism==1 uses
+  // the caller as one of the threads for executing work.  Hence we only create
+  // additional thread(s) for degree_of_parallelism>=2.
+  ORT_ENFORCE(degree_of_parallelism >= 1);
+  if (degree_of_parallelism >= 2) {
+    int threads_to_create = degree_of_parallelism - 1;
+    extended_eigen_threadpool_ =
+        onnxruntime::make_unique<ThreadPoolTempl<Env>>(name,
+                                                       threads_to_create,
+                                                       low_latency_hint,
+                                                       *env,
+                                                       thread_options_);
+    underlying_threadpool_ = extended_eigen_threadpool_.get();
+  }
 }
 
 ThreadPool::~ThreadPool() = default;
@@ -153,8 +166,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
 
   // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
   // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
-  int num_threads = NumThreads();
-  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads), total));
+  auto d_of_p = DegreeOfParallelism(this);
+  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(d_of_p), total));
   assert(num_work_items > 0);
 
   LoopCounter lc(*this, total, block_size);
@@ -184,12 +197,20 @@ void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<voi
 
 void ThreadPool::Schedule(std::function<void()> fn) {
   ORT_ENFORCE(fn != nullptr);
-  underlying_threadpool_->Schedule(std::move(fn));
+  if (underlying_threadpool_) {
+    underlying_threadpool_->Schedule(std::move(fn));
+  } else {
+    fn();
+  }
 }
 
 void ThreadPool::RunInParallel(std::function<void()> fn, int n) {
   ORT_ENFORCE(fn != nullptr);
-  underlying_threadpool_->RunInParallel(std::move(fn), n);
+  if (underlying_threadpool_) {
+    underlying_threadpool_->RunInParallel(std::move(fn), n);
+  } else {
+    fn();
+  }
 }
 
 bool ThreadPool::ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
@@ -201,9 +222,10 @@ bool ThreadPool::ShouldParallelizeLoop(const std::ptrdiff_t num_iterations,
 
   // Do not parallelize loops with only a single thread available.  If the
   // caller is outside the current pool (ID == -1) then we parallelize
-  // via the pool's thread(s).  If the caller is inside the current pool
+  // if the pool has any threads.  If the caller is inside the current pool
   // (ID != -1) then we require at least one additional thread in the pool.
-  if (CurrentThreadId() != -1 && NumThreads() == 1) {
+  if ((CurrentThreadId() == -1 && NumThreads() == 0) ||
+      (CurrentThreadId() != -1 && NumThreads() == 1)) {
     return false;
   }
 
@@ -304,14 +326,17 @@ void ThreadPool::ParallelFor(std::ptrdiff_t n, const TensorOpCost& c,
                              const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& f) {
   ORT_ENFORCE(n >= 0);
   Eigen::TensorOpCost cost{c.bytes_loaded, c.bytes_stored, c.compute_cycles};
+  auto d_of_p = DegreeOfParallelism(this);
   // Compute small problems directly in the caller thread.
   if ((!ShouldParallelizeLoop(n)) ||
-      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n), cost, static_cast<int>(NumThreads())) == 1) {
+      Eigen::TensorCostModel<Eigen::ThreadPoolDevice>::numThreads(static_cast<double>(n),
+                                                                  cost,
+                                                                  d_of_p) == 1) {
     f(0, n);
     return;
   }
 
-  ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, NumThreads());
+  ptrdiff_t block = CalculateParallelForBlock(n, cost, nullptr, d_of_p);
   ParallelForFixedBlockSizeScheduling(n, block, f);
 }
 
@@ -320,23 +345,38 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, double cost_per_unit,
   ParallelFor(total, TensorOpCost{0, 0, static_cast<double>(cost_per_unit)}, fn);
 }
 
-int ThreadPool::NumThreads(const concurrency::ThreadPool* tp) {
+int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
 #ifdef _OPENMP
+  // When using OpenMP, omp_get_num_threads() returns the number of threads in the
+  // current parallel region.  Hence if this is 1 then we aim to parallelise
+  // across the number of threads configured.  Otherwise, given that we do not
+  // use nested parallelism, we do not parallelise further.
   ORT_UNUSED_PARAMETER(tp);
   return (omp_get_num_threads() == 1) ? omp_get_max_threads() : 1;
 #else
-  return tp ? tp->NumThreads() : 1;
+  // When not using OpenMP, we parallelise over the N threads created by the pool
+  // tp, plus 1 for the thread entering a loop.
+  return tp ? (tp->NumThreads()+1) : 1;
 #endif
 }
 
+// Return the number of threads created by the pool.
 int ThreadPool::NumThreads() const {
-  return underlying_threadpool_->NumThreads();
+  if (underlying_threadpool_) {
+    return underlying_threadpool_->NumThreads();
+  } else {
+    return 0;
+  }
 }
 
 // Return ID of the current thread within this pool.  Returns -1 for a thread outside the
 // current pool.
 int ThreadPool::CurrentThreadId() const {
-  return underlying_threadpool_->CurrentThreadId();
+  if (underlying_threadpool_) {
+    return underlying_threadpool_->CurrentThreadId();
+  } else {
+    return -1;
+  }
 }
 
 }  // namespace concurrency
