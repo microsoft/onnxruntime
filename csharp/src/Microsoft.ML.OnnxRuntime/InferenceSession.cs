@@ -704,7 +704,7 @@ namespace Microsoft.ML.OnnxRuntime
             string str = null;
 
             IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle,
-                                                                  NativeMemoryAllocator.DefaultInstance.Handle,
+                                                                  MemoryAllocator.DefaultInstance.Pointer,
                                                                   out nameHandle);
 
             try
@@ -716,7 +716,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
 
@@ -824,7 +824,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr status = NativeMethods.OrtSessionGetOutputName(
                                                 _nativeHandle,
                                                 (UIntPtr)index,
-                                                NativeMemoryAllocator.DefaultInstance.Handle,
+                                                MemoryAllocator.DefaultInstance.Pointer,
                                                 out nameHandle);
             try
             {
@@ -835,7 +835,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
 
@@ -850,7 +850,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr status = NativeMethods.OrtSessionGetInputName(
                                                 _nativeHandle,
                                                 (UIntPtr)index,
-                                                NativeMemoryAllocator.DefaultInstance.Handle,
+                                                MemoryAllocator.DefaultInstance.Pointer,
                                                 out nameHandle);
             try
             {
@@ -862,7 +862,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
             return str;
@@ -876,7 +876,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr status = NativeMethods.OrtSessionGetOverridableInitializerName(
                                                 _nativeHandle,
                                                 (UIntPtr)index,
-                                                NativeMemoryAllocator.DefaultInstance.Handle,
+                                                MemoryAllocator.DefaultInstance.Pointer,
                                                 out nameHandle);
             try
             {
@@ -888,7 +888,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
             return str;
@@ -994,6 +994,17 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return new NodeMetadata(valueType, intDimensions, symbolicDimensions, dotnetType);
+        }
+
+        /// <summary>
+        /// Other classes access
+        /// </summary>
+        internal IntPtr Handle
+        {
+            get
+            {
+                return _nativeHandle;
+            }
         }
 
         #endregion

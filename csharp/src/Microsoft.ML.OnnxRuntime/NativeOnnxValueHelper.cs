@@ -145,7 +145,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                        MemoryInfo.DefaultInstance.Handle,
+                        MemoryInfo.DefaultInstance.Pointer,
                         dataBufferPointer,
                         (UIntPtr)(dataBufferLength),
                         longShape,
@@ -185,7 +185,7 @@ namespace Microsoft.ML.OnnxRuntime
                 try
                 {
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(
-                                                    NativeMemoryAllocator.DefaultInstance.Handle,
+                                                    MemoryAllocator.DefaultInstance.Pointer,
                                                     longShape,
                                                     (UIntPtr)(longShape.Length),
                                                     TensorElementType.String,
@@ -352,6 +352,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return false;
+        }
+
+        internal static string StringFromNativeUtf8(IntPtr nativeUtf8) 
+        {
+            // .NET 5.0 has Marshal.PtrToStringUTF8 that does the below
+            int len = 0;
+            while (Marshal.ReadByte(nativeUtf8, len) != 0) ++len;
+            byte[] buffer = new byte[len];
+            Marshal.Copy(nativeUtf8, buffer, 0, buffer.Length);
+            return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
         }
     }
 
