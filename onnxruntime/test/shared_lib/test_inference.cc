@@ -443,7 +443,7 @@ TEST(CApiTest, create_session_without_session_option) {
 
 TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
-  OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1);
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
   Ort::Allocator cpu_allocator(session, info_cpu);
@@ -459,7 +459,7 @@ TEST(CApiTest, get_allocator_cpu) {
 #ifdef USE_CUDA
 TEST(CApiTest, get_allocator_cuda) {
   Ort::SessionOptions session_options;
-  OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0);
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
