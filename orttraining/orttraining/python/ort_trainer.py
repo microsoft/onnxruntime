@@ -20,6 +20,11 @@ import sys
 sys.path.append('/bert_ort/liqun/onnxruntime/onnxruntime/core/providers/nuphar/scripts')
 from symbolic_shape_infer import SymbolicShapeInference
 
+pre_shape_infer_model_path = '/bert_ort/liqun/test_out/bart_ort_fw.onnx'
+post_shape_infer_model_path = '/bert_ort/liqun/test_out/bart_ort_fw_post_shape_infer.onnx'
+
+SymbolicShapeInference.infer_shapes(pre_shape_infer_model_path, post_shape_infer_model_path, auto_merge=True)
+
 # pre_shape_infer_model_path = '/bert_ort/liqun/test_out/mc_post_apply_trx.onnx'
 # post_shape_infer_model_path = '/bert_ort/liqun/test_out/mc_post_apply_trx_post_shape_infer.onnx'
 # SymbolicShapeInference.infer_shapes(pre_shape_infer_model_path, post_shape_infer_model_path, auto_merge=True)
