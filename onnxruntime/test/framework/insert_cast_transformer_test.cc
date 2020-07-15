@@ -135,8 +135,8 @@ TEST(TransformerTest, ThreeInARowRemoval) {
 }
 
 // test a case where the ONNX inferred type (float16) is different from the type bound
-// to the output NodeArg of the "EyeLike" node because of the InsertCaseTransformer
-TEST(TransformerTest, EyeLikeModelWithFloat16Inputs) {
+// to the output NodeArg of the "RandomNormalLike" node because of the InsertCaseTransformer
+TEST(TransformerTest, RandomNormalLikeWithFloat16Inputs) {
   auto model_uri = MODEL_FOLDER ORT_TSTR("random_normal_like_float16.onnx");
   std::shared_ptr<Model> model;
   auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());

@@ -237,9 +237,25 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       }
     }
 
-    if (casted && node->GetExecutionProviderType().empty()) {
-      //set current node to CPU execution provider
+    if (casted) {
+      // Set current node to run on the CPU execution provider
+      // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
+
+      // Some ONNX operators have an attribute `dtype` which define the output type for these operators
+      // (mostly Generator ops like RandomNormal, RandomNormalLike, EyeLike, etc.).
+      // Update that so that `dtype` is now Float. Otherwise there could be a mis-match between the actual
+      // type of the NodeArg and the ONNX inferred type of the NodeArg and Graph Resolve() will complain.
+      auto& attributes = node->GetMutableAttributes();
+      auto dtype_attribute = attributes.find("dtype");
+
+      if (dtype_attribute != attributes.end()) {
+        // Simple sanity check
+        ORT_ENFORCE(dtype_attribute->second.has_i(),
+                    "InsertCastTransformer works on the assumption that `dtype` attribute holds an integer.");
+
+        dtype_attribute->second.set_i(1);  // enum corresponding to FLOAT is 1
+      }
     }
 
     auto& outputs = node->MutableOutputDefs();

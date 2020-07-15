@@ -1895,27 +1895,11 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         }
       }
 
-      else {
-        // Make an exception for cases where the inferred type is `float16` and the existing
-        // type is `float` and the node is assigned to the CPU EP.
-        // We allow such cases to pass through without a complaint because there are some ONNX ops
-        // - mostly Generator ops (RandomNormal, RandomNormalLike, EyeLike, etc.) where-in
-        // the output type is inferred based on a static attribute (for example - `dtype`) as opposed
-        // to most other ONNX ops where the-in the type is deduced based on input types.
-        // When we insert cast nodes to the inputs of such operators (when the input type
-        // is float16) to cast the inputs to float so as to use CPU kernels (when there is no EP capable
-        // of running such nodes as is), the output NodeArg(s) are of the type `float` (existing_type) but the
-        // inferred type will be `float16` if such nodes have the output type defining attribute to be `float16`.
-        // We make an exception for this case and use the existing_type.
-        if (*inferred_type != "tensor(float16)" ||
-            *existing_type != "tensor(float)" ||
-            node.GetExecutionProviderType() != kCpuExecutionProvider) {
-          return Status(ONNXRUNTIME, FAIL,
-                        "Type Error: Type (" + *existing_type + ") of output arg (" +
-                            output_def->Name() + ") of node (" + node_name +
-                            ") does not match expected type (" + *inferred_type + ").");
-        }
-      }
+      else
+        return Status(ONNXRUNTIME, FAIL,
+                      "Type Error: Type (" + *existing_type + ") of output arg (" +
+                          output_def->Name() + ") of node (" + node_name +
+                          ") does not match expected type (" + *inferred_type + ").");
     }
 
     if (existing_type == nullptr)
