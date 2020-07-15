@@ -354,28 +354,75 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
 }
 
 template <typename T>
-constexpr const char * static_typename();
+constexpr const char * StaticTypename();
 
-#define STATIC_TYPENAME(TYPE) template <> constexpr const char * static_typename<TYPE>() { return #TYPE; }
-STATIC_TYPENAME(float)
-STATIC_TYPENAME(uint8_t)
-STATIC_TYPENAME(int8_t)
-STATIC_TYPENAME(uint16_t)
-STATIC_TYPENAME(int16_t)
-STATIC_TYPENAME(int32_t)
-STATIC_TYPENAME(int64_t)
-STATIC_TYPENAME(std::string)
-STATIC_TYPENAME(bool)
-STATIC_TYPENAME(MLFloat16)
-STATIC_TYPENAME(double)
-STATIC_TYPENAME(uint32_t)
-STATIC_TYPENAME(uint64_t)
-STATIC_TYPENAME(BFloat16)
-template <> constexpr const char * static_typename<std::map<long, float>>() { return "std::map<long,float>"; }
-template <> constexpr const char * static_typename<std::map<std::string, float>>() { return "std::map<std::string,float>"; }
+template <> constexpr const char * StaticTypename<float>() {
+    return "float";
+}
+
+template <> constexpr const char * StaticTypename<uint8_t>() {
+    return "uint8_t";
+}
+
+template <> constexpr const char * StaticTypename<int8_t>() {
+    return "int8_t";
+}
+
+template <> constexpr const char * StaticTypename<uint16_t>() {
+    return "uint16_t";
+}
+
+template <> constexpr const char * StaticTypename<int16_t>() {
+    return "int16_t";
+}
+
+template <> constexpr const char * StaticTypename<int32_t>() {
+    return "int32_t";
+}
+
+template <> constexpr const char * StaticTypename<int64_t>() {
+    return "int64_t";
+}
+
+template <> constexpr const char * StaticTypename<std::string>() {
+    return "std::string";
+}
+
+template <> constexpr const char * StaticTypename<bool>() {
+    return "bool";
+}
+
+template <> constexpr const char * StaticTypename<MLFloat16>() {
+    return "MLFloat16";
+}
+
+template <> constexpr const char * StaticTypename<double>() {
+    return "double";
+}
+
+template <> constexpr const char * StaticTypename<uint32_t>() {
+    return "uint32_t";
+}
+
+template <> constexpr const char * StaticTypename<uint64_t>() {
+    return "uint64_t";
+}
+
+template <> constexpr const char * StaticTypename<BFloat16>() {
+    return "BFloat16";
+}
+
+template <> constexpr const char * StaticTypename<std::map<long, float>>() {
+    return "std::map<long,float>";
+}
+
+template <> constexpr const char * StaticTypename<std::map<std::string, float>>() {
+    return "std::map<std::string,float>";
+}
+
 
 template <typename T>
-constexpr const char * static_typename(T type) { return static_typename<T>(); };
+constexpr const char * StaticTypename(T) { return StaticTypename<T>(); };
 
 // There is a specialization only for one
 // type argument.
@@ -456,7 +503,7 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
-    ORT_ENFORCE(value_proto != nullptr, static_typename<V>(),
+    ORT_ENFORCE(value_proto != nullptr, StaticTypename<V>(),
                 " expected to be a registered ONNX type");
     CopyMutableMapValue(*value_proto, proto);
   }
@@ -473,7 +520,7 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
-    ORT_ENFORCE(elem_proto != nullptr, static_typename<T>(),
+    ORT_ENFORCE(elem_proto != nullptr, StaticTypename<T>(),
                 " expected to be a registered ONNX type");
     CopyMutableSeqElement(*elem_proto, proto);
   }
