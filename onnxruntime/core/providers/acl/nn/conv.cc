@@ -60,7 +60,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   ConvLayersIterator it = Conv::convLayers.find((OpKernel*)this);
   if (it != Conv::convLayers.end()) {
     pConv = &it->second;
-    if(pConv->isDepthwiseCPU == true) {
+    if (pConv->isDepthwiseCPU == true) {
       Status s = onnxruntime::Conv<T>::Compute(context);
       return s;
     }
@@ -103,7 +103,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str() << std::endl;
 
@@ -127,7 +127,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   }
 
   if (it == Conv::convLayers.end()) {
-
     auto mm_layer = ACLCreateMemoryManager();
 
     ACLNEConv tconv;
@@ -192,21 +191,21 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       // in the configure function for NEDepthwiseConvolutionLayer3x3, there is a separation based on the optimization
 #ifdef ACL_1902
       bool optimizable =
-            arm_compute::NEDepthwiseConvolutionLayer3x3Kernel::is_optimized_execution_possible(tconv.in->info()->tensor_shape(),
-                                                                                               aclPadStride,
-                                                                                               tconv.in->info()->data_type(),
-                                                                                               1 /* depth multiplier */,
-                                                                                               tconv.in->info()->data_layout());
+          arm_compute::NEDepthwiseConvolutionLayer3x3Kernel::is_optimized_execution_possible(tconv.in->info()->tensor_shape(),
+                                                                                             aclPadStride,
+                                                                                             tconv.in->info()->data_type(),
+                                                                                             1 /* depth multiplier */,
+                                                                                             tconv.in->info()->data_layout());
 #endif
 #if defined(ACL_1905) || defined(ACL_1908)
       bool optimizable =
-            arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
-                                                                                        tconv.k->info(),
-                                                                                        aclPadStride,
-                                                                                        1 /* depth multiplier */,
-                                                                                        arm_compute::Size2D(aclDilation0, dilations[0]));
+          arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
+                                                                                      tconv.k->info(),
+                                                                                      aclPadStride,
+                                                                                      1 /* depth multiplier */,
+                                                                                      arm_compute::Size2D(aclDilation0, dilations[0]));
 #endif
-      if(optimizable) {
+      if (optimizable) {
         //optimized depthwise convolution
 #if defined(ACL_1902) || defined(ACL_1905)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
@@ -234,9 +233,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
         return s;
       }
-#endif //DEPTHWISE_CPU
+#endif  //DEPTHWISE_CPU
     } else {
-      if(tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
+      if (tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
         //pointwise convolution
         Status s = onnxruntime::Conv<T>::Compute(context);
         return s;
@@ -290,7 +289,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   if (B != nullptr)
     pConv->b->allocator()->free();
   pConv->out->allocator()->free();
-
 
   return Status::OK();
 }

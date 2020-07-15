@@ -18,7 +18,6 @@ Status AddToExistingNodeArgs(
     std::vector<const NodeArg*>& nodeargs) {
   std::unordered_set<const NodeArg*> nodeargs_set(existing_nodeargs.begin(), existing_nodeargs.end());
   nodeargs = existing_nodeargs;
-
   for (const auto& new_nodearg_name : new_nodearg_names) {
     const auto* new_nodearg = graph.GetNodeArg(new_nodearg_name);
     ORT_RETURN_IF_NOT(
