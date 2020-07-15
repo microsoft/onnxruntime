@@ -1,0 +1,2 @@
+class LossScaler(object):
+    pass
