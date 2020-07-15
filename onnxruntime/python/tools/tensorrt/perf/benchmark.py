@@ -8,6 +8,7 @@ import numpy as np
 import argparse
 import copy
 import json
+from onnx import numpy_helper
 from perf_utils import analyze_profiling_file
 import pprint
 
@@ -70,8 +71,8 @@ MODELS = {
     "yolov3": (YoloV3, "yolov3"),
     "yolov4": (YoloV4, "yolov4"),
     "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    # "Arc-Face": (ArcFace, "arc-face"),
-    # "Super-Resolution": (SuperResolution, "super-resolution"),
+    "Arc-Face": (ArcFace, "arc-face"),
+    # "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
     "Fast-Neural": (FastNeural, "Fast-Neural"),
     "BiDAF": (BiDAF, "BiDAF"),
     # "GPT2": (GPT2, "GPT2"),
@@ -96,8 +97,13 @@ def get_latency_result(runtimes, batch_size):
 def inference_ort(model, inputs, result_template, repeat_times, batch_size):
     result = {}
 
-    runtimes = timeit.repeat(lambda: model.inference(inputs), number=1, repeat=repeat_times+1)
-    runtimes[:] = runtimes[1:]
+    try:
+        runtimes = timeit.repeat(lambda: model.inference(inputs), number=1, repeat=repeat_times+1)
+    except Exception as e:
+        logger.error(e)
+        return None
+
+    runtimes[:] = runtimes[1:] # we intentionally skip the first run due to TRT is expensive on first run
     result.update(result_template)
     result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
@@ -230,31 +236,11 @@ def validate(all_ref_outputs, all_outputs, decimal):
                 for ref_o, o in zip(ref_output, output):
                     np.testing.assert_almost_equal(ref_o, o, decimal)
     except Exception as e:
-        print(e)
+        info.error(e) 
         return False
 
     print('ONNX Runtime outputs are similar to reference outputs!')
     return True
-
-# def inference_ort_to_generate_profiling_file(model, ep, inputs):
-
-    # model.create_session()
-    # sess = model.get_session()
-    # sess.set_providers([ep])
-
-    # # skip the 1st inference for TRT intentionally, since TRT engine creates subgraph which is expensive
-    # model.inference(inputs)
-
-    # options = onnxruntime.SessionOptions()
-    # options.enable_profiling = True 
-    # model.set_session_options(options)
-
-    # model.create_session()
-    # sess = model.get_session()
-    # sess.set_providers([ep])
-
-    # # use 2ed inference to generate profiling file
-    # model.inference(inputs)
 
 def cleanup_files():
     files = []
@@ -292,6 +278,56 @@ def update_fail_model(model_name, ep, ep_model_fail_map):
     else:
         ep_model_fail_map[model_name].append(ep)
 
+def get_system_info(info):
+    import re
+    info["cuda"] = get_cuda_version()
+    info["trt"] = get_trt_version()
+
+    p = subprocess.Popen(["cat", "/etc/os-release"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    stdout = stdout.split("\n")[:2]
+    infos = []
+    for row in stdout:
+        row = re.sub('=', ':  ', row)
+        row = re.sub('"', '', row)
+        infos.append(row)
+    info["linux_distro"] = infos 
+
+    p = subprocess.Popen(["lscpu"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    stdout = stdout.split("\n")
+    infos = []
+    for row in stdout:
+        if "mode" in row or "Arch" in row or "name" in row:
+            # row = row.replace(":\s+", ":  ")
+            row = re.sub(': +', ':  ', row)
+            infos.append(row)
+    info["cpu_info"] = infos 
+
+    p1 = subprocess.Popen(["lspci", "-v"], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["grep", "NVIDIA"], stdin=p1.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = p2.communicate()
+    stdout = stdout.decode("ascii").strip()
+    stdout = stdout.split("\n") 
+    infos = []
+    for row in stdout:
+        row = re.sub('.*:', '', row)
+        infos.append(row)
+    info["gpu_info"] = infos 
+
+    p = subprocess.Popen(["cat", "/proc/meminfo"], stdout=subprocess.PIPE)
+    stdout, sterr = p.communicate()
+    stdout = stdout.decode("ascii").strip()
+    stdout = stdout.split("\n")
+    infos = []
+    for row in stdout:
+        if "Mem" in row:
+            row = re.sub(': +', ':  ', row)
+            infos.append(row)
+    info["memory"] = infos 
+
 
 def run_onnxruntime(args, models=MODELS):
     import onnxruntime
@@ -301,7 +337,11 @@ def run_onnxruntime(args, models=MODELS):
     ep_model_fail_map = {}
     profile_metrics_map = {}
 
+    sys_info = {} 
+    get_system_info(sys_info)
+
     provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+    # provider_list = ["CPUExecutionProvider"]
 
     for name in models.keys():
         info = models[name] 
@@ -346,7 +386,6 @@ def run_onnxruntime(args, models=MODELS):
             sequence_length = 1
             optimize_onnx = False
             batch_size = 1
-            device_info = [] 
 
             # enable profiling
             options = onnxruntime.SessionOptions()
@@ -354,22 +393,18 @@ def run_onnxruntime(args, models=MODELS):
             model.set_session_options(options)
             try: 
                 model.create_session()
-            except:
+            except Exception as e:
+                logger.error(e)
                 ep_fail_flag = True
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
             sess = model.get_session()
 
-            device_info.append(get_cuda_version())
-            if ep == "TensorrtExecutionProvider":
-                device_info.append(get_trt_version())
-
             result_template = {
                 "engine": "onnxruntime",
                 "version": onnxruntime.__version__,
                 "device": ep,
-                "device_info": ','.join(device_info),
                 "optimizer": optimize_onnx,
                 "fp16": args.fp16,
                 "io_binding": False,
@@ -392,11 +427,16 @@ def run_onnxruntime(args, models=MODELS):
 
             # model inference
             result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
+            if not result: 
+                ep_fail_flag = True
+                update_fail_model(model_name, ep, ep_model_fail_map)
+                continue
 
             end_time = datetime.now()
             result["total_time"] = str(end_time - start_time) 
 
-            if not validate(ref_outputs, model.get_outputs(), model.get_decimal()):
+            status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
+            if not status:
                 ep_fail_flag = True
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
@@ -427,7 +467,7 @@ def run_onnxruntime(args, models=MODELS):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "device_info", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
+            "engine", "version", "device", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
             "sequence_length", "datetime", "total_time", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
@@ -510,6 +550,7 @@ def main():
         logger.info("\nCUDA/TRT inference time comparison:")
         pp.pprint(latency_comparison_map)
 
+
     if results:
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
@@ -518,6 +559,10 @@ def main():
     if latency_comparison_map:
         csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
         output_latency_comparison(latency_comparison_map, csv_filename)
+
+    info = {}
+    get_system_info(info)
+    pp.pprint(info)
     
 
 

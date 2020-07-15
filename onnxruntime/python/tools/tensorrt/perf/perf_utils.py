@@ -3,7 +3,7 @@ import json
 import pprint
 # import os
 
-debug = False 
+debug = True 
 
 def parse_file(f):
     import re
@@ -60,8 +60,12 @@ def parse_file(f):
 
     if debug:
         pp = pprint.PrettyPrinter(indent=4)
+        print("------First run ops map (START)------")
         pp.pprint(provider_op_map_first_run)
+        print("------First run ops map (END) ------")
+        print("------Second run ops map (START)------")
         pp.pprint(provider_op_map)
+        print("------Second run ops map (END) ------")
 
     if model_run_flag:
         return provider_op_map 
@@ -101,6 +105,8 @@ def analyze_profiling_file(path):
             trt_op_map = item
         elif  "CUDAExecutionProvider" in item:
             cuda_op_map = item
+
+
     if debug:
         pp.pprint(trt_op_map)
         pp.pprint(cuda_op_map)
