@@ -1,3 +1,4 @@
+cerberus
 codecov
 jinja2
 numpy

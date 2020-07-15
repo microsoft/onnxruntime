@@ -4,3 +4,4 @@
 #--------------------------------------------------------------------------
 from onnxruntime.capi._pybind_state import TrainingParameters
 from onnxruntime.capi.training.training_session import TrainingSession
+from .orttrainer_options import ORTTrainerOptions
