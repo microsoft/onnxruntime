@@ -738,10 +738,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size());
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
-    if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
-      trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-	  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
-    }
 
     int num_inputs = trt_network->getNbInputs();
     int num_outputs = trt_network->getNbOutputs();
@@ -773,12 +769,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
     }
 
+    std::string trt_node_name_with_precision = fused_node->Name();
+    if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
+      trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+	  trt_node_name_with_precision += "_fp16";
+	  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled.";
+    }
+	
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
-      std::ifstream planFile(GetEnginePath(engine_cache_path_, fused_node->Name()), std::ios::binary | std::ios::in);
+      std::ifstream planFile(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::in);
       if (planFile && engine_cache_enable_) {
         planFile.seekg(0, std::ios::end);
         int engine_size = planFile.tellg();
@@ -787,7 +790,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         planFile.read((char*)engine_buf.get(), engine_size);
         planFile.close();
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, fused_node->Name());
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
       } else {
         trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         if (trt_engine == nullptr) {
@@ -797,10 +800,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
         if (engine_cache_enable_) {
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-          std::ofstream file(GetEnginePath(engine_cache_path_, fused_node->Name()), std::ios::binary | std::ios::out);
+          std::ofstream file(GetEnginePath(engine_cache_path_, trt_node_name_with_precision), std::ios::binary | std::ios::out);
           file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
           serializedModel->destroy();
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(engine_cache_path_, fused_node->Name());
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(engine_cache_path_, trt_node_name_with_precision);
         }
       }
       trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
@@ -1310,6 +1313,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         }
       }
 
+      cudaDeviceSynchronize();
       for (const auto& binding_index : binding_buffers_to_freeup) {
         cudaFree(buffers[binding_index]);
       }
