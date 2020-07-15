@@ -2683,6 +2683,59 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
             }
         });
 
+  static const char* Triu_ver1_doc = R"DOC(
+	  Returns the upper triangular part of a 2-D matrix, or batches of 2-D matrices. Triu takes one input tensor of shape
+	  [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists of the elements on or
+	  above the give diagonal (k).
+	  If k = 0, this op retains elements on or above the the main diagonal. If k > 0, this op
+	  retains elements on or above k diagonals over the main diagonal. If k < 0, this op retains elements
+	  on or above k diagonals below the main diagonal. All other elements are set to zero.
+	  )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Triu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Triu_ver1_doc)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Input(
+            0,
+            "X",
+            "Input tensor of rank 2 or higher.",
+            "T1")
+        .Input(
+            1,
+            "k",
+            "A 1-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include.",
+            "tensor(int64)",
+            OpSchema::Optional)
+        .Output(
+            0,
+            "Y",
+            "Output tensor of the same type and shape as the input tensor.",
+            "T1")
+        .TypeConstraint(
+            "T1",
+            {"tensor(float16)",
+             "tensor(float)",
+             "tensor(double)",
+             "tensor(bfloat16)"},
+            "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            // Type inference
+            using namespace ONNX_NAMESPACE;
+            // Shape inference
+            if (hasInputShape(ctx, 0)) {
+              const TensorShapeProto& input_shape =
+                  ctx.getInputType(0)->tensor_type().shape();
+              const int rank = static_cast<int>(input_shape.dim_size());
+              if (rank < 2) {
+                fail_shape_inference("Input rank must be >= 2.")
+              }
+              // Shape inference
+              propagateShapeAndTypeFromFirstInput(ctx);
+            }
+        });
+
   RegisterBertSchemas();
 }
 }  // namespace contrib

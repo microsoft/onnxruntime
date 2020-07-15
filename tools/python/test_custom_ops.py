@@ -105,6 +105,37 @@ class ONNXExporterTest(unittest.TestCase):
         x = torch.randn(3, 3)
         self.run_test(model, x, custom_opsets={'com.microsoft': 1})
 
+    def test_triu(self):
+        for i in range(-5, 5):
+            class Module(torch.nn.Module):
+                def forward(self, input):
+                    return input.triu(diagonal=i)
+
+            model = Module()
+            x = torch.randn(5, 4, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(5, 4, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(5, 0, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+        for i in range(-5, 5):
+            class Module2D(torch.nn.Module):
+                def forward(self, input):
+                    return input.triu(diagonal=i)
+
+            model = Module2D()
+            x = torch.randn(4, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(0, 7, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
+            x = torch.randn(0, 0, dtype=torch.float32)
+            self.run_test(model, x, custom_opsets={'com.microsoft': 1})
+
 
 # opset 10 tests
 TestONNXRuntime_opset10 = type(str("TestONNXRuntime_opset10"),
