@@ -2846,10 +2846,10 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   static const char* Triu_ver1_doc = R"DOC(
 	  Returns the upper triangular part of a 2-D matrix, or batches of 2-D matrices. Triu takes one input tensor of shape
 	  [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists of the elements on or
-	  above the give diagonal (k).
+	  above the given diagonal (k).
 	  If k = 0, this op retains elements on or above the the main diagonal. If k > 0, this op
 	  retains elements on or above k diagonals over the main diagonal. If k < 0, this op retains elements
-	  on or above k diagonals below the main diagonal. All other elements are set to zero.
+	  on or above as many diagonals below the main diagonal. All other elements in the matrix are set to zero.
 	  )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Triu)
