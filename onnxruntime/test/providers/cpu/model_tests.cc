@@ -101,7 +101,7 @@ TEST_P(ModelTest, Run) {
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
-#ifndef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
       {"adam", "not a registered function/op", {}},                     // Op not registered.
