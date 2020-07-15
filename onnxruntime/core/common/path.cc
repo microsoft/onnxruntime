@@ -254,7 +254,11 @@ Path& Path::Append(const Path& other) {
 }
 
 Path& Path::Concat(const PathString& string) {
-  components_.back() += string;
+  if (components_.empty()) {
+    components_.push_back(string);
+  } else {
+    components_.back() += string;
+  }
   return *this;
 }
 

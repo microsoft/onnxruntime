@@ -5,6 +5,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/optional.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {
@@ -224,16 +225,20 @@ TEST(PathTest, RelativePathFailure) {
 
 TEST(PathTest, Concat) {
   auto check_concat =
-      [](const std::string& a, const std::string& b, const std::string& expected_a) {
+      [](optional<const std::string> a, const std::string& b, const std::string& expected_a) {
         Path p_a{}, p_expected_a{};
-        ASSERT_STATUS_OK(Path::Parse(ToPathString(a), p_a));
+        if (a.has_value()) {
+          ASSERT_STATUS_OK(Path::Parse(ToPathString(a.value()), p_a));
+        }
         ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
 
         EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
       };
 
-  check_concat("/a/b", "c", "/a/bc");
-  check_concat("a/b", "cd", "a/bcd");
+  check_concat({"/a/b"}, "c", "/a/bc");
+  check_concat({"a/b"}, "cd", "a/bcd");
+  check_concat({""}, "cd", "cd");
+  check_concat({}, "c", "c");
 }
 
 TEST(PathTest, ConcatIndex) {
