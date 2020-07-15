@@ -68,7 +68,6 @@ class ORTGlueTest(unittest.TestCase):
         self.logging_steps = 10
         self.rtol = 1e-02
 
-
     def test_roberta_with_mrpc(self):
         expected_acc = 0.8676470588235294
         expected_f1 = 0.9035714285714286
