@@ -1893,9 +1893,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         } else {
           output_def->SetType(inferred_type);
         }
-      }
-
-      else
+      } else
         return Status(ONNXRUNTIME, FAIL,
                       "Type Error: Type (" + *existing_type + ") of output arg (" +
                           output_def->Name() + ") of node (" + node_name +
@@ -2055,7 +2053,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-      InitFunctionBodyForNode(node);
+	  InitFunctionBodyForNode(node);
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
