@@ -74,10 +74,6 @@ class ModelBuilder {
   // It is off by default
   void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
 
-  void SetLogOpDeviceSupport(bool enable) { log_op_target_device_support_ = enable; }
-
-  void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
-
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
   void ExecutePreference(
@@ -121,8 +117,6 @@ class ModelBuilder {
 
   bool use_nchw_{false};
   bool use_fp16_{false};
-  bool log_op_target_device_support_{false};
-
   android::nn::wrapper::ExecutePreference exe_pref_{
       android::nn::wrapper::ExecutePreference::PREFER_FAST_SINGLE_ANSWER};
 
@@ -133,7 +127,6 @@ class ModelBuilder {
 
   std::unordered_set<std::string> operands_;
   std::unordered_set<std::string> fused_activations_;
-  std::vector<int32_t> nnapi_operations_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&> initializers_;
   std::unordered_set<std::string> skipped_initializers_;
@@ -163,8 +156,6 @@ class ModelBuilder {
   void Prepare();
 
   void GetTargetDevices();
-  void LogOperationsSupportedByTargetDevices();
-
   void GetAllInitializers();
   void PreprocessInitializers();
   void RegisterInitializers();
