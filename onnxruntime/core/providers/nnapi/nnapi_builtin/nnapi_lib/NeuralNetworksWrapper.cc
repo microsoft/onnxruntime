@@ -25,29 +25,6 @@ bool IsScalarType(const Type& type) {
   return type == Type::FLOAT16 || type == Type::FLOAT32 || type == Type::INT32 || type == Type::BOOL || type == Type::UINT32;
 }
 
-SymmPerChannelQuantParams::SymmPerChannelQuantParams(const std::vector<float>& scales_vec, uint32_t channel_dim)
-    : scales(scales_vec) {
-  params = {
-      .channelDim = channel_dim,
-      .scaleCount = static_cast<uint32_t>(scales.size()),
-      .scales = scales.size() > 0 ? scales.data() : nullptr,
-  };
-}
-
-SymmPerChannelQuantParams::SymmPerChannelQuantParams(const SymmPerChannelQuantParams& other)
-    : params(other.params), scales(other.scales) {
-  params.scales = scales.size() > 0 ? scales.data() : nullptr;
-}
-
-SymmPerChannelQuantParams& SymmPerChannelQuantParams::operator=(const SymmPerChannelQuantParams& other) {
-  if (this != &other) {
-    params = other.params;
-    scales = other.scales;
-    params.scales = scales.size() > 0 ? scales.data() : nullptr;
-  }
-  return *this;
-}
-
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(d) {
   if (dimensions.empty()) {
@@ -65,31 +42,9 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
   };
 }
 
-OperandType::OperandType(Type type, const std::vector<uint32_t>& d, const SymmPerChannelQuantParams& cq)
-    : dimensions(d) {
-  assert(type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL);
-
-  if (dimensions.empty()) {
-    if (!IsScalarType(type)) {
-      dimensions = {1};
-    }
-  }
-
-  channel_quant = std::make_unique<SymmPerChannelQuantParams>(cq);
-  operandType = {
-      .type = static_cast<int32_t>(type),
-      .dimensionCount = static_cast<uint32_t>(dimensions.size()),
-      .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
-      .scale = 0.0f,
-      .zeroPoint = 0,
-  };
-}
-
 OperandType::OperandType(const OperandType& other) {
   type = other.type;
   dimensions = other.dimensions;
-  if (other.channel_quant)
-    channel_quant = std::make_unique<SymmPerChannelQuantParams>(*other.channel_quant);
 
   if (dimensions.empty()) {
     if (!IsScalarType(type)) {
@@ -105,8 +60,6 @@ OperandType& OperandType::operator=(const OperandType& other) {
   if (this != &other) {
     type = other.type;
     dimensions = other.dimensions;
-    if (other.channel_quant)
-      channel_quant = std::make_unique<SymmPerChannelQuantParams>(*other.channel_quant);
 
     if (dimensions.empty()) {
       if (!IsScalarType(type)) {
