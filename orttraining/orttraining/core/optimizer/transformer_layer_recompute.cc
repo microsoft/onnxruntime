@@ -12,6 +12,7 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     Graph& graph, std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges) const {
   const std::unordered_set<std::string> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
   const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout", "TrainableDropout"};
+  const std::unordered_set<std::string> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
 
   std::vector<const NodeArg*> layer_start_edges, layer_end_edges;
   GraphViewer graph_viewer(graph);
@@ -20,10 +21,11 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     auto& node = *graph.GetNode(node_index);
 
     // Look for start of a transformer layer
-    if ((node.OpType() == "LayerNormalization" || dropout_ops.find(node.OpType()) != dropout_ops.end()) &&
-        node.GetOutputEdgesCount() == 4) {
-      layer_start_edges.push_back(node.OutputDefs()[0]);
-    }
+    if ((layernorm_ops.find(node.OpType()) != layernorm_ops.end() ||
+         dropout_ops.find(node.OpType()) != dropout_ops.end()) &&
+        node.GetOutputEdgesCount() == 4)) {
+        layer_start_edges.push_back(node.OutputDefs()[0]);
+      }
 
     // Look for end of a transformer layer
     if (gelu_ops.find(node.OpType()) != gelu_ops.end()) {
@@ -35,11 +37,11 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
       }
 
       while (next_node->OutputNodesBegin() != next_node->OutputNodesEnd() &&
-             next_node->OpType() != "LayerNormalization") {
+             layernorm_ops.find(next_node->OpType()) == layernorm_ops.end()) {
         next_node = next_node->OutputNodesBegin();
       }
 
-      if (next_node->OpType() == "LayerNormalization") {
+      if (layernorm_ops.find(next_node->OpType()) != layernorm_ops.end()) {
         layer_end_edges.push_back(next_node->OutputDefs()[0]);
       }
     }
@@ -105,13 +107,6 @@ std::vector<const Node*> TransformerLayerRecompute::NodesBetweenEdges(Graph& gra
     }
   }
 
-  // std::cout << "start: " << start->Name() << "\n";
-  // std::cout << "end: " << end->Name() << "\n";
-
-  // for (const Node* node : intersect_nodes) {
-  //   std::cout << "Node: " << node->Name() << "\n";
-  // }
-
   return intersect_nodes;
 }
 
@@ -129,13 +124,10 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       if (initializers.find(input->Name()) != initializers.end() ||
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
-        //std::cout << "original input: " << input->Name() << "\n";
       } else {
         auto& recomputed_input = graph.GetOrCreateNodeArg(input->Name() + "_recompute",
                                                           input->TypeAsProto());
         recomputed_inputs.push_back(&recomputed_input);
-
-        //std::cout << "recomputed input: " << recomputed_input.Name() << "\n";
       }
       recomputed_inputs.push_back(node->MutableOutputDefs()[1]);
       recomputed_inputs.push_back(node->MutableInputDefs()[1]);
@@ -162,14 +154,10 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       if (initializers.find(input->Name()) != initializers.end() ||
           std::find(nodes.begin(), nodes.end(), p_node) == nodes.end()) {
         recomputed_inputs.push_back(input);
-
-        // std::cout << "original input: " << input->Name() << "\n";
       } else {
         auto& recomputed_input = graph.GetOrCreateNodeArg(input->Name() + "_recompute",
                                                           input->TypeAsProto());
         recomputed_inputs.push_back(&recomputed_input);
-
-        // std::cout << "recomputed input: " << recomputed_input.Name() << "\n";
       }
     }
 
@@ -178,8 +166,6 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
       auto& recomputed_output = graph.GetOrCreateNodeArg(output->Name() + "_recompute",
                                                          output->TypeAsProto());
       recomputed_outputs.push_back(&recomputed_output);
-
-      // std::cout << "recomputed output: " << recomputed_output.Name() << "\n";
     }
 
     Node& recompute_node = graph.AddNode(node->Name() + "_recompute",
@@ -190,10 +176,7 @@ void TransformerLayerRecompute::InsertRecomputeNodes(Graph& graph, const std::ve
                                          &node->GetAttributes(),
                                          node->Domain());
     recompute_node.SetPriority(priority);
-
-    // std::cout << "Added Node: " << node->Name() << "_recompute\n";
   }
-
   return;
 }
 
