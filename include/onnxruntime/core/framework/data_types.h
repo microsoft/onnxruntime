@@ -289,6 +289,8 @@ std::ostream& operator<<(std::ostream& out, MLDataType data_type);
 /*
  * Type registration helpers
  */
+struct TestOpaqueType_1;
+struct TestOpaqueType_2;
 namespace data_types_internal {
 /// TensorType helpers
 ///
@@ -354,7 +356,7 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
 }
 
 template <typename T>
-constexpr const char * StaticTypename();
+constexpr const char * StaticTypename() = delete;
 
 template <> constexpr const char * StaticTypename<float>() {
     return "float";
@@ -412,14 +414,29 @@ template <> constexpr const char * StaticTypename<BFloat16>() {
     return "BFloat16";
 }
 
-template <> constexpr const char * StaticTypename<std::map<long, float>>() {
-    return "std::map<long,float>";
+template <> constexpr const char * StaticTypename<MapInt64ToFloat>() {
+  return "MapInt64ToFloat";
 }
 
-template <> constexpr const char * StaticTypename<std::map<std::string, float>>() {
-    return "std::map<std::string,float>";
+template <> constexpr const char * StaticTypename<MapStringToFloat>() {
+    return "MapStringToFloat";
 }
 
+template <> constexpr const char * StaticTypename<VectorString>() {
+  return "VectorString";
+}
+
+template <> constexpr const char * StaticTypename<VectorInt64>() {
+  return "VectorInt64";
+}
+
+template <> constexpr const char * StaticTypename<onnxruntime::TestOpaqueType_1>() {
+  return "onnxruntime::TestOpaqueType_1";
+}
+
+template <> constexpr const char * StaticTypename<onnxruntime::TestOpaqueType_2>() {
+  return "onnxruntime::TestOpaqueType_1";
+}
 
 template <typename T>
 constexpr const char * StaticTypename(T) { return StaticTypename<T>(); };
