@@ -353,6 +353,30 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
 
+template <typename T>
+constexpr const char * static_typename();
+
+#define STATIC_TYPENAME(TYPE) template <> constexpr const char * static_typename<TYPE>() { return #TYPE; }
+STATIC_TYPENAME(float)
+STATIC_TYPENAME(uint8_t)
+STATIC_TYPENAME(int8_t)
+STATIC_TYPENAME(uint16_t)
+STATIC_TYPENAME(int16_t)
+STATIC_TYPENAME(int32_t)
+STATIC_TYPENAME(int64_t)
+STATIC_TYPENAME(std::string)
+STATIC_TYPENAME(bool)
+STATIC_TYPENAME(MLFloat16)
+STATIC_TYPENAME(double)
+STATIC_TYPENAME(uint32_t)
+STATIC_TYPENAME(uint64_t)
+STATIC_TYPENAME(BFloat16)
+template <> constexpr const char * static_typename<std::map<long, float>>() { return "std::map<long,float>"; }
+template <> constexpr const char * static_typename<std::map<std::string, float>>() { return "std::map<std::string,float>"; }
+
+template <typename T>
+constexpr const char * static_typename(T type) { return static_typename<T>(); };
+
 // There is a specialization only for one
 // type argument.
 template <typename... Types>
@@ -432,7 +456,7 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
-    ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
+    ORT_ENFORCE(value_proto != nullptr, static_typename<V>(),
                 " expected to be a registered ONNX type");
     CopyMutableMapValue(*value_proto, proto);
   }
@@ -449,7 +473,7 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
-    ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
+    ORT_ENFORCE(elem_proto != nullptr, static_typename<T>(),
                 " expected to be a registered ONNX type");
     CopyMutableSeqElement(*elem_proto, proto);
   }

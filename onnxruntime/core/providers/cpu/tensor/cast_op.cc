@@ -157,7 +157,7 @@ inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape&
       mutable_data[i] = std::stoull(in->Data<std::string>()[i]);
     }
   } else {
-    ORT_THROW("Unsupported type in cast op: from String to ", typeid(DstType).name());
+    ORT_THROW("Unsupported type in cast op: from String to ", onnxruntime::data_types_internal::static_typename<DstType>());
   }
 }  // namespace onnxruntime
 
