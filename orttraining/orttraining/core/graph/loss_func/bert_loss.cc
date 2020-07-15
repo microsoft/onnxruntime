@@ -59,7 +59,7 @@ TypeProto* BertLoss::GetTransposedTypeProto(const NodeArg* prediction_arg,
   auto* target_shape = type_proto->mutable_tensor_type()->mutable_shape();
   // Batch size.
   target_shape->add_dim()->CopyFrom(dims[0]);
-  
+
   // Class.
   target_shape->add_dim()->CopyFrom(dims[dims.size() - 1]);
 
@@ -71,7 +71,7 @@ TypeProto* BertLoss::GetTransposedTypeProto(const NodeArg* prediction_arg,
 }
 
 TypeProto* BertLoss::GetGatheredPredictionTransposedTypeProto(const NodeArg* prediction_arg,
-                                                    GraphAugmenter::GraphDefs& graph_defs) {
+                                                              GraphAugmenter::GraphDefs& graph_defs) {
   ORT_ENFORCE(prediction_arg != nullptr, "GetGatheredPredictionTransposedTypeProto's prediction_arg is nullptr");
   const auto* logits_type_proto = prediction_arg->TypeAsProto();
   const auto& dims = logits_type_proto->tensor_type().shape().dim();
@@ -133,15 +133,15 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
 
     // Transpose gathered_predictions with the following permutation: {0, 2, 1} because SoftmaxCrossEntropyLoss accepts
     // scores of the shape {N, C, D1, D2...Dk}.
-    TypeProto* gathered_prediction_transposed_type_proto = GetGatheredPredictionTransposedTypeProto(prediction_arg, 
-        graph_defs);
+    TypeProto* gathered_prediction_transposed_type_proto = GetGatheredPredictionTransposedTypeProto(prediction_arg,
+                                                                                                    graph_defs);
 
     new_nodes.emplace_back(NodeDef("Transpose",
-                                   {ArgDef("gathered_prediction", gathered_prediction_type_proto)}, // Inputs
+                                   {ArgDef("gathered_prediction", gathered_prediction_type_proto)},  // Inputs
                                    {ArgDef("gathered_prediction_transposed",
-                                       gathered_prediction_transposed_type_proto)},                 // Outputs
+                                           gathered_prediction_transposed_type_proto)},  // Outputs
                                    {ONNX_NAMESPACE::MakeAttribute("perm", std::vector<int64_t>{static_cast<int64_t>(0),
-                                       static_cast<int64_t>(2), static_cast<int64_t>(1)})},
+                                                                                               static_cast<int64_t>(2), static_cast<int64_t>(1)})},
 
                                    "Transpose_gathered_prediction"));
 
@@ -151,8 +151,8 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
 
     new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",
                                    {ArgDef("gathered_prediction_transposed", gathered_prediction_transposed_type_proto),
-                                    ArgDef(masked_lm_ids, masked_lm_int64_type_proto)},      // Inputs
-                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),          // Outputs
+                                    ArgDef(masked_lm_ids, masked_lm_int64_type_proto)},  // Inputs
+                                   {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),      // Outputs
                                     ArgDef("probability_lm", gathered_prediction_transposed_type_proto)},
                                    attrs,
                                    "Masked_LM_Loss"));
@@ -182,7 +182,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     }
 
     new_nodes.emplace_back(NodeDef("Transpose",
-                                   {ArgDef(prediction_next_sentence)},                        // Inputs
+                                   {ArgDef(prediction_next_sentence)},  // Inputs
                                    {ArgDef("prediction_next_sentence_transposed",
                                            prediction_next_sentence_transposed_type_proto)},  // Outputs
                                    {ONNX_NAMESPACE::MakeAttribute("perm", prediction_next_sentence_transposed_perm)},
