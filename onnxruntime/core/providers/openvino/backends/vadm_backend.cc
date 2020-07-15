@@ -214,7 +214,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, subgraph_context_.input_indexes);
+  auto input_tensors = GetInputTensors(ort, context, subgraph_context_.input_names);
 
   size_t batch_size = 1;
 
