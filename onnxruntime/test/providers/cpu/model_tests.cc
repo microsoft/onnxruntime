@@ -52,7 +52,7 @@ TEST_P(ModelTest, Run) {
     relative_per_sample_tolerance = 0.009;
   }
 
-  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
+  std::unique_ptr<OnnxModelInfo> model_info = onnxruntime::make_unique<OnnxModelInfo>(model_path.c_str());
   if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
@@ -101,6 +101,17 @@ TEST_P(ModelTest, Run) {
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+#ifndef ENABLE_TRAINING
+      {"adagrad", "not a registered function/op", {}},                  // Op not registered.
+      {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
+      {"adam", "not a registered function/op", {}},                     // Op not registered.
+      {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
+      {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
+      {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
+      {"momentum", "not a registered function/op", {}},                 // Op not registered.
+      {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
+      {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+#endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
   if (provider_name == "ngraph") {
