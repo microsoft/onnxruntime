@@ -137,7 +137,7 @@ class ReduceSumTraining final : public ReduceKernel<true> {
 
   Status Compute(OpKernelContext* context) const override;
 
-  // For external calls requiring ReduceSum implementation - will return the reduced output.
+  // For external calls requiring ReduceSumTraining implementation - will return the reduced output.
   //`input_shape_override` overrides the shape of `input` for compute purposes.
   static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                      AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,

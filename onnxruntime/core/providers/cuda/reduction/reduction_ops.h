@@ -175,6 +175,18 @@ class ReduceSum final : public ReduceKernel<true> {
 };
 
 template <typename T>
+class ReduceSumTraining final : public ReduceKernel<true> {
+ public:
+  ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
+
+  Status ComputeInternal(OpKernelContext* ctx) const override {
+    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
+  }
+};
+
+template <typename T>
 class ReduceLogSum final : public ReduceKernel<true> {
  public:
   ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
