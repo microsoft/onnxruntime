@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
+
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
@@ -12,6 +14,30 @@
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
+
+template<typename... args>
+struct StaticArray {
+    static constexpr typename std::common_type<args...>::type data[] = {args::make...};
+};
+
+template<typename... T>
+constexpr auto static_array() {
+    return StaticArray<T...>::data;
+}
+
+template<const char* const *... args>
+struct StaticStrings {
+    static constexpr const char * const data[] = {*args...};
+};
+
+template<const char * const *... S>
+constexpr auto static_strings() {
+    return StaticStrings<S...>::data;
+}
+
+constexpr static auto A = "tensor(uint8)";
+constexpr static auto B = "tensor(int32)";
+constexpr auto x = static_strings<&A, &B>();
 
 namespace ONNX_NAMESPACE {
 
@@ -93,9 +119,14 @@ struct TypeConstraint {
 
     const char* type_param_str;
     span<const char * const> allowed_type_strs;
+
+    constexpr static auto TENSOR_INT8 = "tensor(int8)";
+    constexpr static auto TENSOR_UINT8 = "tensor(uint8)";
+    constexpr static auto TENSOR_INT32 = "tensor(int32)";
+    constexpr static auto TENSOR_FLOAT16 = "tensor(float16)";
+    constexpr static auto TENSOR_FLOAT = "tensor(float)";
+    constexpr static auto TENSOR_DOUBLE = "tensor(double)";
 };
-
-
 
 class CxOpSchema final {
 public:
@@ -453,14 +484,9 @@ constexpr static ONNX_NAMESPACE::FormalParameter AttentionOutputs[] {
         ONNX_NAMESPACE::FormalParameter("output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T"),
         ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
 };
-constexpr static const char* tensor_int32[] {"tensor(int32)" };
-constexpr static const char* tensor_int8__tensor_uint8[] {"tensor(int8)", "tensor(uint8)"};
-constexpr static const char* tensor_float[] {"tensor(float)"};
-constexpr static const char* tensor_float__tensor_float16[] {"tensor(float)", "tensor(float16)"};
-constexpr static const char* tensor_float__tensor_float16__tensor_double[] {"tensor(float)", "tensor(float16)", "tensor(double)"};
 constexpr static ONNX_NAMESPACE::TypeConstraint AttentionTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float tensors."),
-        ONNX_NAMESPACE::TypeConstraint("M", tensor_int32, "Constrain mask index to integer types")
+        ONNX_NAMESPACE::TypeConstraint("T", static_strings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>(), "Constrain input and output types to float tensors."),
+        ONNX_NAMESPACE::TypeConstraint("M", static_strings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>(), "Constrain mask index to integer types")
 };
 static void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
