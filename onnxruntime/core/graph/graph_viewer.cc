@@ -20,11 +20,8 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 
 struct PriorityNodeCompare {
   bool operator()(const Node* n1, const Node* n2) const {
-    // if (n1->Priority() > n2->Priority()) {
-    //   return true;
-    // }
-    // return n1->Index() < n2->Index();
-    return n1->Priority() > n2->Priority();
+    return n1->Priority() > n2->Priority() ||
+           n1->Index() < n2->Index();
   }
 };
 
@@ -32,19 +29,19 @@ GraphViewer::GraphViewer(const Graph& graph) {
   graph_ = &graph;
   std::vector<const Node*> leaf_nodes;
   for (auto& node : graph_->Nodes()) {
+    // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
-      // This is a leaf node (without any output node).
       leaf_nodes.push_back(&node);
+    }
+    // This is a root node (without any input node)
+    if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
+      root_nodes_.push_back(node.Index());
     }
   }
 
-  // Reverse the order of input vector, such that forward nodes are ReverseDFS first
-  // This results in an execution order that forward nodes is always ran before the backward and recompute nodes
+  // Reverse the order of input vector, such that forward nodes are visted in ReverseDFS first
+  // This results in an execution order that forward nodes is always ran before the backward nodes
   std::reverse(leaf_nodes.begin(), leaf_nodes.end());
-
-  // for (const Node* n : leaf_nodes) {
-  //   std::cout << "Graph View leaf nodes: " << n->Name() << "\n";
-  // }
 
   graph.ReverseDFSFrom(
       leaf_nodes,
@@ -53,12 +50,6 @@ GraphViewer::GraphViewer(const Graph& graph) {
         nodes_in_topological_order_.push_back(n->Index());
       },
       NodeCompare());
-
-  for (auto& node : graph_->Nodes()) {
-    if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
-      root_nodes_.push_back(node.Index());
-    }
-  }
 }
 
 // Graph name.
@@ -120,49 +111,15 @@ const std::vector<NodeIndex>& GraphViewer::GetNodesInTopologicalOrder() const {
 }
 
 const std::vector<NodeIndex> GraphViewer::GetNodesInTopologicalOrderWithPriority() const {
-  std::unordered_map<NodeIndex, size_t> in_degree;
-  std::priority_queue<const Node*, std::vector<const Node*>, PriorityNodeCompare> to_visit;
-  std::vector<NodeIndex> topo_order;
+  std::vector<NodeIndex> topological_order;
 
-  for (auto& node : graph_->Nodes()) {
-    size_t input_edge_count = node.GetInputEdgesCount();
-    //in_degree.insert(std::make_pair<NodeIndex, size_t>(node.Index(), input_edge_count));
-    in_degree.insert({node.Index(), input_edge_count});
+  graph_->KahnsTopologicalSort(
+      [&topological_order](const Node* n) {
+        topological_order.push_back(n->Index());
+      },
+      PriorityNodeCompare());
 
-    // std::cout << "init: " << node.Name() << "indgree" << input_edge_count << "\n";
-
-    if (input_edge_count == 0) {
-      to_visit.push(&node);
-      // std::cout << "To Visit: " << node.Name() << "\n";
-    }
-  }
-
-  while (!to_visit.empty()) {
-    const Node* current = to_visit.top();
-    to_visit.pop();
-
-    if (!current) continue;
-
-    for (auto node_it = current->OutputNodesBegin(); node_it != current->OutputNodesEnd(); ++node_it) {
-      in_degree[node_it->Index()]--;
-
-      if (in_degree[node_it->Index()] == 0) {
-        to_visit.push(&*node_it);
-      }
-    }
-
-    topo_order.push_back(current->Index());
-
-    //std::cout << "topo_order: " << current->Name() << " pri: " << current->Priority() << "\n";
-  }
-
-  if (graph_->NumberOfNodes() == static_cast<int>(topo_order.size())) {
-    std::cout << "All Nodes included in the topo sort \n";
-  } else {
-    std::cout << "Graph has a cycle\n";
-  }
-
-  return topo_order;
+  return topological_order;
 }
 
 const std::vector<NodeIndex>& GraphViewer::GetRootNodes() const {

@@ -97,7 +97,7 @@ class Node {
   /** Gets the Node's exection priority. 
   @remarks Higher value means higher priority  */
   int Priority() const noexcept;
-  
+
   void SetPriority(int priority) noexcept;
 
   /** Gets the Node's OpSchema.
@@ -777,6 +777,13 @@ class Graph {
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp,
                       const std::function<bool(const Node*, const Node*)>& stop) const;
+
+  /** Performs topological sort with Kahn's algorithm on the graph/s.
+  @param enter Visit function that will be invoked on a node when it is visited.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
+                            const std::function<bool(const Node*, const Node*)>& comp) const;
 
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
