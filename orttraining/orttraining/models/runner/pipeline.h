@@ -124,6 +124,7 @@ class PipelineScheduler {
   int GetBackwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
   // APIs to get MPI event event for
   // Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
+
   int GetForwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const;
   int GetForwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const;
   int GetForwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const;
