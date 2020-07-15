@@ -1463,18 +1463,18 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
             opset9_cmd = cmd_base + [opset9_model_dir]
             opset10_model_dir = os.path.join(model_dir, 'opset10')
             opset10_cmd = cmd_base + [opset10_model_dir]
-            # run_subprocess([exe] + opset7_cmd, cwd=cwd)
-            # run_subprocess([exe] + opset8_cmd, cwd=cwd)
-            # run_subprocess([exe] + opset9_cmd, cwd=cwd)
+            run_subprocess([exe] + opset7_cmd, cwd=cwd)
+            run_subprocess([exe] + opset8_cmd, cwd=cwd)
+            run_subprocess([exe] + opset9_cmd, cwd=cwd)
             run_subprocess([exe] + opset10_cmd, cwd=cwd)
 
             # temporarily disable -x invocations on Windows as they
             # are causing instability in CI
-            if not is_windows():
+            #if not is_windows():
                 # run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
                 # run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
                 # run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
-                run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
+                # run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
 
 
 def nuphar_run_python_tests(build_dir, configs):
