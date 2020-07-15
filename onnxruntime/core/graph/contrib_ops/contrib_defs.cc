@@ -2865,7 +2865,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         .Input(
             1,
             "k",
-            "A 1-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include.",
+            "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include.",
             "tensor(int64)",
             OpSchema::Optional)
         .Output(

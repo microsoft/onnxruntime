@@ -55,7 +55,7 @@ struct Triu::ComputeImpl {
   void operator()(const Tensor* X, const Tensor* k, Tensor* Y) const {
 	  int64_t k_val = 0;
 	  if (k) {
-      std::cout << "iiiiiiiiiiiiiis"<< k->Shape().NumDimensions()<<"\n";
+	    ORT_ENFORCE(k->Shape().NumDimensions() <= 1, "k should be a 1-D or 0-D tensor.");
 	    k_val = *(k->template Data<int64_t>());
 	  }
 
