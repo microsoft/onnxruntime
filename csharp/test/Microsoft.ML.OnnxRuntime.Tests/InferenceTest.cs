@@ -544,28 +544,28 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
-          var skipModels = new Dictionary<string, string>(){
-              {"mxnet_arcface", "Model is an invalid ONNX model"},
-              {"tf_inception_v2", "TODO: Debug failing model, skipping for now"},
-              {"fp16_inception_v1", "16-bit float not supported type in C#."},
-              {"fp16_shufflenet", "16-bit float not supported type in C#."},
-              {"fp16_tiny_yolov2", "16-bit float not supported type in C#."},
-              {"BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)"},
-              {"mlperf_ssd_mobilenet_300", "Could not find file output_0.pb"},
-              {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
-              {"tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied"},
-              {"tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied"},
-              {"coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name"},
-              {"keras2coreml_Dense_ImageNet", "result mismatch when DML is in use"},
-              {"mask_rcnn_keras", "Model should be edited to remove the extra outputs"},
-          };
+            var skipModels = new Dictionary<string, string>() {
+                { "mxnet_arcface", "Model is an invalid ONNX model"},
+                { "tf_inception_v2", "TODO: Debug failing model, skipping for now" },
+                { "fp16_inception_v1", "16-bit float not supported type in C#." },
+                { "fp16_shufflenet", "16-bit float not supported type in C#." },
+                { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
+                { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
+                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
+                { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
+                { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
+                { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
+                { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
+            };
 
-          // The following models fails on nocontribops win CI
-          var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
-          var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
-          if (isContribOpsDisabled) {
-            skipModels["test_tiny_yolov2"] = "Fails when ContribOps is disabled";
-            skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
+            // The following models fails on nocontribops win CI
+            var disableContribOpsEnvVar = Environment.GetEnvironmentVariable("DisableContribOps");
+            var isContribOpsDisabled = (disableContribOpsEnvVar != null) ? disableContribOpsEnvVar.Equals("ON") : false;
+            if (isContribOpsDisabled)
+            {
+                skipModels["test_tiny_yolov2"] = "Fails when ContribOps is disabled";
+                skipModels["mask_rcnn_keras"] = "Pad is not a registered function/op";
             }
 
             // Skip traditional ML models
