@@ -21,7 +21,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   bool is_sealed_ = false;
   const ExecutionPlanBase& seq_plan_;
 
-  common::Status AllocatePlannedBuffers() {
+  common::Status AllocatePlannedBuffersAndReportTotalSize() {
     const size_t location_len = mem_patterns_.locations.size();
     for (size_t i = 0; i < location_len; ++i) {
       auto& location = mem_patterns_.locations[i];
@@ -30,36 +30,42 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         return Status(common::ONNXRUNTIME, common::FAIL,
                       "Failed to get allocator for location: " + location.ToString());
 
-      if (mem_patterns_.patterns[i].PeakSize() > 0) {
-        void* buffer;
-        if (alloc->Info().alloc_type == OrtArenaAllocator) {
-          buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_patterns_.patterns[i].PeakSize());
-        }
-        else {
-          buffer = alloc->Alloc(mem_patterns_.patterns[i].PeakSize());
-        }
-        weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
-        auto kvp = buffers_.insert(std::make_pair(location, buffer));
-        if (!kvp.second) {
-          alloc->Free(buffer);
-          return Status(common::ONNXRUNTIME, common::FAIL, "duplicated location");
-        }
+      // Don't allocate memory when there is no memory usage..
+      if (mem_patterns_.patterns[i].PeakSize() <= 0) {
+        continue;
+      }
+
+      const auto peak_size = mem_patterns_.patterns[i].PeakSize();
+      void* buffer;
+      if (alloc->Info().alloc_type == OrtArenaAllocator) {
+        // Arena has a specific way to store static memory.
+        // Arena does not reuse static memory allocated by Reserve.
+        buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(peak_size);
+      }
+      else {
+        buffer = alloc->Alloc(peak_size);
+      }
+      weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
+      auto kvp = buffers_.insert(std::make_pair(location, buffer));
+      if (!kvp.second) {
+        alloc->Free(buffer);
+        return Status(common::ONNXRUNTIME, common::FAIL, "duplicated location");
       }
     }
     return Status::OK();
   }
 
  public:
-  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const ExecutionProviders& exec_providers,
+  TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
                                 std::vector<BufferUniquePtr>& weights_buffers)
-      : ITensorAllocator(exec_providers),
+      : ITensorAllocator(session_state),
         planner_(execution_plan),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 
   common::Status FinalizePlan() override {
     ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(&mem_patterns_));
-    ORT_RETURN_IF_ERROR(AllocatePlannedBuffers());
+    ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize());
     is_sealed_ = true;
     return Status::OK();
   }

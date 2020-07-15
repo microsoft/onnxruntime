@@ -100,7 +100,19 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX
+#if USE_ACL
+#define BACKEND_ACL "-ACL"
+#else
+#define BACKEND_ACL ""
+#endif
+
+#if USE_ARMNN
+#define BACKEND_ARMNN "-ARMNN"
+#else
+#define BACKEND_ARMNN ""
+#endif
+
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -132,6 +144,12 @@ std::string nuphar_settings;
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
+#ifdef USE_ACL
+#include "core/providers/acl/acl_provider_factory.h"
+#endif
+#ifdef USE_ARMNN
+#include "core/providers/armnn/armnn_provider_factory.h"
+#endif
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
@@ -144,8 +162,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char *backend_type, int device_id);
-
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
@@ -166,11 +185,11 @@ using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
 template <typename T>
-void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* /*data_transfer_manager*/) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr) {
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -209,7 +228,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
   }
 }
 
-static std::string GetDeviceName(const OrtDevice& device) {
+static const char* GetDeviceName(const OrtDevice& device) {
   switch (device.Type()) {
     case OrtDevice::CPU:
       return CPU;
@@ -218,52 +237,52 @@ static std::string GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     default:
-      throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
+      ORT_THROW("Unknown device type: ", device.Type());
   }
 }
 
 template <>
-void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensor<TensorSeq>(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj);
+    GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
     py_list.append(obj);
   }
   pyobjs.push_back(py_list);
 }
 
-void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddNonTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-    AddNonTensor<TensorSeq>(val, pyobjs);
+    AddNonTensor<TensorSeq>(val, pyobjs, data_transfer_manager);
   } else {
     utils::ContainerChecker c_checker(val_type);
     if (c_checker.IsMap()) {
       if (c_checker.IsMapOf<std::string, std::string>()) {
-        AddNonTensor<MapStringToString>(val, pyobjs);
+        AddNonTensor<MapStringToString>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<std::string, int64_t>()) {
-        AddNonTensor<MapStringToInt64>(val, pyobjs);
+        AddNonTensor<MapStringToInt64>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<std::string, float>()) {
-        AddNonTensor<MapStringToFloat>(val, pyobjs);
+        AddNonTensor<MapStringToFloat>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<std::string, double>()) {
-        AddNonTensor<MapStringToDouble>(val, pyobjs);
+        AddNonTensor<MapStringToDouble>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, std::string>()) {
-        AddNonTensor<MapInt64ToString>(val, pyobjs);
+        AddNonTensor<MapInt64ToString>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
-        AddNonTensor<MapInt64ToInt64>(val, pyobjs);
+        AddNonTensor<MapInt64ToInt64>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, float>()) {
-        AddNonTensor<MapInt64ToFloat>(val, pyobjs);
+        AddNonTensor<MapInt64ToFloat>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsMapOf<int64_t, double>()) {
-        AddNonTensor<MapInt64ToDouble>(val, pyobjs);
+        AddNonTensor<MapInt64ToDouble>(val, pyobjs, data_transfer_manager);
       }
     } else {
       if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
-        AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
+        AddNonTensor<VectorMapStringToFloat>(val, pyobjs, data_transfer_manager);
       } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
-        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
+        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs, data_transfer_manager);
       } else {
         throw std::runtime_error("Output is a non-tensor type which is not supported.");
       }
@@ -271,10 +290,10 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
+void AddTensorAsPyObj(const OrtValue& val, std::vector<py::object>& pyobjs, const DataTransferManager* data_transfer_manager) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
-  GetPyObjFromTensor(rtensor, obj);
+  GetPyObjFromTensor(rtensor, obj, data_transfer_manager);
   pyobjs.push_back(obj);
 }
 
@@ -283,41 +302,18 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
-// ordered by default priority. highest to lowest.
+// ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
-                                                   kVitisAIExecutionProvider, kCpuExecutionProvider, kMIGraphXExecutionProvider};
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
+                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+                                                   kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
+                                                   kAclExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
 const std::vector<std::string>& GetAvailableProviders() {
   auto InitializeProviders = []() {
-    std::vector<std::string> available_providers = {kCpuExecutionProvider};
-#ifdef USE_TENSORRT
-    available_providers.push_back(kTensorrtExecutionProvider);
-#endif
-#ifdef USE_MIGRAPHX
-    available_providers.push_back(kMIGraphXExecutionProvider);
-#endif
-#ifdef USE_CUDA
-    available_providers.push_back(kCudaExecutionProvider);
-#endif
-#ifdef USE_DNNL
-    available_providers.push_back(kDnnlExecutionProvider);
-#endif
-#ifdef USE_NGRAPH
-    available_providers.push_back(kNGraphExecutionProvider);
-#endif
-#ifdef USE_OPENVINO
-    available_providers.push_back(kOpenVINOExecutionProvider);
-#endif
-#ifdef USE_NUPHAR
-    available_providers.push_back(kNupharExecutionProvider);
-#endif
-#ifdef USE_VITISAI
-    available_providers.push_back(kVitisAIExecutionProvider);
-#endif
+    std::vector<std::string> available_providers(std::begin(providers_available), std::end(providers_available));
     return available_providers;
   };
   static std::vector<std::string> available_providers = InitializeProviders();
@@ -339,9 +335,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
-      cuda_device_id = 0;
-      cuda_mem_limit = static_cast<size_t>(INT_MAX);
-      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -364,6 +357,14 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
+#endif
+    } else if (type == kAclExecutionProvider) {
+#ifdef USE_ACL
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ACL(sess->GetSessionOptions().enable_cpu_mem_arena));
+#endif
+    } else if (type == kArmNNExecutionProvider) {
+#ifdef USE_ARMNN
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ArmNN(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else {
       // unknown provider
@@ -401,7 +402,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllProviders(); },
-      "Return list of Execution Providers that this version of Onnxruntime can support.");
+      "Return list of Execution Providers that this version of Onnxruntime can support. "
+      "The order of elements represents the default priority order of Execution Providers"
+      " from highest to lowest.");
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableProviders(); },
       "Return list of available Execution Providers available in this installed version of Onnxruntime.");
@@ -439,7 +442,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
 #endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
@@ -457,7 +460,13 @@ void addGlobalMethods(py::module& m, const Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+                onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+#endif
+#ifdef USE_ACL
+            onnxruntime::CreateExecutionProviderFactory_ACL(0)
+#endif
+#ifdef USE_ARMNN
+                onnxruntime::CreateExecutionProviderFactory_ArmNN(0)
 #endif
         };
 
@@ -514,7 +523,8 @@ void addOpSchemaSubmodule(py::module& m) {
   auto schemadef = m.def_submodule("schemadef");
   schemadef.doc() = "Schema submodule";
 
-  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema");
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema", py::module_local());
   op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
       .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
       .def_property_readonly("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
@@ -540,7 +550,8 @@ void addOpSchemaSubmodule(py::module& m) {
         return v == std::numeric_limits<int>::max();
       });
 
-  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute", py::module_local())
       .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
       .def_readonly("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
@@ -553,7 +564,8 @@ void addOpSchemaSubmodule(py::module& m) {
           })
       .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam", py::module_local())
       .def_readonly(
           "type_param_str", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::type_param_str)
       .def_readonly("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
@@ -561,12 +573,14 @@ void addOpSchemaSubmodule(py::module& m) {
           "allowed_type_strs",
           &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::allowed_type_strs);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption", py::module_local())
       .value("Single", ONNX_NAMESPACE::OpSchema::Single)
       .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
       .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
 
-  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter")
+  // Keep this binding local to this module
+  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter", py::module_local())
       .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
       .def_property_readonly("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
       .def_property_readonly("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
@@ -576,7 +590,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .def_property_readonly(
           "isHomogeneous", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetIsHomogeneous);
 
-  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType", py::module_local())
       .value("FLOAT", ONNX_NAMESPACE::AttributeProto::FLOAT)
       .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
       .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
@@ -588,7 +603,8 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("TENSORS", ONNX_NAMESPACE::AttributeProto::TENSORS)
       .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
 
-  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType")
+  // Keep this binding local to this module
+  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType", py::module_local())
       .value("COMMON", ONNX_NAMESPACE::OpSchema::SupportType::COMMON)
       .value("EXPERIMENTAL", ONNX_NAMESPACE::OpSchema::SupportType::EXPERIMENTAL);
 }
@@ -617,6 +633,42 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> binding(m, "SessionIOBinding");
   binding
       .def(py::init<InferenceSession*>())
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
+        OrtValue mlvalue;
+
+        InferenceSession* sess = io_binding->GetInferenceSession();
+        auto px = sess->GetModelInputs();
+        if (!px.first.IsOK() || !px.second) {
+          throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+        }
+
+        //Check if input is sequence of tensors
+        onnx::TypeProto type_proto;
+        const auto& def_list = *px.second;
+        auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
+                                   [&name](const NodeArg* node_arg) { return name == node_arg->Name(); });
+        if (ret_it == std::end(def_list)) {
+          throw std::runtime_error("Failed to find input with name: " + name + " in the model input def list");
+        }
+        const auto* temp = (*ret_it)->TypeAsProto();
+        if (!temp) {
+          throw std::runtime_error("Corresponding type_proto is null");
+        } else {
+          type_proto = *temp;
+        }
+        if (type_proto.has_sequence_type()) {
+          throw std::runtime_error("Cannot bind input to sequence of tensors");
+        }
+
+        if (PyDict_Check(arr_on_cpu.ptr())) {
+          throw std::runtime_error("Cannot bind input to dictionary type of values");
+        }
+
+        CreateGenericMLValue(px.second, GetAllocator(), name, arr_on_cpu, &mlvalue);
+        auto status = io_binding->Get()->BindInput(name, mlvalue);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+      })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
@@ -624,12 +676,10 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        std::string device_name = GetDeviceName(device);
-
-        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
-
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
+
         mlvalue.Init(p_tensor.release(),
                      DataTypeImpl::GetType<Tensor>(),
                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
@@ -644,24 +694,41 @@ void addObjectMethods(py::module& m, Environment& env) {
         int type_num = dtype->type_num;
         Py_DECREF(dtype);
 
-        std::string device_name = GetDeviceName(device);
-
-        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
 
         std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
                      DataTypeImpl::GetType<Tensor>(),
                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
         auto status = io_binding->Get()->BindOutput(name, mlvalue);
         if (!status.IsOK())
-          throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
+          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
+      })
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
+        auto status = io_binding->Get()->BindOutput(name, device);
+        if (!status.IsOK())
+          throw std::runtime_error("Error when bind output: " + status.ErrorMessage());
       })
       .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearInputs();
       })
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
+      })
+      .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
+        const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
+        std::vector<py::object> rfetch;
+        rfetch.reserve(outputs.size());
+        for (const auto& _ : outputs) {
+          if (_.IsTensor()) {
+            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
+          } else {
+            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager());
+          }
+        }
+        return rfetch;
       });
 
   py::class_<SessionOptions>
@@ -732,7 +799,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                 break;
             }
           },
-          R"pbdoc(Graph optimization level for this session.)pbdoc");
+          R"pbdoc(Graph optimization level for this session.)pbdoc")
+      .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
+                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -746,10 +815,12 @@ Applies to a particular Run() invocation. Default is 0.)pbdoc")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
 RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
-      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+#ifdef ENABLE_TRAINING
       .def_readwrite("training_mode", &RunOptions::training_mode,
-                     R"pbdoc(Choose to run in training or inferencing mode)pbdoc");
+                     R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
+#endif
+      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -884,9 +955,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         rfetch.reserve(fetches.size());
         for (auto _ : fetches) {
           if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch);
+            AddTensorAsPyObj(_, rfetch, nullptr);
           } else {
-            AddNonTensorAsPyObj(_, rfetch);
+            AddNonTensorAsPyObj(_, rfetch, nullptr);
           }
         }
         return rfetch;

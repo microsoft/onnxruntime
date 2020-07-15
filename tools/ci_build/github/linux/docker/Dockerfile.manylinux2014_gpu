@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux2014_x86_64:2020-05-03-c2ce11e
+FROM quay.io/pypa/manylinux2014_x86_64:2020-04-04-c0949b6
 
 ARG PYTHON_VERSION=3.5
 ARG BUILD_EXTR_PAR

@@ -10,10 +10,13 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
+#include "orttraining/core/optimizer/bias_dropout_fusion.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
+#include "orttraining/core/optimizer/nonzero_shape_setter.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/asserts.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 
 #include <random>
@@ -44,6 +47,33 @@ TEST_F(GraphTransformationTests, GistEncodeDecode) {
   ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
 }
 
+static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger);
+  ASSERT_STATUS_OK(ret);
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], 0);
+  ASSERT_EQ(op_to_count["TrainableDropout"], 0);
+  ASSERT_EQ(op_to_count["BiasDropout"], 1);
+}
+
+TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion1.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_fusion2.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", *logger_);
+}
+
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -58,6 +88,25 @@ Node* GetNodeByName(Graph& graph, std::string node_name) {
   return nullptr;
 }
 
+TEST_F(GraphTransformationTests, NonZeroShapeSetter) {
+  auto model_uri = MODEL_FOLDER "nonzero_shape_setter.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("NonZeroShapeSetter1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<NonZeroShapeSetter>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
+  ASSERT_TRUE(ret.IsOK());
+
+  auto nonzero_shape = GetNodeByName(graph, "nonzero")->OutputDefs()[0]->Shape();
+  ASSERT_TRUE(nonzero_shape->dim_size() == 2);
+  ASSERT_TRUE(nonzero_shape->dim(0).dim_value() == 2);
+  ASSERT_TRUE(nonzero_shape->dim(1).dim_param() == "nonzero_nonzero_count");
+}
 
 // MegatronF/G is defined only for training, and in msdomain.
 #ifndef DISABLE_CONTRIB_OPS
@@ -386,6 +435,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
 
     EXPECT_TRUE(st.IsOK());
@@ -417,6 +467,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionCorrectnessTest) {
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
 
     EXPECT_TRUE(st.IsOK());
@@ -513,6 +564,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &expected_ort_values);
     EXPECT_TRUE(st.IsOK());
   }
@@ -547,6 +599,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 
     // Now run
     RunOptions run_options;
+    run_options.training_mode = true;
     st = session_object.Run(run_options, feeds, output_names, &actual_ort_values);
     EXPECT_TRUE(st.IsOK());
   }

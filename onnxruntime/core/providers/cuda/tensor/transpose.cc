@@ -64,8 +64,15 @@ Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Te
   return Status::OK();
 }
 
-Status Transpose::DoTranspose(const Transpose& kernel,
+Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.CublasHandle(), permutations, input, output);
+}
+
+Status Transpose::DoTranspose(const cudaDeviceProp& prop,
+                              const cublasHandle_t cublas_handle,
+                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                              const TensorShape* input_shape_override) {
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
     return Status::OK();
@@ -74,38 +81,100 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   if (element_type == utils::GetONNXTensorElementDataType<float>() ||
       element_type == utils::GetONNXTensorElementDataType<double>() ||
       element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
-    auto mn = TryTransposeWithCublas(permutations, input.Shape());
+    auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithCublas<float>(kernel.CublasHandle(), input, output, M, N);
+        return TransposeWithCublas<float>(cublas_handle, input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithCublas<double>(kernel.CublasHandle(), input, output, M, N);
+        return TransposeWithCublas<double>(cublas_handle, input, output, M, N);
       } else {
-        return TransposeWithCublas<MLFloat16>(kernel.CublasHandle(), input, output, M, N);
+        return TransposeWithCublas<MLFloat16>(cublas_handle, input, output, M, N);
       }
     }
   }
 
-  const std::vector<int64_t>& input_dims = input.Shape().GetDims();
+  const std::vector<int64_t>& input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
-
   auto rank = static_cast<int32_t>(input_dims.size());
-  TensorPitches original_input_strides(input_dims);
-  TensorPitches original_output_strides(output_dims);
 
-  TArray<int64_t> input_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    input_strides[i] = original_input_strides[permutations[i]];
+  // flatten the adjacent dimensions which are contiguous
+  // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
+  auto new_rank = rank;
+  std::vector<size_t> new_permutations(permutations);
+  std::vector<int64_t> new_input_dims(input_dims);
+  std::vector<int64_t> new_output_dims(output_dims);
+
+  for (auto i = rank - 1; i > 0; i--) {
+    auto curr = new_permutations[i];
+    auto prev = new_permutations[i - 1];
+    if (prev + 1 == curr) {
+      // all dims bigger than curr need to be reduced by 1 due to the merging.
+      for (auto j = 0; j < new_rank; j++) {
+        if (new_permutations[j] > curr) {
+          new_permutations[j] -= 1;
+        }
+      }
+      for (auto j = i+1; j < new_rank; j++) {
+        new_permutations[j-1] = new_permutations[j];
+      }
+
+      // update input dims
+      new_input_dims[prev] *= new_input_dims[curr];
+      new_input_dims[curr] = 1;
+      for (auto j = static_cast<int32_t>(curr+1); j < new_rank; j++) {
+        new_input_dims[j-1] = new_input_dims[j];
+      }
+      new_input_dims[new_rank-1] = 1;
+
+      // update output dims
+      new_output_dims[i-1] *= new_output_dims[i];
+      new_output_dims[i] = 1;
+      for (auto j = i+1; j < new_rank; j++) {
+        new_output_dims[j-1] = new_output_dims[j];
+      }
+      new_output_dims[new_rank-1] = 1;
+
+      new_rank--;
+    }
   }
-  TArray<fast_divmod> output_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
-  }
+  new_permutations.resize(new_rank);
+  new_input_dims.resize(new_rank);
+  new_output_dims.resize(new_rank);
+
+  TensorPitches new_input_strides(new_input_dims);
+  TensorPitches new_output_strides(new_output_dims);
+
+  // Optimize the permutation of 3D/4D tensor
+  TArray<int64_t> input_shape(new_input_dims);
+  TArray<int64_t> tmp_input_strides(new_input_strides);
 
   size_t element_size = input.DataType()->Size();
-  auto status = TransposeImpl(element_size, rank, input_strides, input.DataRaw(),
+  if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
+    return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
+                           input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
+  }  else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
+    TArray<int64_t> tmp_output_strides(new_rank);
+    for (auto i = 0; i < new_rank; i++) {
+      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+    }
+    return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
+                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+  }
+
+  // General cases
+  TArray<int64_t> input_strides(new_rank);
+  for (auto i = 0; i < new_rank; i++) {
+    input_strides[i] = new_input_strides[new_permutations[i]];
+  }
+
+  TArray<fast_divmod> output_strides(new_rank);
+  for (auto i = 0; i < new_rank; i++) {
+    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(new_output_strides[i]));
+  }
+
+  auto status = TransposeImpl(element_size, new_rank, input_strides, input.DataRaw(),
                               output_strides, output.MutableDataRaw(), output.Shape().Size());
 
   return status;
@@ -129,7 +198,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(*this, *p_perm, X, *Y);
+  return DoTranspose(this->GetDeviceProp(), this->CublasHandle(), *p_perm, X, *Y);
 }
 
 }  // namespace cuda

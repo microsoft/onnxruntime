@@ -4,6 +4,17 @@
 
 # nGraph Execution Provider
 
+## **Deprecation Notice**
+
+| | |
+| --- | --- | 
+| Deprecation Begins	| June 1, 2020 |
+| Removal Date |	December 1, 2020 |
+
+Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
+
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
+
 [nGraph](https://github.com/NervanaSystems/ngraph) is a deep learning compiler from Intel®. The integration of nGraph as an execution provider (EP) into ONNX Runtime accelerates performance of ONNX model workloads across wide range of hardware offerings. Microsoft and Intel worked closely to integrate the nGraph EP with ONNX Runtime to showcase the benefits of quantization (int8). The nGraph EP leverages Intel® DL Boost and delivers performance increase with minimal loss of accuracy relative to FP32 ONNX models. With the nGraph EP, the ONNX Runtime delivers better inference performance across range of Intel hardware including Intel® Xeon® Processors compared to a generic CPU execution provider.
 
 ## Build

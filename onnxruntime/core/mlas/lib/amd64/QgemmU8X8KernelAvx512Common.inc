@@ -39,8 +39,8 @@ GemmU8X8KernelFrame STRUCT
         CountM QWORD ?
         CountN QWORD ?
         ldc QWORD ?
-        RowSumVector QWORD ?
-        ColumnSumVector QWORD ?
+        RowSumBuffer QWORD ?
+        ColumnSumBuffer QWORD ?
         DepthValue QWORD ?
         ZeroMode QWORD ?
 
@@ -68,9 +68,9 @@ GemmU8X8KernelFrame ENDS
 ;
 ;   r9 - Supplies the length in bytes of a row from matrix A.
 ;
-;   r12 - Supplies the address of the row sum vector.
+;   r12 - Supplies the address of the row sum buffer.
 ;
-;   r13 - Supplies the address of the column sum vector.
+;   r13 - Supplies the address of the column sum buffer.
 ;
 
 ProduceOutputBlock MACRO ColumnCount, RowCount
@@ -90,7 +90,7 @@ ELSE
         vpaddd  zmm1,zmm3,ZMMWORD PTR [r13]
         vpaddd  zmm0,zmm3,ZMMWORD PTR [r13+64]
 ENDIF
-        add_immed r13,ColumnCount*4         ; advance ColumnSumVector by N columns
+        add_immed r13,ColumnCount*4         ; advance ColumnSumBuffer by N columns
 ELSE
         vpaddd zmm0,zmm3,ZMMWORD PTR [r13]
 ENDIF
@@ -158,9 +158,9 @@ ENDIF
 ;
 ;   r10b - Supplies the zero mode flag.
 ;
-;   r12 - Supplies the address of the row sum vector.
+;   r12 - Supplies the address of the row sum buffer.
 ;
-;   r13 - Supplies the address of the column sum vector.
+;   r13 - Supplies the address of the column sum buffer.
 ;
 ;   r14 - Supplies the stride in bytes of between packed blocks of matrix B.
 ;
@@ -309,8 +309,8 @@ GemmU8X8KernelAvx512Function MACRO Type, Isa
 ;
 ;   C (r8) - Supplies the address of matrix C.
 ;
-;   QuadCountK (r9) - Supplies the number of quad columns from matrix A and the
-;       number of quad rows from matrix B to iterate over.
+;   PackedCountK (r9) - Supplies the number of packed columns from matrix A and
+;       the number of packed rows from matrix B to iterate over.
 ;
 ;   CountM - Supplies the maximum number of rows that can be processed for
 ;       matrix A and matrix C. The actual number of rows handled for this
@@ -321,11 +321,11 @@ GemmU8X8KernelAvx512Function MACRO Type, Isa
 ;
 ;   ldc - Supplies the first dimension of matrix C.
 ;
-;   RowSumVector - Supplies the sum of each row from matrix A multiplied by the
+;   RowSumBuffer - Supplies the sum of each row from matrix A multiplied by the
 ;       zero point offset of matrix B. These values are accumulated into every
 ;       row of matrix C.
 ;
-;   ColumnSumVector - Supplies the sum of each column from matrix B multiplied
+;   ColumnSumBuffer - Supplies the sum of each column from matrix B multiplied
 ;       by the zero point offset of matrix A. These values are accumulated into
 ;       every column of matrix C.
 ;
@@ -364,8 +364,8 @@ GemmU8X8KernelAvx512Function MACRO Type, Isa
         shl     r9,2                        ; convert to row length
         movzx   r10,BYTE PTR GemmU8X8KernelFrame.ZeroMode[rsp]
         mov     r11,GemmU8X8KernelFrame.CountM[rsp]
-        mov     r12,GemmU8X8KernelFrame.RowSumVector[rsp]
-        mov     r13,GemmU8X8KernelFrame.ColumnSumVector[rsp]
+        mov     r12,GemmU8X8KernelFrame.RowSumBuffer[rsp]
+        mov     r13,GemmU8X8KernelFrame.ColumnSumBuffer[rsp]
         mov     esi,-1
         kmovw   k1,esi                      ; update mask to write all columns
 IFIDNI <Type>, <U8S8>

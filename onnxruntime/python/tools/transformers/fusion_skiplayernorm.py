@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from onnx import helper, numpy_helper
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from fusion_base import Fusion
 
 logger = getLogger(__name__)
@@ -40,14 +40,14 @@ class FusionSkipLayerNormalization(Fusion):
 
             # Set default epsilon if no epsilon exists from layernorm
             if len(normalize_node.attribute) == 0:
-                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-12)])
+                normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
             self.nodes_to_add.append(normalize_node)
 
 
 class FusionBiasSkipLayerNormalization(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(model, "SkipLayerNormalization(add bias)", "SkipLayerNormalization")
+        super().__init__(model, "SkipLayerNormalization", "SkipLayerNormalization", "add bias")
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         if len(node.input) != 4:

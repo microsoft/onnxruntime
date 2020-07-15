@@ -36,9 +36,6 @@ jobs:
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
-  - template: set-test-data-variables-step.yml  
-  - template: win-download-test-data.yml
-
   - task: BatchScript@1
     displayName: 'Setup VS2019 env vars'
     inputs:
@@ -61,6 +58,11 @@ jobs:
   - template: get-nuget-package-version-as-variable.yml
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
 
   # TODO: Add .Net Core AnyCPU test task
 

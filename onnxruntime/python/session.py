@@ -146,7 +146,7 @@ class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
-    def __init__(self, path_or_bytes, sess_options=None, providers=[]):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None):
         """
         :param path_or_bytes: filename or serialized model in a byte string
         :param sess_options: session options
@@ -155,11 +155,11 @@ class InferenceSession(Session):
         """
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
-        self._load_model(providers)
+        self._load_model(providers or [])
         self._enable_fallback = True
         Session.__init__(self, self._sess)
 
-    def _load_model(self, providers=[]):
+    def _load_model(self, providers):
         if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
                 self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
@@ -191,20 +191,65 @@ class InferenceSession(Session):
 
 
 class IOBinding:
+    '''
+    This class provides API to bind input/output to a specified device, e.g. GPU.
+    '''
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
 
+    def bind_cpu_input(self, name, arr_on_cpu):
+        '''
+        bind an input to array on CPU
+        :param name: input name
+        :param arr_on_cpu: input values as a python array on CPU
+        '''
+        self._iobinding.bind_input(name, arr_on_cpu)
+
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
+        '''
+        :param name: input name
+        :param device_type: e.g. CPU, CUDA
+        :param device_id: device id, e.g. 0
+        :param element_type: input element type
+        :param shape: input shape
+        :param buffer_ptr: memory pointer to input data
+        '''
         self._iobinding.bind_input(name,
                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
                                                device_id),
                                    element_type, shape, buffer_ptr)
 
-    def bind_output(self, name, device_type, device_id, element_type, shape, buffer_ptr):
-        self._iobinding.bind_output(name,
-                                    C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
-                                                device_id),
-                                    element_type, shape, buffer_ptr)
+    def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
+        '''
+        :param name: output name
+        :param device_type: e.g. CPU, CUDA, CPU by default
+        :param device_id: device id, e.g. 0
+        :param element_type: output element type
+        :param shape: output shape
+        :param buffer_ptr: memory pointer to output data
+        '''
+
+        # Follow the `if` path when the user has not provided any pre-allocated buffer but still
+        # would like to bind an output to a specific device (e.g. cuda).
+        # Pre-allocating an output buffer may not be an option for the user as :
+        # (1) They may not want to use a custom allocator specific to the device they want to bind the output to,
+        # in which case ORT will allocate the memory for the user
+        # (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs
+        if buffer_ptr is None:
+            self._iobinding.bind_output(name,
+                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                                    device_id))
+        else:
+            if element_type is None or shape is None:
+                raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
+            self._iobinding.bind_output(name,
+                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                                    device_id),
+                                        element_type, shape, buffer_ptr)
+
+    def copy_outputs_to_cpu(self):
+        '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
+        return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):
         self._iobinding.clear_binding_inputs()

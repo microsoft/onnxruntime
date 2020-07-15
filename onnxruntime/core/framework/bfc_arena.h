@@ -78,10 +78,6 @@ class BFCArena : public IArenaAllocator {
     return memory_limit_;
   }
 
-  const OrtMemoryInfo& Info() const override {
-    return info_;
-  }
-
   FencePtr CreateFence(const SessionState* session_state) override {
     // arena always rely on its device allocator to create fence
     return device_allocator_->CreateFence(session_state);
@@ -321,9 +317,8 @@ class BFCArena : public IArenaAllocator {
   size_t RoundedBytes(size_t bytes);
 
   // Try to add a new memory region that can satisfy an allocation of
-  // 'rounded_bytes' bytes.  Returns true on success and false on
-  // failure.
-  bool Extend(size_t rounded_bytes);
+  // 'rounded_bytes' bytes.
+  Status Extend(size_t rounded_bytes);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
@@ -445,8 +440,6 @@ class BFCArena : public IArenaAllocator {
   int64_t next_allocation_id_;
 
   AllocatorStats stats_;
-
-  OrtMemoryInfo info_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
 

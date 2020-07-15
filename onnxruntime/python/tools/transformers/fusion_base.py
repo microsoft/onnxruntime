@@ -3,24 +3,28 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 from logging import getLogger
-from OnnxModel import OnnxModel
+from onnx_model import OnnxModel
 from typing import Union, List
 
 logger = getLogger(__name__)
 
 
 class Fusion:
-    def __init__(self, model: OnnxModel, name: str, search_op_types: Union[str, List[str]]):
+    def __init__(self,
+                 model: OnnxModel,
+                 fused_op_type: str,
+                 search_op_types: Union[str, List[str]],
+                 description: str = None):
         self.search_op_types: List[str] = [search_op_types] if isinstance(search_op_types, str) else search_op_types
-        self.name: str = name
+        self.fused_op_type: str = fused_op_type
+        self.description: str = f"{fused_op_type}({description})" if description else fused_op_type
         self.model: OnnxModel = model
         self.nodes_to_remove: List = []
         self.nodes_to_add: List = []
         self.prune_graph: bool = False
 
     def apply(self):
-        logger.debug(f"start {self.name} fusion...")
-
+        logger.debug(f"start {self.description} fusion...")
         input_name_to_nodes = self.model.input_name_to_nodes()
         output_name_to_node = self.model.output_name_to_node()
 
@@ -29,7 +33,10 @@ class Fusion:
             for node in self.model.get_nodes_by_op_type(search_op_type):
                 self.fuse(node, input_name_to_nodes, output_name_to_node)
 
-        logger.info(f"Fused {self.name} count: {len(self.nodes_to_add)}")
+        op_list = [node.op_type for node in self.nodes_to_add]
+        count = op_list.count(self.fused_op_type)
+        if count > 0:
+            logger.info(f"Fused {self.description} count: {count}")
 
         self.model.remove_nodes(self.nodes_to_remove)
         self.model.add_nodes(self.nodes_to_add)

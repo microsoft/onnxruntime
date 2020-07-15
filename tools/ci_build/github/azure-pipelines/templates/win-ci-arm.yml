@@ -64,7 +64,7 @@ jobs:
         architecture: x64
 
     - script: |
-       python -m pip install -q pyopenssl setuptools wheel numpy scipy
+       python -m pip install -q pyopenssl setuptools wheel numpy
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Install python modules'
 
@@ -95,7 +95,7 @@ jobs:
     # Nuget packaging if needed
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       # Esrp signing
-      - template: esrp_dll.yml
+      - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
           DisplayName: 'ESRP - Sign Native dlls'
