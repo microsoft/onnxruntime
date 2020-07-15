@@ -1906,7 +1906,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         // is float16) to cast the inputs to float so as to use CPU kernels (when there is no EP capable
         // of running such nodes as is), the output NodeArg(s) are of the type `float` (existing_type) but the
         // inferred type will be `float16` if such nodes have the output type defining attribute to be `float16`.
-        // We make an exception for this rare case and use the existing_type.
+        // We make an exception for this case and use the existing_type.
         if (*inferred_type != "tensor(float16)" ||
             *existing_type != "tensor(float)" ||
             node.GetExecutionProviderType() != kCpuExecutionProvider) {
