@@ -439,6 +439,58 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
         ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 
+set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
+set(onnx_test_runner_common_srcs
+        ${onnx_test_runner_src_dir}/TestResultStat.cc
+        ${onnx_test_runner_src_dir}/TestResultStat.h
+        ${onnx_test_runner_src_dir}/testenv.h
+        ${onnx_test_runner_src_dir}/FixedCountFinishCallback.h
+        ${onnx_test_runner_src_dir}/TestCaseResult.cc
+        ${onnx_test_runner_src_dir}/TestCaseResult.h
+        ${onnx_test_runner_src_dir}/testenv.cc
+        ${onnx_test_runner_src_dir}/heap_buffer.h
+        ${onnx_test_runner_src_dir}/heap_buffer.cc
+        ${onnx_test_runner_src_dir}/OrtValueList.h
+        ${onnx_test_runner_src_dir}/runner.h
+        ${onnx_test_runner_src_dir}/runner.cc
+        ${onnx_test_runner_src_dir}/TestCase.cc
+        ${onnx_test_runner_src_dir}/TestCase.h
+        ${onnx_test_runner_src_dir}/onnxruntime_event.h
+        ${onnx_test_runner_src_dir}/sync_api.h
+        ${onnx_test_runner_src_dir}/sync_api.cc
+        ${onnx_test_runner_src_dir}/callback.h
+        ${onnx_test_runner_src_dir}/callback.cc
+        ${onnx_test_runner_src_dir}/pb_helper.h
+        ${onnx_test_runner_src_dir}/pb_helper.cc
+        ${onnx_test_runner_src_dir}/mem_buffer.h
+        ${onnx_test_runner_src_dir}/tensorprotoutils.h
+        ${onnx_test_runner_src_dir}/tensorprotoutils.cc
+        ${onnx_test_runner_src_dir}/onnx_model_info.h
+        ${onnx_test_runner_src_dir}/onnx_model_info.cc)
+
+
+add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+if(MSVC)
+  target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+          "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+else()
+  target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
+  target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
+          "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+endif()
+if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  #TODO: fix the warnings, they are dangerous
+  target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
+endif()
+onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
+        onnxruntime_test_utils onnx onnx_proto re2::re2)
+
+add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT})
+
+set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
+
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
         ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
 if(NOT TARGET onnxruntime)
@@ -474,7 +526,7 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   AddTest(
     TARGET onnxruntime_test_all
     SOURCES ${all_tests}
-    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+    LIBS onnx_test_runner_common ${onnxruntime_test_providers_libs}  ${onnxruntime_test_common_libs}  re2::re2 onnx_test_data_proto
     DEPENDS ${all_dependencies}
   )
 
@@ -484,7 +536,6 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   if (onnxruntime_USE_FEATURIZERS)
     target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
   endif()
-
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
@@ -559,32 +610,7 @@ target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_D
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_test_data_proto)
 
-set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
-set(onnx_test_runner_common_srcs
-  ${onnx_test_runner_src_dir}/TestResultStat.cc
-  ${onnx_test_runner_src_dir}/TestResultStat.h
-  ${onnx_test_runner_src_dir}/testenv.h
-  ${onnx_test_runner_src_dir}/FixedCountFinishCallback.h
-  ${onnx_test_runner_src_dir}/TestCaseResult.cc
-  ${onnx_test_runner_src_dir}/TestCaseResult.h
-  ${onnx_test_runner_src_dir}/testenv.cc
-  ${onnx_test_runner_src_dir}/heap_buffer.h
-  ${onnx_test_runner_src_dir}/heap_buffer.cc
-  ${onnx_test_runner_src_dir}/OrtValueList.h
-  ${onnx_test_runner_src_dir}/runner.h
-  ${onnx_test_runner_src_dir}/runner.cc
-  ${onnx_test_runner_src_dir}/TestCase.cc
-  ${onnx_test_runner_src_dir}/TestCase.h
-  ${onnx_test_runner_src_dir}/onnxruntime_event.h
-  ${onnx_test_runner_src_dir}/sync_api.h
-  ${onnx_test_runner_src_dir}/sync_api.cc
-  ${onnx_test_runner_src_dir}/callback.h
-  ${onnx_test_runner_src_dir}/callback.cc
-  ${onnx_test_runner_src_dir}/pb_helper.h
-  ${onnx_test_runner_src_dir}/pb_helper.cc
-  ${onnx_test_runner_src_dir}/mem_buffer.h
-  ${onnx_test_runner_src_dir}/tensorprotoutils.h
-  ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
+
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
@@ -595,27 +621,6 @@ if(WIN32)
   set(GETOPT_LIB_WIDE win_getopt_wide)
 endif()
 
-add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
-if(MSVC)
-  target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
-          "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-else()
-  target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
-  target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
-endif()
-if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    #TODO: fix the warnings, they are dangerous
-    target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
-endif()
-onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-        onnxruntime_test_utils onnx onnx_proto re2::re2)
-
-add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR}
-        ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT})
-
-set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
 
 set(onnx_test_libs
   onnxruntime_test_utils
@@ -723,7 +728,7 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common re2::re2
+  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils  onnxruntime_common re2::re2
           onnx_test_data_proto onnx_proto ${PROTOBUF_LIB} ${GETOPT_LIB_WIDE} onnxruntime ${SYS_PATH_LIB}
           ${CMAKE_DL_LIBS})
   if(NOT WIN32)
