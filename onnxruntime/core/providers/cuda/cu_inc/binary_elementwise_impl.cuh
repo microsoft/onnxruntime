@@ -34,7 +34,7 @@ __global__ void _BinaryElementWise(
       // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
       CUDA_LONG offset = id;
 #pragma unroll
-      for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+      for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
         if (dim >= output_rank) {
           break;
         }

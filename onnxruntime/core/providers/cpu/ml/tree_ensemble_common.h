@@ -326,7 +326,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       } else {
         // split the work into one block per thread so we can re-use the 'private_scores' vector as much as possible
         // TODO: Refine the number of threads used
-        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::NumThreads(ttp), SafeInt<int32_t>(n_trees_));
+        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(n_trees_));
         OrtMutex merge_mutex;
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
@@ -361,7 +361,7 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, 
       } else {
         // split the work into one block per thread so we can re-use the 'scores' vector as much as possible
         // TODO: Refine the number of threads used.
-        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::NumThreads(ttp), SafeInt<int32_t>(N));
+        auto num_threads = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ttp), SafeInt<int32_t>(N));
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,

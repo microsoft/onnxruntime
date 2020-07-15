@@ -1360,6 +1360,15 @@ TEST(MathOpTest, Greater_9_float) {
   test.Run();
 }
 
+TEST(MathOpTest, Greater_9_double) {
+  OpTester test("Greater", 9);
+  std::vector<int64_t> dims{4};
+  test.AddInput<double>("A", dims, {1.0, 0.0, 3.0, -1.0});
+  test.AddInput<double>("B", dims, {1.0, 1.0, 2.0, -1.0});
+  test.AddOutput<bool>("C", dims, {false, false, true, false});
+  test.Run();
+}
+
 TEST(MathOpTest, Greater_9_int32) {
   OpTester test("Greater", 9);
   std::vector<int64_t> dims{4};
