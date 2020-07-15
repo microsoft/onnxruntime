@@ -1293,7 +1293,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
-	for (const auto& binding_index : binding_buffers_to_freeup) {
+        for (const auto& binding_index : binding_buffers_to_freeup) {
           cudaFree(buffers[binding_index]);
         }
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
