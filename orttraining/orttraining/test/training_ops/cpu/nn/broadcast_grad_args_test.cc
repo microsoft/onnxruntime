@@ -25,55 +25,22 @@ using namespace onnxruntime::test;
 namespace {
 constexpr auto k_opset_version = 1;
 
-const Tensor& FetchTensor(const OrtValue& ort_value) {
-  if (ort_value.Fence()) {
-    ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-  }
-  return ort_value.Get<Tensor>();
-}
-
-void RunBroadcastGradientArgsTest(const char* op, const std::vector<int64_t>& A_shape_tensor,
+void RunBroadcastGradientArgsTest(const char* op,
+                                  const std::vector<int64_t>& A_shape_tensor,
                                   const std::vector<int64_t>& B_shape_tensor,
-                                  const std::vector<int64_t>& A_axes_true,
-                                  const std::vector<int64_t>& B_axes_true) {
+                                  const std::vector<int64_t>& A_axes_expected,
+                                  const std::vector<int64_t>& B_axes_expected) {
   OpTester t{op, k_opset_version, kMSDomain};
 
-  std::vector<int64_t> A_shape = {1, (int64_t)A_shape_tensor.size()};
-  t.AddInput("a_tensor", A_shape, A_shape_tensor);
+  t.AddInput("a_shape", {static_cast<int64_t>(A_shape_tensor.size())}, A_shape_tensor);
+  t.AddInput("b_shape", {static_cast<int64_t>(B_shape_tensor.size())}, B_shape_tensor);
 
-  std::vector<int64_t> B_shape = {1, (int64_t)B_shape_tensor.size()};
-  t.AddInput("b_tensor", B_shape, B_shape_tensor);
+  t.AddOutput<int64_t>("a_axes", {static_cast<int64_t>(A_axes_expected.size())}, A_axes_expected);
+  t.AddOutput<int64_t>("b_axes", {static_cast<int64_t>(B_axes_expected.size())}, B_axes_expected);
 
-  int max_size = int(std::max(A_shape_tensor.size(), B_shape_tensor.size()));
-
-  std::unique_ptr<int64_t[]> a_axes_buffer{}, b_axes_buffer{};
-  a_axes_buffer = onnxruntime::make_unique<int64_t[]>(max_size);
-  b_axes_buffer = onnxruntime::make_unique<int64_t[]>(max_size);
-  std::vector<int64_t> output_shape = {1, max_size};
-  t.AddOutput<int64_t>("a_axes", output_shape, a_axes_buffer.get(), max_size);  // we'll do our own output verification
-  t.AddOutput<int64_t>("b_axes", output_shape, b_axes_buffer.get(), max_size);  // we'll do our own output verification
-
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-    ASSERT_GE(fetches.size(), 1);
-    const auto& a_axes_op = FetchTensor(fetches[0]);
-    auto a_axes_span = a_axes_op.DataAsSpan<int64_t>();
-    const auto& b_axes_op = FetchTensor(fetches[1]);
-    auto b_axes_span = b_axes_op.DataAsSpan<int64_t>();
-
-    if (A_axes_true.size()) {
-      for (auto i = 0; i < A_axes_true.size(); i++) {
-        ASSERT_EQ(a_axes_span[i], A_axes_true[i]) << "provider: " << provider_type;
-      }
-    }
-    if (B_axes_true.size()) {
-      for (auto i = 0; i < B_axes_true.size(); i++) {
-        ASSERT_EQ(b_axes_span[i], B_axes_true[i]) << "provider: " << provider_type;
-      }
-    }
-  };
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
+  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL);
 }
 
 }  // namespace
@@ -85,9 +52,39 @@ TEST(BroadcastGradientArgsTest, Basic) {
                                {}, {1, 0});
 }
 
-TEST(BroadcastGradientArgsTest, Basic_1) {
+TEST(BroadcastGradientArgsTest, Basic_both_valid_op) {
   RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 16, 1, 1024}, {1, 1, 1024, 1024},
                                {2}, {1, 0});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_no_bcast) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {2, 3, 4, 5},
+                               {}, {});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_B_scalar) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {},
+                               {}, {3, 2, 1, 0});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_B_vector) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {5},
+                               {}, {2, 1, 0});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_A_bcast_different_size) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {4, 5}, {2, 3, 4, 5},
+                               {1, 0}, {});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_both_bcast_different_size) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {1, 4, 5}, {2, 3, 1, 1},
+                               {1, 0}, {3, 2});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_both_bcast_different_size_2) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 1, 1},
+                               {0}, {3, 2, 1});
 }
 
 }  // namespace test
