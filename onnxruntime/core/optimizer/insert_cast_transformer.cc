@@ -244,10 +244,11 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
 
     auto& outputs = node->MutableOutputDefs();
     for (auto output : outputs) {
-      // todo: check is the kernel available
-      // here is based on the assumption that if we cast a cpu op's input from float16 to float
-      // then this cpu op's output will become float.
-      // not sure is it always correct...
+      // TODO 1: Check if the kernel available
+      // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
+      // then this cpu op's output will be float (if it was inferred to be float16 previously).
+      // Not sure if this is always true. Handle any corner case if it does exist.
+
       if (output->Type() &&
           DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
           casted) {
