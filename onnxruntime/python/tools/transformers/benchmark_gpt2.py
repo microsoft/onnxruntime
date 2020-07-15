@@ -29,24 +29,16 @@ class MyGPT2Model(GPT2Model):
     def __init__(self, config):
         super().__init__(config)
 
-    def forward(self, input_ids, past, attention_mask=None, position_ids=None):
-        return super().forward(input_ids,
-                               past=past,
-                               attention_mask=attention_mask,
-                               token_type_ids=None,
-                               position_ids=position_ids)
+    def forward(self, input_ids, position_ids, attention_mask, *past):
+        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
 
 
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
     def __init__(self, config):
         super().__init__(config)
 
-    def forward(self, input_ids, past, attention_mask=None, position_ids=None):
-        return super().forward(input_ids,
-                               past=past,
-                               attention_mask=attention_mask,
-                               token_type_ids=None,
-                               position_ids=position_ids)
+    def forward(self, input_ids, position_ids, attention_mask, *past):
+        return super().forward(input_ids, position_ids=position_ids, attention_mask=attention_mask, past=past)
 
 
 class Precision(Enum):
@@ -60,23 +52,24 @@ class Precision(Enum):
 
 PRETRAINED_MODELS = ['gpt2', 'distilgpt2']
 
-MODEL_CLASSES = ['GPT2LMHeadModel', 'GPT2Model']
+MODEL_CLASSES = {'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits'), 'GPT2Model': (MyGPT2Model, 'last_state')}
 
 
 def pytorch_inference(model, inputs, total_runs=100):
     logger.debug(f"start pytorch_inference")
-    input_ids, past, attention_mask, position_ids = inputs
+    input_ids, position_ids, attention_mask, past = inputs
 
     # Convert it back to fp32 as the PyTroch model cannot deal with half input.
     if attention_mask is not None:
         attention_mask = attention_mask.to(dtype=torch.float32)
     past = [p.to(dtype=torch.float32) for p in past]
 
+    input_list = [input_ids, position_ids, attention_mask] + past
     latency = []
     with torch.no_grad():
         for _ in range(total_runs):
             start = time.time()
-            outputs = model(input_ids=input_ids, past=past, attention_mask=attention_mask, position_ids=position_ids)
+            outputs = model(*input_list)
             latency.append(time.time() - start)
 
     average_latency = sum(latency) * 1000 / len(latency)
@@ -88,7 +81,7 @@ def pytorch_inference(model, inputs, total_runs=100):
 
 def onnxruntime_inference(ort_session, inputs, total_runs=100):
     logger.debug(f"start onnxruntime_inference")
-    input_ids, past, attention_mask, position_ids = inputs
+    input_ids, position_ids, attention_mask, past = inputs
 
     ort_inputs = {'input_ids': numpy.ascontiguousarray(input_ids.cpu().numpy())}
 
@@ -115,42 +108,45 @@ def onnxruntime_inference(ort_session, inputs, total_runs=100):
 
 
 def get_dummy_inputs(batch_size, past_sequence_length, sequence_length, num_attention_heads, hidden_size, num_layer,
-                     vocab_size, device, use_attention_mask, float16):
+                     vocab_size, device, float16):
     float_type = torch.float16 if float16 else torch.float32
     past_shape = [2, batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
-    dummy_past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
-    dummy_input_ids = torch.randint(low=0,
-                                    high=vocab_size - 1,
-                                    size=(batch_size, sequence_length),
-                                    dtype=torch.int64,
-                                    device=device)
-    if use_attention_mask:
-        dummy_attention_mask = torch.ones([batch_size, past_sequence_length + sequence_length],
-                                          dtype=float_type,
-                                          device=device)
-        dummy_position_ids = torch.ones([batch_size, sequence_length], dtype=torch.int64,
-                                        device=device) * past_sequence_length
-        return dummy_input_ids, dummy_past, dummy_attention_mask, dummy_position_ids
 
-    return dummy_input_ids, dummy_past, None, None
+    past = [torch.rand(past_shape, dtype=float_type, device=device) for _ in range(num_layer)]
+    input_ids = torch.randint(low=0,
+                              high=vocab_size - 1,
+                              size=(batch_size, sequence_length),
+                              dtype=torch.int64,
+                              device=device)
+
+    total_sequence_length = past_sequence_length + sequence_length
+    attention_mask = torch.ones([batch_size, total_sequence_length], dtype=float_type, device=device)
+    if total_sequence_length >= 2:
+        attention_mask[:, total_sequence_length - 2] = 0  # set some to 0 for testing mask.
+
+    # Deduce position_ids from attention mask
+    position_ids = (attention_mask.long().cumsum(-1) - 1)
+    position_ids.masked_fill_(position_ids < 0, 0)
+    position_ids = position_ids[:, past_sequence_length:]
+
+    return input_ids, position_ids, attention_mask, past
 
 
-def get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead):
+def get_output_shapes(batch_size, past_sequence_length, sequence_length, config, model_class):
     num_attention_heads = config.num_attention_heads
     hidden_size = config.hidden_size
     num_layer = config.n_layer
     vocab_size = config.vocab_size
 
-    last_state_shape = [batch_size, sequence_length, vocab_size
-                        ] if use_LMHead else [batch_size, sequence_length, hidden_size]
+    output_name = MODEL_CLASSES[model_class][1]
+
+    last_state_shape = [batch_size, sequence_length, vocab_size if model_class == "GPT2LMHeadModel" else hidden_size]
     present_state_shape = [
         2, batch_size, num_attention_heads, past_sequence_length + sequence_length,
         int(hidden_size / num_attention_heads)
     ]
 
-    output_shapes = {}
-    last_state_name = "prediction_scores" if use_LMHead else "last_state"
-    output_shapes[last_state_name] = last_state_shape
+    output_shapes = {output_name: last_state_shape}
     for i in range(num_layer):
         output_shapes["present_" + str(i)] = present_state_shape
 
@@ -168,7 +164,7 @@ def get_output_buffers(output_shapes, device, is_float16):
 
 def onnxruntime_inference_with_binded_io(ort_session, inputs, output_buffers, output_shapes, total_runs=100):
     logger.debug(f"start onnxruntime_inference_with_binded_io")
-    input_ids, past, attention_mask, position_ids = inputs
+    input_ids, position_ids, attention_mask, past = inputs
 
     # Bind inputs and outputs to onnxruntime session
     io_binding = ort_session.io_binding()
@@ -253,7 +249,8 @@ def verify_ort_outputs(model, torch_outputs, ort_outputs):
     logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
 
     is_all_close = is_close
-    for layer in range(model.config.n_layer):
+    num_layers = len(ort_outputs) - 1
+    for layer in range(num_layers):
         is_close = numpy.allclose(ort_outputs[1 + layer], torch_outputs[1][layer].cpu(), rtol=1e-05, atol=1e-04)
         logger.debug(f'PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}')
         is_all_close = is_all_close and is_close
@@ -277,9 +274,9 @@ def parse_arguments():
     parser.add_argument('--model_class',
                         required=False,
                         type=str,
-                        default=MODEL_CLASSES[0],
-                        choices=MODEL_CLASSES,
-                        help='Model type selected in the list: ' + ', '.join(MODEL_CLASSES))
+                        default='GPT2LMHeadModel',
+                        choices=list(MODEL_CLASSES.keys()),
+                        help='Model type selected in the list: ' + ', '.join(MODEL_CLASSES.keys()))
 
     parser.add_argument('--cache_dir',
                         required=False,
@@ -314,12 +311,6 @@ def parse_arguments():
                         help='Disable running ONNX Runtime with binded inputs and outputs. ')
     parser.set_defaults(disable_ort_io_binding=False)
 
-    parser.add_argument('--use_attention_mask',
-                        required=False,
-                        action='store_true',
-                        help='Enable attention_mask and position_ids. ')
-    parser.set_defaults(use_attention_mask=False)
-
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
@@ -331,6 +322,9 @@ def parse_arguments():
         default=Precision.FLOAT32,
         choices=list(Precision),
         help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization")
+
+    parser.add_argument('--torchscript', required=False, action='store_true', help="use Torchscript")
+    parser.set_defaults(torchscript=False)
 
     parser.add_argument('-b', '--batch_sizes', nargs='+', type=int, default=[1], help="batch size")
 
@@ -372,34 +366,10 @@ def setup_logger(verbose=True):
     logger.setLevel(logging_level)
 
 
-def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_attention_mask, verbose):
+def export_onnx(model, config, device, onnx_model_path, verbose):
     """ Export GPT-2 model with past state to ONNX model
     """
     num_layer = config.n_layer
-    past_names = [f'past_{i}' for i in range(num_layer)]
-    present_names = [f'present_{i}' for i in range(num_layer)]
-
-    # GPT2Model outputs last_state; GPT2LMHeadModel outputs prediction_scores
-    output_names = ["prediction_scores" if use_LMHead else "last_state"] + present_names
-
-    # Shape of input tensors:
-    #    input_ids: (batch_size, seq_len)
-    #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
-    #    attention_mask: (batch_size, past_seq_len + seq_len)
-    # Shape of output tensors:
-    #    last_state: (batch_size, seq_len, hidden_size)
-    #      or prediction_scores: (batch_size, seq_len, vocab_size)
-    #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
-    dynamic_axes = {'input_ids': {0: 'batch_size', 1: 'seq_len'}, output_names[0]: {0: 'batch_size', 1: 'seq_len'}}
-    for name in past_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len'}
-    for name in present_names:
-        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len+seq_len'}
-
-    if use_attention_mask:
-        dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'past_seq_len+seq_len'}
-        dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
-
     dummy_inputs = get_dummy_inputs(batch_size=1,
                                     past_sequence_length=1,
                                     sequence_length=1,
@@ -408,36 +378,53 @@ def export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, use_at
                                     num_layer=num_layer,
                                     vocab_size=config.vocab_size,
                                     device=device,
-                                    use_attention_mask=use_attention_mask,
                                     float16=False)
 
-    dummy_input_ids, dummy_past, dummy_attention_mask, dummy_position_ids = dummy_inputs
+    dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
 
-    model_name = "gpt2{}_past{}.onnx".format("_lm" if use_LMHead else "", "_mask" if use_attention_mask else "")
-    export_model_path = os.path.join(output_dir, model_name)
-
+    input_list = [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past
     with torch.no_grad():
-        outputs = model(input_ids=dummy_input_ids,
-                        past=dummy_past,
-                        attention_mask=dummy_attention_mask,
-                        position_ids=dummy_position_ids)
+        outputs = model(*input_list)
+
+    past_names = [f'past_{i}' for i in range(num_layer)]
+    present_names = [f'present_{i}' for i in range(num_layer)]
+
+    # GPT2Model outputs last_state; GPT2LMHeadModel outputs logits (prediction_scores)
+    assert outputs[0].shape[2] == config.vocab_size or outputs[0].shape[2] == config.hidden_size
+    output_names = ["logits" if outputs[0].shape[2] == config.vocab_size else "last_state"] + present_names
+
+    # Shape of input tensors:
+    #    input_ids: (batch_size, seq_len)
+    #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
+    #    attention_mask: (batch_size, past_seq_len + seq_len)
+    # Shape of output tensors:
+    #    last_state: (batch_size, seq_len, hidden_size)
+    #      or logits: (batch_size, seq_len, vocab_size)
+    #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
+    dynamic_axes = {'input_ids': {0: 'batch_size', 1: 'seq_len'}, output_names[0]: {0: 'batch_size', 1: 'seq_len'}}
+    for name in past_names:
+        dynamic_axes[name] = {1: 'batch_size', 3: 'past_seq_len'}
+    for name in present_names:
+        dynamic_axes[name] = {1: 'batch_size', 3: 'total_seq_len'}
+
+    dynamic_axes['attention_mask'] = {0: 'batch_size', 1: 'total_seq_len'}
+    dynamic_axes['position_ids'] = {0: 'batch_size', 1: 'seq_len'}
+
     logger.info(
         f"Shapes: input_ids={dummy_input_ids.shape} past={dummy_past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
     )
 
-    torch.onnx.export(
-        model,
-        args=(dummy_input_ids, tuple(dummy_past), dummy_attention_mask, dummy_position_ids) if use_attention_mask else
-        (dummy_input_ids, tuple(dummy_past)),
-        f=export_model_path,
-        input_names=['input_ids'] + past_names + (['attention_mask', 'position_ids'] if use_attention_mask else []),
-        output_names=output_names,
-        example_outputs=outputs,
-        dynamic_axes=dynamic_axes,
-        opset_version=11,
-        do_constant_folding=True,
-        verbose=verbose)
-    return export_model_path
+    torch.onnx.export(model,
+                      args=tuple(input_list),
+                      f=onnx_model_path,
+                      input_names=['input_ids', 'position_ids', 'attention_mask'] + past_names,
+                      output_names=output_names,
+                      example_outputs=outputs,
+                      dynamic_axes=dynamic_axes,
+                      opset_version=11,
+                      do_constant_folding=True,
+                      verbose=verbose)
+    return onnx_model_path
 
 
 def create_onnxruntime_session(onnx_model_path, use_gpu, verbose, thread_num):
@@ -523,11 +510,10 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    model_class = MyGPT2LMHeadModel if args.model_class == 'GPT2LMHeadModel' else MyGPT2Model
-    use_LMHead = (args.model_class == 'GPT2LMHeadModel')
+    model_class = MODEL_CLASSES[args.model_class][0]
 
     model_name = args.model_name
-    config = AutoConfig.from_pretrained(model_name, torchscript=False, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(model_name, torchscript=args.torchscript, cache_dir=cache_dir)
     model = model_class.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     tokenizer = GPT2Tokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -537,8 +523,10 @@ def main():
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
-    export_model_path = export_onnx(model, config, tokenizer, device, output_dir, use_LMHead, args.use_attention_mask,
-                                    args.verbose)
+
+    model_name = "{}_{}_past_mask.onnx".format(args.model_name, args.model_class)
+    onnx_model_path = os.path.join(output_dir, model_name)
+    export_onnx(model, config, device, onnx_model_path, args.verbose)
 
     import onnxruntime
 
@@ -546,11 +534,9 @@ def main():
         assert 'CUDAExecutionProvider' in onnxruntime.get_available_providers(
         ), "Please install onnxruntime-gpu package to test GPU inference."
 
-    if not args.optimize_onnx:
-        onnx_model_path = export_model_path
-    else:
+    if args.optimize_onnx:
         from optimizer import optimize_model
-        m = optimize_model(export_model_path,
+        m = optimize_model(onnx_model_path,
                            model_type='gpt2',
                            num_heads=config.num_attention_heads,
                            hidden_size=config.hidden_size,
@@ -560,10 +546,8 @@ def main():
         if args.precision == Precision.FLOAT16:
             m.convert_model_float32_to_float16(cast_input_output=False)
 
-        filename_prefix = "gpt2{}_past{}".format("_lm" if use_LMHead else "",
-                                                 "_mask" if args.use_attention_mask else "")
-        onnx_model_path = os.path.join(
-            output_dir, '{}_{}_{}.onnx'.format(filename_prefix, "gpu" if args.use_gpu else "cpu", args.precision))
+        filename_suffix = '_{}_{}.onnx'.format("gpu" if args.use_gpu else "cpu", args.precision)
+        onnx_model_path = onnx_model_path.replace(".onnx", filename_suffix)
         m.save_model_to_file(onnx_model_path)
 
     if args.precision == Precision.INT8:
@@ -577,6 +561,19 @@ def main():
     if session is None:
         return
 
+    if args.torchscript:
+        dummy_inputs = get_dummy_inputs(batch_size=1,
+                                        past_sequence_length=1,
+                                        sequence_length=1,
+                                        num_attention_heads=config.num_attention_heads,
+                                        hidden_size=config.hidden_size,
+                                        num_layer=config.n_layer,
+                                        vocab_size=config.vocab_size,
+                                        device=device,
+                                        float16=False)
+        dummy_input_ids, dummy_position_ids, dummy_attention_mask, dummy_past = dummy_inputs
+        model = torch.jit.trace(model, [dummy_input_ids, dummy_position_ids, dummy_attention_mask] + dummy_past)
+
     # One word is generated for each inference. This length does not include that of past state.
     sequence_length = 1
 
@@ -584,14 +581,14 @@ def main():
     output_buffers = {}
     if not args.disable_ort_io_binding:
         max_output_shapes = get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths), sequence_length,
-                                              config, use_LMHead)
+                                              config, args.model_class)
         output_buffers = get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "model_name", "model_class", "gpu", "precision", "use_attention_mask", "optimizer", "io_binding",
-            "batch_size", "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
+            "model_name", "model_class", "gpu", "precision", "optimizer", "io_binding", "batch_size",
+            "past_sequence_length", "torch_latency", "ort_latency", "ort_io_latency"
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
@@ -601,9 +598,9 @@ def main():
                 logger.debug(f"Running test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
                 dummy_inputs = get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                 config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                config.vocab_size, device, args.use_attention_mask,
-                                                args.precision == Precision.FLOAT16)
-                output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config, use_LMHead)
+                                                config.vocab_size, device, args.precision == Precision.FLOAT16)
+                output_shapes = get_output_shapes(batch_size, past_sequence_length, sequence_length, config,
+                                                  args.model_class)
 
                 try:
                     latencies = inference(model,
@@ -624,7 +621,6 @@ def main():
                         "model_class": args.model_class,
                         "gpu": args.use_gpu,
                         "precision": args.precision,
-                        "use_attention_mask": args.use_attention_mask,
                         "optimizer": args.optimize_onnx,
                         "io_binding": not args.disable_ort_io_binding,
                         "batch_size": batch_size,

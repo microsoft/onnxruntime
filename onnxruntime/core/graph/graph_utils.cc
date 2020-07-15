@@ -181,7 +181,7 @@ static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) 
 }
 
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
-    to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs. 
+    to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs.
     This is important when removing a node with this NodeArg as input. */
 static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
                                                   const std::vector<GraphEdge>& output_edges,
@@ -321,7 +321,7 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. 
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
 Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
   const int unassigned = -1;
@@ -807,5 +807,10 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
   }
   return true;
 }
+
+NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
+  return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
+}
+
 }  // namespace graph_utils
 }  // namespace onnxruntime
