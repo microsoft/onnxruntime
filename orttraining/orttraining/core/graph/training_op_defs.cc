@@ -1099,7 +1099,7 @@ Example 4:
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
       .SetDomain(kOnnxDomain)
-      .SinceVersion(12)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("ReduceSumTraining")
       .Attr("keepdims",
@@ -1136,8 +1136,8 @@ Example 4:
         auto axes_proto = ctx.getInputData(1);
         if (axes_proto) {
           axes = ParseData<int64_t>(axes_proto);
-        }        
-        
+        }
+
         for (size_t i = 0; i < axes.size(); ++i) {
           if (axes[i] < 0)
             axes[i] += input_ndim;
