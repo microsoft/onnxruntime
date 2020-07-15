@@ -95,9 +95,11 @@ class Node {
   const std::string& Domain() const noexcept;
 
   /** Gets the Node's exection priority. 
-  @remarks Higher value means higher priority  */
+  @remarks Lower value means higher priority  */
   int Priority() const noexcept;
 
+  /** Sets the execution priority of a node.
+  @remarks Lower value means higher priority  */
   void SetPriority(int priority) noexcept;
 
   /** Gets the Node's OpSchema.
@@ -457,7 +459,7 @@ class Node {
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
 
-  // Execution priority
+  // Execution priority, lower value for higher priority
   int priority_ = 0;
 
   Node::Type node_type_ = Node::Type::Primitive;
