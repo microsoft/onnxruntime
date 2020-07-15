@@ -259,7 +259,7 @@ uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
   return operand_idx;
 }
 
-vector<int32_t> ComputeConvPads(
+static vector<int32_t> ComputeConvPads(
     const Shape& input_dimen,
     const uint32_t weight_size_y, const uint32_t weight_size_x,
     const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
@@ -289,16 +289,16 @@ vector<int32_t> ComputeConvPads(
           static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
 }
 
-void HandleAutoPad(const Shape& input_shape,
-                   const uint32_t weight_size_y,
-                   const uint32_t weight_size_x,
-                   const vector<int32_t>& onnx_strides,
-                   const vector<int32_t>& onnx_dilations,
-                   AutoPadType auto_pad_type,
-                   bool use_nchw,
-                   vector<int32_t>& onnx_pads,
-                   int32_t& nnapi_padding_code,
-                   bool& use_auto_pad) {
+static void HandleAutoPad(const Shape& input_shape,
+                          const uint32_t weight_size_y,
+                          const uint32_t weight_size_x,
+                          const vector<int32_t>& onnx_strides,
+                          const vector<int32_t>& onnx_dilations,
+                          AutoPadType auto_pad_type,
+                          bool use_nchw,
+                          vector<int32_t>& onnx_pads,
+                          int32_t& nnapi_padding_code,
+                          bool& use_auto_pad) {
   if (auto_pad_type != AutoPadType::NOTSET) {
     onnx_pads = ComputeConvPads(input_shape, weight_size_y, weight_size_x,
                                 onnx_pads, onnx_strides, onnx_dilations,
