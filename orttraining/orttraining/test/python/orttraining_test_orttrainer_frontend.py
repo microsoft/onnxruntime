@@ -304,7 +304,7 @@ def testAdamConfig():
                     err_msg="lambda_coef mismatch")
     assert_allclose(1e-8, cfg.epsilon, rtol=rtol, err_msg="epsilon mismatch")
     assert cfg.do_bias_correction == True, "lambda_coef mismatch"
-    assert cfg.weight_decay_mode == True, "weight_decay_mode mismatch"
+    assert cfg.weight_decay_mode == optim.AdamConfig.DecayMode.BEFORE_WEIGHT_UPDATE, "weight_decay_mode mismatch"
 
 
 def testLambConfig():

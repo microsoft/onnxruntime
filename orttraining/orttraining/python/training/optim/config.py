@@ -1,8 +1,11 @@
+from enum import IntEnum, unique
+
+
 class _OptimizerConfig(object):
     r"""Base class for optimizer configuration
 
     This class is not an optimizer, but a means to configure existing ones from ORT backend.
-    Once the optimizer is configured, no user intervention is needed to update weights or zero gradients during training.
+    Once configured, no user intervention is needed to update weights or zero gradients during training.
     The 'parameter group' concept described at :py:attr:`.params` is borrowed from
     `Pytorch <https://pytorch.org/docs/stable/optim.html#per-parameter-options>`_.
 
@@ -19,7 +22,7 @@ class _OptimizerConfig(object):
             for specific model parameters.
             Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
 
-    In order to prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
+    NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
 
     Example:
 
@@ -90,6 +93,8 @@ class SGDConfig(_OptimizerConfig):
             for specific model parameters.
             Empty list means all the parameters of the model will use :py:attr:`.defaults` during optimization.
         lr (float, default is 0.001): Learning rate
+
+    NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
     """
 
     def __init__(self, params=[], lr=0.001):
@@ -116,12 +121,18 @@ class AdamConfig(_OptimizerConfig):
         lambda (float, default is 0): Regularization coefficient.
         epsilon (float, default is 1e-8): Small scalar to avoid dividing by zero.
         do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
-        weight_decay_mode (bool, default is False): Modes for applying weight decay.
-            False means applying decay before weight update,
-            True means applying decay after weight update.
+        weight_decay_mode (DecayMode, default is BEFORE_WEIGHT_UPDATE): Selects weight decay update strategy.
+
+    NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
     """
 
-    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8, do_bias_correction=True, weight_decay_mode=True):
+    @unique
+    class DecayMode(IntEnum):
+        BEFORE_WEIGHT_UPDATE = 0,
+        AFTER_WEIGHT_UPDATE = 1
+
+    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8,
+                 do_bias_correction=True, weight_decay_mode=DecayMode.BEFORE_WEIGHT_UPDATE):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -130,7 +141,7 @@ class AdamConfig(_OptimizerConfig):
         assert isinstance(do_bias_correction,
                           bool), "'do_bias_correction' must be a boolean"
         assert isinstance(weight_decay_mode,
-                          bool), "'weight_decay_mode' must be a boolean"
+                          AdamConfig.DecayMode), "'weight_decay_mode' must be a AdamConfig.DecayMode"
         for param in params:
             assert 'lr' not in param, "'lr' is not supported inside params"
 
@@ -170,9 +181,12 @@ class LambConfig(_OptimizerConfig):
         ratio_max (float, default is inf): Upper bound on confidence ratio.
         epsilon (float, default is 1e-6): Small scalar to avoid dividing by zero.
         do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
+
+    NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
     """
 
-    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=True):
+    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0,
+                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, do_bias_correction=True):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
