@@ -19,7 +19,7 @@ namespace pipeline {
 // Action in Slot.
 // One slot can contain multiple actions and these actions can
 // be computed in parallel.
-struct Action {
+struct PipelineTask {
   // Types of Action.
   // Those types are things we can do in a time slot.
   enum class Type { Empty,
@@ -50,7 +50,7 @@ struct Action {
     return peer_rank == src_rank;
   }
 
-  friend std::ostream& operator<<(std::ostream& stream, const Action& slot);
+  friend std::ostream& operator<<(std::ostream& stream, const PipelineTask& slot);
 
   // Batch ID this action belongs to.
   // For the first batch's forward pass (Compute), this value is 0.
@@ -77,14 +77,14 @@ struct Action {
 
 class PipelineSlot {
  public:
-  void AddSend(const int batch_id, const Action::Pass pass, const int upstream_time = -1, const int upstream_stage = -1, const int this_rank = -1, const int peer_rank = -1);
-  void AddRecv(const int batch_id, const Action::Pass pass, const int upstream_time = -1, const int upstream_stage = -1, const int this_rank = -1, const int peer_rank = -1);
-  void AddCompute(const int batch_id, const Action::Pass pass, const int upstream_time = -1, const int upstream_stage = -1);
+  void AddSend(const int batch_id, const PipelineTask::Pass pass, const int upstream_time = -1, const int upstream_stage = -1, const int this_rank = -1, const int peer_rank = -1);
+  void AddRecv(const int batch_id, const PipelineTask::Pass pass, const int upstream_time = -1, const int upstream_stage = -1, const int this_rank = -1, const int peer_rank = -1);
+  void AddCompute(const int batch_id, const PipelineTask::Pass pass, const int upstream_time = -1, const int upstream_stage = -1);
 
-  bool IsEmpty() const { return operators_.empty(); };
-  size_t NumActions() const { return operators_.size(); }
+  bool IsEmpty() const { return tasks_.empty(); };
+  size_t NumActions() const { return tasks_.size(); }
   bool HasCompute() const {
-    for (auto& op : operators_) {
+    for (auto& op : tasks_) {
       if (op.IsCompute())
         return true;
     }
@@ -92,7 +92,7 @@ class PipelineSlot {
   }
 
   bool HasRendTo(const int stage) const {
-    for (auto& op : operators_) {
+    for (auto& op : tasks_) {
       if (op.IsSendTo(stage)) {
         return true;
       }
@@ -101,7 +101,7 @@ class PipelineSlot {
   }
 
   bool HasRecvFrom(const int stage) const {
-    for (auto& op : operators_) {
+    for (auto& op : tasks_) {
       if (op.IsRecvFrom(stage)) {
         return true;
       }
@@ -109,10 +109,10 @@ class PipelineSlot {
     return false;
   }
 
-  Action& operator[](int index);
-  const Action& operator[](int index) const;
-  Action& GetFrontAction();
-  const Action& GetFrontAction() const;
+  PipelineTask& operator[](int index);
+  const PipelineTask& operator[](int index) const;
+  PipelineTask& GetFrontAction();
+  const PipelineTask& GetFrontAction() const;
 
   // Print this structure following a fixed-length format.
   // It assumes there are at most 2 actions per slot.
@@ -124,7 +124,7 @@ class PipelineSlot {
 
  private:
   // Actions which can be executed in parallel in this time slot.
-  std::vector<Action> operators_;
+  std::vector<PipelineTask> tasks_;
 
   // For MPI PipeDream schedule, it's used to support Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
   // Since Send, Recv, and Compute are stored in the same slot, each slot contains two waited events and two recorded events.
@@ -186,12 +186,12 @@ class PipelineScheduler {
   void InsertBackwardCompute(const int batch_id, const std::vector<int> forward_time, const std::vector<int> backward_time);
 
   // Given an action, this function finds its home slot and returns events of that slot.
-  std::vector<int> TryGetEvent(const bool is_waited_event, const int batch_id, const int stage_id, const Action::Pass pass, const Action::Type type, bool& is_found) const;
+  std::vector<int> TryGetEvent(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type, bool& is_found) const;
   // Wrapper over TryGetEvent. It returns -1 when the specified action is not found.
-  int GetEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const Action::Pass pass, const Action::Type type) const;
+  int GetEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
 
-  std::vector<int> TryGetComputeEvent(const int batch_id, const int stage_id, const Action::Pass pass, const Action::Type type, bool& is_found) const;
-  int GetComputeEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const Action::Pass pass, const Action::Type type) const;
+  std::vector<int> TryGetComputeEvent(const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type, bool& is_found) const;
+  int GetComputeEventOrDefault(const bool is_waited_event, const int batch_id, const int stage_id, const PipelineTask::Pass pass, const PipelineTask::Type type) const;
 
   // Compute-only pipeline schedule as a 2-D table. table_[i][j] is the computation happening in
   // the i-th time slot at the j-th stage. For example, PipeDream schedule may have
