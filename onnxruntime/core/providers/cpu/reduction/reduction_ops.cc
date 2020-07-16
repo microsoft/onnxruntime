@@ -286,6 +286,10 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
     return true;
   }
 
+  if (0 == first_dim) {
+    return false;
+  }
+
   block_size = num_elements / first_dim;
   blocks = first_dim;
 
