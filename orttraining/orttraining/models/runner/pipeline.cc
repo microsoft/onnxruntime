@@ -291,7 +291,7 @@ int PipelineScheduler::FindSendRecvTime(const int upstream_compute_time, const i
   // Search for a time to insert Recv and then Send in full table.
   // Recv is on slot's stage.
   // Send is on upstream slot's stage.
-  for (int full_t = compute_commute_table_.size() - 1; full_t > upstream_compute_time; --full_t) {
+  for (int full_t = (int)compute_commute_table_.size() - 1; full_t > upstream_compute_time; --full_t) {
     bool is_good_time = true;
     for (int full_s = 0; full_s < num_stages_; ++full_s) {
       auto& candidate_slot = compute_commute_table_[full_t][full_s];
