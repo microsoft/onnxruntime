@@ -330,7 +330,6 @@ static void RunBertTrainingWithChecks(
       "masked_lm_ids",
       "next_sentence_labels",
       "masked_lm_positions",
-      "masked_lm_weights",
   };
   std::vector<TensorShape> tensor_shapes = {
       {batch_size, max_seq_len_in_batch},
@@ -414,13 +413,11 @@ static void RunBertTrainingWithChecks(
        0, 1, 2, 3, 4, 5, 6,
        0, 1, 2, 3, 4, 5, 6,
        0, 1, 2, 3, 4, 5, 6}};
-  std::vector<float> masked_lm_weights(13 * 7, 1.0f);
 
   std::vector<OrtValue> feeds(feed_names.size());
   for (size_t i = 0; i < 6; ++i) {
     TrainingUtil::CreateCpuMLValue(tensor_shapes[i].GetDims(), tensor_values[i], &feeds[i]);
   }
-  TrainingUtil::CreateCpuMLValue(tensor_shapes[6].GetDims(), masked_lm_weights, &feeds[6]);
 
   auto output_names_include_gradients = GetModelOutputNames(*training_session);
   std::vector<std::string> fetch_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
@@ -475,7 +472,6 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
                         /*prediction_next_sentence*/ "seq_relationship_score",
                         /*masked_lm_positions*/ "masked_lm_positions",
                         /*masked_lm_ids*/ "masked_lm_ids",
-                        /*masked_lm_weights*/ "masked_lm_weights",
                         /*next_sentence_labels*/ "next_sentence_labels",
                         /*mlm_loss*/ "mlm_loss",
                         /*nsp_loss*/ "nsp_loss"});
@@ -1163,7 +1159,6 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
                               /*prediction_next_sentence*/ "seq_relationship_score",
                               /*masked_lm_positions*/ "masked_lm_positions",
                               /*masked_lm_ids*/ "masked_lm_ids",
-                              /*masked_lm_weights*/ "masked_lm_weights",
                               /*next_sentence_labels*/ "next_sentence_labels",
                               /*mlm_loss*/ "mlm_loss",
                               /*nsp_loss*/ "nsp_loss"});
