@@ -1,10 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _MSC_VER
-#pragma warning(disable : 4389)
-#endif
-
 #include <algorithm>
 #include <memory>
 #include <numeric>
@@ -29,7 +25,8 @@ void RunBroadcastGradientArgsTest(const char* op,
                                   const std::vector<int64_t>& A_shape_tensor,
                                   const std::vector<int64_t>& B_shape_tensor,
                                   const std::vector<int64_t>& A_axes_expected,
-                                  const std::vector<int64_t>& B_axes_expected) {
+                                  const std::vector<int64_t>& B_axes_expected,
+                                  bool fail = false) {
   OpTester t{op, k_opset_version, kMSDomain};
 
   t.AddInput("a_shape", {static_cast<int64_t>(A_shape_tensor.size())}, A_shape_tensor);
@@ -40,7 +37,10 @@ void RunBroadcastGradientArgsTest(const char* op,
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL);
+  if (fail)
+    t.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL);
+  else
+    t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL);
 }
 
 }  // namespace
@@ -85,6 +85,11 @@ TEST(BroadcastGradientArgsTest, Basic_both_bcast_different_size) {
 TEST(BroadcastGradientArgsTest, Basic_both_bcast_different_size_2) {
   RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 1, 1},
                                {0}, {3, 2, 1});
+}
+
+TEST(BroadcastGradientArgsTest, Basic_invalid_broadcast) {
+  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {3, 4, 5}, {2, 1, 6, 1},
+                               {}, {}, true /*fail*/);
 }
 
 }  // namespace test
