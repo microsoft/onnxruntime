@@ -1098,8 +1098,8 @@ Example 4:
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(12)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("ReduceSumTraining")
       .Attr("keepdims",

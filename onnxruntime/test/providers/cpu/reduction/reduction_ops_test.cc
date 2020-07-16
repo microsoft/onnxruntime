@@ -1300,7 +1300,7 @@ TEST(ReductionOpTest, ReduceSum0DTensor) {
 
 #ifdef USE_CUDA
 TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
-  OpTester test("ReduceSumTraining", 12);
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)0);
 
   std::vector<float> data = {1.0f, 2.0f,
@@ -1325,7 +1325,7 @@ TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
 }
 #endif
 TEST(ReductionOpTest, ReduceSumTraining_int32) {
-  OpTester test("ReduceSumTraining", 12);
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<int32_t>("data", {3, 2, 2},
                          {1, 2,
@@ -1341,7 +1341,7 @@ TEST(ReductionOpTest, ReduceSumTraining_int32) {
   test.Run();
 }
 TEST(ReductionOpTest, ReduceSumTraining_default_axes_keepdims) {
-  OpTester test("ReduceSumTraining", 12);
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<float>("data", {3, 2, 2},
                        {1.0f, 2.0f,
@@ -1358,12 +1358,23 @@ TEST(ReductionOpTest, ReduceSumTraining_default_axes_keepdims) {
 }
 
 TEST(ReductionOpTest, ReduceSumTraining_do_not_keepdims) {
-  OpTester test("ReduceSumTraining", 12);
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {1, 2, 2},
                        {1.0f, 2.0f,
                         3.0f, 4.0f});
   test.AddInput<int64_t>("axes", {1}, {1}, true /*is_initializer*/);
+  test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddInput<int64_t>("axes", {1}, {-2}, true /*is_initializer*/);
   test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
   test.Run();
 }

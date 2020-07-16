@@ -139,10 +139,6 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSum, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSum, 11);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumTraining, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceSumTraining, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumTraining, 12);
-
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 11);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1, 10);
@@ -154,6 +150,24 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMax, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
+
+namespace contrib {
+#define REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(T)                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      ReduceSumTraining,                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      ReduceSumTraining<T>);
+
+REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(float)
+REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(double)
+REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(int32_t)
+REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(int64_t)
+}  // namespace contrib
 
 // When all reduce axes are located at the tail of the dims, quite general cases, transpose and extra
 // copy could be skipped to improve performance. If required by check_no_transpose = true, then
@@ -659,11 +673,12 @@ Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
 
   //override the attribute value with the input value for reduction_axes
-  const Tensor* axesTensor = ctx->Input<Tensor>(1);
-  ORT_ENFORCE(axesTensor->Shape().NumDimensions() == 1,
+  const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+  ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+  ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
               "An axes tensor must be a vector tensor.");
-  auto nDims = static_cast<size_t>(axesTensor->Shape()[0]);
-  const auto* data = axesTensor->template Data<int64_t>();
+  auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+  const auto* data = axes_tensor->template Data<int64_t>();
   std::vector<int64_t> axes(data, data + nDims);
 
   bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes, keepdims_, reduced_dims, true);
