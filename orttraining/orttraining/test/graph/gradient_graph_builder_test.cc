@@ -1119,7 +1119,7 @@ void RetrieveSendRecvOperators(
   }
 }
 
-PathString GenerateFileNameWithIndex(const PathString& base_str, int index, const PathString& file_suffix) {
+PathString GenerateFileNameWithIndex(const std::string& base_str, int index, const std::string& file_suffix) {
   return path_utils::MakePathString(base_str, index, file_suffix);
 }
 
@@ -1151,7 +1151,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
 
-      PathString output_file = GenerateFileNameWithIndex(ORT_TSTR("pipeline_partition_"), i, ORT_TSTR("_back.onnx"));
+      PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
       auto config = MakeBasicTrainingConfig();
 
       if (i == static_cast<int>(total_partition_count - 1)) {
@@ -1244,7 +1244,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
   for(auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
-      PathString output_file = GenerateFileNameWithIndex(ORT_TSTR("pipeline_partition_"), i, ORT_TSTR("_back.onnx"));
+      PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
 
       auto config = MakeBasicTrainingConfig();
 
@@ -1291,7 +1291,7 @@ Status RunOnlinePartition(const std::vector<TrainingSession::TrainingConfigurati
   pipe.cut_list = cut_list;
 
   for (int i = 0; i < pipeline_stage_size; ++i) {
-    PathString output_file = GenerateFileNameWithIndex(ORT_TSTR("pipeline_partition_"), i, ORT_TSTR("_back.onnx"));
+    PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
 
     auto config = MakeBasicTrainingConfig();
     config.pipeline_config = pipe;
@@ -1336,7 +1336,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
- PathString filename_base = ORT_TSTR("testdata/test_training_model_");
+ std::string filename_base = "testdata/test_training_model_";
 
   auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
@@ -1442,8 +1442,8 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
   };
 
   for (int i = 0; i < 3; ++i) {
-    PathString input_file = GenerateFileNameWithIndex(filename_base, i, ORT_TSTR(".onnx"));
-    PathString output_file = GenerateFileNameWithIndex(filename_base, i, ORT_TSTR("_back.onnx"));
+    PathString input_file = GenerateFileNameWithIndex(filename_base, i, ".onnx");
+    PathString output_file = GenerateFileNameWithIndex(filename_base, i, "_back.onnx");
 
     load_and_check_gradient_graph(i, input_file, output_file);
   }
@@ -1510,7 +1510,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   std::vector<PathString> sub_model_files(num_subs);
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
-    sub_model_files[sub_id] = GenerateFileNameWithIndex(ORT_TSTR("sub_"), static_cast<int>(sub_id), ORT_TSTR(".onnx"));
+    sub_model_files[sub_id] = GenerateFileNameWithIndex("sub_", static_cast<int>(sub_id), ".onnx");
   }
 
   PipelineSplitter splitter;
@@ -1530,7 +1530,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
     auto& sub_sess = subs[sub_id];
     sub_sess.so.enable_profiling = true;
-    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex(ORT_TSTR("pipeline"), static_cast<int>(sub_id), ORT_TSTR(""));
+    sub_sess.so.profile_file_prefix = GenerateFileNameWithIndex("pipeline", static_cast<int>(sub_id), "");
 
     sub_sess.run_options.run_log_verbosity_level = sub_sess.so.session_log_verbosity_level;
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
