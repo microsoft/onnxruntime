@@ -486,7 +486,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
-  void HeapFree(void* p) override { delete reinterpret_cast<uint8_t*>(p); }
+  void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
   bool CPU_HasAVX2() override {
     return CPUIDInfo::GetCPUIDInfo().HasAVX2();
