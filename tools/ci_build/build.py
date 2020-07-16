@@ -7,7 +7,6 @@ import glob
 import logging
 import multiprocessing
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -1313,39 +1312,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         cwd=cwd, dll_path=dll_path)
 
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
-                   enable_multi_device_test, enable_parallel_executor_test,
-                   num_parallel_models, num_parallel_tests=0):
-    for config in configs:
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            exe = os.path.join(cwd, config, 'onnx_test_runner')
-            model_dir = os.path.join(cwd, "models")
-        else:
-            exe = os.path.join(cwd, 'onnx_test_runner')
-            model_dir = os.path.join(build_dir, "models")
-
-        cmd = []
-        if provider:
-            cmd += ["-e", provider]
-        if num_parallel_tests != 0:
-            cmd += ['-c', str(num_parallel_tests)]
-        if num_parallel_models > 0:
-            cmd += ["-j", str(num_parallel_models)]
-        if enable_multi_device_test:
-            cmd += ['-d', '1']
-        # Even in release mode nuphar needs 40 minutes to run all the models tests
-        if config != 'Debug' and os.path.exists(model_dir) and provider != 'nuphar':
-            cmd.append(model_dir)
-        if os.path.exists(onnx_test_data_dir):
-            cmd.append(onnx_test_data_dir)
-        if config == 'Debug' and provider == 'nuphar':
-            return
-        run_subprocess([exe] + cmd, cwd=cwd)
-        if enable_parallel_executor_test:
-            run_subprocess([exe, '-x'] + cmd, cwd=cwd)
-
-
 def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
                             provider, num_parallel_models,
                             num_parallel_tests=0):
@@ -1845,51 +1811,15 @@ def main():
                     args, build_dir, configs, trt_onnx_test_data_dir,
                     "tensorrt", 1)
 
-            if args.use_cuda and not args.use_tensorrt:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'cuda',
-                    args.enable_multi_device_test, False, 2)
-
-            # ngraph doesn't support opset12 yet.
-            # if args.use_ngraph:
-            #  run_onnx_tests(
-            #    build_dir, configs, onnx_test_data_dir, 'ngraph',
-            #    args.enable_multi_device_test, True, 1)
-
             if args.use_openvino:
                 openvino_run_onnx_tests(
                     build_dir, configs, onnx_test_data_dir, 'openvino',
                     1, 1)
-                # TODO: parallel executor test fails on MacOS
-            if args.use_nuphar:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'nuphar',
-                    args.enable_multi_device_test, False, 1, 1)
-
-            if args.use_dml:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'dml',
-                    args.enable_multi_device_test, False, 1)
-
-            if args.use_acl:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'acl',
-                    args.enable_multi_device_test, False, 1, 1)
 
             # Run some models are disabled to keep memory utilization
             # under control.
             if args.use_dnnl:
                 dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
-
-            if args.use_tensorrt:
-                tensorrt_run_onnx_tests(
-                    args, build_dir, configs, onnx_test_data_dir, None, 1)
-            else:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, None,
-                    args.enable_multi_device_test, False,
-                    1 if args.x86 or platform.system() == 'Darwin' else 0,
-                    1 if args.x86 or platform.system() == 'Darwin' else 0)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
