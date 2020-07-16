@@ -6,8 +6,205 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
+namespace functors {
+
+template<typename T>
+struct Log : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+  
+  float Cost() const final { return 15.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first; 
+        ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.log();
+  }
+};
+
+template <typename T>
+struct Abs : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 1.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.cwiseAbs();
+  }
+};
+
+template <typename T>
+struct Neg : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 1.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = -xm;
+  }
+};
+
+template <typename T>
+struct Floor : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 1.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.floor();
+  }
+};
+
+template <typename T>
+struct Ceil : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 1.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.ceil();
+  }
+};
+
+template <typename T>
+struct Reciprocal : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 1.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.cwiseInverse();
+  }
+};
+
+template <typename T>
+struct Sqrt : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 2.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.cwiseSqrt();
+  }
+};
+
+template <typename T>
+struct Exp : public ElementWiseRangedTransform<T> {
+  Status Init(const onnxruntime::NodeAttributes) {
+    return Status::OK();
+  }
+
+  ElementWiseRangedTransform<T>* Copy() const {
+    using T1 = typename std::remove_pointer<decltype(this)>::type;
+    using T2 = typename std::remove_const<T1>::type;
+    return new T2(*this);
+  }
+
+  float Cost() const final { return 2.0f; }
+
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+    ptrdiff_t len = last - first;
+    T* output_ptr = this->output + first;
+    ConstEigenVectorArrayMap<T> xm(this->input + first, len);
+    EigenVectorArrayMap<T> ym(output_ptr, len);
+    ym = xm.exp();
+  }
+};
+}
+
+DEFINE_ELE_KERNEL(Log)
+DEFINE_ELE_KERNEL(Abs)
+DEFINE_ELE_KERNEL(Neg)
+DEFINE_ELE_KERNEL(Floor)
+DEFINE_ELE_KERNEL(Ceil)
+DEFINE_ELE_KERNEL(Reciprocal)
+DEFINE_ELE_KERNEL(Sqrt)
+DEFINE_ELE_KERNEL(Exp)
+
 
 template <typename T>
 class Add final : public OpKernel {
@@ -45,93 +242,10 @@ class Div final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
-class Abs final : public OpKernel {
- public:
-  Abs(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override {
-    auto& input = *context->Input<Tensor>(0);
-    auto& output = *context->Output(0, input.Shape());
-
-    EigenMap<T>(output) = EigenMap<T>(input).cwiseAbs();
-    return Status::OK();
-  }
-};
-
-template <typename T>
-class Neg final : public OpKernel {
- public:
-  Neg(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override {
-    auto& input = *context->Input<Tensor>(0);
-    auto& output = *context->Output(0, input.Shape());
-
-    EigenMap<T>(output) = -EigenMap<T>(input);
-    return Status::OK();
-  }
-};
-
-template <typename T>
-class Floor final : public OpKernel {
- public:
-  Floor(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Ceil final : public OpKernel {
- public:
-  Ceil(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Reciprocal final : public OpKernel {
- public:
-  Reciprocal(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Sqrt final : public OpKernel {
- public:
-  Sqrt(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-};
 
 class Pow final : public OpKernel {
  public:
   Pow(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Exp final : public OpKernel {
- public:
-  Exp(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Log final : public OpKernel {
- public:
-  Log(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

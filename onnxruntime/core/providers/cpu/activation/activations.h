@@ -7,7 +7,7 @@
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
-#include "core/providers/cpu/activation/element_wise_ranged_transform.h"
+#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
 
@@ -89,9 +89,9 @@ struct Relu : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes&) {
     return Status::OK();
   }
-  ElementWiseRangedTransform<T>* Copy() const {
+  ElementWiseRangedTransform<T>* Copy() const { // replace it with a macro. why this?
     using T1 = typename std::remove_pointer<decltype(this)>::type;
-    using T2 = typename std::remove_const<T1>::type;
+    using T2 = typename std::remove_const<T1>::type; //redundant?
     return new T2(*this);
   }
   float Cost() const final {

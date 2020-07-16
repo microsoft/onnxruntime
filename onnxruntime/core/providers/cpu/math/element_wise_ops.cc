@@ -10,6 +10,15 @@
 #include <cmath>
 
 namespace onnxruntime {
+namespace functors {
+template <>
+void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+  ptrdiff_t len = last - first;
+  float* output_ptr = output + first;
+  MlasComputeExp(input + first, output_ptr, static_cast<size_t>(len));
+}
+}  // namespace functors
+
 
 #define REG_ELEMENTWISE_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
@@ -235,45 +244,6 @@ Status Div<T>::Compute(OpKernelContext* context) const {
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseQuotient(input1); });
 }
 
-template <>
-Status Floor<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-
-  EigenMap<float>(Y) = EigenMap<float>(X).array().floor();
-
-  return Status::OK();
-}
-
-template <>
-Status Ceil<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-
-  EigenMap<float>(Y) = EigenMap<float>(X).array().ceil();
-
-  return Status::OK();
-}
-
-template <>
-Status Reciprocal<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-
-  EigenMap<float>(Y) = EigenMap<float>(X).cwiseInverse();
-
-  return Status::OK();
-}
-
-template <typename T>
-Status Sqrt<T>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-
-  EigenMap<T>(Y) = EigenMap<T>(X).cwiseSqrt();
-
-  return Status::OK();
-}
 
 namespace pow_internal {
 
@@ -384,38 +354,6 @@ Pow::Compute(OpKernelContext* context) const {
                           DataTypeImpl::ToString(X.DataType()));
   }
   return s;
-}
-
-template <typename T>
-Status Exp<T>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-
-  EigenMap<T>(Y) = EigenMap<T>(X).array().exp();
-
-  return Status::OK();
-}
-
-template <>
-Status Exp<float>::Compute(OpKernelContext* context) const {
-  const auto* X = context->Input<Tensor>(0);
-  const auto& x_shape = X->Shape();
-  auto* Y = context->Output(0, x_shape);
-  const size_t N = static_cast<size_t>(x_shape.Size());
-
-  MlasComputeExp(X->template Data<float>(), Y->template MutableData<float>(), N);
-
-  return Status::OK();
-}
-
-template <>
-Status Log<float>::Compute(OpKernelContext* ctx) const {
-  auto& X = *ctx->Input<Tensor>(0);
-  auto& Y = *ctx->Output(0, X.Shape());
-
-  EigenMap<float>(Y) = EigenMap<float>(X).array().log();
-
-  return Status::OK();
 }
 
 template <>
