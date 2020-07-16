@@ -22,5 +22,6 @@ namespace ProtobufHelpers
         const std::vector<int64_t>& shape,
         uint32_t num_elements = 1);
 
+    // Populates TensorProto with tensor from protobuf file
     bool LoadOnnxTensorFromProtobufFile(onnx::TensorProto& tensor, std::wstring filePath);
 }
