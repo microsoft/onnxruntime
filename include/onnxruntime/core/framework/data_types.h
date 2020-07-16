@@ -289,8 +289,6 @@ std::ostream& operator<<(std::ostream& out, MLDataType data_type);
 /*
  * Type registration helpers
  */
-struct TestOpaqueType_1;
-struct TestOpaqueType_2;
 namespace data_types_internal {
 /// TensorType helpers
 ///
@@ -354,92 +352,6 @@ template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
-
-template <typename T>
-constexpr const char * StaticTypename() = delete;
-
-template <> constexpr const char * StaticTypename<float>() {
-    return "float";
-}
-
-template <> constexpr const char * StaticTypename<uint8_t>() {
-    return "uint8_t";
-}
-
-template <> constexpr const char * StaticTypename<int8_t>() {
-    return "int8_t";
-}
-
-template <> constexpr const char * StaticTypename<uint16_t>() {
-    return "uint16_t";
-}
-
-template <> constexpr const char * StaticTypename<int16_t>() {
-    return "int16_t";
-}
-
-template <> constexpr const char * StaticTypename<int32_t>() {
-    return "int32_t";
-}
-
-template <> constexpr const char * StaticTypename<int64_t>() {
-    return "int64_t";
-}
-
-template <> constexpr const char * StaticTypename<std::string>() {
-    return "std::string";
-}
-
-template <> constexpr const char * StaticTypename<bool>() {
-    return "bool";
-}
-
-template <> constexpr const char * StaticTypename<MLFloat16>() {
-    return "MLFloat16";
-}
-
-template <> constexpr const char * StaticTypename<double>() {
-    return "double";
-}
-
-template <> constexpr const char * StaticTypename<uint32_t>() {
-    return "uint32_t";
-}
-
-template <> constexpr const char * StaticTypename<uint64_t>() {
-    return "uint64_t";
-}
-
-template <> constexpr const char * StaticTypename<BFloat16>() {
-    return "BFloat16";
-}
-
-template <> constexpr const char * StaticTypename<MapInt64ToFloat>() {
-  return "MapInt64ToFloat";
-}
-
-template <> constexpr const char * StaticTypename<MapStringToFloat>() {
-    return "MapStringToFloat";
-}
-
-template <> constexpr const char * StaticTypename<VectorString>() {
-  return "VectorString";
-}
-
-template <> constexpr const char * StaticTypename<VectorInt64>() {
-  return "VectorInt64";
-}
-
-template <> constexpr const char * StaticTypename<onnxruntime::TestOpaqueType_1>() {
-  return "onnxruntime::TestOpaqueType_1";
-}
-
-template <> constexpr const char * StaticTypename<onnxruntime::TestOpaqueType_2>() {
-  return "onnxruntime::TestOpaqueType_1";
-}
-
-template <typename T>
-constexpr const char * StaticTypename(T) { return StaticTypename<T>(); };
 
 // There is a specialization only for one
 // type argument.
@@ -520,8 +432,12 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
-    ORT_ENFORCE(value_proto != nullptr, StaticTypename<V>(),
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
+#else
+    ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableMapValue(*value_proto, proto);
   }
 };
@@ -537,8 +453,12 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
-    ORT_ENFORCE(elem_proto != nullptr, StaticTypename<T>(),
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
+#else
+    ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };
