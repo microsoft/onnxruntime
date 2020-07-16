@@ -3,6 +3,7 @@ FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu16.04
 ARG PYTHON_VERSION=3.6
 ARG MOFED_VERSION=4.7-3.2.9.0
 ARG OPENMPI_VERSION=4.0.4
+ARG CONDA_VERSION=4.7.10
 ARG BUILD_EXTR_PAR
 
 ADD scripts /tmp/scripts
@@ -29,9 +30,13 @@ ARG BUILD_UID=1000
 #WORKDIR /home/$BUILD_USER
 #USER $BUILD_USER
 
+WORKDIR /stage
+
 # install mellanox libraries for ib etc.
-ARG MOFED_VERSION
-ARG MOFED_OS=ubuntu18.04
+#ARG MOFED_VERSION
+ARG MOFED_VERSION=4.7-3.2.9.0
+#ARG MOFED_OS=ubuntu18.04
+ARG MOFED_OS=ubuntu16.04
 ARG MOFED_TARNAME=MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
 ARG MOFED_URL=https://www.mellanox.com/downloads/ofed/MLNX_OFED-${MOFED_VERSION}/${MOFED_TARNAME}.tgz
 RUN cd /stage && curl -fSsL ${MOFED_URL} | tar -zxpf - &&\
@@ -41,9 +46,11 @@ RUN cd /stage && curl -fSsL ${MOFED_URL} | tar -zxpf - &&\
 
 # build openmpi (use --prefix /opt/ompi4 to move to runtime image)
 # note: require --enable-orterun-prefix-by-default for Azure machine learning compute
-ARG OPENMPI_VERSION
+#ARG OPENMPI_VERSION
+ARG OPENMPI_VERSION=4.0.4
 ARG OPENMPI_TARNAME=openmpi-${OPENMPI_VERSION}
 ARG OPENMPI_URL=https://download.open-mpi.org/release/open-mpi/v%OMPI_BASE%/${OPENMPI_TARNAME}.tar.gz
+RUN echo ${OPENMPI_URL} | sed s/%OMPI_BASE%/$OMPI_BASE/
 RUN apt-get -y install \
     libnuma-dev &&\ 
     export OMPI_BASE=${OPENMPI_VERSION%.*} &&\
