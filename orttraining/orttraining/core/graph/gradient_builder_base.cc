@@ -170,13 +170,12 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                                              std::vector<NodeDef>& output) const {
   ArgDef reduce_grad_arg = IA("ReduceSumTraining_" + input_grad.name + "_for_" + target.name);
   output.push_back(
-      NodeDef(OpDef{"ReduceSumTraining", kOnnxDomain, 1},
+      NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
               {input_grad,
                reduce_axes},
               {reduce_grad_arg},
-              {
-                  {"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
-              }));
+              {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
+               {"noop_with_empty_axes", ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}}));
 
   ArgDef target_shape_arg = IA(target.name + "_shape");
   output.push_back(
