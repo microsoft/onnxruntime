@@ -168,29 +168,27 @@ internal static class NativeOnnxValueHelper
                     throw new NotSupportedException("The inference value " + nameof(value) + " is not of a supported type");
                 }
 
-                Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
-
-                onnxValueType = OnnxValueType.ONNX_TYPE_TENSOR; // set onnx value type to tensor
-
-                // copy to an ulong[] shape to match size_t[]
-                long[] longShape = new long[rank];
-                for (int i = 0; i < rank; i++)
+                try
                 {
-                    longShape[i] = shape[i];
-                }
+                    Debug.Assert(dataBufferPointer != IntPtr.Zero, "dataBufferPointer must be non-null after obtaining the pinned buffer");
 
-                IntPtr status = NativeMethods.OrtCreateTensorWithDataAsOrtValue(
+                    onnxValueType = OnnxValueType.ONNX_TYPE_TENSOR; // set onnx value type to tensor
+
+                    // copy to an ulong[] shape to match int64_t[]
+                    long[] longShape = new long[rank];
+                    for (int i = 0; i < rank; i++)
+                    {
+                        longShape[i] = shape[i];
+                    }
+
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorWithDataAsOrtValue(
                         MemoryInfo.DefaultInstance.Pointer,
                         dataBufferPointer,
                         (UIntPtr)(dataBufferLength),
                         longShape,
                         (UIntPtr)rank,
                         elementType,
-                        out onnxValue
-                    );
-                try
-                {
-                    NativeApiStatus.VerifySuccess(status);
+                        out onnxValue));
                 }
                 catch (OnnxRuntimeException e)
                 {
@@ -230,28 +228,18 @@ internal static class NativeOnnxValueHelper
                     // fill the native tensor, using GetValue(index) from the Tensor<string>
                     var len = tensorValue.Length;
                     var stringsInTensor = new IntPtr[len];
-                    var pinnedHandles = new GCHandle[len + 1];
-                    pinnedHandles[len] = GCHandle.Alloc(stringsInTensor, GCHandleType.Pinned);
-                    try
+                    using(var pinnedHandles = new DisposableList<PinnedGCHandle>((int)len))
                     {
                         for (int i = 0; i < len; i++)
                         {
-                            var utf8str = UTF8Encoding.UTF8.GetBytes(tensorValue.GetValue(i) + "\0");
-                            pinnedHandles[i] = GCHandle.Alloc(utf8str, GCHandleType.Pinned);
-                            stringsInTensor[i] = pinnedHandles[i].AddrOfPinnedObject();
+                            var utf8str = StringToZeroTerminatedUtf8(tensorValue.GetValue(i));
+                            var gcHandle = GCHandle.Alloc(utf8str, GCHandleType.Pinned);
+                            stringsInTensor[i] = gcHandle.AddrOfPinnedObject();
+                            pinnedHandles.Add(new PinnedGCHandle(gcHandle));
                         }
 
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(nativeTensor, stringsInTensor, (UIntPtr)len));
-                    }
-                    finally
-                    {
-                        foreach (var handle in pinnedHandles)
-                        {
-                            if (handle.IsAllocated)
-                            {
-                                handle.Free();
-                            }
-                        }
+                        using (var pinnedStrings = new PinnedGCHandle(GCHandle.Alloc(stringsInTensor, GCHandleType.Pinned)))
+                            NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(nativeTensor, stringsInTensor, (UIntPtr)len));
                     }
                 }
                 catch (OnnxRuntimeException e)
@@ -389,6 +377,23 @@ internal static class NativeOnnxValueHelper
             return false;
         }
 
+        /// <summary>
+        /// Converts C# UTF-16 string to UTF-8 zero terminated
+        /// byte[] instance
+        /// </summary>
+        /// <param name="s">string to be converted</param>
+        /// <returns>UTF-8 encoded equivalent</returns>
+        internal static byte[] StringToZeroTerminatedUtf8(string s)
+        {
+            return UTF8Encoding.UTF8.GetBytes(s + '\0');
+        }
+
+        /// <summary>
+        /// Reads UTF-8 encode string from a C zero terminated string
+        /// and converts it into a C# UTF-16 encoded string
+        /// </summary>
+        /// <param name="nativeUtf8">pointer to native or pinned memory where Utf-8 resides</param>
+        /// <returns></returns>
         internal static string StringFromNativeUtf8(IntPtr nativeUtf8) 
         {
             // .NET 5.0 has Marshal.PtrToStringUTF8 that does the below
@@ -398,27 +403,6 @@ internal static class NativeOnnxValueHelper
             Marshal.Copy(nativeUtf8, buffer, 0, buffer.Length);
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
         }
-    }
-
-    internal enum TensorElementType
-    {
-        Float = 1,
-        UInt8 = 2,
-        Int8 = 3,
-        UInt16 = 4,
-        Int16 = 5,
-        Int32 = 6,
-        Int64 = 7,
-        String = 8,
-        Bool = 9,
-        Float16 = 10,
-        Double = 11,
-        UInt32 = 12,
-        UInt64 = 13,
-        Complex64 = 14,
-        Complex128 = 15,
-        BFloat16 = 16,
-        DataTypeMax = 17
     }
 
     public enum OnnxValueType

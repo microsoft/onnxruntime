@@ -724,7 +724,7 @@ namespace Microsoft.ML.OnnxRuntime
                         IntPtr /*_Inout_ OrtAllocator* */ allocator,
                         long[] /*_In_ const int64_t* */ shape,
                         UIntPtr /*size_t*/ shape_len,
-                        TensorElementType type,
+                        Tensors.TensorElementType type,
                         out IntPtr /* OrtValue** */ outputValue);
         public static DOrtCreateTensorAsOrtValue OrtCreateTensorAsOrtValue;
 
@@ -734,7 +734,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                         UIntPtr dataLength,
                                                         long[] shape,
                                                         UIntPtr shapeLength,
-                                                        TensorElementType type,
+                                                        Tensors.TensorElementType type,
                                                         out IntPtr /* OrtValue** */ outputValue);
         public static DOrtCreateTensorWithDataAsOrtValue OrtCreateTensorWithDataAsOrtValue;
 

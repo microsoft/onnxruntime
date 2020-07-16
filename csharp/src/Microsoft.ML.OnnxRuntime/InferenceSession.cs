@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -364,7 +364,7 @@ namespace Microsoft.ML.OnnxRuntime
             int outputIndex = 0;
             foreach (var output in outputValues)
             {
-                if (output.ElementType == TensorElementType.String)
+                if (output.ElementType == Tensors.TensorElementType.String)
                 {
                     throw new NotSupportedException("Using string type FixedBufferOnnxValue in outputs is not supported.");
                 }
