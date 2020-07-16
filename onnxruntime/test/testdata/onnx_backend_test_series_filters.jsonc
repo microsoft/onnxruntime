@@ -101,6 +101,8 @@
         "^test_sub_bcast.*",
         "^test_batchnorm_example.*",
         "^test_clip_default_inbounds.*",
+        "^test_pow_types_int32_int32.*",
+        "^test_pow_types_int64_int64.*",
         "^test_resize_upsample_sizes_nearest_ceil_half_pixel",
         "^test_resize_upsample_sizes_nearest_floor_align_corners",
         "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric",
