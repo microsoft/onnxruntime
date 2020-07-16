@@ -253,15 +253,18 @@ Path& Path::Append(const Path& other) {
   return *this;
 }
 
-Path& Path::Concat(const PathString& string) {
+Path& Path::Concat(const PathString& value) {
+  auto first_separator = std::find_if(value.begin(), value.end(), IsPreferredPathSeparator);
+  if (first_separator != value.end()){
+    ORT_THROW("Concat tries to concatenate a string with separator. String: ", value);
+  }
   if (components_.empty()) {
-    components_.push_back(string);
+    components_.push_back(value);
   } else {
-    components_.back() += string;
+    components_.back() += value;
   }
   return *this;
 }
-
 
 Status RelativePath(const Path& src, const Path& dst, Path& rel) {
   ORT_RETURN_IF_NOT(
