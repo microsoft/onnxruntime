@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
@@ -19,6 +20,7 @@
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
+using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {
 namespace test {
@@ -1118,9 +1120,7 @@ void RetrieveSendRecvOperators(
 }
 
 PathString GenerateFileNameWithIndex(const PathString& base_str, int index, const PathString& file_suffix) {
-  Path p;
-  ORT_ENFORCE(Path::Parse(base_str, p).IsOK());
-  return p.ConcatIndex(index).Concat(file_suffix).ToPathString();
+  return path_utils::MakePathString(base_str, index, file_suffix);
 }
 
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {

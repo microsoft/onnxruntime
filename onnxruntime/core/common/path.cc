@@ -262,15 +262,6 @@ Path& Path::Concat(const PathString& string) {
   return *this;
 }
 
-Path& Path::ConcatIndex(const int index) {
-#ifdef _WIN32
-  auto index_str = std::to_wstring(index);
-#else
-  auto index_str = std::to_string(index);
-#endif
-  components_.back() += index_str;
-  return *this;
-}
 
 Status RelativePath(const Path& src, const Path& dst, Path& rel) {
   ORT_RETURN_IF_NOT(

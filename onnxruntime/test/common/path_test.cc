@@ -225,7 +225,7 @@ TEST(PathTest, RelativePathFailure) {
 
 TEST(PathTest, Concat) {
   auto check_concat =
-      [](optional<const std::string> a, const std::string& b, const std::string& expected_a) {
+      [](const optional<const std::string>& a, const std::string& b, const std::string& expected_a) {
         Path p_a{}, p_expected_a{};
         if (a.has_value()) {
           ASSERT_STATUS_OK(Path::Parse(ToPathString(a.value()), p_a));
@@ -241,20 +241,6 @@ TEST(PathTest, Concat) {
   check_concat({}, "c", "c");
 }
 
-TEST(PathTest, ConcatIndex) {
-  auto check_concat_index =
-      [](const std::string& a, const int i, const std::string& expected_a) {
-        Path p_a{}, p_expected_a{};
-        ASSERT_STATUS_OK(Path::Parse(ToPathString(a), p_a));
-        ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
-
-        EXPECT_EQ(p_a.ConcatIndex(i).ToPathString(), p_expected_a.ToPathString());
-      };
-
-  check_concat_index("/a/b", 0, "/a/b0");
-  check_concat_index("a/b", 123, "a/b123");
-  check_concat_index("a/b", -1, "a/b-1");
-}
 
 }  // namespace test
 }  // namespace onnxruntime
