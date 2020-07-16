@@ -56,15 +56,6 @@ TEST(BroadcastGradientArgsTest, Basic_both_valid_op) {
   RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 16, 1, 1024}, {1, 1, 1024, 1024},
                                {2}, {1, 0});
 }
-TEST(BroadcastGradientArgsTest, Basic_2) {
-  RunBroadcastGradientArgsTest("BroadcastGradientArgs", {
-    {2, 3, 4, 5}, {{2, 3, 4, 5},
-                               {}, {});
-    }
-    TEST(BroadcastGradientArgsTest, Basic_3) {
-      RunBroadcastGradientArgsTest("BroadcastGradientArgs", {{2, 3, 4, 5}}, {},
-                                   {}, {3, 2, 1, 0});
-    }
 
 TEST(BroadcastGradientArgsTest, Basic_no_bcast) {
   RunBroadcastGradientArgsTest("BroadcastGradientArgs", {2, 3, 4, 5}, {2, 3, 4, 5},

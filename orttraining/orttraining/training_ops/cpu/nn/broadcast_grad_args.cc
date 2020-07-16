@@ -63,11 +63,18 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
   }
 
   Tensor* A_axes = context->Output(0, {static_cast<int64_t>(a_axes.size())});
+  // if (A_axes) {
   T* A_axes_data = A_axes->template MutableData<T>();
   std::copy(a_axes.begin(), a_axes.end(), A_axes_data);
+  // }
+
   Tensor* B_axes = context->Output(1, {static_cast<int64_t>(b_axes.size())});
+  // if (B_axes) {
   T* B_axes_data = B_axes->template MutableData<T>();
   std::copy(b_axes.begin(), b_axes.end(), B_axes_data);
+  // }
+  if (!A_axes && !B_axes)
+    ORT_THROW("No outputs available.");
 
   return Status::OK();
 }

@@ -627,8 +627,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   ArgDef a_shape = IA("Shape_" + a.name);
   ArgDef b_shape = IA("Shape_" + b.name);
-  ArgDef a_axes = IA("ReduceAxes_" + a.name + "_for_" + b.name);
-  ArgDef b_axes = IA("ReduceAxes_" + b.name + "_for_" + a.name);
+  ArgDef a_axes = IA("ReduceAxes_" + a.name);
+  ArgDef b_axes = IA("ReduceAxes_" + b.name);
 
   std::vector<NodeDef> output;
 
