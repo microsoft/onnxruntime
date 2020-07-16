@@ -2857,41 +2857,41 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SinceVersion(1)
       .SetDoc(Triu_ver1_doc)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-        .Input(
-            0,
-            "X",
-            "Input tensor of rank 2 or higher.",
-            "T")
-        .Input(
-            1,
-            "k",
-            "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include.",
-            "tensor(int64)",
-            OpSchema::Optional)
-        .Output(
-            0,
-            "Y",
-            "Output tensor of the same type and shape as the input tensor.",
-            "T")
-        .TypeConstraint(
-            "T",
-            {"tensor(float16)",
-             "tensor(float)",
-             "tensor(double)",
-             "tensor(bfloat16)"},
-            "Constrain input and output types to float tensors.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-            using namespace ONNX_NAMESPACE;
-            if (hasInputShape(ctx, 0)) {
-              const TensorShapeProto& input_shape =
-                  ctx.getInputType(0)->tensor_type().shape();
-              const int rank = static_cast<int>(input_shape.dim_size());
-              if (rank < 2) {
-                fail_shape_inference("Input rank must be >= 2.")
-              }
-              propagateShapeAndTypeFromFirstInput(ctx);
-            }
-        });
+      .Input(
+          0,
+          "X",
+          "Input tensor of rank 2 or higher.",
+          "T")
+      .Input(
+          1,
+          "k",
+          "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include.",
+          "tensor(int64)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output tensor of the same type and shape as the input tensor.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        using namespace ONNX_NAMESPACE;
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
+          if (rank < 2) {
+            fail_shape_inference("Input rank must be >= 2.")
+          }
+          propagateShapeAndTypeFromFirstInput(ctx);
+        }
+      });
 
   RegisterBertSchemas();
 }

@@ -21,19 +21,18 @@ ONNX_OPERATOR_KERNEL_EX(
 
 template <typename T>
 struct Triu::ComputeImpl {
-
   void get_triu(const T* X_data, T* Y_data, int64_t matrix_h, int64_t matrix_w, int64_t k_val) const {
     auto input_mat = ConstEigenMatrixMapRowMajor<T>(
-	      X_data,
-	      matrix_h,
-	      matrix_w);
+        X_data,
+        matrix_h,
+        matrix_w);
     auto output_mat = EigenMatrixMapRowMajor<T>(
-              Y_data,
-              matrix_h,
-              matrix_w);
+        Y_data,
+        matrix_h,
+        matrix_w);
 
     output_mat = input_mat;
-    for (int64_t i = -1 * matrix_h; i < k_val; i++){
+    for (int64_t i = -1 * matrix_h; i < k_val; i++) {
       output_mat.diagonal(i).array() = static_cast<T>(0);
     }
   }
