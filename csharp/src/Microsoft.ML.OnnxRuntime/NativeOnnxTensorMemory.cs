@@ -8,7 +8,7 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime
         private IntPtr _onnxValueHandle;      // pointer to onnxvalue object in native
         private IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
         private string[] _dataBufferAsString; // string tensor values copied into managed memory
-        private TensorElementType _elementType;
+        private Tensors.TensorElementType _elementType;
         private int _elementCount;
         private int _elementWidth;
         private int[] _dimensions;
@@ -157,7 +157,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         public int ElementWidth => _elementWidth;
 
-        public TensorElementType ElementType => _elementType;
+        public Tensors.TensorElementType ElementType => _elementType;
 
         public override Span<T> GetSpan()
         {

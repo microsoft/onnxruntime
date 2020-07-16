@@ -30,30 +30,54 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public void BindInput(string name, MemoryAllocation allocation)
+        public void BindInput(string name, Tensors.TensorElementType elementType, long[] shape, MemoryAllocation allocation)
         {
+            using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
+                                                                    elementType,
+                                                                    shape,
+                                                                    allocation.Pointer, allocation.Size))
+                BindIntputOrOutput(name, ortValue.Handle, true);
         }
 
-        public void BindInputs(ReadOnlySequence<string> names, ReadOnlySequence<MemoryAllocation> allocations)
+        public void BindInput(string name, FixedBufferOnnxValue fixedValue)
         {
-            if(names.IsEmpty || names.Length != allocations.Length)
+            if(fixedValue.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR)
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Names and Allocations must be of equal length");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
             }
+            BindIntputOrOutput(name, fixedValue.Value, true);
+        }
 
-            using (var ortValues = new DisposableList<OrtValue>())
-            using (var pinnedNames = new DisposableList<MemoryHandle>())
+        public void BindOutput(string name, Tensors.TensorElementType elementType, long[] shape, MemoryAllocation allocation)
+        {
+            using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
+                                                                    elementType,
+                                                                    shape,
+                                                                    allocation.Pointer, allocation.Size))
+                BindIntputOrOutput(name, ortValue.Handle, false);
+        }
+
+        public void BindOutput(string name, FixedBufferOnnxValue fixedValue)
+        {
+            if (fixedValue.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR)
             {
-                for(int i = 0; i < names.Length; ++i)
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
+            }
+            BindIntputOrOutput(name, fixedValue.Value, false);
+        }
+
+        private void BindIntputOrOutput(string name, IntPtr ortValue, bool isInput)
+        {
+            var utf8_str_pinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
+            using (var pinnedName = new PinnedGCHandle(utf8_str_pinned))
+            {
+                if (isInput)
                 {
-                    var first = names.Start;
-                    ReadOnlyMemory<string> name;
-                    bool next = true;
-                    //while(next)
-                    //{
-                    //    names.TryGet(ref first, out name, true);
-                    //MemoryHandle pinned_utf8 = new Memory<byte>(Encoding.UTF8.GetBytes(string.Concat(name, '\0'))).Pin();
-                    //pinnedNames.Add(pinned_utf8);
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindInput(_handle, pinnedName.Pointer, ortValue));
+                }
+                else
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutput(_handle, pinnedName.Pointer, ortValue));
                 }
             }
         }

@@ -117,7 +117,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="device_id">Device id</param>
         /// <param name="mem_type">Memory type</param>
         public MemoryInfo(string allocator_name, AllocatorType alloc_type, int device_id, MemoryType mem_type)
-            : this(Encoding.UTF8.GetBytes(allocator_name + '\0'), alloc_type, device_id, mem_type)
+            : this(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(allocator_name), alloc_type, device_id, mem_type)
         {
         }
 
