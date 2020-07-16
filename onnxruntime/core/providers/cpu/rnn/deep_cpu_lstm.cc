@@ -1069,7 +1069,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
 template <typename T>
 void UniDirectionalLstm<T>::SetNumThreads() {
-  int threads = concurrency::ThreadPool::NumThreads(thread_pool_);
+  int threads = concurrency::ThreadPool::DegreeOfParallelism(thread_pool_);
 
   if (threads < 1)
     threads = 1;

@@ -1196,6 +1196,10 @@ Return Value:
     bool AllPaddingIsZero = true;
     bool AllKernelsAreSmall = true;
 
+    if (Dimensions > 3) {
+        throw std::runtime_error("bad dimensions");
+    }
+
     for (size_t dim = 0; dim < Dimensions; dim++) {
 
         WorkBlock.InputShape[dim] = size_t(InputShape[dim]);

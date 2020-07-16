@@ -134,7 +134,7 @@ CMake creates a target to this project
     </Exec>
 
     <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec -Symbols -SymbolPackageFormat snupkg" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
   </Target>
