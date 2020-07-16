@@ -4,12 +4,19 @@
 #--------------------------------------------------------------------------
 import numpy as np
 from logging import getLogger
+from enum import Enum
 from onnx import helper, numpy_helper, TensorProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
 
 logger = getLogger(__name__)
+
+
+class AttentionMaskFormat:
+    MaskIndexEnd = 0
+    MaskIndexEndAndStart = 1
+    AttentionMask = 2
 
 
 class AttentionMask():
@@ -23,6 +30,10 @@ class AttentionMask():
         # A lookup table with mask input as key, and cast (to int32) output as value
         self.mask_casted = {}
         self.utils = FusionUtils(model)
+        self.mask_format = AttentionMaskFormat.MaskIndexEnd
+
+    def set_mask_format(self, mask_format: AttentionMaskFormat):
+        self.mask_format = mask_format
 
     def set_mask_indice(self, mask, mask_index):
         if mask in self.mask_indice:
@@ -47,7 +58,12 @@ class AttentionMask():
         if casted:
             self.mask_casted[input] = input_name
 
-        # Add a mask processing node
+        # Attention supports int32 attention mask (2D) since 1.4.0
+        if self.mask_format == AttentionMaskFormat.AttentionMask:
+            self.mask_indice[input] = input_name
+            return input_name
+
+        # Add a mask processing node to convert attention mask to mask index (1D)
         output_name = self.model.create_node_name('mask_index')
         mask_index_node = helper.make_node('ReduceSum',
                                            inputs=[input_name],

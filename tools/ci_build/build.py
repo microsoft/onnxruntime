@@ -7,7 +7,6 @@ import glob
 import logging
 import multiprocessing
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -484,6 +483,14 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org'] + dep_packages)
+
+
+# We need to install Torch to test certain functionalities of the ORT Python package
+def install_torch():
+    # Command works for both Windows
+    run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
+                    'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
+                    '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
 
 
 def check_md5(filename, expected_md5):
@@ -1082,12 +1089,8 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def adb_push(source_dir, src, dest, **kwargs):
-    return run_subprocess(
-        [os.path.join(
-            source_dir, 'tools', 'ci_build',
-            'github', 'android', 'adb-push.sh'),
-         src, dest], **kwargs)
+def adb_push(src, dest, **kwargs):
+    return run_subprocess(['adb', 'push', src, dest], **kwargs)
 
 
 def adb_shell(*args, **kwargs):
@@ -1097,6 +1100,15 @@ def adb_shell(*args, **kwargs):
 def run_training_python_frontend_tests(cwd):
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_list_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_dict_input'], cwd=cwd)
+    run_subprocess([
+        sys.executable, 'orttraining_test_transformers.py',
+        'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1116,15 +1128,23 @@ def run_training_python_frontend_e2e_tests(cwd):
         [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_bert_fp16_with_mrpc', '-v'],
         cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
 
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_roberta_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
+    run_subprocess(
+        [sys.executable, 'orttraining_run_glue.py', 'ORTGlueTest.test_roberta_fp16_with_mrpc', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
+    run_subprocess(
+        [sys.executable, 'orttraining_run_multiple_choice.py', 'ORTMultipleChoiceTest.test_bert_fp16_with_swag', '-v'],
+        cwd=cwd, env={'CUDA_VISIBLE_DEVICES': '0'})
+
     run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer_with_mixed_precision.py'], cwd=cwd)
 
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision_all'], cwd=cwd)
-
-    run_subprocess([
-        sys.executable, 'orttraining_test_transformers.py',
-        'BertModelTest.test_for_pretraining_full_precision_all'], cwd=cwd)
 
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
@@ -1144,17 +1164,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(os.path.join(
                 source_dir, 'tools', 'ci_build', 'github', 'android',
                 'start_android_emulator.sh'))
-            adb_push(source_dir, 'testdata', '/data/local/tmp/', cwd=cwd)
+            adb_push('testdata', '/data/local/tmp/', cwd=cwd)
             adb_push(
-                source_dir,
-                os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx',
-                             'backend', 'test'),
+                os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
                 '/data/local/tmp/', cwd=cwd)
-            adb_push(
-                source_dir, 'onnxruntime_test_all', '/data/local/tmp/',
-                cwd=cwd)
-            adb_push(
-                source_dir, 'onnx_test_runner', '/data/local/tmp/', cwd=cwd)
+            adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
+            adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell(
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
             if args.use_dnnlibrary or args.use_nnapi:
@@ -1214,6 +1229,32 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, 'onnxruntime_test_python.py'],
                 cwd=cwd, dll_path=dll_path)
 
+            # For CUDA enabled builds test IOBinding feature
+            # Limit testing to Windows non-ARM builds for now
+            iobinding_test = False
+            if args.use_cuda and not (args.arm or args.arm64):
+                # We need to have Torch installed to test the IOBinding feature
+                # which currently uses Torch's allocator to allocate GPU memory for testing
+                iobinding_test = True
+
+                # Try install Torch on Windows
+                if is_windows():
+                    log.info("Attempting to install Torch to test ORT's IOBinding feature")
+                    install_torch()
+
+                try:
+                    import torch  # noqa
+                except ImportError as error:
+                    iobinding_test = False
+                    log.exception(error)
+                    log.warning(
+                        "Torch is not installed. "
+                        "The IOBinding tests will be skipped as it requires Torch.")
+
+            if iobinding_test:
+                log.info("Testing IOBinding feature")
+                run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
 
@@ -1269,39 +1310,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess(
                         [sys.executable, 'onnxruntime_test_python_keras.py'],
                         cwd=cwd, dll_path=dll_path)
-
-
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider,
-                   enable_multi_device_test, enable_parallel_executor_test,
-                   num_parallel_models, num_parallel_tests=0):
-    for config in configs:
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            exe = os.path.join(cwd, config, 'onnx_test_runner')
-            model_dir = os.path.join(cwd, "models")
-        else:
-            exe = os.path.join(cwd, 'onnx_test_runner')
-            model_dir = os.path.join(build_dir, "models")
-
-        cmd = []
-        if provider:
-            cmd += ["-e", provider]
-        if num_parallel_tests != 0:
-            cmd += ['-c', str(num_parallel_tests)]
-        if num_parallel_models > 0:
-            cmd += ["-j", str(num_parallel_models)]
-        if enable_multi_device_test:
-            cmd += ['-d', '1']
-        # Even in release mode nuphar needs 40 minutes to run all the models tests
-        if config != 'Debug' and os.path.exists(model_dir) and provider != 'nuphar':
-            cmd.append(model_dir)
-        if os.path.exists(onnx_test_data_dir):
-            cmd.append(onnx_test_data_dir)
-        if config == 'Debug' and provider == 'nuphar':
-            return
-        run_subprocess([exe] + cmd, cwd=cwd)
-        if enable_parallel_executor_test:
-            run_subprocess([exe, '-x'] + cmd, cwd=cwd)
 
 
 def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
@@ -1803,51 +1811,15 @@ def main():
                     args, build_dir, configs, trt_onnx_test_data_dir,
                     "tensorrt", 1)
 
-            if args.use_cuda and not args.use_tensorrt:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'cuda',
-                    args.enable_multi_device_test, False, 2)
-
-            # ngraph doesn't support opset12 yet.
-            # if args.use_ngraph:
-            #  run_onnx_tests(
-            #    build_dir, configs, onnx_test_data_dir, 'ngraph',
-            #    args.enable_multi_device_test, True, 1)
-
             if args.use_openvino:
                 openvino_run_onnx_tests(
                     build_dir, configs, onnx_test_data_dir, 'openvino',
                     1, 1)
-                # TODO: parallel executor test fails on MacOS
-            if args.use_nuphar:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'nuphar',
-                    args.enable_multi_device_test, False, 1, 1)
-
-            if args.use_dml:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'dml',
-                    args.enable_multi_device_test, False, 1)
-
-            if args.use_acl:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'acl',
-                    args.enable_multi_device_test, False, 1, 1)
 
             # Run some models are disabled to keep memory utilization
             # under control.
             if args.use_dnnl:
                 dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
-
-            if args.use_tensorrt:
-                tensorrt_run_onnx_tests(
-                    args, build_dir, configs, onnx_test_data_dir, None, 1)
-            else:
-                run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, None,
-                    args.enable_multi_device_test, False,
-                    1 if args.x86 or platform.system() == 'Darwin' else 0,
-                    1 if args.x86 or platform.system() == 'Darwin' else 0)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:

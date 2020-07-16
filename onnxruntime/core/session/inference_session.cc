@@ -991,6 +991,10 @@ const SessionOptions& InferenceSession::GetSessionOptions() const {
   return session_options_;
 }
 
+const DataTransferManager& InferenceSession::GetDataTransferManager() const {
+  return data_transfer_mgr_;
+}
+
 common::Status InferenceSession::CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                              const TensorShape& expected_shape) const {
   auto input_shape_sz = input_shape.NumDimensions();
@@ -1546,9 +1550,8 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   return Status::OK();
 }
 
-SessionIOBinding::SessionIOBinding(InferenceSession* session) {
+SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
   ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
-  sess_ = session;
 }
 
 InferenceSession* SessionIOBinding::GetInferenceSession() {

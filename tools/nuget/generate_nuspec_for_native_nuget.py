@@ -86,6 +86,9 @@ def generate_dependencies(list, package_name, version):
         list.append('<group targetFramework="NETFRAMEWORK">')
         list.append('<dependency id="Microsoft.Windows.SDK.NET"' + ' version="10.0.18362.3-preview"/>')
         list.append('</group>')
+        # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
+        list.append('<group targetFramework="UAP10.0.16299">')
+        list.append('</group>')
 
         list.append('</dependencies>')
     else:

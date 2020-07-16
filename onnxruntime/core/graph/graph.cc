@@ -842,6 +842,10 @@ Graph::Graph(const Model& owning_model,
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
     TypeProto t{TypeProtoFromTensorProto(tensor)};
 
+    if (!utils::HasElemType(t.tensor_type())) {
+      ORT_THROW("This is an invalid model. Tensor does not have type information.");
+    }
+
     if (ir_version_ < 4) {
       // initializers can have matching graph inputs but are treated as constant,
       // so we prefer the shape from the initializer
@@ -2325,6 +2329,10 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
   } else {
     repeated_field.erase(entry_to_remove);
   }
+}
+
+bool Graph::IsInitializedTensor(const std::string& name) const {
+  return name_to_initial_tensor_.count(name) > 0;
 }
 
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
