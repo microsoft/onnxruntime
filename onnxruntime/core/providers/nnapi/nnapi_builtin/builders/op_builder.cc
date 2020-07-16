@@ -1817,22 +1817,18 @@ void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  // Get scale
-  std::unique_ptr<uint8_t[]> unpacked_tensor;
-  size_t tensor_byte_size;
   float scale;
   int32_t zero_point = 0;
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
 
-  {
+  {  // Get scale
     const auto& scale_tensor = model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-    ORT_THROW_IF_ERROR(
-        UnpackInitializerTensor(scale_tensor, unpacked_tensor, tensor_byte_size));
-    scale = reinterpret_cast<float*>(unpacked_tensor.get())[0];
+    scale = GetTensorFloatData(scale_tensor)[0];
   }
 
-  bool has_zero_point = input_defs.size() == 3;
-  if (has_zero_point) {
+  if (input_defs.size() == 3) {  // Get zero point
+    std::unique_ptr<uint8_t[]> unpacked_tensor;
+    size_t tensor_byte_size;
     const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(input_defs[2]->Name());
     ORT_THROW_IF_ERROR(
         UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
@@ -1845,6 +1841,127 @@ void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   model_builder.AddOperation(ANEURALNETWORKS_QUANTIZE, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+}
+
+#pragma endregion
+
+#pragma region op_dequantizelinear
+
+class DequantizeLinearOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
+
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
+    return 29;
+  }
+
+  bool HasSupportedInputs(const Node& node) override;
+
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+};
+
+bool DequantizeLinearOpBuilder::HasSupportedInputs(const Node& node) {
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
+void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  const auto input_defs(node.InputDefs());
+
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());
+
+  if (input_defs.size() == 3)  // has zero_point input
+    model_builder.AddInitializerToSkip(input_defs[0]->Name());
+}
+
+bool DequantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  const auto input_defs(node.InputDefs());
+
+  const auto scale_name = input_defs[1]->Name();
+  if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
+    const auto& tensor = model_builder.GetInitializerTensors().at(scale_name);
+    if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
+      LOGS_DEFAULT(VERBOSE) << "DequantizeLinear does not support per-channel quantization";
+    }
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "The scale of DequantizeLinear must be known";
+    return false;
+  }
+
+  if (input_defs.size() == 3) {  // has zero_point input
+    const auto zero_point_name = input_defs[2]->Name();
+    if (Contains(model_builder.GetInitializerTensors(), zero_point_name)) {
+      const auto& tensor = model_builder.GetInitializerTensors().at(zero_point_name);
+      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "DequantizeLinear does not support per-channel quantization";
+      }
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "The zero point of DequantizeLinear must be known or empty";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto input_defs(node.InputDefs());
+
+  const auto& input = input_defs[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
+  float scale;
+  int32_t zero_point = 0;
+
+  {  // Get scale
+    const auto& scale_tensor = model_builder.GetInitializerTensors().at(input_defs[1]->Name());
+    scale = GetTensorFloatData(scale_tensor)[0];
+  }
+
+  if (input_defs.size() == 3) {  // Get zero point
+    std::unique_ptr<uint8_t[]> unpacked_tensor;
+    size_t tensor_byte_size;
+    const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(input_defs[2]->Name());
+    ORT_THROW_IF_ERROR(
+        UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+    zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
+  }
+
+  const OperandType& input_operand_type = operand_types.at(input);
+  ORT_ENFORCE(input_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+              "input type is " + TypeToStr(input_operand_type.type));
+
+  ORT_ENFORCE(input_operand_type.operandType.scale == scale,
+              "NNAPI input scale: " + std::to_string(input_operand_type.operandType.scale) +
+                  ", ONNX input scale: " + std::to_string(scale));
+
+  ORT_ENFORCE(input_operand_type.operandType.zeroPoint == zero_point,
+              "NNAPI input zero point: " + std::to_string(input_operand_type.operandType.zeroPoint) +
+                  ", ONNX input zero point: " + std::to_string(zero_point));
+
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(Type::TENSOR_FLOAT32, shaper[output], scale, zero_point);
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  model_builder.AddOperation(ANEURALNETWORKS_DEQUANTIZE, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
 #pragma endregion
