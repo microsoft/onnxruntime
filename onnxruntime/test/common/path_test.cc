@@ -225,17 +225,16 @@ TEST(PathTest, RelativePathFailure) {
 
 TEST(PathTest, Concat) {
   auto check_concat =
-      [](const optional<const std::string>& a, const std::string& b, const std::string& expected_a, bool expect_throw = false) {
+      [](const optional<std::string>& a, const std::string& b, const std::string& expected_a, bool expect_throw = false) {
         Path p_a{}, p_expected_a{};
         if (a.has_value()) {
           ASSERT_STATUS_OK(Path::Parse(ToPathString(a.value()), p_a));
         }
         ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
 
-        if (expect_throw){
+        if (expect_throw) {
           EXPECT_THROW(p_a.Concat(ToPathString(b)).ToPathString(), OnnxRuntimeException);
-        }
-        else{
+        } else {
           EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
         }
       };
@@ -245,12 +244,11 @@ TEST(PathTest, Concat) {
   check_concat({""}, "cd", "cd");
   check_concat({}, "c", "c");
 #ifdef _WIN32
-  check_concat({"a/b"}, R"(c\d)", "", true /* expect_throw */ );
+  check_concat({"a/b"}, R"(c\d)", "", true /* expect_throw */);
 #else
-  check_concat({"a/b"}, "c/d", "", true /* expect_throw */ );
+  check_concat({"a/b"}, "c/d", "", true /* expect_throw */);
 #endif
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

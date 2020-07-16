@@ -254,10 +254,16 @@ Path& Path::Append(const Path& other) {
 }
 
 Path& Path::Concat(const PathString& value) {
-  auto first_separator = std::find_if(value.begin(), value.end(), IsPreferredPathSeparator);
-  if (first_separator != value.end()){
-    ORT_THROW("Concat tries to concatenate a string with separator. String: ", ToMBString(value));
-  }
+  auto first_separator = std::find_if(value.begin(), value.end(),
+                                      [](PathChar c) {
+                                        return std::find(
+                                                   k_valid_path_separators.begin(),
+                                                   k_valid_path_separators.end(),
+                                                   c) != k_valid_path_separators.end();
+                                      });
+  ORT_ENFORCE(first_separator == value.end(),
+              "Cannot concatenate with a string containing a path separator. String: ", ToMBString(value));
+
   if (components_.empty()) {
     components_.push_back(value);
   } else {
