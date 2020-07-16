@@ -42,6 +42,11 @@ TEST(Pipeline, ScheduleB8S3) {
   // Similarly, the last 4 events are for the last computation on that stage.
   // Below, we add comments to indicate which computation the events associated with.
 
+  // Format per line below:
+  //   waited event before Recv, waited event after Recv, recorded event before Send, recorded event after Send.
+  // The value "-1" means a NULL event; RecordEvent and WaitEvent do nothing for NULL events.
+  // Note that the computation pattern is
+  //   WaitEvent -> Recv -> WaitEvent -> FW/BW -> RecordEvent -> Send -> RecordEvent.
   std::vector<int> forward_baseline_events_stage0{
       -1, -1, 0, 1,    // FW00 @ stage 0
       0, 1, 2, 3,      // FW01
