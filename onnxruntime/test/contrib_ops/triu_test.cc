@@ -89,5 +89,25 @@ TEST(TriuContribOpTest, small_k_float) {
   test.Run();
 }
 
+TEST(TriuContribOpTest, zero_dim) {
+  OpTester test("Triu", 1, kMSDomain);
+  test.AddInput<float>("X", {2, 3, 0},
+    {});
+  test.AddInput<int64_t>("k", {1}, {0});
+  test.AddOutput<float>("Y", {2, 3, 0},
+    {});
+  test.Run();
+}
+
+TEST(TriuContribOpTest, zero_dim_2) {
+  OpTester test("Triu", 1, kMSDomain);
+  test.AddInput<float>("X", {2, 0, 0},
+    {});
+  test.AddInput<int64_t>("k", {1}, {-5});
+  test.AddOutput<float>("Y", {2, 0, 0},
+    {});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
