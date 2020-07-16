@@ -56,7 +56,7 @@ struct Triu::ComputeImpl {
         batch_size *= X_shape[i];
       }
 
-      int num_matrix_elems = matrix_h * matrix_w;
+      int64_t num_matrix_elems = matrix_h * matrix_w;
       auto* Y_data = Y->template MutableData<T>();
       for (int64_t b = 0; b < batch_size; b++) {  // can be parallelized if need to
         auto X_batch_data = X_data + (b * num_matrix_elems);
@@ -80,7 +80,7 @@ Status Triu::Compute(OpKernelContext* ctx) const {
   const auto& X_shape = X->Shape();
   auto* Y = ctx->Output(0, X->Shape());
 
-  int X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
+  int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
   // input validation
   if (X_num_dims < 2) {  // this is getting capture by shape inference code as well
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
