@@ -621,6 +621,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     const auto* data = axes_tensor->template Data<int64_t>();
     std::vector<int64_t> axes(data, data + nDims);
     axes_values = axes;
+    if (axes.size() > 0) {
+      ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
+    }
 
     // empty axes and no-op
     if (axes.empty() && noop_with_empty_axes_) {
@@ -664,6 +667,9 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     const auto* data = axes_tensor->template Data<int64_t>();
     std::vector<int64_t> axes(data, data + nDims);
     axes_values = axes;
+    if (axes.size() > 0) {
+      ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
+    }
 
     // empty axes and no-op
     if (axes.empty() && noop_with_empty_axes_) {

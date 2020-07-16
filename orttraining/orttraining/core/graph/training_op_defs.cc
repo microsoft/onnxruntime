@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "onnx/defs/function.h"
 #include <math.h>
@@ -1125,43 +1126,46 @@ Example 4:
           "Constrain input and output types to high-precision numeric tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        //if (!hasNInputShapes(ctx, 1)) {
-        //  return;
-        //}
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
 
-        //int64_t keep_dims = 1;
-        //auto attr_proto = ctx.getAttribute("keepdims");
-        //if (attr_proto) {
-        //  keep_dims = attr_proto->i();
-        //}
-        //auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-        //int64_t input_ndim = input_shape.dim_size();
-        //auto output_shape =
-        //    ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-        //std::vector<int64_t> axes;
-        //auto axes_proto = ctx.getInputData(1);
-        //if (axes_proto) {
-        //  axes = ParseData<int64_t>(axes_proto);
-        //}        
-        //
-        //for (size_t i = 0; i < axes.size(); ++i) {
-        //  if (axes[i] < 0)
-        //    axes[i] += input_ndim;
-        //}
-        //// do we need handle negative axis?
-        //for (int i = 0; i < input_ndim; ++i) {
-        //  // axes empty means reduce all dim
-        //  if (!axes.empty() &&
-        //      std::find(axes.begin(), axes.end(), i) == axes.end()) {
-        //    auto dim = output_shape->add_dim();
-        //    dim->CopyFrom(input_shape.dim(i));
-        //  } else {
-        //    if (keep_dims == 1) {
-        //      auto dim = output_shape->add_dim();
-        //      dim->set_dim_value(1);
-        //    }
-        //  }
-        //}
+        // skip if axes is not an initializer
+        auto axes_proto = ctx.getInputData(1);
+        if (axes_proto == nullptr) {
+          return;
+        }
+
+        int64_t keep_dims = 1;
+        auto attr_proto = ctx.getAttribute("keepdims");
+        if (attr_proto) {
+          keep_dims = attr_proto->i();
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        auto output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        std::vector<int64_t> axes_values = ParseData<int64_t>(axes_proto); 
+        std::vector<int64_t> axes;
+        axes.reserve(axes_values.size());
+        for (int64_t axis : axes_values) {
+          axes.push_back(HandleNegativeAxis(axis, input_ndim));
+        }
+
+        for (int i = 0; i < input_ndim; ++i) {
+          // axes empty means reduce all dim
+          if (!axes.empty() &&
+              std::find(axes.begin(), axes.end(), i) == axes.end()) {
+            auto dim = output_shape->add_dim();
+            dim->CopyFrom(input_shape.dim(i));
+          } else {
+            if (keep_dims == 1) {
+              auto dim = output_shape->add_dim();
+              dim->set_dim_value(1);
+            }
+          }
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)
