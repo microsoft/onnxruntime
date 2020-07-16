@@ -256,7 +256,7 @@ Path& Path::Append(const Path& other) {
 Path& Path::Concat(const PathString& value) {
   auto first_separator = std::find_if(value.begin(), value.end(), IsPreferredPathSeparator);
   if (first_separator != value.end()){
-    ORT_THROW("Concat tries to concatenate a string with separator. String: ", value);
+    ORT_THROW("Concat tries to concatenate a string with separator. String: ", ToMBString(value));
   }
   if (components_.empty()) {
     components_.push_back(value);
