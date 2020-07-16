@@ -1171,11 +1171,14 @@ Example 4:
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Return the reduction axes for computing gradients of s0 op s1 with broadcast.")
+      .SetDoc(
+          "Returns the reduction axes for computing gradients of s0 op s1 with broadcast."
+          "The ouput axes are deterministic from last to first. "
+          "Output is an empty vector when no reduction is necessary for the corresponding input.")
       .Input(0, "a_shape", "The 1st input shape as Tensor.", "T")
       .Input(1, "b_shape", "The 2nd input shape as Tensor.", "T")
-      .Output(0, "a_axes", "The broadcast axes of 1st input.", "T")
-      .Output(1, "b_axes", "The broadcast axes of 2nd input.", "T")
+      .Output(0, "a_axes", "The reduction axes for 1st input, last to first.", "T")
+      .Output(1, "b_axes", "The reduction axes for 2nd input, last to first.", "T")
       .TypeConstraint(
           "T",
           {"tensor(int64)"},
