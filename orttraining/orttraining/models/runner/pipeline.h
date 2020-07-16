@@ -84,16 +84,16 @@ class PipelineSlot {
   bool IsEmpty() const { return tasks_.empty(); };
   size_t NumActions() const { return tasks_.size(); }
   bool HasCompute() const {
-    for (auto& op : tasks_) {
-      if (op.IsCompute())
+    for (auto& task : tasks_) {
+      if (task.IsCompute())
         return true;
     }
     return false;
   }
 
   bool HasRendTo(const int stage) const {
-    for (auto& op : tasks_) {
-      if (op.IsSendTo(stage)) {
+    for (auto& task : tasks_) {
+      if (task.IsSendTo(stage)) {
         return true;
       }
     }
@@ -101,8 +101,8 @@ class PipelineSlot {
   }
 
   bool HasRecvFrom(const int stage) const {
-    for (auto& op : tasks_) {
-      if (op.IsRecvFrom(stage)) {
+    for (auto& task : tasks_) {
+      if (task.IsRecvFrom(stage)) {
         return true;
       }
     }

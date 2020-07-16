@@ -336,9 +336,9 @@ void PipelineScheduler::CreateFullSchedule() {
     for (int s = 0; s < num_stages_; ++s) {
       auto slot = compute_table_[t][s];
       for (int a = 0; a < static_cast<int>(slot.NumActions()); ++a) {
-        auto& op = slot[a];
-        op.full_table_time = static_cast<int>(compute_commute_table_.size());
-        op.full_table_stage = s;
+        auto& task = slot[a];
+        task.full_table_time = static_cast<int>(compute_commute_table_.size());
+        task.full_table_stage = s;
       }
     }
 
@@ -445,14 +445,14 @@ std::vector<int> PipelineScheduler::TryGetEvent(
   for (int t = 0; static_cast<size_t>(t) < compute_commute_table_.size(); ++t) {
     const auto slot = compute_commute_table_[t][stage_id];
     for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
-      auto op = slot[a];
-      if (op.batch != batch_id) {
+      auto task = slot[a];
+      if (task.batch != batch_id) {
         continue;
       }
-      if (op.pass != pass) {
+      if (task.pass != pass) {
         continue;
       }
-      if (op.type != type) {
+      if (task.type != type) {
         continue;
       }
 
@@ -552,14 +552,14 @@ std::vector<int> PipelineScheduler::TryGetComputeEvent(
   for (int t = 0; static_cast<size_t>(t) < compute_table_.size(); ++t) {
     const auto slot = compute_table_[t][stage_id];
     for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
-      auto op = slot[a];
-      if (op.batch != batch_id) {
+      auto task = slot[a];
+      if (task.batch != batch_id) {
         continue;
       }
-      if (op.pass != pass) {
+      if (task.pass != pass) {
         continue;
       }
-      if (op.type != PipelineTask::Type::Compute) {
+      if (task.type != PipelineTask::Type::Compute) {
         // Slots presenting in the table must be either Compute or Empty because it's a compute-only schedule.
         continue;
       }
