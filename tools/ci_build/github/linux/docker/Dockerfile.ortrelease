@@ -126,7 +126,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build \
         --build_wheel \
 #        --skip_tests &&\
-    pip install build/RelWithDebInfo/dist/*.whl
+#    pip install build/RelWithDebInfo/dist/*.whl
 
 # switch to cuda runtime environment
 FROM nvidia/cuda:10.2-cudnn7-runtime-ubuntu18.04
