@@ -3,6 +3,7 @@
 
 #include <core/common/logging/logging.h>
 #include <core/common/safeint.h>
+#include <core/framework/tensorprotoutils.h>
 #include <core/providers/common.h>
 #include <onnx/onnx_pb.h>
 
@@ -30,6 +31,44 @@ const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
              ? reinterpret_cast<const float*>(tensor.raw_data().data())
              : tensor.float_data().data();
 }
+
+// TODO, move this to a shared location
+#define CASE_PROTO(TYPE, ELEMENT_TYPE, DATA_SIZE)                               \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {     \
+    size_t element_count = initializer.DATA_SIZE();                             \
+    tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                    \
+    unpacked_tensor.reset(new uint8_t[tensor_byte_size]);                       \
+    return onnxruntime::utils::UnpackTensor(                                    \
+        initializer,                                                            \
+        initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,   \
+        initializer.has_raw_data() ? initializer.raw_data().size() : 0,         \
+        reinterpret_cast<ELEMENT_TYPE*>(unpacked_tensor.get()), element_count); \
+    break;                                                                      \
+  }
+
+Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
+                               std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                               size_t& tensor_byte_size) {
+  switch (initializer.data_type()) {
+    CASE_PROTO(FLOAT, float, float_data_size);
+    CASE_PROTO(DOUBLE, double, double_data_size);
+    CASE_PROTO(BOOL, bool, int32_data_size);
+    CASE_PROTO(INT8, int8_t, int32_data_size);
+    CASE_PROTO(INT16, int16_t, int32_data_size);
+    CASE_PROTO(INT32, int32_t, int32_data_size);
+    CASE_PROTO(INT64, int64_t, int64_data_size);
+    CASE_PROTO(UINT8, uint8_t, int32_data_size);
+    CASE_PROTO(UINT16, uint16_t, int32_data_size);
+    CASE_PROTO(UINT32, uint32_t, uint64_data_size);
+    CASE_PROTO(UINT64, uint64_t, int64_data_size);
+    CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    default:
+      break;
+  }
+  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                "Unsupported type: " + std::to_string(initializer.data_type()));
+}
+#undef CASE_PROTO
 
 void AddTransposeOperator(ModelBuilder& model_builder,
                           const std::string& input,
@@ -162,24 +201,33 @@ enum DataLayout {
 // TODO, replace this with more efficient code in optimizers
 uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
                                    const std::string& name,
+                                   const OperandType& source_data_type,
                                    DataLayout new_layout) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
-  Shape shape;
-  for (auto dim : tensor.dims())
-    shape.push_back(SafeInt<uint32_t>(dim));
-
+  const Shape& shape = source_data_type.dimensions;
   ORT_ENFORCE(shape.size() == 4, "The initializer is not 4D: " +
                                      name + " actual dim " +
                                      std::to_string(shape.size()));
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  Type type;
-  if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    type = Type::TENSOR_FLOAT32;
-    src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
-  } else {
-    ORT_THROW("The initializer of graph doesn't have valid type: " + name);
+  std::unique_ptr<uint8_t[]> unpacked_tensor;
+  size_t tensor_byte_size;
+
+  switch (tensor.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ORT_THROW_IF_ERROR(
+          UnpackInitializerTensor(tensor, unpacked_tensor, tensor_byte_size));
+      src = unpacked_tensor.get();
+      break;
+    }
+    default:
+      ORT_THROW("The initializer of graph " + name +
+                " doesn't have valid type: " + std::to_string(tensor.data_type()));
   }
 
   auto out_t = shape[0], in_t = shape[1],
@@ -190,7 +238,8 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
   else
     dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
 
-  const OperandType operand_type(type, dest_shape);
+  OperandType operand_type = source_data_type;
+  operand_type.SetDimensions(dest_shape);
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
@@ -1045,15 +1094,31 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   const auto& weight = node.InputDefs()[1]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
 
-  bool conv2d = (group == 1);
   const auto& weight_tensor = initializers.at(weight);
+  bool conv2d = (group == 1);
   bool depthwise_conv2d = (weight_tensor.dims()[1] == 1);
+
+  Shape onnx_weight_shape;
+  for (auto dim : weight_tensor.dims())
+    onnx_weight_shape.push_back(SafeInt<uint32_t>(dim));
+
+  Type onnx_weight_type;
+  switch (weight_tensor.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      onnx_weight_type = Type::TENSOR_FLOAT32;
+      break;
+    default:
+      ORT_THROW("The initializer of graph " + weight + " doesn't have valid type: " +
+                std::to_string(weight_tensor.data_type()));
+  }
+
+  OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape);
 
   // Pre-process weights
   if (conv2d) {
-    AddInitializerInNewLayout(model_builder, weight, L_0231);
+    AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231);
   } else {  // depthwise_conv2d
-    AddInitializerInNewLayout(model_builder, weight, L_1230);
+    AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230);
   }
 
   bool hasBias = (node.InputDefs().size() >= 3);
@@ -1679,6 +1744,9 @@ void SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 #pragma region op_quantizelinear
 
 class QuantizeLinearOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
+
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
@@ -1689,8 +1757,29 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
+void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  const auto input_defs(node.InputDefs());
+
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());
+
+  if (input_defs.size() == 3)  // has zero_point input
+    model_builder.AddInitializerToSkip(input_defs[0]->Name());
+}
+
 bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   const auto input_defs(node.InputDefs());
+  const auto output_defs(node.OutputDefs());
+
+  int32_t output_type;
+  if (!GetType(*output_defs[0], output_type))
+    return false;
+
+  if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] output type: [" << output_type
+                          << "] is not supported for now";
+    return false;
+  }
 
   const auto scale_name = input_defs[1]->Name();
   if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
@@ -1710,17 +1799,6 @@ bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, con
       if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
         LOGS_DEFAULT(VERBOSE) << "QuantizeLinear does not support per-channel quantization";
       }
-
-      int32_t zero_point_type;
-      if (!GetType(*input_defs[2], zero_point_type))
-        return false;
-
-      if (zero_point_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                              << "] zero point type: [" << zero_point_type
-                              << "] is not supported for now";
-        return false;
-      }
     } else {
       LOGS_DEFAULT(VERBOSE) << "The zero point of QuantizeLinear must be known or empty";
       return false;
@@ -1731,8 +1809,42 @@ bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, con
 }
 
 void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
-  (void)model_builder;
-  (void)node;
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto input_defs(node.InputDefs());
+
+  const auto& input = input_defs[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
+  // Get scale
+  std::unique_ptr<uint8_t[]> unpacked_tensor;
+  size_t tensor_byte_size;
+  float scale;
+  int32_t zero_point = 0;
+  Type output_type = Type::TENSOR_QUANT8_ASYMM;
+
+  {
+    const auto& scale_tensor = model_builder.GetInitializerTensors().at(input_defs[1]->Name());
+    ORT_THROW_IF_ERROR(
+        UnpackInitializerTensor(scale_tensor, unpacked_tensor, tensor_byte_size));
+    scale = reinterpret_cast<float*>(unpacked_tensor.get())[0];
+  }
+
+  bool has_zero_point = input_defs.size() == 3;
+  if (has_zero_point) {
+    const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(input_defs[2]->Name());
+    ORT_THROW_IF_ERROR(
+        UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+    zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
+  }
+
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  model_builder.AddOperation(ANEURALNETWORKS_QUANTIZE, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
 #pragma endregion
@@ -1790,6 +1902,7 @@ CreateOpBuilders() {
 
   op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
   op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
+  op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
 
   return op_map;
 }
