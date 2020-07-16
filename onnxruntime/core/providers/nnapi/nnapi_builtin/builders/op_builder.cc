@@ -20,20 +20,20 @@ using Shape = Shaper::Shape;
 
 #pragma region helpers
 
-const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor) {
+static const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor) {
   return tensor.int64_data().empty()
              ? reinterpret_cast<const int64_t*>(tensor.raw_data().data())
              : tensor.int64_data().data();
 }
 
-const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
+static const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
   return tensor.float_data().empty()
              ? reinterpret_cast<const float*>(tensor.raw_data().data())
              : tensor.float_data().data();
 }
 
 // TODO, move this to a shared location
-#define CASE_PROTO(TYPE, ELEMENT_TYPE, DATA_SIZE)                               \
+#define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##TYPE: {     \
     size_t element_count = initializer.DATA_SIZE();                             \
     tensor_byte_size = element_count * sizeof(ELEMENT_TYPE);                    \
@@ -46,29 +46,29 @@ const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
     break;                                                                      \
   }
 
-Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
-                               std::unique_ptr<uint8_t[]>& unpacked_tensor,
-                               size_t& tensor_byte_size) {
+static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
+                                      std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                                      size_t& tensor_byte_size) {
   switch (initializer.data_type()) {
-    CASE_PROTO(FLOAT, float, float_data_size);
-    CASE_PROTO(DOUBLE, double, double_data_size);
-    CASE_PROTO(BOOL, bool, int32_data_size);
-    CASE_PROTO(INT8, int8_t, int32_data_size);
-    CASE_PROTO(INT16, int16_t, int32_data_size);
-    CASE_PROTO(INT32, int32_t, int32_data_size);
-    CASE_PROTO(INT64, int64_t, int64_data_size);
-    CASE_PROTO(UINT8, uint8_t, int32_data_size);
-    CASE_PROTO(UINT16, uint16_t, int32_data_size);
-    CASE_PROTO(UINT32, uint32_t, uint64_data_size);
-    CASE_PROTO(UINT64, uint64_t, int64_data_size);
-    CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    CASE_UNPACK(FLOAT, float, float_data_size);
+    CASE_UNPACK(DOUBLE, double, double_data_size);
+    CASE_UNPACK(BOOL, bool, int32_data_size);
+    CASE_UNPACK(INT8, int8_t, int32_data_size);
+    CASE_UNPACK(INT16, int16_t, int32_data_size);
+    CASE_UNPACK(INT32, int32_t, int32_data_size);
+    CASE_UNPACK(INT64, int64_t, int64_data_size);
+    CASE_UNPACK(UINT8, uint8_t, int32_data_size);
+    CASE_UNPACK(UINT16, uint16_t, int32_data_size);
+    CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
+    CASE_UNPACK(UINT64, uint64_t, int64_data_size);
+    CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     default:
       break;
   }
   return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                 "Unsupported type: " + std::to_string(initializer.data_type()));
 }
-#undef CASE_PROTO
+#undef CASE_UNPACK
 
 void AddTransposeOperator(ModelBuilder& model_builder,
                           const std::string& input,
@@ -145,13 +145,13 @@ void TransposeNCHWToNHWC(ModelBuilder& model_builder,
   TransposeBetweenNCHWAndNHWC(model_builder, input, output, true /* nchw_to_nhwc */);
 }
 
-void AddBinaryOperator(int32_t op_type,
-                       ModelBuilder& model_builder,
-                       const std::string& input1,
-                       const std::string& input2,
-                       int32_t fuse_code,
-                       const std::string& output,
-                       bool output_is_nhwc) {
+static void AddBinaryOperator(int32_t op_type,
+                              ModelBuilder& model_builder,
+                              const std::string& input1,
+                              const std::string& input2,
+                              int32_t fuse_code,
+                              const std::string& output,
+                              bool output_is_nhwc) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -165,7 +165,7 @@ void AddBinaryOperator(int32_t op_type,
   model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
-bool GetType(const NodeArg& node_arg, int32_t& type) {
+static bool GetType(const NodeArg& node_arg, int32_t& type) {
   type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
   const auto* type_proto = node_arg.TypeAsProto();
   if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
@@ -177,7 +177,7 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-bool GetShape(const NodeArg& node_arg, Shape& shape) {
+static bool GetShape(const NodeArg& node_arg, Shape& shape) {
   shape.clear();
   const auto* shape_proto = node_arg.Shape();
 
@@ -199,10 +199,10 @@ enum DataLayout {
 };
 
 // TODO, replace this with more efficient code in optimizers
-uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
-                                   const std::string& name,
-                                   const OperandType& source_data_type,
-                                   DataLayout new_layout) {
+static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
+                                          const std::string& name,
+                                          const OperandType& source_data_type,
+                                          DataLayout new_layout) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_data_type.dimensions;
   ORT_ENFORCE(shape.size() == 4, "The initializer is not 4D: " +
@@ -277,8 +277,8 @@ uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
 }
 
 // TODO, replace this with more efficient code in optimizers
-uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
-                                  const std::string& name) {
+static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
+                                         const std::string& name) {
   const auto& tensor = model_builder.GetInitializerTensors().at(name);
   Shape shape;
   for (auto dim : tensor.dims())
@@ -1751,7 +1751,7 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 29;
+    return 27;
   }
 
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
