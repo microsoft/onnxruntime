@@ -35,7 +35,6 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
-  //std::map<std::string, int> inputdef_index_map;
   auto node_input_defs = fused_node->InputDefs();
   int i = 0;
   for (auto idef : node_input_defs) {
