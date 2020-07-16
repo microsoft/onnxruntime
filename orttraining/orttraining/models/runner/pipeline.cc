@@ -174,7 +174,7 @@ std::vector<int> PipelineScheduler::FindForwardComputeTime(const std::vector<int
   std::vector<int> forward_time(num_stages_, 0);
 
   for (int s = 0; s < num_stages_; ++s) {
-    for (int t = previous_forward_time[s]; t < (int)compute_table_.size(); ++t) {
+    for (int t = previous_forward_time[s]; t < static_cast<int>(compute_table_.size()); ++t) {
       if (!compute_table_[t][s].IsEmpty()) {
         // One slot cannot be occupied by two batches.
         continue;
@@ -210,7 +210,7 @@ std::vector<int> PipelineScheduler::FindBackwardComputeTime(const std::vector<in
   // For a specific batch, the last stage has the earliest backward computation.
   // Thus, the first loop reversely scans stages.
   for (int s = num_stages_ - 1; s > -1; --s) {
-    for (int t = forward_time[s] + 1; t < (int)compute_table_.size(); ++t) {
+    for (int t = forward_time[s] + 1; t < static_cast<int>(compute_table_.size()); ++t) {
       if (!compute_table_[t][s].IsEmpty()) {
         continue;
       }
@@ -235,7 +235,7 @@ int PipelineScheduler::FindSendRecvTime(const int upstream_compute_time, const i
   // Search for a time to insert Recv and then Send in full table.
   // Recv is on slot's stage.
   // Send is on upstream slot's stage.
-  for (int full_t = (int)compute_commute_table_.size() - 1; full_t > upstream_compute_time; --full_t) {
+  for (int full_t = static_cast<int>(compute_commute_table_.size()) - 1; full_t > upstream_compute_time; --full_t) {
     bool is_good_time = true;
     for (int full_s = 0; full_s < num_stages_; ++full_s) {
       auto& candidate_slot = compute_commute_table_[full_t][full_s];
@@ -267,7 +267,7 @@ int PipelineScheduler::FindSendRecvTime(const int upstream_compute_time, const i
 }
 
 void PipelineScheduler::CreateFullSchedule() {
-  for (int t = 0; t < (int)compute_table_.size(); ++t) {
+  for (int t = 0; static_cast<size_t>(t) < compute_table_.size(); ++t) {
     // The last stage is compute, so we append one slot for commute.
     if (t != 0) {
       compute_commute_table_.push_back(std::vector<PipelineSlot>(num_stages_));
@@ -335,9 +335,9 @@ void PipelineScheduler::CreateFullSchedule() {
     // The stored information may be carried to full schedule.
     for (int s = 0; s < num_stages_; ++s) {
       auto slot = compute_table_[t][s];
-      for (size_t a = 0; a < slot.NumActions(); ++a) {
+      for (int a = 0; a < static_cast<int>(slot.NumActions()); ++a) {
         auto& op = slot[a];
-        op.full_table_time = compute_commute_table_.size();
+        op.full_table_time = static_cast<int>(compute_commute_table_.size());
         op.full_table_stage = s;
       }
     }
@@ -350,7 +350,7 @@ void PipelineScheduler::CreateFullSchedule() {
 void PipelineScheduler::InsertEvents(std::vector<std::vector<PipelineSlot>>& schedule, const size_t num_events_per_slot, const std::vector<int> initial_events) {
   std::vector<std::vector<int>> last_recorded_events(num_stages_, initial_events);
 
-  for (int t = 0; t < (int)schedule.size(); ++t) {
+  for (int t = 0; static_cast<size_t>(t) < schedule.size(); ++t) {
     for (int s = 0; s < num_stages_; ++s) {
       if (schedule[t][s].IsEmpty()) {
         continue;
@@ -360,7 +360,7 @@ void PipelineScheduler::InsertEvents(std::vector<std::vector<PipelineSlot>>& sch
       // Create new recorded events. Their indexes should be greater than those of previous events.
       const auto max_event = std::max_element(last_recorded_events[s].begin(), last_recorded_events[s].end());
       std::vector<int> new_recorded_events;
-      for (size_t i = 0; i < num_events_per_slot; ++i) {
+      for (int i = 0; static_cast<size_t>(i) < num_events_per_slot; ++i) {
         new_recorded_events.push_back(*max_event + i + 1);
       }
 
@@ -442,9 +442,9 @@ std::vector<int> PipelineScheduler::TryGetEvent(
   is_found = false;
 
   // Go through slots of stage stage_id to find the requested action.
-  for (int t = 0; t < (int)compute_commute_table_.size(); ++t) {
+  for (int t = 0; static_cast<size_t>(t) < compute_commute_table_.size(); ++t) {
     const auto slot = compute_commute_table_[t][stage_id];
-    for (size_t a = 0; a < slot.NumActions(); ++a) {
+    for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
       auto op = slot[a];
       if (op.batch != batch_id) {
         continue;
@@ -549,9 +549,9 @@ std::vector<int> PipelineScheduler::TryGetComputeEvent(
   is_found = false;
 
   // Go through slots of stage stage_id to find the requested action.
-  for (int t = 0; t < (int)compute_table_.size(); ++t) {
+  for (int t = 0; static_cast<size_t>(t) < compute_table_.size(); ++t) {
     const auto slot = compute_table_[t][stage_id];
-    for (size_t a = 0; a < slot.NumActions(); ++a) {
+    for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
       auto op = slot[a];
       if (op.batch != batch_id) {
         continue;
