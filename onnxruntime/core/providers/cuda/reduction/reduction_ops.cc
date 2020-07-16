@@ -608,6 +608,7 @@ static Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& in
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
 
   const std::string& op_name = this->KernelDef().OpName();
   std::vector<int64_t> axes_values = axes_;
@@ -620,9 +621,15 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     const auto* data = axes_tensor->template Data<int64_t>();
     std::vector<int64_t> axes(data, data + nDims);
     axes_values = axes;
+
+    // empty axes and no-op
+    if (axes.empty() && noop_with_empty_axes_) {
+      auto* Y = ctx->Output(0, X->Shape());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice));
+      return Status::OK();
+    }
   }
 
-  const Tensor* X = ctx->Input<Tensor>(0);
   PrepareReduceMetadata prepare_reduce_metadata;
   ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
@@ -645,6 +652,8 @@ template <>
 Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   typedef typename ToCudaType<int32_t>::MappedType CudaT;
 
+  const Tensor* X = ctx->Input<Tensor>(0);
+
   const std::string& op_name = this->KernelDef().OpName();
   std::vector<int64_t> axes_values = axes_;
   if (op_name == "ReduceSumTraining") {
@@ -655,9 +664,15 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     const auto* data = axes_tensor->template Data<int64_t>();
     std::vector<int64_t> axes(data, data + nDims);
     axes_values = axes;
+
+    // empty axes and no-op
+    if (axes.empty() && noop_with_empty_axes_) {
+      auto* Y = ctx->Output(0, X->Shape());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->Shape().Size() * sizeof(int32_t), cudaMemcpyDeviceToDevice));
+      return Status::OK();
+    }
   }
 
-  const Tensor* X = ctx->Input<Tensor>(0);
   PrepareReduceMetadata prepare_reduce_metadata;
 
   ORT_RETURN_IF_ERROR(PrepareForReduce(X,

@@ -1319,11 +1319,13 @@ TEST(ReductionOpTest, ReduceSumTrainingHalfHalf) {
   ConvertFloatToMLFloat16(result.data(), result_half.data(), 2);
 
   test.AddInput<MLFloat16>("data", {3, 2, 2}, data_half);
-  test.AddInput<int64_t>("axes", {2}, {0, 1}, true /*is_initializer*/);
+  //test.AddInput<int64_t>("axes", {2}, {0, 1}, true /*is_initializer*/);
+  test.AddInput<int64_t>("axes", {2}, {0, 1});
   test.AddOutput<MLFloat16>("reduced", {2}, result_half);
   test.Run();
 }
 #endif
+
 TEST(ReductionOpTest, ReduceSumTraining_int32) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1336,10 +1338,12 @@ TEST(ReductionOpTest, ReduceSumTraining_int32) {
 
                           9, 10,
                           11, 12});
-  test.AddInput<int64_t>("axes", {2}, {0 ,2}, true /*is_initializer*/);
+  //test.AddInput<int64_t>("axes", {2}, {0 ,2}, true /*is_initializer*/);
+  test.AddInput<int64_t>("axes", {2}, {0, 2});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {33, 45});
   test.Run();
 }
+
 TEST(ReductionOpTest, ReduceSumTraining_default_axes_keepdims) {
   OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1352,8 +1356,36 @@ TEST(ReductionOpTest, ReduceSumTraining_default_axes_keepdims) {
 
                         9.0f, 10.0f,
                         11.0f, 12.0f});
-  test.AddInput<int64_t>("axes", {0}, {}, true /*is_initializer*/);
+  //test.AddInput<int64_t>("axes", {0}, {}, true /*is_initializer*/);
+  test.AddInput<int64_t>("axes", {0}, {});
   test.AddOutput<float>("reduced", {1, 1, 1}, {78.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSumTraining_empty_axes_noop) {
+  OpTester test("ReduceSumTraining", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  //test.AddInput<int64_t>("axes", {0}, {}, true /*is_initializer*/);
+  test.AddInput<int64_t>("axes", {0}, {});
+  test.AddOutput<float>("reduced", {3, 2, 2}, 
+                        {1.0f, 2.0f, 
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f, 
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f, 
+                         11.0f, 12.0f});
   test.Run();
 }
 
@@ -1363,7 +1395,8 @@ TEST(ReductionOpTest, ReduceSumTraining_do_not_keepdims) {
   test.AddInput<float>("data", {1, 2, 2},
                        {1.0f, 2.0f,
                         3.0f, 4.0f});
-  test.AddInput<int64_t>("axes", {1}, {1}, true /*is_initializer*/);
+  //test.AddInput<int64_t>("axes", {1}, {1}, true /*is_initializer*/);
+  test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
   test.Run();
 }
@@ -1374,7 +1407,8 @@ TEST(ReductionOpTest, ReduceSumTraining_neg_axis) {
   test.AddInput<float>("data", {1, 2, 2},
                        {1.0f, 2.0f,
                         3.0f, 4.0f});
-  test.AddInput<int64_t>("axes", {1}, {-2}, true /*is_initializer*/);
+  //test.AddInput<int64_t>("axes", {1}, {-2}, true /*is_initializer*/);
+  test.AddInput<int64_t>("axes", {1}, {-2});
   test.AddOutput<float>("reduced", {1, 2}, {4.0f, 6.0f});
   test.Run();
 }

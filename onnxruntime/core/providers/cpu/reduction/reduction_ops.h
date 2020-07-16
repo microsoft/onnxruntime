@@ -27,12 +27,18 @@ class ReduceKernelBase {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }
     keepdims_ = (keepdims == 1);
+    int64_t noop_with_empty_axes = info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0);
+    noop_with_empty_axes_ = (noop_with_empty_axes == 1);
+    if (axes_.size() > 0) {
+      ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
+    }
     int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
     select_last_index_ = (select_last_index != 0);
   }
 
   std::vector<int64_t> axes_;
   bool keepdims_;
+  bool noop_with_empty_axes_;
   bool select_last_index_;
 };
 

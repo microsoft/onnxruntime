@@ -681,6 +681,13 @@ Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
   const auto* data = axes_tensor->template Data<int64_t>();
   std::vector<int64_t> axes(data, data + nDims);
 
+  // empty axes and no-op
+  if (axes.empty() && noop_with_empty_axes_) {
+    auto* output = ctx->Output(0, input->Shape());
+    memcpy(output->template MutableData<T>(), input->template Data<T>(), input->Shape().Size() * sizeof(T));
+    return Status::OK();
+  }
+
   bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes, keepdims_, reduced_dims, true);
 
   auto* output = ctx->Output(0, reduced_dims);

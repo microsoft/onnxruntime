@@ -1106,6 +1106,12 @@ Example 4:
             "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
             AttributeProto::INT,
             static_cast<int64_t>(1))
+      .Attr("noop_with_empty_axes",
+            "Perform reduction or not when axes is empty, default false mean perform reduction."
+            "when axes is empty and this attribute is set to true, input tensor will not be reduced,"
+            "thus output tensor would be equivalent to input tensor.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .AllowUncheckedAttributes()
       .Input(0, "data", "An input tensor.", "T")
       .Input(1, "axes",
@@ -1119,43 +1125,43 @@ Example 4:
           "Constrain input and output types to high-precision numeric tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasNInputShapes(ctx, 1)) {
-          return;
-        }
+        //if (!hasNInputShapes(ctx, 1)) {
+        //  return;
+        //}
 
-        int64_t keep_dims = 1;
-        auto attr_proto = ctx.getAttribute("keepdims");
-        if (attr_proto) {
-          keep_dims = attr_proto->i();
-        }
-        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-        int64_t input_ndim = input_shape.dim_size();
-        auto output_shape =
-            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-        std::vector<int64_t> axes;
-        auto axes_proto = ctx.getInputData(1);
-        if (axes_proto) {
-          axes = ParseData<int64_t>(axes_proto);
-        }        
-        
-        for (size_t i = 0; i < axes.size(); ++i) {
-          if (axes[i] < 0)
-            axes[i] += input_ndim;
-        }
-        // do we need handle negative axis?
-        for (int i = 0; i < input_ndim; ++i) {
-          // axes empty means reduce all dim
-          if (!axes.empty() &&
-              std::find(axes.begin(), axes.end(), i) == axes.end()) {
-            auto dim = output_shape->add_dim();
-            dim->CopyFrom(input_shape.dim(i));
-          } else {
-            if (keep_dims == 1) {
-              auto dim = output_shape->add_dim();
-              dim->set_dim_value(1);
-            }
-          }
-        }
+        //int64_t keep_dims = 1;
+        //auto attr_proto = ctx.getAttribute("keepdims");
+        //if (attr_proto) {
+        //  keep_dims = attr_proto->i();
+        //}
+        //auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        //int64_t input_ndim = input_shape.dim_size();
+        //auto output_shape =
+        //    ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        //std::vector<int64_t> axes;
+        //auto axes_proto = ctx.getInputData(1);
+        //if (axes_proto) {
+        //  axes = ParseData<int64_t>(axes_proto);
+        //}        
+        //
+        //for (size_t i = 0; i < axes.size(); ++i) {
+        //  if (axes[i] < 0)
+        //    axes[i] += input_ndim;
+        //}
+        //// do we need handle negative axis?
+        //for (int i = 0; i < input_ndim; ++i) {
+        //  // axes empty means reduce all dim
+        //  if (!axes.empty() &&
+        //      std::find(axes.begin(), axes.end(), i) == axes.end()) {
+        //    auto dim = output_shape->add_dim();
+        //    dim->CopyFrom(input_shape.dim(i));
+        //  } else {
+        //    if (keep_dims == 1) {
+        //      auto dim = output_shape->add_dim();
+        //      dim->set_dim_value(1);
+        //    }
+        //  }
+        //}
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)

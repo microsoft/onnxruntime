@@ -70,6 +70,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
+  using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;
 
   bool calculate_log_;
   bool calculate_sqt_;
