@@ -695,6 +695,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        public IoBinding CreateIOBinding()
+        {
+            return new IoBinding(this);
+        }
+
+        public void Run(RunOptions runOptions, IoBinding ioBinding)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
+        }
+
         /// <summary>
         /// Ends profiling for the session. Returns the profile file name.
         /// 
@@ -703,14 +713,12 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtSessionEndProfiling(_nativeHandle,
-                                                                  MemoryAllocator.DefaultInstance.Pointer,
-                                                                  out nameHandle);
-
             try
             {
-                NativeApiStatus.VerifySuccess(status);
-                str = Marshal.PtrToStringAnsi(nameHandle);
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
+                                                                                   MemoryAllocator.DefaultInstance.Pointer,
+                                                                                   out nameHandle));
+                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
             finally
             {
@@ -821,15 +829,15 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtSessionGetOutputName(
-                                                _nativeHandle,
-                                                (UIntPtr)index,
-                                                MemoryAllocator.DefaultInstance.Pointer,
-                                                out nameHandle);
             try
             {
-                NativeApiStatus.VerifySuccess(status);
-                str = Marshal.PtrToStringAnsi(nameHandle); //assumes charset = ANSI
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputName(
+                                               _nativeHandle,
+                                               (UIntPtr)index,
+                                               MemoryAllocator.DefaultInstance.Pointer,
+                                               out nameHandle));
+
+                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
             finally
             {
@@ -847,16 +855,15 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtSessionGetInputName(
-                                                _nativeHandle,
-                                                (UIntPtr)index,
-                                                MemoryAllocator.DefaultInstance.Pointer,
-                                                out nameHandle);
             try
             {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputName(
+                                               _nativeHandle,
+                                               (UIntPtr)index,
+                                               MemoryAllocator.DefaultInstance.Pointer,
+                                               out nameHandle));
 
-                NativeApiStatus.VerifySuccess(status);
-                str = Marshal.PtrToStringAnsi(nameHandle); //assumes charset = ANSI
+                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
             finally
             {
@@ -873,16 +880,15 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr nameHandle = IntPtr.Zero;
             string str = null;
 
-            IntPtr status = NativeMethods.OrtSessionGetOverridableInitializerName(
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerName(
                                                 _nativeHandle,
                                                 (UIntPtr)index,
                                                 MemoryAllocator.DefaultInstance.Pointer,
-                                                out nameHandle);
-            try
-            {
+                                                out nameHandle));
 
-                NativeApiStatus.VerifySuccess(status);
-                str = Marshal.PtrToStringAnsi(nameHandle); //assumes charset = ANSI
+                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
             finally
             {

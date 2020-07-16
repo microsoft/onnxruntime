@@ -1674,7 +1674,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var alloc_info = allocator.Info;
                     Assert.True(info_cpu.CompareMemoryInfo(alloc_info));
 
-                    int size = 1024;
+                    uint size = 1024;
                     MemoryAllocation chunk = allocator.Allocate(size);
                     Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
@@ -1703,7 +1703,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var alloc_info = allocator.Info;
                     Assert.True(info_cuda.CompareMemoryInfo(alloc_info));
 
-                    int size = 1024;
+                    uint size = 1024;
                     MemoryAllocation chunk = allocator.Allocate(size);
                     Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
