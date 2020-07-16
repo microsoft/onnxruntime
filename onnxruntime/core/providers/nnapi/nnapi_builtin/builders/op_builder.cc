@@ -1957,7 +1957,7 @@ void DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
                   ", ONNX input zero point: " + std::to_string(zero_point));
 
   shaper.Identity(input, output);
-  const OperandType output_operand_type(Type::TENSOR_FLOAT32, shaper[output], scale, zero_point);
+  const OperandType output_operand_type(Type::TENSOR_FLOAT32, shaper[output]);
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
@@ -2020,6 +2020,7 @@ CreateOpBuilders() {
   op_map.emplace("Concat", std::make_shared<ConcatOpBuilder>());
   op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
   op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
+  op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpBuilder>());
 
   return op_map;
 }
