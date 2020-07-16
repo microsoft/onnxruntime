@@ -98,18 +98,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="mem_type">Memory type</param>
         public MemoryInfo(byte[] utf8_allocator_name, AllocatorType alloc_type, int device_id, MemoryType mem_type)
         {
-            var pinned_name = GCHandle.Alloc(utf8_allocator_name, GCHandleType.Pinned);
-            try
+            using (var pinned_handle = new PinnedGCHandle(GCHandle.Alloc(utf8_allocator_name, GCHandleType.Pinned)))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(pinned_name.AddrOfPinnedObject(),
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(pinned_handle.Pointer,
                                                                                 alloc_type,
                                                                                 device_id,
                                                                                 mem_type,
                                                                                 out _pointer));
-            }
-            finally
-            {
-                pinned_name.Free();
             }
             _owned = true;
         }
@@ -175,9 +170,13 @@ namespace Microsoft.ML.OnnxRuntime
         #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing && _owned)
+            if (disposing)
             {
-                NativeMethods.OrtReleaseMemoryInfo(_pointer);
+                if (_owned)
+                {
+                    NativeMethods.OrtReleaseMemoryInfo(_pointer);
+                }
+                _pointer = IntPtr.Zero;
             }
         }
 
@@ -201,34 +200,45 @@ namespace Microsoft.ML.OnnxRuntime
     public class MemoryAllocation : IDisposable
     {
         private MemoryAllocator _allocator;
-        private IntPtr _pointer;
-        private int _size;
 
-        internal MemoryAllocation(MemoryAllocator allocator, IntPtr pointer, int size)
+        /// <summary>
+        /// Bind an arbitrary piece of native memory to the instance
+        /// The instance will not have the ownership of this memory.
+        /// </summary>
+        /// <param name="pointer"></param>
+        /// <param name="size"></param>
+        public MemoryAllocation(IntPtr pointer, uint size)
+        {
+            _allocator = null;
+            Pointer = pointer;
+            Size = size;
+        }
+
+        /// <summary>
+        /// This an instance with a piece of memory allocated
+        /// by onnxruntime MemoryAllocator. The same allocator will be used for
+        /// for memory disposal. For memory allocated elsewhere, the instance will not own the memory
+        /// and will not dispose of it.
+        /// </summary>
+        /// <param name="allocator"></param>
+        /// <param name="pointer"></param>
+        /// <param name="size"></param>
+        internal MemoryAllocation(MemoryAllocator allocator, IntPtr pointer, uint size)
         {
             _allocator = allocator;
-            _pointer = pointer;
-            _size = size;
+            Pointer = pointer;
+            Size = size;
         }
 
-        internal IntPtr Pointer
-        {
-            get
-            {
-                return _pointer;
-            }
-        }
+        /// <summary>
+        /// Internal accessor to call native methods
+        /// </summary>
+        internal IntPtr Pointer { get; private set; }
 
         /// <summary>
         /// Returns the size of the allocation
         /// </summary>
-        public int Size
-        {
-            get
-            {
-                return _size;
-            }
-        }
+        public uint Size { get; private set; }
 
         public MemoryInfo Info
         {
@@ -242,7 +252,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (disposing)
             {
-                _allocator.FreeMemory(_pointer);
+                if (_allocator != null)
+                {
+                    _allocator.FreeMemory(Pointer);
+                }
+                Pointer = IntPtr.Zero;
             }
         }
 
@@ -318,7 +332,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="size"></param>
         /// <returns></returns>
-        public MemoryAllocation Allocate(int size)
+        public MemoryAllocation Allocate(uint size)
         {
             IntPtr allocation = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorAlloc(_pointer, (UIntPtr)size, out allocation));
@@ -337,9 +351,13 @@ namespace Microsoft.ML.OnnxRuntime
         #region IDisposable Support
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing && _owned)
+            if (disposing)
             {
-                NativeMethods.OrtReleaseAllocator(_pointer);
+                if (_owned)
+                {
+                    NativeMethods.OrtReleaseAllocator(_pointer);
+                }
+                _pointer = IntPtr.Zero;
             }
         }
 

@@ -10,10 +10,45 @@ using System.Text;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-    /// <summary>
-    /// This helper class contains methods to create native OrtValue from a managed value object
-    /// </summary>
-    internal static class NativeOnnxValueHelper
+    internal class PinnedGCHandle : IDisposable
+    {
+        private GCHandle _handle;
+
+        public PinnedGCHandle(GCHandle handle)
+        {
+            _handle = handle;
+        }
+
+        public IntPtr Pointer
+        {
+            get
+            {
+                return _handle.AddrOfPinnedObject();
+            }
+        }
+
+        #region Disposable Support
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _handle.Free();
+            }
+        }
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        // No need for the finalizer
+        // If this is not disposed timely GC can't help us
+        #endregion
+   }
+
+/// <summary>
+/// This helper class contains methods to create native OrtValue from a managed value object
+/// </summary>
+internal static class NativeOnnxValueHelper
     {
         /// <summary>
         /// Attempts to Pin the buffer, and create a native OnnxValue out of it. the pinned MemoryHandle is passed to output.
