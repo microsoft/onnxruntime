@@ -758,7 +758,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           const logging::Logger& logger) {
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "ArgMax", "ArgMin", 
       "Asin", "Asinh", "Atan", "Atanh", "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", 
-      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "Cos", "Cosh", 
+      "Concat", "Constant", "ConstantFill", "ConstantOfShape", "Conv", "ConvTranspose", "Cos", "Cosh", 
       "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather", 
       "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Identity", "ImageScaler", 
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Log", "LogSoftmax", "MatMul", "Max", 
@@ -964,6 +964,18 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
   })) {
     return result;
+  }
+
+  if (!unsupported_nodes.empty())
+  {
+    std::cout << "=======================================" << std::endl;
+    std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+    for (auto& idx : unsupported_nodes)
+    {
+      auto&& node = graph_viewer.GetNode(idx);
+      std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
+    }
+    std::cout << "=======================================" << std::endl;
   }
 
   // Too many unsupported operators, fallback to run on CPU

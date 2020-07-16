@@ -179,6 +179,11 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
                           });
 
         ORT_RETURN_IF_ERROR(WaitAndCloseEvent(ev));
+        TIME_SPEC ts = results[i]->GetSpentTime();
+        double spent = TimeSpecToSeconds(&ts);
+        double spent2 = spent / results[i]->GetExcutionResult().size() / repeat_count;
+        LOGF_DEFAULT(ERROR, "Test %s finished in %.3g seconds, took %.3g for each input", test_case_name, spent, spent2);
+
       } catch (std::exception& ex) {
         LOGF_DEFAULT(ERROR, "Test %s failed:%s", test_case_name, ex.what());
         std::string node_name = env.tests[i]->GetNodeName();
