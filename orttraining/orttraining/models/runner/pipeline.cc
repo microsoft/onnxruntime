@@ -20,32 +20,6 @@ namespace onnxruntime {
 namespace training {
 namespace pipeline {
 
-bool Action::IsForward() const {
-  return pass == Pass::Forward;
-}
-
-bool Action::IsBackward() const {
-  return pass == Pass::Backward;
-}
-
-bool Action::IsCompute() const {
-  return type == Type::Compute;
-}
-
-bool Action::IsSendTo(const int dst_rank) const {
-  if (type != Type::Send) {
-    return false;
-  }
-  return peer_rank == dst_rank;
-}
-
-bool Action::IsRecvFrom(const int src_rank) const {
-  if (type != Type::Recv) {
-    return false;
-  }
-  return peer_rank == src_rank;
-}
-
 std::ostream& operator<<(std::ostream& stream, const Action& slot) {
   if (slot.pass == Action::Pass::Forward) {
     switch (slot.type) {
@@ -97,49 +71,23 @@ void PipelineSlot::AddCompute(const int batch_id, const Action::Pass pass, const
   operators_.push_back(Action{batch_id, Action::Type::Compute, pass, upstream_time, upstream_stage});
 }
 
-bool PipelineSlot::IsEmpty() const {
-  return operators_.empty();
-};
-size_t PipelineSlot::NumActions() const {
-  return operators_.size();
-}
-bool PipelineSlot::HasCompute() const {
-  for (auto& op : operators_) {
-    if (op.IsCompute())
-      return true;
-  }
-  return false;
-}
-bool PipelineSlot::HasRendTo(const int stage) const {
-  for (auto& op : operators_) {
-    if (op.IsSendTo(stage)) {
-      return true;
-    }
-  }
-  return false;
-}
-bool PipelineSlot::HasRecvFrom(const int stage) const {
-  for (auto& op : operators_) {
-    if (op.IsRecvFrom(stage)) {
-      return true;
-    }
-  }
-  return false;
-}
 Action& PipelineSlot::operator[](int index) {
   return operators_[index];
 }
+
 const Action& PipelineSlot::operator[](int index) const {
   return operators_[index];
 }
+
 Action& PipelineSlot::GetFrontAction() {
   return operators_.front();
 }
+
 const Action& PipelineSlot::GetFrontAction() const {
   return operators_.front();
 }
 
-PipelineScheduler::PipelineScheduler(int num_batches, int num_stages) {
+PipelineScheduler::PipelineScheduler(const int num_batches, const int num_stages) {
   num_stages_ = num_stages;
   num_batches_ = num_batches;
   CreateComputeSchedule();
@@ -180,15 +128,19 @@ std::ostream& operator<<(std::ostream& stream, const PipelineSlot& slot) {
   }
   return stream;
 }
+
 void PipelineSlot::SetWaitedEvent(const std::vector<int> events) {
   waited_events_ = std::move(events);
 }
+
 std::vector<int> PipelineSlot::GetWaitedEvent() const {
   return waited_events_;
 }
+
 void PipelineSlot::SetRecordedEvent(const std::vector<int> events) {
   recorded_events_ = std::move(events);
 }
+
 std::vector<int> PipelineSlot::GetRecordedEvent() const {
   return recorded_events_;
 }
@@ -212,14 +164,6 @@ std::ostream& operator<<(std::ostream& stream, PipelineScheduler const& schedule
   }
 
   return stream;
-}
-
-size_t PipelineScheduler::GetScheduleSize() const {
-  return compute_commute_table_.size();
-}
-
-size_t PipelineScheduler::GetStageSize() const {
-  return num_stages_;
 }
 
 // Return time indexes of a given batch.
@@ -654,30 +598,37 @@ int PipelineScheduler::GetForwardWaitedEventBeforeRecv(const int batch_id, const
   auto event = GetComputeEventOrDefault(true, batch_id, stage_id, Action::Pass::Forward, Action::Type::Recv);
   return event;
 }
+
 int PipelineScheduler::GetForwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(false, batch_id, stage_id, Action::Pass::Forward, Action::Type::Recv);
   return event;
 }
+
 int PipelineScheduler::GetForwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(true, batch_id, stage_id, Action::Pass::Forward, Action::Type::Send);
   return event;
 }
+
 int PipelineScheduler::GetForwardRecordedEventAfterSend(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(false, batch_id, stage_id, Action::Pass::Forward, Action::Type::Send);
   return event;
 }
+
 int PipelineScheduler::GetBackwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(true, batch_id, stage_id, Action::Pass::Backward, Action::Type::Recv);
   return event;
 }
+
 int PipelineScheduler::GetBackwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(false, batch_id, stage_id, Action::Pass::Backward, Action::Type::Recv);
   return event;
 }
+
 int PipelineScheduler::GetBackwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(true, batch_id, stage_id, Action::Pass::Backward, Action::Type::Send);
   return event;
 }
+
 int PipelineScheduler::GetBackwardRecordedEventAfterSend(const int batch_id, const int stage_id) const {
   auto event = GetComputeEventOrDefault(false, batch_id, stage_id, Action::Pass::Backward, Action::Type::Send);
   return event;

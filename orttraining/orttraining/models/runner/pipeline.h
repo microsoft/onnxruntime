@@ -33,11 +33,22 @@ struct Action {
                     Forward,
                     Backward };
 
-  bool IsForward() const;
-  bool IsBackward() const;
-  bool IsCompute() const;
-  bool IsSendTo(const int dst_rank) const;
-  bool IsRecvFrom(const int src_rank) const;
+  bool IsForward() const { return pass == Pass::Forward; }
+  bool IsBackward() const { return pass == Pass::Backward; }
+  bool IsCompute() const { return type == Type::Compute; }
+  bool IsSendTo(const int dst_rank) const {
+    if (type != Type::Send) {
+      return false;
+    }
+    return peer_rank == dst_rank;
+  }
+
+  bool IsRecvFrom(const int src_rank) const {
+    if (type != Type::Recv) {
+      return false;
+    }
+    return peer_rank == src_rank;
+  }
 
   friend std::ostream& operator<<(std::ostream& stream, const Action& slot);
 
@@ -70,11 +81,34 @@ class PipelineSlot {
   void AddRecv(const int batch_id, const Action::Pass pass, const int upstream_time = -1, const int upstream_stage = -1, const int this_rank = -1, const int peer_rank = -1);
   void AddCompute(const int batch_id, const Action::Pass pass, const int upstream_time = -1, const int upstream_stage = -1);
 
-  bool IsEmpty() const;
-  size_t NumActions() const;
-  bool HasCompute() const;
-  bool HasRendTo(const int stage) const;
-  bool HasRecvFrom(const int stage) const;
+  bool IsEmpty() const { return operators_.empty(); };
+  size_t NumActions() const { return operators_.size(); }
+  bool HasCompute() const {
+    for (auto& op : operators_) {
+      if (op.IsCompute())
+        return true;
+    }
+    return false;
+  }
+
+  bool HasRendTo(const int stage) const {
+    for (auto& op : operators_) {
+      if (op.IsSendTo(stage)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool HasRecvFrom(const int stage) const {
+    for (auto& op : operators_) {
+      if (op.IsRecvFrom(stage)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Action& operator[](int index);
   const Action& operator[](int index) const;
   Action& GetFrontAction();
@@ -97,17 +131,17 @@ class PipelineSlot {
   //
   // For NCCL PipDream schedule, it's used to support Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
 
-  // Events waited by this slot. 
+  // Events waited by this slot.
   std::vector<int> waited_events_;
-  // Events recorded by this slot. 
+  // Events recorded by this slot.
   std::vector<int> recorded_events_;
 };
 
 class PipelineScheduler {
  public:
-  PipelineScheduler(int num_batches, int num_stages);
-  size_t GetScheduleSize() const;
-  size_t GetStageSize() const;
+  PipelineScheduler(const int num_batches, const int num_stages);
+  size_t GetScheduleSize() const { return compute_commute_table_.size(); }
+  size_t GetStageSize() const { return num_stages_; }
   // APIs to get NCCL event for
   // Wait -> Recv -> Record -> Wait -> Compute -> Record -> Wait -> Send -> Record.
   int GetForwardComputeWaitedEvent(const int batch_id, const int stage_id) const;
@@ -124,7 +158,6 @@ class PipelineScheduler {
   int GetBackwardRecvRecordedEvent(const int batch_id, const int stage_id) const;
   // APIs to get MPI event event for
   // Wait -> Recv -> Wait -> Compute -> Record -> Send -> Record.
-
   int GetForwardWaitedEventBeforeRecv(const int batch_id, const int stage_id) const;
   int GetForwardWaitedEventAfterRecv(const int batch_id, const int stage_id) const;
   int GetForwardRecordedEventBeforeSend(const int batch_id, const int stage_id) const;
