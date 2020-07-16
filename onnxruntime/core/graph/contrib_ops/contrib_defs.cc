@@ -2843,20 +2843,21 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         }
       });
 
-  static const char* Triu_ver1_doc = R"DOC(
-	  Returns the upper triangular part of a 2-D matrix, or batches of 2-D matrices. Triu takes one input tensor of shape
-	  [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists of the elements on or
-	  above the given diagonal (k).
-	  If k = 0, this op retains elements on or above the the main diagonal. If k > 0, this op
-	  retains elements on or above k diagonals over the main diagonal. If k < 0, this op retains elements
-	  on or above as many diagonals below the main diagonal. All other elements in the matrix are set to zero.
+  static const char* Trilu_ver1_doc = R"DOC(
+	  Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices depending on whether attribute upper is true or not.
+    Tri takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper/lower triangular part consists
+    of the elements on or above/below the given diagonal (k).
+	  If k = 0, this op retains elements on or above/below the the main diagonal. If k > 0, this op
+	  retains elements on or above/below k diagonals over the main diagonal. If k < 0, this op retains elements
+	  on or above/below as many diagonals below the main diagonal. All other elements in the matrix are set to zero.
 	  )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Triu)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Trilu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(Triu_ver1_doc)
+      .SetDoc(Trilu_ver1_doc)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .Attr("upper", "Boolean whether upper or lower part of matrix retains it's elements", AttributeProto::INT, static_cast<int64_t>(-1))
         .Input(
             0,
             "X",
@@ -2878,8 +2879,17 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
             {"tensor(float16)",
              "tensor(float)",
              "tensor(double)",
-             "tensor(bfloat16)"},
-            "Constrain input and output types to float tensors.")
+             "tensor(bfloat16)",
+             "tensor(uint8)",
+             "tensor(uint16)",
+             "tensor(uint32)",
+             "tensor(uint64)",
+             "tensor(int8)",
+             "tensor(int16)",
+             "tensor(int32)",
+             "tensor(int64)",
+             "tensor(bool)"},
+            "Constrain input and output types to int and float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
             using namespace ONNX_NAMESPACE;
             if (hasInputShape(ctx, 0)) {

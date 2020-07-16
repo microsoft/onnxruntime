@@ -5,24 +5,24 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "Eigen/src/Core/Map.h"
-#include "triu.h"
+#include "trilu.h"
 #include <functional>
 
 namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(
-    Triu,
+    Trilu,
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
-    Triu);
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double, long>()),
+    Trilu);
 
 template <typename T>
-struct Triu::ComputeImpl {
+struct Trilu::ComputeImpl {
 
-  void get_triu(const T* X_data, T* Y_data, int64_t matrix_h, int64_t matrix_w, int64_t k_val) const {
+  void get_trilu(const T* X_data, T* Y_data, int64_t matrix_h, int64_t matrix_w, int64_t k_val, int64_t up) const {
     auto input_mat = ConstEigenMatrixMapRowMajor<T>(
 	      X_data,
 	      matrix_h,
@@ -33,12 +33,12 @@ struct Triu::ComputeImpl {
               matrix_w);
 
     output_mat = input_mat;
-    for (int64_t i = -1 * matrix_h; i < k_val; i++){
-      output_mat.diagonal(i).array() = static_cast<T>(0);
+    for (int64_t i = -1 * matrix_h; i < up * k_val; i++){
+      output_mat.diagonal(up * i).array() = static_cast<T>(0);
     }
   }
 
-  void operator()(const Tensor* X, Tensor* Y, int64_t k_val) const {
+  void operator()(const Tensor* X, Tensor* Y, int64_t k_val, int64_t up) const {
     const auto& X_shape = X->Shape();
     int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
 
@@ -48,7 +48,7 @@ struct Triu::ComputeImpl {
 
     if (X_num_dims == 2) {
       auto* Y_data = Y->template MutableData<T>();
-      get_triu(X_data, Y_data, matrix_h, matrix_w, k_val);
+      get_trilu(X_data, Y_data, matrix_h, matrix_w, k_val, up);
     } else {
       // calculate batch size and output shape
       int64_t batch_size = 1;
@@ -61,16 +61,17 @@ struct Triu::ComputeImpl {
       for (int64_t b = 0; b < batch_size; b++) {  // can be parallelized if need to
         auto X_batch_data = X_data + (b * num_matrix_elems);
         auto Y_batch_data = Y_data + (b * num_matrix_elems);
-        get_triu(X_batch_data, Y_batch_data, matrix_h, matrix_w, k_val);
+        get_trilu(X_batch_data, Y_batch_data, matrix_h, matrix_w, k_val, up);
       }
     }
   }
 };
 
-Status Triu::Compute(OpKernelContext* ctx) const {
+Status Trilu::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto* k = ctx->Input<Tensor>(1);
 
+  int64_t up = upper_ != 0 ? 1 : -1;
   int64_t k_val = 0;
   if (k) {
     ORT_ENFORCE(IsScalarOr1ElementVector(k), "k should be a 1-D or 0-D tensor.");
@@ -86,8 +87,8 @@ Status Triu::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
   }
 
-  utils::MLTypeCallDispatcher<ComputeImpl, float, double> t_disp(ctx->Input<Tensor>(0)->GetElementType());
-  t_disp.Invoke(X, Y, k_val);
+  utils::MLTypeCallDispatcher<ComputeImpl, float, double, long> t_disp(ctx->Input<Tensor>(0)->GetElementType());
+  t_disp.Invoke(X, Y, k_val, up);
 
   return Status::OK();
 }
