@@ -71,9 +71,9 @@ else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
         DOCKER_FILE=Dockerfile.ubuntu_gpu
-        #if [[ $BUILD_EXTR_PAR == *"--enable_training"* ]]; then
-        #    DOCKER_FILE=Dockerfile.ortrelease
-        #fi
+        if [[ $BUILD_EXTR_PAR == *"--enable_training"* ]]; then
+            DOCKER_FILE=Dockerfile.ortrelease
+        fi
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
             DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
