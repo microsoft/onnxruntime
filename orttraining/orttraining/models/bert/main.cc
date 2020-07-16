@@ -566,7 +566,6 @@ void setup_training_params(BertParameters& params) {
                                             /*prediction_next_sentence*/ "output2",
                                             /*masked_lm_positions*/ "masked_lm_positions",
                                             /*masked_lm_ids*/ "masked_lm_ids",
-                                            /*masked_lm_weights*/ "masked_lm_weights",
                                             /*next_sentence_labels*/ "next_sentence_labels",
                                             /*mlm_loss*/ "mlm_loss",
                                             /*nsp_loss*/ "nsp_loss"});
@@ -593,7 +592,6 @@ void setup_training_params(BertParameters& params) {
       {"input_mask", "input3"},
       {"masked_lm_positions", "masked_lm_positions"},
       {"masked_lm_ids", "masked_lm_ids"},
-      {"masked_lm_weights", "masked_lm_weights"},
       {"next_sentence_label", "next_sentence_labels"}};
 
   params.model_type = "bert";
@@ -696,7 +694,6 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                            "input3", /*input_mask*/
                                            "masked_lm_positions",
                                            "masked_lm_ids",
-                                           "masked_lm_weights",
                                            "next_sentence_labels"};
   std::vector<TensorShape> tensor_shapes = {{batch_size, params.max_sequence_length},
                                             {batch_size, params.max_sequence_length},
