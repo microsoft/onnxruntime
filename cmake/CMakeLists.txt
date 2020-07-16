@@ -914,6 +914,10 @@ if (onnxruntime_USE_TENSORRT)
     set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
   else()
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+    # needs to link with stdc++fs in Linux
+    if (NOT APPLE)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES stdc++fs)
+    endif()	
   endif()
 endif()
 

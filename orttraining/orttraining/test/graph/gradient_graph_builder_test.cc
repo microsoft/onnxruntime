@@ -1510,7 +1510,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   std::vector<PathString> sub_model_files(num_subs);
   for (size_t sub_id = 0; sub_id < num_subs; ++sub_id) {
-    sub_model_files[sub_id] = GenerateFileNameWithIndex(ORT_TSTR("sub_"), sub_id, ORT_TSTR(".onnx"));
+    sub_model_files[sub_id] = GenerateFileNameWithIndex(ORT_TSTR("sub_"), static_cast<int>(sub_id), ORT_TSTR(".onnx"));
   }
 
   PipelineSplitter splitter;
