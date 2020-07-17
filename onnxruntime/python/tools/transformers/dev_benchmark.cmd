@@ -32,7 +32,7 @@ set average_over=100
 REM Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 set use_optimizer=true
 
-set batch_sizes=1 16
+set batch_sizes=1
 set sequence_length=8 128
 
 REM Number of inputs (input_ids, token_type_ids, attention_mask) for ONNX model.
@@ -40,7 +40,7 @@ REM Note that different input count might lead to different performance
 set input_counts=1
 
 REM Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
-set models_to_test=bert-base-cased gpt2
+set models_to_test=bert-base-cased
 
 REM If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 REM set CUDA_VISIBLE_DEVICES=1
@@ -61,10 +61,14 @@ if %run_install% == true (
   pip uninstall --yes ort_nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
-  if %run_cpu% == true (
+  if %run_cpu_fp32% == true (
     pip install onnxruntime
   ) else (
-    pip install --upgrade onnxruntime-gpu
+    if %run_cpu_fp32% == true (
+      pip install onnxruntime
+    ) else (
+      pip install --upgrade onnxruntime-gpu
+    )
   )
 
   pip install --upgrade onnxruntime-tools

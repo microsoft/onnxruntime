@@ -252,7 +252,8 @@ def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, pre
 
     example_outputs = model(**example_inputs)
 
-    assert isinstance(example_outputs, (list, tuple))
+    assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
+
     # Flatten is needed for gpt2 and distilgpt2.
     example_outputs_flatten = flatten(example_outputs)
     example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])

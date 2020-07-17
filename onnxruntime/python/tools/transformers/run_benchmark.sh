@@ -78,7 +78,7 @@ if [ "$run_install" = true ] ; then
   pip uninstall --yes ort_nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
-  if [ "$run_cpu" = true ] ; then
+  if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
     pip install onnxruntime
   else
     pip install onnxruntime-gpu
