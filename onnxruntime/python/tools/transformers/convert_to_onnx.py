@@ -3,15 +3,27 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+"""
+This converts GPT2 model to onnx. Examples:
+(1) Convert pretrained model 'gpt2' to ONNX
+   python convert_to_onnx.py -m gpt2 --output gpt2.onnx
+(2) Convert pretrained model 'distilgpt2' to ONNX, and use optimizer to get float16 model.
+   python convert_to_onnx.py -m distilgpt2 --output distilgpt2_fp16.onnx -o -p fp16
+(3) Convert a model check point to ONNX, and run optimization and int8 quantization
+   python convert_to_onnx.py -m ./my_model_checkpoint/ --output my_model_int8.onnx -o -p int8
+
+"""
 
 import os
 import argparse
+import coloredlogs
 import logging
 import torch
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, MyGPT2Model, MyGPT2LMHeadModel, MODEL_CLASSES, DEFAULT_TOLERANCE
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
+
 logger = logging.getLogger('')
 
 
@@ -122,7 +134,7 @@ def main():
         model = QuantizeHelper.quantize_torch_model(model)
         logger.info("finished quantizing model")
 
-    session = create_onnxruntime_session(output_path, args.use_gpu, enable_optimizations=False, verbose=args.verbose)
+    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=False, verbose=args.verbose)
     if session is not None:
         Gpt2Helper.test_parity(session,
                                model,

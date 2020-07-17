@@ -10,11 +10,11 @@ import numpy
 import time
 import argparse
 import logging
+import coloredlogs
 import torch
 import onnx
 from enum import Enum
 from packaging import version
-
 
 logger = logging.getLogger(__name__)
 
@@ -61,22 +61,11 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization
 
 
 def setup_logger(verbose=True):
-    # output logging to stdout
-    log_handler = logging.StreamHandler(sys.stdout)
     if verbose:
-        log_handler.setFormatter(logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s'))
-        logging_level = logging.DEBUG
+        coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
     else:
-        log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
-        logging_level = logging.INFO
-        logging.getLogger("transformers").setLevel(logging.ERROR)
-    log_handler.setLevel(logging_level)
-
-    # Avoid duplicated handlers when runing this script in multiple cells of Jupyter Notebook.
-    if not logger.hasHandlers():
-        logger.addHandler(log_handler)
-
-    logger.setLevel(logging_level)
+        coloredlogs.install(fmt='%(message)s')
+        logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
 def prepare_environment(cache_dir, output_dir, use_gpu):

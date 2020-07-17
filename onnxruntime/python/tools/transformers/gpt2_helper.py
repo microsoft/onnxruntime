@@ -29,7 +29,7 @@ class GPT2ModelNoPastState(GPT2Model):
         return super().forward(input_ids, use_cache=False)
 
 
-# Wrap a class for Onnx model export.
+# Wrap a class for Onnx model conversion for GPT2 model with past state
 class MyGPT2Model(GPT2Model):
     def __init__(self, config):
         super().__init__(config)
@@ -226,7 +226,7 @@ class Gpt2Helper:
             outputs = model(*input_list)
 
         if total_runs == 0:
-            return ort_outputs
+            return outputs
 
         latency = []
         with torch.no_grad():
