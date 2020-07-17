@@ -68,12 +68,6 @@ class Path {
    */
   Path& Concat(const PathString& string);
 
-  /**
-   * Concatenates an index by the end of current path.
-   * Similar to Concat() except the argument is an index.
-   */
-  Path& ConcatIndex(const int index);
-
   /** Equivalent to this->Append(other). */
   Path& operator/=(const Path& other) {
     return Append(other);
