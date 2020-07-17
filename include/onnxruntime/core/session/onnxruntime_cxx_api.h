@@ -101,7 +101,9 @@ struct Base {
   Base& operator=(const Base&) = delete;
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
-    OrtRelease(p_);
+    if (p_) {
+      OrtRelease(p_);
+    }
     p_ = v.p_;
     v.p_ = nullptr;
   }
@@ -190,6 +192,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetExecutionMode(ExecutionMode execution_mode);
 
   SessionOptions& SetLogId(const char* logid);
+  SessionOptions& SetLogSeverityLevel(int level);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 
