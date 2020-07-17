@@ -44,7 +44,6 @@ const OpInfo div_info = OpInfo("Div", opset_v7);
 const OpInfo mul_info = OpInfo("Mul", opset_v7);
 const OpInfo sub_info = OpInfo("Sub", opset_v7);
 const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11);
-const OpInfo trainable_dropout_info = OpInfo("TrainableDropout", opset_v9, kOnnxDomain);
 const OpInfo dropout_info = OpInfo("Dropout", opset_v12);
 
 struct NodeInfo {
@@ -392,7 +391,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
         NodeInfo({mul_info}),
         NodeInfo({sub_info}),
         NodeInfo({softmax_info}),
-        NodeInfo({trainable_dropout_info, dropout_info}, false),  // -6
+        NodeInfo({dropout_info}, false),  // -6
         NodeInfo({matmul_info}),
         NodeInfo({transpose_info}),
         NodeInfo({reshape_info}),
@@ -603,8 +602,7 @@ Status MegatronTransformer::TransformDropout(Graph& graph, bool& modified, int g
       continue;
     }
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12) &&
-        !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TrainableDropout", opset_v9, kOnnxDomain)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", opset_v12)) {
       continue;
     }
 
