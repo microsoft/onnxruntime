@@ -52,6 +52,9 @@ import onnx
 from enum import Enum
 from packaging import version
 from transformers.modeling_utils import Conv1D
+from benchmark_helper import create_onnxruntime_session, Precision
+from gpt2_helper import GPT2ModelNoPastState
+from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger('')
 
@@ -86,52 +89,10 @@ import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model)
 
 
-# use_cache is True by default in GPT2Model. Here we wrap a class to disable past state output.
-class GPT2ModelNoPastState(GPT2Model):
-    def __init__(self, config):
-        super().__init__(config)
-
-    def forward(self, input_ids):
-        return super().forward(input_ids, use_cache=False)
-
-
 def load_pretrained_model(model_name, config, cache_dir):
     if model_name in ["gpt2", "distilgpt2", "gpt2-large"]:
         return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
     return AutoModel.from_pretrained(model_name, config=config, cache_dir=cache_dir)
-
-
-class Precision(Enum):
-    FLOAT32 = 'fp32'
-    FLOAT16 = 'fp16'
-    INT8 = 'int8'
-
-    def __str__(self):
-        return self.value
-
-
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, thread_num=-1):
-    import onnxruntime
-    sess_options = onnxruntime.SessionOptions()
-    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-    if not enable_all_optimization:
-        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-
-    sess_options.intra_op_num_threads = thread_num
-    if (not use_gpu) and (version.parse(onnxruntime.__version__) < version.parse('1.3.0')):
-        # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
-        # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
-        sess_options.intra_op_num_threads = 1
-
-    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    try:
-        logger.debug(f"create session for model: {onnx_model_path}")
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
-    except onnxruntime.capi.onnxruntime_pybind11_state.Fail as e:
-        logger.error(f"Failed to load model: {e}")
-        return None
-
-    return session
 
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names):
@@ -248,17 +209,6 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
         logger.info(f"Skip optimization since model existed: {ort_model_path}")
 
 
-def quantize_onnx_model(onnx_model_path, quantized_model_path):
-    from onnxruntime.quantization import quantize, QuantizationMode
-    onnx_opt_model = onnx.load(onnx_model_path)
-    quantized_onnx_model = quantize(onnx_opt_model,
-                                    quantization_mode=QuantizationMode.IntegerOps,
-                                    symmetric_weight=True,
-                                    force_fusions=True)
-    onnx.save(quantized_onnx_model, quantized_model_path)
-    logger.info(f"quantized model saved to:{quantized_model_path}")
-
-
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
                         fp16, use_raw_attention_mask, overwrite):
     if overwrite or not os.path.exists(optimized_model_path):
@@ -348,7 +298,7 @@ def export_onnx_model(model_name, cache_dir, onnx_dir, input_names, use_gpu, pre
 
         if precision == Precision.INT8:
             logger.info(f"Quantizing model: {onnx_model_path}")
-            quantize_onnx_model(onnx_model_path, onnx_model_path)
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
     else:  # Use OnnxRuntime to optimize
@@ -457,7 +407,7 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
             ort_session = create_onnxruntime_session(onnx_model_file,
                                                      use_gpu,
                                                      enable_all_optimization=True,
-                                                     thread_num=thread_num)
+                                                     num_threads=thread_num)
             if ort_session is None:
                 continue
 
@@ -511,29 +461,6 @@ def run_onnxruntime(use_gpu, model_names, precision, batch_sizes, sequence_lengt
     return results
 
 
-def _conv1d_to_linear(module):
-    in_size, out_size = module.weight.shape
-    linear = torch.nn.Linear(in_size, out_size)
-    linear.weight.data = module.weight.data.T.contiguous()
-    linear.bias.data = module.bias.data
-    return linear
-
-
-def conv1d_to_linear(model):
-    '''in-place
-    This is for Dynamic Quantization, as Conv1D is not recognized by PyTorch, convert it to nn.Linear
-    '''
-    logger.info("replease Conv1D with Linear")
-    for name in list(model._modules):
-        module = model._modules[name]
-        if isinstance(module, Conv1D):
-            linear = _conv1d_to_linear(module)
-            model._modules[name] = linear
-            logger.debug(name)
-        else:
-            conv1d_to_linear(module)
-
-
 def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, repeat_times, torchscript, cache_dir,
                 verbose):
     results = []
@@ -558,8 +485,7 @@ def run_pytorch(use_gpu, model_names, precision, batch_sizes, sequence_lengths, 
         model.to(device)
 
         if precision == Precision.INT8:
-            conv1d_to_linear(model)
-            model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
+            model = QuantizeHelper.quantize_torch_model(model)
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
@@ -709,7 +635,6 @@ def parse_arguments():
     parser.add_argument(
         "-p",
         "--precision",
-        required=True,
         type=Precision,
         default=Precision.FLOAT32,
         choices=list(Precision),
