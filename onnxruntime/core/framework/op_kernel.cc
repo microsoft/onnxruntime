@@ -30,6 +30,10 @@ SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& 
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;
 }
 
+bool OpKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
+  return execution_frame_->TryGetInferredShape(GetInputArgIndex(index), shape);
+}
+
 bool OpKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) const {
   return execution_frame_->TryGetInferredShape(GetOutputArgIndex(index), shape);
 }
