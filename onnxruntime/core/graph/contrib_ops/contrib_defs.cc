@@ -2857,55 +2857,55 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SinceVersion(1)
       .SetDoc(Trilu_ver1_doc)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-        .Attr("upper",
-              "Boolean whether upper or lower part of matrix retains it's elements. Default value of upper is true.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Input(
-            0,
-            "X",
-            "Input tensor of rank 2 or higher.",
-            "T")
-        .Input(
-            1,
-            "k",
-            "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
-            "Default value is 0 if it's not specified.",
-            "tensor(int64)",
-            OpSchema::Optional)
-        .Output(
-            0,
-            "Y",
-            "Output tensor of the same type and shape as the input tensor.",
-            "T")
-        .TypeConstraint(
-            "T",
-            {"tensor(float16)",
-             "tensor(float)",
-             "tensor(double)",
-             "tensor(bfloat16)",
-             "tensor(uint8)",
-             "tensor(uint16)",
-             "tensor(uint32)",
-             "tensor(uint64)",
-             "tensor(int8)",
-             "tensor(int16)",
-             "tensor(int32)",
-             "tensor(int64)",
-             "tensor(bool)"},
-            "Constrain input and output types to int and float tensors.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-            using namespace ONNX_NAMESPACE;
-            if (hasInputShape(ctx, 0)) {
-              const TensorShapeProto& input_shape =
-                  ctx.getInputType(0)->tensor_type().shape();
-              const int rank = static_cast<int>(input_shape.dim_size());
-              if (rank < 2) {
-                fail_shape_inference("Input rank must be >= 2.")
-              }
-              propagateShapeAndTypeFromFirstInput(ctx);
-            }
-        });
+      .Attr("upper",
+            "Boolean whether upper or lower part of matrix retains it's elements. Default value of upper is true.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(
+          0,
+          "X",
+          "Input tensor of rank 2 or higher.",
+          "T")
+      .Input(
+          1,
+          "k",
+          "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
+          "Default value is 0 if it's not specified.",
+          "tensor(int64)",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output tensor of the same type and shape as the input tensor.",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)",
+           "tensor(float)",
+           "tensor(double)",
+           "tensor(bfloat16)",
+           "tensor(uint8)",
+           "tensor(uint16)",
+           "tensor(uint32)",
+           "tensor(uint64)",
+           "tensor(int8)",
+           "tensor(int16)",
+           "tensor(int32)",
+           "tensor(int64)",
+           "tensor(bool)"},
+          "Constrain input and output types to int and float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        using namespace ONNX_NAMESPACE;
+        if (hasInputShape(ctx, 0)) {
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
+          if (rank < 2) {
+            fail_shape_inference("Input rank must be >= 2.")
+          }
+          propagateShapeAndTypeFromFirstInput(ctx);
+        }
+      });
 
   RegisterBertSchemas();
 }
