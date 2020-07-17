@@ -42,8 +42,13 @@ class _LRScheduler(object):
 
         NOTE: This class should never be called by the user.
         """
+
+        # Store last lr for future inquiry
         new_lr = self.get_lr(train_step_info)
         self._last_lr = new_lr
+
+        # Update ORTTrainer's optimizer config instance
+        train_step_info.optimizer_config.lr = new_lr[0]
 
 
 class ConstantWarmupLRScheduler(_LRScheduler):
@@ -95,7 +100,7 @@ class ConstantWarmupLRScheduler(_LRScheduler):
 
     def get_lr(self, train_step_info):
         warmup = self._warmup_constant(train_step_info)
-        return [train_step_info.config_optimizer.lr * warmup]
+        return [train_step_info.optimizer_config.lr * warmup]
 
 
 class CosineWarmupLRScheduler(_LRScheduler):

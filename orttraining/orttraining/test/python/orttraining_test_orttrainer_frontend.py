@@ -80,22 +80,22 @@ def testORTTrainerModelDescValidSchemas(test_input):
 @pytest.mark.parametrize("test_input,error_msg", [
     ({'inputs': [(True, [])],
       'outputs': [(True, [])]},
-     "Invalid model_desc: {'inputs': [{0: ['the first element of the tuple (aka name) must be a string']}],\
-          'outputs': [{0: ['the first element of the tuple (aka name) must be a string']}]}"),
+      "Invalid model_desc: {'inputs': [{0: ['the first element of the tuple (aka name) must be a string']}], "
+                           "'outputs': [{0: ['the first element of the tuple (aka name) must be a string']}]}"),
     ({'inputs': [('in1', None)],
       'outputs': [('out1', None)]},
-     "Invalid model_desc: {'inputs': [{0: ['the second element of the tuple (aka shape) must be a list']}],\
-          'outputs': [{0: ['the second element of the tuple (aka shape) must be a list']}]}"),
+      "Invalid model_desc: {'inputs': [{0: ['the second element of the tuple (aka shape) must be a list']}], "
+                           "'outputs': [{0: ['the second element of the tuple (aka shape) must be a list']}]}"),
     ({'inputs': [('in1', [])],
-      'outputs': [('out1', [], None)]},
+     'outputs': [('out1', [], None)]},
      "Invalid model_desc: {'outputs': [{0: ['the third element of the tuple (aka is_loss) must be a boolean']}]}"),
     ({'inputs': [('in1', [True])],
       'outputs': [('out1', [True])]},
-     "Invalid model_desc: {'inputs': [{0: ['each shape must be either a string or integer']}],\
-          'outputs': [{0: ['each shape must be either a string or integer']}]}"),
+      "Invalid model_desc: {'inputs': [{0: ['each shape must be either a string or integer']}], "
+                           "'outputs': [{0: ['each shape must be either a string or integer']}]}"),
     ({'inputs': [('in1', [])],
       'outputs': [('out1', [], True), ('out2', [], True)]},
-     "Invalid model_desc: {'outputs': [{1: ['only one is_loss can bet set to True']}]}"),
+      "Invalid model_desc: {'outputs': [{1: ['only one is_loss can bet set to True']}]}"),
 ])
 def testORTTrainerModelDescInvalidSchemas(test_input, error_msg):
     r''' Test different ways of using default values for incomplete input'''
@@ -396,7 +396,7 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
 
     # First half is warmup
     for step in range(total_steps):
-        # Emulate train step call
+        # Emulate ORTTRainer.train_step() call that updates its train_step_info
         train_step_info = TrainStepInfo(step=step, optimizer_config=optimizer_config)
 
         lr_scheduler._step(train_step_info)
