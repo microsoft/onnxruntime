@@ -283,12 +283,12 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
 // TODO, replace this with more efficient code in optimizers
 static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
                                          const OperandType& source_operand_type,
-                                         const std::string& source_name) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(source_name);
+                                         const std::string& name) {
+  const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
   ORT_ENFORCE(shape.size() == 2, "The initializer is not 2D: " +
-                                     source_name + " actual dim " +
+                                     name + " actual dim " +
                                      std::to_string(shape.size()));
 
   // TODO support other data types
@@ -307,7 +307,7 @@ static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
       break;
     }
     default:
-      ORT_THROW("The initializer of graph " + source_name +
+      ORT_THROW("The initializer of graph " + name +
                 " doesn't have valid type: " + std::to_string(tensor.data_type()));
   }
 
@@ -326,8 +326,7 @@ static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
     }
   }
 
-  const auto dest_name = model_builder.GetUniqueName(source_name + "_transposed");
-  return model_builder.AddOperandFromPersistMemoryBuffer(source_name, &buffer[0], operand_type);
+  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
 static vector<int32_t> ComputeConvPads(
@@ -1673,20 +1672,6 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     a_zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
     b_zero_point = GetQuantizationZeroPoint(model_builder, node, 5);
     y_zero_point = GetQuantizationZeroPoint(model_builder, node, 7);
-
-    // {
-    //   const OperandType& a_operand_type = operand_types.at(input1);
-    //   ORT_ENFORCE(a_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
-    //               "input type is " + TypeToStr(a_operand_type.type));
-    //   VerifyValidInputQuantizedType(input1, a_operand_type, a_scale, a_zero_point);
-    // }
-
-    // {
-    //   const OperandType& b_operand_type = operand_types.at(input2);
-    //   ORT_ENFORCE(b_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
-    //               "input type is " + TypeToStr(b_operand_type.type));
-    //   VerifyValidInputQuantizedType(input2, b_operand_type, b_scale, b_zero_point);
-    // }
   }
 
   uint32_t input_2_idx;
@@ -1706,6 +1691,18 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     input_2_idx = AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2);
   } else {
     input_2_idx = operand_indices.at(input2);
+  }
+
+  {  // Verify if the scale and zero point matchs from onnx input and nnapi input
+    const OperandType& a_operand_type = operand_types.at(input1);
+    ORT_ENFORCE(a_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                "input type is " + TypeToStr(a_operand_type.type));
+    VerifyValidInputQuantizedType(input1, a_operand_type, a_scale, a_zero_point);
+
+    const OperandType& b_operand_type = operand_types.at(input2);
+    ORT_ENFORCE(b_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                "input type is " + TypeToStr(b_operand_type.type));
+    VerifyValidInputQuantizedType(input2, b_operand_type, b_scale, b_zero_point);
   }
 
   uint32_t bias_idx;
