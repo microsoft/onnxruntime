@@ -26,9 +26,7 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
   // Each ROI is of the form [batch_index x1 y1 x2 y2]
   ORT_ENFORCE(R->Shape()[1] == 5);
 
-  std::vector<int64_t> output_dims({num_rois, channels, pooled_height_, pooled_width_});
-
-  Tensor* Y = context->Output(0, TensorShape(output_dims));
+  Tensor* Y = context->Output(0, {num_rois, channels, pooled_height_, pooled_width_});
 
   const auto* Xdata = X->template Data<float>();
   const auto* rois = R->template Data<float>();
