@@ -40,7 +40,7 @@ class FusionSkipLayerNormalization(Fusion):
 
             # Set default epsilon if no epsilon exists from layernorm
             if len(normalize_node.attribute) == 0:
-                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-12)])
+                normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
             self.nodes_to_add.append(normalize_node)
 
