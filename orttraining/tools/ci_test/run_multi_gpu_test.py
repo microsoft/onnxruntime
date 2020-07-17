@@ -33,46 +33,46 @@ def main():
     convergence_test_output_path = "multi_gpu_test_out.csv"
     multigpu_test_output_path = "log-mem-many-p3-s128-b1-a16"
     # run BERT training
-    # subprocess.run([
-    #     "/bert_ort/openmpi/bin/mpirun",
-    #     "-n", "2",
-    #     "--tag-output",
-    #     "-merge-stderr-to-stdout",
-    #     "--output-filename", multigpu_test_output_path,
-    #     #os.path.join(args.binary_dir, "onnxruntime_training_bert"),
-    #     "./build/Linux/RelWithDebInfo/onnxruntime_training_bert",
-    #     "--model_name", os.path.join(
-    #         #args.model_root, "nv/bert-base/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
-    #         args.model_root, "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
-    #     "--train_data_dir", os.path.join(
-    #         args.training_data_root, "128/books_wiki_en_corpus/train"),
-    #     "--test_data_dir", os.path.join(
-    #         args.training_data_root, "128/books_wiki_en_corpus/test"),
-    #     #"--train_batch_size", "64",
-    #     "--train_batch_size", "1",
-    #     "--mode", "train",
-    #     #"--num_train_steps", "800",
-    #     "--num_train_steps", "32",
-    #     #"--display_loss_steps", "5",
-    #     "--display_loss_steps", "1",
-    #     #"--optimizer", "adam",
-    #     "--optimizer", "lamb",
-    #     #"--learning_rate", "5e-4",
-    #     "--learning_rate", "0.006",
-    #     #"--warmup_ratio", "0.1",
-    #     "--warmup_ratio", "0",
-    #     "--warmup_mode", "Linear",
-    #     "--gradient_accumulation_steps", "16",
-    #     #"--max_predictions_per_seq=20",
-    #     #"--use_mixed_precision",
-    #     #"--allreduce_in_fp16",
-    #     #"--lambda", "0",
-    #     "--use_nccl",
-    #     "--convergence_test_output_file", convergence_test_output_path,
-    #     "--seed", "42",
-    #     #"--enable_grad_norm_clip=false",
-    #     "--data_parallel_size", "2"
-    # ]).check_returncode()
+    subprocess.run([
+        "/bert_ort/openmpi/bin/mpirun",
+        "-n", "2",
+        "--tag-output",
+        "-merge-stderr-to-stdout",
+        "--output-filename", multigpu_test_output_path,
+        #os.path.join(args.binary_dir, "onnxruntime_training_bert"),
+        "./build/Linux/RelWithDebInfo/onnxruntime_training_bert",
+        "--model_name", os.path.join(
+            #args.model_root, "nv/bert-base/bert-base-uncased_L_12_H_768_A_12_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12"),
+            args.model_root, "nv/bert-large/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm"),
+        "--train_data_dir", os.path.join(
+            args.training_data_root, "128/books_wiki_en_corpus/train"),
+        "--test_data_dir", os.path.join(
+            args.training_data_root, "128/books_wiki_en_corpus/test"),
+        #"--train_batch_size", "64",
+        "--train_batch_size", "1",
+        "--mode", "train",
+        #"--num_train_steps", "800",
+        "--num_train_steps", "32",
+        #"--display_loss_steps", "5",
+        "--display_loss_steps", "1",
+        #"--optimizer", "adam",
+        "--optimizer", "lamb",
+        #"--learning_rate", "5e-4",
+        "--learning_rate", "0.006",
+        #"--warmup_ratio", "0.1",
+        "--warmup_ratio", "0",
+        "--warmup_mode", "Linear",
+        "--gradient_accumulation_steps", "16",
+        #"--max_predictions_per_seq=20",
+        #"--use_mixed_precision",
+        #"--allreduce_in_fp16",
+        #"--lambda", "0",
+        "--use_nccl",
+        "--convergence_test_output_file", convergence_test_output_path,
+        "--seed", "42",
+        #"--enable_grad_norm_clip=false",
+        "--data_parallel_size", "2"
+    ]).check_returncode()
 
     expected_results_path = os.path.join(
             SCRIPT_DIR, "results", "multi_gpu_baseline","2_nodes")

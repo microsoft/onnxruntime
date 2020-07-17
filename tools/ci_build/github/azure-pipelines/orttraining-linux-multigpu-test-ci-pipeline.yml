@@ -22,7 +22,7 @@ jobs:
     displayName: 'Build'
 
   - script: |
-      docker run \
+      sudo docker run \
         --gpus all \
         --rm \
         --volume $(Build.SourcesDirectory):/onnxruntime_src \
