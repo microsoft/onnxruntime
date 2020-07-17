@@ -312,7 +312,6 @@ static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::Tenso
     if (coarser_efficiency + 0.01 >= max_efficiency) {
       // Taking it.
       block_size = coarser_block_size;
-      block_count = coarser_block_count;
       if (max_efficiency < coarser_efficiency) {
         max_efficiency = coarser_efficiency;
       }
