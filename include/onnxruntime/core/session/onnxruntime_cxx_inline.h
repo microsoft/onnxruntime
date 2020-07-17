@@ -111,6 +111,10 @@ inline void IoBinding::BindOutput(const char* name, const Value& value) {
   ThrowOnError(GetApi().BindOutput(p_, name, value));
 }
 
+inline void IoBinding::BindOutput(const char* name, const MemoryInfo& mem_info) {
+  ThrowOnError(GetApi().BindOutputToDevice(p_, name, mem_info));
+}
+
 inline void IoBinding::ClearBoundInputs() {
   GetApi().ClearBoundInputs(p_);
 }

@@ -851,15 +851,30 @@ struct OrtApi {
    * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
    */
   ORT_API2_STATUS(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+
   /**
    * The function will bind the OrtValue to the specified output name.
    * The OrtValue must be a Tensor. ORT would use that value in place of output for the specified name.
+   *
    * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
    * \param name - name for the model output
    * \param  val_ptr - OrtValue of Tensor type.
    * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
    */
   ORT_API2_STATUS(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
+
+  /**
+   * The function will bind the OrtValue to a device which specification is contained within OrtMemoryInfo
+   * You can either create an instance ofr OrtMemoryInfo or obtain one from the allocator that you are using.
+   * This is useful when one or more outputs have dynamic shapes and, it is hard to create an output OrtValue with
+   * a Tensor ahead of time.
+   *
+   * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
+   * \param name - name for the model output
+   * \param  mem_info_ptr - OrtMemoryInfo
+   * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
+   */
+  ORT_API2_STATUS(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
 
   /** Clears any previously specified bindings for inputs/outputs
    */

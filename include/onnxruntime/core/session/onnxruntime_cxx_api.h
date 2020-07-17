@@ -342,6 +342,7 @@ struct IoBinding : public Base<OrtIoBinding> {
   explicit IoBinding(Session& session);
   void BindInput(const char* name, const Value&);
   void BindOutput(const char* name, const Value&);
+  void BindOutput(const char* name, const MemoryInfo&);
   void ClearBoundInputs();
   void ClearBoundOutputs();
 };

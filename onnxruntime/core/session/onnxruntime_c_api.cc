@@ -4,6 +4,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/allocator_impl.h"
 #include "core/session/IOBinding.h"
+#include "core/framework/allocator.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/utils.h"
@@ -578,6 +579,17 @@ ORT_API_STATUS_IMPL(OrtApis::BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* mem_info_ptr) {
+  API_IMPL_BEGIN
+  auto st = binding_ptr->binding_->BindOutput(name, mem_info_ptr->device);
+  if (!st.IsOK()) {
+    return ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 
 void OrtApis::ClearBoundInputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
   binding_ptr->binding_->ClearInputs();
@@ -1737,6 +1749,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::ReleaseIoBinding,
     &OrtApis::BindInput,
     &OrtApis::BindOutput,
+    &OrtApis::BindOutputToDevice,
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
 
