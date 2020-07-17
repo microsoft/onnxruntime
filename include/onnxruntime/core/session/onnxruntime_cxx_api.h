@@ -101,9 +101,7 @@ struct Base {
   Base& operator=(const Base&) = delete;
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
-    if (p_) {
-      OrtRelease(p_);
-    }
+    OrtRelease(p_);
     p_ = v.p_;
     v.p_ = nullptr;
   }
