@@ -95,14 +95,19 @@ class SGDConfig(_OptimizerConfig):
         lr (float, default is 0.001): Learning rate
 
     NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
+
+    Example:
+
+    .. code-block:: python
+
+        sgd_optim1 = SGDConfig(lr=0.001)
     """
 
     def __init__(self, params=[], lr=0.001):
         super().__init__(name='SGDOptimizer',
                          params=params,
                          defaults={'lr': lr})
-        assert isinstance(params, list) and len(
-            params) == 0, "'params' must be an empty list for SGD optimizer"
+        assert isinstance(params, list) and len(params) == 0, "'params' must be an empty list for SGD optimizer"
 
 
 class AdamConfig(_OptimizerConfig):
@@ -118,12 +123,22 @@ class AdamConfig(_OptimizerConfig):
         lr (float, default is 0.001): Learning rate
         alpha (float, default is 0.9): Coefficient of previous gradient in running average of row 1.
         beta (float, default is 0.999):  Coefficient of previous squared gradient in running average.
-        lambda (float, default is 0): Regularization coefficient.
+        lambda_coef (float, default is 0): Regularization coefficient.
         epsilon (float, default is 1e-8): Small scalar to avoid dividing by zero.
         do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
         weight_decay_mode (DecayMode, default is BEFORE_WEIGHT_UPDATE): Selects weight decay update strategy.
 
     NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
+
+    Example:
+
+    .. code-block:: python
+
+        # User-specified lr, alpha and weight_decay_mode for all model parameters
+        adam_optim1 = AdamConfig(lr=0.01, alpha=0.85, weight_decay_mode=AdamConfig.DecayMode.AFTER_WEIGHT_UPDATE)
+
+        # User-specified lr using parameters group
+        adam_optim2 = AdamConfig([{'params':['fc1.weight','fc2.weight'], 'lr':0.005}], lr=0.01)
     """
 
     @unique
@@ -138,10 +153,8 @@ class AdamConfig(_OptimizerConfig):
         assert beta >= 0, "'beta' must be a positive number"
         assert lambda_coef >= 0, "'lambda_coef' must be a positive number"
         assert epsilon >= 0, "'epsilon' must be a positive number"
-        assert isinstance(do_bias_correction,
-                          bool), "'do_bias_correction' must be a boolean"
-        assert isinstance(weight_decay_mode,
-                          AdamConfig.DecayMode), "'weight_decay_mode' must be a AdamConfig.DecayMode"
+        assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
+        assert isinstance(weight_decay_mode, AdamConfig.DecayMode), "'weight_decay_mode' must be a AdamConfig.DecayMode"
         for param in params:
             assert 'lr' not in param, "'lr' is not supported inside params"
 
@@ -183,6 +196,16 @@ class LambConfig(_OptimizerConfig):
         do_bias_correction (bool, default is True): Compute unbiased 1st and 2nd momentums.
 
     NOTE: To prevent model parameters to be trained, refer to :py:attr:`.ORTTrainerOptions.utils.frozen_weights`.
+
+    Example:
+
+    .. code-block:: python
+
+        # User-specified lr, alpha and weight_decay_mode for all model parameters
+        lamb_optim1 = LambConfig(lr=0.01, alpha=0.85)
+
+        # User-specified lr using parameters group
+        lamb_optim2 = LambConfig([{'params':['fc1.weight','fc2.weight'], 'lr':0.005}], lr=0.01)
     """
 
     def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0,
@@ -191,13 +214,10 @@ class LambConfig(_OptimizerConfig):
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
         assert lambda_coef >= 0, "'lambda_coef' must be a positive number"
-        assert isinstance(
-            ratio_min, float), "'ratio_min' must be a valid float"
-        assert isinstance(
-            ratio_max, float), "'ratio_max' must be a valid float"
+        assert isinstance(ratio_min, float), "'ratio_min' must be a valid float"
+        assert isinstance(ratio_max, float), "'ratio_max' must be a valid float"
         assert epsilon >= 0, "'epsilon' must be a positive number"
-        assert isinstance(do_bias_correction,
-                          bool), "'do_bias_correction' must be a boolean"
+        assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
         for param in params:
             assert 'lr' not in param, "'lr' is not supported inside params"
 
