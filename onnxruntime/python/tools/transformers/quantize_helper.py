@@ -9,7 +9,7 @@ import torch
 import onnx
 from transformers.modeling_utils import Conv1D
 
-logger = logging.getLogger('')
+logger = logging.getLogger(__name__)
 
 
 def _conv1d_to_linear(module):

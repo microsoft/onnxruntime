@@ -13,8 +13,10 @@ import logging
 import torch
 import onnx
 from enum import Enum
+from packaging import version
 
-logger = logging.getLogger('')
+
+logger = logging.getLogger(__name__)
 
 
 class Precision(Enum):
@@ -26,10 +28,10 @@ class Precision(Enum):
         return self.value
 
 
-def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, num_threads=0, verbose=False):
+def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=True, num_threads=-1, verbose=False):
     session = None
     try:
-        from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
+        from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
         sess_options = SessionOptions()
 
         if enable_all_optimization:
@@ -40,6 +42,10 @@ def create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization
         if num_threads > 0:
             sess_options.intra_op_num_threads = num_threads
             logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+        elif (not use_gpu) and (version.parse(onnxruntime_version) < version.parse('1.3.0')):
+            # Set intra_op_num_threads = 1 to enable OpenMP for onnxruntime 1.2.0 (cpu)
+            # onnxruntime-gpu is not built with openmp so it is better to use default (0) or cpu_count instead.
+            sess_options.intra_op_num_threads = 1
 
         if verbose:
             sess_options.log_severity_level = 0

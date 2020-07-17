@@ -15,7 +15,7 @@ import time
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
 
-logger = logging.getLogger('')
+logger = logging.getLogger(__name__)
 
 DEFAULT_TOLERANCE = {Precision.FLOAT32: 0.0005, Precision.FLOAT16: 0.2, Precision.INT8: 3.0}
 

@@ -50,7 +50,6 @@ import os
 import psutil
 import onnx
 from enum import Enum
-from packaging import version
 from transformers.modeling_utils import Conv1D
 from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState
