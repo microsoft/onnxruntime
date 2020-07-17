@@ -62,6 +62,7 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
     CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
     CASE_UNPACK(UINT64, uint64_t, int64_data_size);
     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+    CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
     default:
       break;
   }
@@ -200,13 +201,13 @@ enum DataLayout {
 
 // TODO, replace this with more efficient code in optimizers
 static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
-                                          const std::string& name,
-                                          const OperandType& source_data_type,
+                                          const std::string& source_name,
+                                          const OperandType& source_operand_type,
                                           DataLayout new_layout) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(name);
-  const Shape& shape = source_data_type.dimensions;
+  const auto& tensor = model_builder.GetInitializerTensors().at(source_name);
+  const Shape& shape = source_operand_type.dimensions;
   ORT_ENFORCE(shape.size() == 4, "The initializer is not 4D: " +
-                                     name + " actual dim " +
+                                     source_name + " actual dim " +
                                      std::to_string(shape.size()));
 
   // TODO support other data types
@@ -226,19 +227,19 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     }
     default:
-      ORT_THROW("The initializer of graph " + name +
+      ORT_THROW("The initializer of graph " + source_name +
                 " doesn't have valid type: " + std::to_string(tensor.data_type()));
   }
 
-  auto out_t = shape[0], in_t = shape[1],
-       h_t = shape[2], w_t = shape[3];
+  const auto out_t = shape[0], in_t = shape[1],
+             h_t = shape[2], w_t = shape[3];
   Shape dest_shape;
   if (new_layout == L_0231)
     dest_shape = {out_t, h_t, w_t, in_t};  // L_0231
   else
     dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
 
-  OperandType operand_type = source_data_type;
+  OperandType operand_type = source_operand_type;
   operand_type.SetDimensions(dest_shape);
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
@@ -273,34 +274,45 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
 
-  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
+  const auto dest_name = model_builder.GetUniqueName(source_name + "_transposed");
+  return model_builder.AddOperandFromPersistMemoryBuffer(source_name, &buffer[0], operand_type);
 }
 
 // TODO, replace this with more efficient code in optimizers
 static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
-                                         const std::string& name) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(name);
-  Shape shape;
-  for (auto dim : tensor.dims())
-    shape.push_back(SafeInt<uint32_t>(dim));
+                                         const OperandType& source_operand_type,
+                                         const std::string& source_name) {
+  const auto& tensor = model_builder.GetInitializerTensors().at(source_name);
+  const Shape& shape = source_operand_type.dimensions;
 
   ORT_ENFORCE(shape.size() == 2, "The initializer is not 2D: " +
-                                     name + " actual dim " +
+                                     source_name + " actual dim " +
                                      std::to_string(shape.size()));
 
   // TODO support other data types
-  Type type;
   const uint8_t* src = nullptr;
-  if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    type = Type::TENSOR_FLOAT32;
-    src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
-  } else {
-    ORT_THROW("The initializer of graph doesn't have valid type: " + name);
+  std::unique_ptr<uint8_t[]> unpacked_tensor;
+  size_t tensor_byte_size;
+  switch (tensor.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      src = reinterpret_cast<const uint8_t*>(GetTensorFloatData(tensor));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ORT_THROW_IF_ERROR(
+          UnpackInitializerTensor(tensor, unpacked_tensor, tensor_byte_size));
+      src = unpacked_tensor.get();
+      break;
+    }
+    default:
+      ORT_THROW("The initializer of graph " + source_name +
+                " doesn't have valid type: " + std::to_string(tensor.data_type()));
   }
 
-  auto x_t = shape[0], y_t = shape[1];
+  const auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
-  const OperandType operand_type(type, dest_shape);
+  OperandType operand_type = source_operand_type;
+  operand_type.SetDimensions(dest_shape);
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
@@ -312,7 +324,8 @@ static uint32_t AddInitializerTransposed(ModelBuilder& model_builder,
     }
   }
 
-  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
+  const auto dest_name = model_builder.GetUniqueName(source_name + "_transposed");
+  return model_builder.AddOperandFromPersistMemoryBuffer(source_name, &buffer[0], operand_type);
 }
 
 static vector<int32_t> ComputeConvPads(
@@ -374,6 +387,79 @@ static void HandleAutoPad(const Shape& input_shape,
       nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
     }
   }
+}
+
+static bool IsQuantizationScaleSupported(
+    const ModelBuilder& model_builder, const Node& node, const std::vector<size_t>& idx_vec) {
+  const auto& op = node.OpType();
+  for (const auto idx : idx_vec) {
+    const auto scale_name = node.InputDefs()[idx]->Name();
+    if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
+      const auto& tensor = model_builder.GetInitializerTensors().at(scale_name);
+      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
+        LOGS_DEFAULT(VERBOSE) << op << " does not support per-channel quantization";
+        return false;
+      }
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "The scale of " << op << " must be known";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool IsQuantizationZeroPointSupported(
+    const ModelBuilder& model_builder, const Node& node, const std::vector<size_t>& idx_vec) {
+  const auto& op = node.OpType();
+  for (const auto idx : idx_vec) {
+    const auto zero_point_name = node.InputDefs()[idx]->Name();
+    if (Contains(model_builder.GetInitializerTensors(), zero_point_name)) {
+      const auto& tensor = model_builder.GetInitializerTensors().at(zero_point_name);
+      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
+        LOGS_DEFAULT(VERBOSE) << op << " does not support per-channel quantization";
+        return false;
+      }
+      if (tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+        LOGS_DEFAULT(VERBOSE) << op << " does not support zero point data type "
+                              << std::to_string(tensor.data_type());
+        return false;
+      }
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op << " must be known";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static float GetQuantizationScale(const ModelBuilder& model_builder, const Node& node, size_t idx) {
+  const auto& scale_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
+  return GetTensorFloatData(scale_tensor)[0];
+}
+
+static int32_t GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx) {
+  std::unique_ptr<uint8_t[]> unpacked_tensor;
+  size_t tensor_byte_size;
+  const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
+  ORT_THROW_IF_ERROR(
+      UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
+  return static_cast<int32_t>(unpacked_tensor.get()[0]);
+}
+
+static void VerifyValidInputQuantizedType(const std::string& input_name,
+                                          const OperandType& input_operand_type,
+                                          float scale, int32_t zero_point) {
+  ORT_ENFORCE(input_operand_type.operandType.scale == scale,
+              "Input [" + input_name + "] NNAPI input: " + " scale: " +
+                  std::to_string(input_operand_type.operandType.scale) +
+                  ", ONNX input scale: " + std::to_string(scale));
+
+  ORT_ENFORCE(input_operand_type.operandType.zeroPoint == zero_point,
+              "Input [" + input_name + "] NNNAPI input zero point: " +
+                  std::to_string(input_operand_type.operandType.zeroPoint) +
+                  ", ONNX input zero point: " + std::to_string(zero_point));
 }
 
 #pragma endregion helpers
@@ -1363,17 +1449,45 @@ class GemmOpBuilder : public BaseOpBuilder {
 
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
-
+  bool HasSupportedInputs(const Node& node) override;
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
+bool GemmOpBuilder::HasSupportedInputs(const Node& node) {
+  if (node.OpType() != "QLinearMatMul")
+    return BaseOpBuilder::HasSupportedInputs(node);
+
+  // QLinearMatMul
+  int32_t a_input_type, b_input_type;
+  if (!GetType(*node.InputDefs()[0], a_input_type))
+    return false;
+  if (!GetType(*node.InputDefs()[3], b_input_type))
+    return false;
+
+  if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || a_input_type != b_input_type) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] A Input type: [" << a_input_type
+                          << "] B Input type: [" << b_input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
 bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
+  const auto input_defs(node.InputDefs());
   const auto& initializers(model_builder.GetInitializerTensors());
+  size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
+  if (op == "QLinearMatMul") {
+    a_idx = 0;
+    b_idx = 3;
+  }
 
   Shape a_shape;
   {
-    if (!GetShape(*node.InputDefs()[0], a_shape))
+    if (!GetShape(*input_defs[a_idx], a_shape))
       return false;
 
     if (a_shape.size() != 2) {
@@ -1384,7 +1498,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
 
   Shape b_shape;
   {
-    if (!GetShape(*node.InputDefs()[1], b_shape))
+    if (!GetShape(*input_defs[b_idx], b_shape))
       return false;
 
     if (b_shape.size() != 2) {
@@ -1393,11 +1507,39 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
     }
   }
 
-  if (op == "MatMul") {  // Only support A*B B is an initializer
-    if (!Contains(initializers, node.InputDefs()[1]->Name())) {
+  if (op == "MatMul") {
+    // Only support A*B B is an initializer
+    if (!Contains(initializers, input_defs[b_idx]->Name())) {
       LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
       return false;
     }
+  } else if (op == "QLinearMatMul") {
+    // For QLinearMatMul, we only support uint8 output now
+    int32_t output_type;
+    if (!GetType(*node.OutputDefs()[0], output_type))
+      return false;
+
+    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      LOGS_DEFAULT(VERBOSE) << "[" << op
+                            << "] output type: [" << output_type
+                            << "] is not supported for now";
+      return false;
+    }
+
+    // Only support A*B B is an initializer
+    // And all scale/zero points are initializer scalars
+    if (!Contains(initializers, input_defs[b_idx]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
+      return false;
+    }
+
+    // a/b/y_scale
+    if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 7}))
+      return false;
+
+    // a/b/y_zero_point
+    if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 8}))
+      return false;
   } else if (op == "Gemm") {
     // Only support
     // 1. A*B'+C
@@ -1414,14 +1556,14 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
       return false;
     }
 
-    if (transB == 0 && !Contains(initializers, node.InputDefs()[1]->Name())) {
+    if (transB == 0 && !Contains(initializers, input_defs[b_idx]->Name())) {
       LOGS_DEFAULT(VERBOSE) << "B of Gemm must be known if transB != 1";
       return false;
     }
 
-    if (node.InputDefs().size() == 3) {
+    if (input_defs.size() == 3) {
       Shape c_shape;
-      if (!GetShape(*node.InputDefs()[2], c_shape))
+      if (!GetShape(*input_defs[c_idx], c_shape))
         return false;
 
       if (c_shape.size() != 1 ||
@@ -1440,53 +1582,118 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
+  const auto input_defs(node.InputDefs());
+  size_t b_idx = op == "QLinearMatMul" ? 1 : 3;
   if (op == "MatMul") {
-    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+    model_builder.AddInitializerToSkip(input_defs[b_idx]->Name());
+  } else if (op == "QLinearMatMul") {
+    model_builder.AddInitializerToSkip(input_defs[1]->Name());      // a_scale
+    model_builder.AddInitializerToSkip(input_defs[2]->Name());      // a_zero_point
+    model_builder.AddInitializerToSkip(input_defs[b_idx]->Name());  // b
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());      // b_scale
+    model_builder.AddInitializerToSkip(input_defs[5]->Name());      // b_zero_point
+    model_builder.AddInitializerToSkip(input_defs[6]->Name());      // y_scale
+    model_builder.AddInitializerToSkip(input_defs[7]->Name());      // y_zero_point
   } else if (op == "Gemm") {
     NodeAttrHelper helper(node);
     const auto transB = helper.Get("transB", 0);
     if (transB == 0)
-      model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+      model_builder.AddInitializerToSkip(input_defs[b_idx]->Name());
   }
 }
 
 void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& op = node.OpType();
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  NodeAttrHelper helper(node);
+  const auto& initializers(model_builder.GetInitializerTensors());
 
-  const auto& input1 = node.InputDefs()[0]->Name();
-  const auto& input2 = node.InputDefs()[1]->Name();
+  const auto& op = node.OpType();
+  const auto input_defs(node.InputDefs());
+  NodeAttrHelper helper(node);
+  bool is_qlinear_matmul = op == "QLinearMatMul";
+
+  size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
+  if (is_qlinear_matmul) {
+    a_idx = 0;
+    b_idx = 3;
+  }
+
+  const auto& input1 = input_defs[a_idx]->Name();
+  const auto& input2 = input_defs[b_idx]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   const auto transB = helper.Get("transB", 0);
 
+  float b_scale = 0.0f,
+        y_scale = 0.0f;
+  int32_t b_zero_point = 0,
+          y_zero_point = 0;
+
+  if (is_qlinear_matmul) {
+    float a_scale = GetQuantizationScale(model_builder, node, 1);
+    b_scale = GetQuantizationScale(model_builder, node, 4);
+    y_scale = GetQuantizationScale(model_builder, node, 7);
+
+    int32_t a_zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
+    b_zero_point = GetQuantizationZeroPoint(model_builder, node, 5);
+    y_zero_point = GetQuantizationZeroPoint(model_builder, node, 8);
+
+    {
+      const OperandType& a_operand_type = operand_types.at(input1);
+      ORT_ENFORCE(a_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                  "input type is " + TypeToStr(a_operand_type.type));
+      VerifyValidInputQuantizedType(input1, a_operand_type, a_scale, a_zero_point);
+    }
+
+    {
+      const OperandType& b_operand_type = operand_types.at(input2);
+      ORT_ENFORCE(b_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                  "input type is " + TypeToStr(b_operand_type.type));
+      VerifyValidInputQuantizedType(input2, b_operand_type, b_scale, b_zero_point);
+    }
+  }
+
   uint32_t input_2_idx;
   if (transB == 0) {
-    input_2_idx = AddInitializerTransposed(model_builder, input2);
+    Type onnx_mat_b_type;
+    if (!is_qlinear_matmul)
+      onnx_mat_b_type = Type::TENSOR_FLOAT32;
+    else
+      onnx_mat_b_type = Type::TENSOR_QUANT8_ASYMM;
+
+    const auto& mat_b_tensor = initializers.at(input2);
+    Shape onnx_mat_b_shape;
+    for (auto dim : mat_b_tensor.dims())
+      onnx_mat_b_shape.push_back(SafeInt<uint32_t>(dim));
+
+    const OperandType onnx_mat_b_operand_type(onnx_mat_b_type, onnx_mat_b_shape, b_scale, b_zero_point);
+    input_2_idx = AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2);
   } else {
     input_2_idx = operand_indices.at(input2);
   }
 
   uint32_t bias_idx;
-  if (node.InputDefs().size() == 2) {
+  bool has_bias = (op == "Gemm") && (input_defs.size() > 2);
+  if (has_bias) {
+    bias_idx = operand_indices.at(input_defs[c_idx]->Name());
+  } else {
+    // No C supplied, we need a vector of 0
     std::string bias = node.Name() + op + "_bias";
-    const auto& B_type = operand_types.at(input2).type;
+    const auto& bias_type = operand_types.at(input2).type;
     Shape bias_dimen = {shaper[input2][0]};
-    if (B_type == Type::TENSOR_FLOAT32) {
-      float buffer[bias_dimen[0]];
-      for (uint32_t i = 0; i < bias_dimen[0]; i++) {
-        buffer[i] = 0.f;
-      }
+    if (bias_type == Type::TENSOR_FLOAT32) {
+      std::vector<float> buffer(bias_dimen[0], 0.f);
       OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
       bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
-          bias, &buffer[0], bias_operand_type);
+          bias, buffer.data(), bias_operand_type);
+    } else if (bias_type == Type::TENSOR_QUANT8_ASYMM) {
+      std::vector<int32_t> buffer(bias_dimen[0], 0);
+      OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen);
+      bias_idx = model_builder.AddOperandFromPersistMemoryBuffer(
+          bias, buffer.data(), bias_operand_type);
     } else {
-      ORT_THROW("Unknown weight type " + TypeToStr(B_type));
+      ORT_THROW("Unknown weight type " + TypeToStr(bias_type));
     }
-  } else {
-    bias_idx = operand_indices.at(node.InputDefs()[2]->Name());
   }
 
   std::vector<uint32_t> input_indices;
@@ -1497,7 +1704,7 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
 
   shaper.FC(input1, input2, output);
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
   model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices, {output},
                              {output_operand_type}, {false});
 }
@@ -1763,7 +1970,7 @@ void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder,
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
 
   if (input_defs.size() == 3)  // has zero_point input
-    model_builder.AddInitializerToSkip(input_defs[0]->Name());
+    model_builder.AddInitializerToSkip(input_defs[2]->Name());
 }
 
 bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
@@ -1781,28 +1988,12 @@ bool QuantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, con
     return false;
   }
 
-  const auto scale_name = input_defs[1]->Name();
-  if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
-    const auto& tensor = model_builder.GetInitializerTensors().at(scale_name);
-    if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
-      LOGS_DEFAULT(VERBOSE) << "QuantizeLinear does not support per-channel quantization";
-    }
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "The scale of QuantizeLinear must be known";
+  if (!IsQuantizationScaleSupported(model_builder, node, {1}))
     return false;
-  }
 
   if (input_defs.size() == 3) {  // has zero_point input
-    const auto zero_point_name = input_defs[2]->Name();
-    if (Contains(model_builder.GetInitializerTensors(), zero_point_name)) {
-      const auto& tensor = model_builder.GetInitializerTensors().at(zero_point_name);
-      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
-        LOGS_DEFAULT(VERBOSE) << "QuantizeLinear does not support per-channel quantization";
-      }
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "The zero point of QuantizeLinear must be known or empty";
+    if (!IsQuantizationZeroPointSupported(model_builder, node, {2}))
       return false;
-    }
   }
 
   return true;
@@ -1817,27 +2008,18 @@ void QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  float scale;
+  float scale = GetQuantizationScale(model_builder, node, 1);
   int32_t zero_point = 0;
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
 
-  {  // Get scale
-    const auto& scale_tensor = model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-    scale = GetTensorFloatData(scale_tensor)[0];
+  if (input_defs.size() == 3) {  // Get zero point
+    zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
   }
 
-  if (input_defs.size() == 3) {  // Get zero point
-    std::unique_ptr<uint8_t[]> unpacked_tensor;
-    size_t tensor_byte_size;
-    const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(input_defs[2]->Name());
-    ORT_THROW_IF_ERROR(
-        UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
-    zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
-  }
+  LOGS_DEFAULT(VERBOSE) << "scale: " << scale << " zp: " << zero_point;
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);
-
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   model_builder.AddOperation(ANEURALNETWORKS_QUANTIZE, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
@@ -1859,7 +2041,6 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputs(const Node& node) override;
-
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
@@ -1884,34 +2065,18 @@ void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
   model_builder.AddInitializerToSkip(input_defs[1]->Name());
 
   if (input_defs.size() == 3)  // has zero_point input
-    model_builder.AddInitializerToSkip(input_defs[0]->Name());
+    model_builder.AddInitializerToSkip(input_defs[2]->Name());
 }
 
 bool DequantizeLinearOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   const auto input_defs(node.InputDefs());
 
-  const auto scale_name = input_defs[1]->Name();
-  if (Contains(model_builder.GetInitializerTensors(), scale_name)) {
-    const auto& tensor = model_builder.GetInitializerTensors().at(scale_name);
-    if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
-      LOGS_DEFAULT(VERBOSE) << "DequantizeLinear does not support per-channel quantization";
-    }
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "The scale of DequantizeLinear must be known";
+  if (!IsQuantizationScaleSupported(model_builder, node, {1}))
     return false;
-  }
 
   if (input_defs.size() == 3) {  // has zero_point input
-    const auto zero_point_name = input_defs[2]->Name();
-    if (Contains(model_builder.GetInitializerTensors(), zero_point_name)) {
-      const auto& tensor = model_builder.GetInitializerTensors().at(zero_point_name);
-      if (!tensor.dims().empty() && tensor.dims()[0] != 1) {
-        LOGS_DEFAULT(VERBOSE) << "DequantizeLinear does not support per-channel quantization";
-      }
-    } else {
-      LOGS_DEFAULT(VERBOSE) << "The zero point of DequantizeLinear must be known or empty";
+    if (!IsQuantizationZeroPointSupported(model_builder, node, {2}))
       return false;
-    }
   }
 
   return true;
@@ -1927,34 +2092,17 @@ void DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
 
-  float scale;
+  float scale = GetQuantizationScale(model_builder, node, 1);
   int32_t zero_point = 0;
-
-  {  // Get scale
-    const auto& scale_tensor = model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-    scale = GetTensorFloatData(scale_tensor)[0];
-  }
-
   if (input_defs.size() == 3) {  // Get zero point
-    std::unique_ptr<uint8_t[]> unpacked_tensor;
-    size_t tensor_byte_size;
-    const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(input_defs[2]->Name());
-    ORT_THROW_IF_ERROR(
-        UnpackInitializerTensor(zero_point_tensor, unpacked_tensor, tensor_byte_size));
-    zero_point = static_cast<int32_t>(unpacked_tensor.get()[0]);
+    zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
   }
 
   const OperandType& input_operand_type = operand_types.at(input);
   ORT_ENFORCE(input_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
               "input type is " + TypeToStr(input_operand_type.type));
 
-  ORT_ENFORCE(input_operand_type.operandType.scale == scale,
-              "NNAPI input scale: " + std::to_string(input_operand_type.operandType.scale) +
-                  ", ONNX input scale: " + std::to_string(scale));
-
-  ORT_ENFORCE(input_operand_type.operandType.zeroPoint == zero_point,
-              "NNAPI input zero point: " + std::to_string(input_operand_type.operandType.zeroPoint) +
-                  ", ONNX input zero point: " + std::to_string(zero_point));
+  VerifyValidInputQuantizedType(input, input_operand_type, scale, zero_point);
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(Type::TENSOR_FLOAT32, shaper[output]);
@@ -2002,6 +2150,7 @@ CreateOpBuilders() {
     auto gemm_op_builder = std::make_shared<GemmOpBuilder>();
     op_map.emplace("Gemm", gemm_op_builder);
     op_map.emplace("MatMul", gemm_op_builder);
+    op_map.emplace("QLinearMatMul", gemm_op_builder);
   }
 
   {
