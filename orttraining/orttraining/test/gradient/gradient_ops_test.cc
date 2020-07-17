@@ -101,10 +101,12 @@ TEST(GradientCheckerTest, SqrtGrad) {
 }
 
 void TestBroadcastableBinaryOpGrad(const std::string& op_type,
-                                   std::function<float(float)>* transformer = nullptr) {
+                                   std::function<float(float)>* transformer = nullptr,
+                                   bool check_not_have_shape_inferencing = false) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type};
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   //shape(A) = (2, 3, 4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
   {
@@ -112,7 +114,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -122,7 +125,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -132,7 +136,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -142,7 +147,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{5}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -152,7 +158,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -162,7 +169,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{2, 3, 1, 1}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -172,7 +180,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{2, 1, 1, 1}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -182,7 +191,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{1, 3, 4, 1}, true, transformer};
     TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -193,7 +203,8 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{4, 2, 1, 1}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"4", "2", "1", "1"}};
     TensorInfo Y_info{{4, 2, 1, 3}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
   // symbolic broadcast + numeric broadcast
@@ -203,21 +214,22 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo B_info{{4, 1, 1, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"batch", "1", "1", "seq"}};
     TensorInfo Y_info{{4, 2, 3, 3}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+                                          attributes, true, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 }
 
 TEST(GradientCheckerTest, AddGrad) {
-  TestBroadcastableBinaryOpGrad("Add");
+  TestBroadcastableBinaryOpGrad("Add", nullptr, true);
 }
 
 TEST(GradientCheckerTest, SubGrad) {
-  TestBroadcastableBinaryOpGrad("Sub");
+  TestBroadcastableBinaryOpGrad("Sub", nullptr, true);
 }
 
 TEST(GradientCheckerTest, MulGrad) {
-  TestBroadcastableBinaryOpGrad("Mul");
+  TestBroadcastableBinaryOpGrad("Mul", nullptr, true);
 }
 
 #ifdef USE_CUDA

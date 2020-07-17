@@ -619,48 +619,79 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
   }
   return result;
 }
-
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   bool is_sub = (SrcNodeOpType() == "Sub");
 
   const ArgDef a = I(0), b = I(1);
-
-  ArgDef a_shape = IA("Shape_" + a.name);
-  ArgDef b_shape = IA("Shape_" + b.name);
-  ArgDef a_axes = IA("ReduceAxes_" + a.name);
-  ArgDef b_axes = IA("ReduceAxes_" + b.name);
-
   std::vector<NodeDef> output;
 
-  output.push_back(
-      NodeDef("Shape",
-              {a},
-              {a_shape}));
+  try {
+    std::vector<Dimension> a_shape, b_shape;
+    a_shape = GetShape(a);
+    b_shape = GetShape(b);
 
-  output.push_back(
-      NodeDef("Shape",
-              {b},
-              {b_shape}));
-
-  output.push_back(
-      NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
-              {a_shape, b_shape},
-              {a_axes, b_axes}));
-
-  if (IsGradientRequiredForSrcNodeInput(0)) {
-    HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
-  }
-
-  if (IsGradientRequiredForSrcNodeInput(1)) {
-    ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
-    HandleBroadcasting(GO(0), b, reshape_output, b_axes, output);
-
-    if (is_sub) {
-      output.push_back(
-          NodeDef("Neg",
-                  {reshape_output},
-                  {GI(1)}));
+    std::vector<int64_t> a_axes, b_axes;
+    ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      if (a_axes.size() > 0) {
+        HandleBroadcasting(GO(0), a, GI(0), a_axes, output);
+      } else {
+        output.push_back(
+            NodeDef("Identity",
+                    {GO(0)},
+                    {GI(0)}));
+      }
     }
+
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+      if (b_axes.size() > 0) {
+        ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
+        HandleBroadcasting(GO(0), b, reshape_output, b_axes, output);
+
+        if (is_sub) {
+          output.push_back(
+              NodeDef("Neg",
+                      {reshape_output},
+                      {GI(1)}));
+        }
+      } else {
+        if (is_sub) {
+          output.push_back(
+              NodeDef("Neg",
+                      {GO(0)},
+                      {GI(1)}));
+        } else /*is_add*/ {
+          output.push_back(
+              NodeDef("Identity",
+                      {GO(0)},
+                      {GI(1)}));
+        }
+      }
+    }
+    std::cout << "INFO: AddSubGrad : Static Shape Available\n";
+
+  } catch (onnxruntime::OnnxRuntimeException e) {
+    //GetShape failed, build shape-independent gradient graph
+    ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
+    ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
+    ComputeBroadcastBackwardAxesDynamic(a, b, a_axes_arg, b_axes_arg, output);
+
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      HandleBroadcastingDynamic(GO(0), a, GI(0), a_axes_arg, output);
+    }
+
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+      ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
+      HandleBroadcastingDynamic(GO(0), b, reshape_output, b_axes_arg, output);
+
+      if (is_sub) {
+        output.push_back(
+            NodeDef("Neg",
+                    {reshape_output},
+                    {GI(1)}));
+      }
+    }
+    std::cout << "INFO: AddSubGrad : Static Shape Not Available\n";
   }
   return output;
 }

@@ -96,6 +96,29 @@ std::vector<Dimension> GetShape(const ArgDef& arg_def) {
   return shape;
 }
 
+void GradientBuilderBase::ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
+                                                              const ArgDef& b,
+                                                              const ArgDef& a_axes,
+                                                              const ArgDef& b_axes,
+                                                              std::vector<NodeDef>& output) const {
+  ArgDef a_shape = IA("Shape_" + a.name);
+  ArgDef b_shape = IA("Shape_" + b.name);
+  output.push_back(
+      NodeDef("Shape",
+              {a},
+              {a_shape}));
+
+  output.push_back(
+      NodeDef("Shape",
+              {b},
+              {b_shape}));
+
+  output.push_back(
+      NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
+              {a_shape, b_shape},
+              {a_axes, b_axes}));
+}
+
 void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                                              const ArgDef& target,
                                              const ArgDef& output_grad,
@@ -163,11 +186,11 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
   }
 }
 
-void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
-                                             const ArgDef& target,
-                                             const ArgDef& output_grad,
-                                             const ArgDef& reduce_axes,
-                                             std::vector<NodeDef>& output) const {
+void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
+                                                    const ArgDef& target,
+                                                    const ArgDef& output_grad,
+                                                    const ArgDef& reduce_axes,
+                                                    std::vector<NodeDef>& output) const {
   ArgDef reduce_grad_arg = IA("ReduceSumTraining_" + input_grad.name + "_for_" + target.name);
   output.push_back(
       NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
