@@ -4,7 +4,7 @@ from numpy.testing import assert_allclose
 
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
-from onnxruntime.capi.training import orttrainer, amp, optim
+from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo
 
 
 @pytest.mark.parametrize("test_input", [
@@ -80,19 +80,22 @@ def testORTTrainerModelDescValidSchemas(test_input):
 @pytest.mark.parametrize("test_input,error_msg", [
     ({'inputs': [(True, [])],
       'outputs': [(True, [])]},
-     "Invalid model_desc: {'inputs': [{0: ['the first element of the tuple (aka name) must be a string']}], 'outputs': [{0: ['the first element of the tuple (aka name) must be a string']}]}"),
+      "Invalid model_desc: {'inputs': [{0: ['the first element of the tuple (aka name) must be a string']}], "
+                           "'outputs': [{0: ['the first element of the tuple (aka name) must be a string']}]}"),
     ({'inputs': [('in1', None)],
       'outputs': [('out1', None)]},
-     "Invalid model_desc: {'inputs': [{0: ['the second element of the tuple (aka shape) must be a list']}], 'outputs': [{0: ['the second element of the tuple (aka shape) must be a list']}]}"),
+      "Invalid model_desc: {'inputs': [{0: ['the second element of the tuple (aka shape) must be a list']}], "
+                           "'outputs': [{0: ['the second element of the tuple (aka shape) must be a list']}]}"),
     ({'inputs': [('in1', [])],
-      'outputs': [('out1', [], None)]},
+     'outputs': [('out1', [], None)]},
      "Invalid model_desc: {'outputs': [{0: ['the third element of the tuple (aka is_loss) must be a boolean']}]}"),
     ({'inputs': [('in1', [True])],
       'outputs': [('out1', [True])]},
-     "Invalid model_desc: {'inputs': [{0: ['each shape must be either a string or integer']}], 'outputs': [{0: ['each shape must be either a string or integer']}]}"),
+      "Invalid model_desc: {'inputs': [{0: ['each shape must be either a string or integer']}], "
+                           "'outputs': [{0: ['each shape must be either a string or integer']}]}"),
     ({'inputs': [('in1', [])],
       'outputs': [('out1', [], True), ('out2', [], True)]},
-     "Invalid model_desc: {'outputs': [{1: ['only one is_loss can bet set to True']}]}"),
+      "Invalid model_desc: {'outputs': [{1: ['only one is_loss can bet set to True']}]}"),
 ])
 def testORTTrainerModelDescInvalidSchemas(test_input, error_msg):
     r''' Test different ways of using default values for incomplete input'''
@@ -356,3 +359,48 @@ def testInvalidParamparams(optim_name):
         else:
             raise ValueError('invalid input')
     assert str(e.value) == "'lr' is not supported inside params"
+
+
+def testLinearLRSchedulerCreation():
+    total_steps = 10
+    warmup = 0.05
+
+    lr_scheduler = optim.lr_scheduler.LinearWarmupLRScheduler(total_steps,
+                                                              warmup)
+
+    # Initial state
+    assert lr_scheduler.total_steps == total_steps
+    assert lr_scheduler.warmup == warmup
+
+
+@pytest.mark.parametrize("lr_scheduler,expected_values", [
+    (optim.lr_scheduler.ConstantWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                    0.023843, 0.023843, 0.023843, 0.023843, 0.023843]),
+    (optim.lr_scheduler.CosineWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                  0.010225, 0.002989, 0.0005158, 0.000040937, 0.0000008291]),
+    (optim.lr_scheduler.LinearWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                  0.021675, 0.0157636, 0.0085983, 0.0031266, 0.00056847]),
+    (optim.lr_scheduler.PolyWarmupLRScheduler, [0.181818, 0.066116, 0.036063, 0.026228, 0.023843,
+                                                0.0160749, 0.0096935, 0.0050622, 0.0021585, 0.000650833])
+])
+def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
+    rtol = 1e-04
+
+    # Initial state
+    initial_lr = 1
+    total_steps = 10
+    warmup = 0.5
+    optimizer_config = optim.SGDConfig(lr=initial_lr)
+    lr_scheduler = lr_scheduler(total_steps,
+                                warmup)
+
+    # First half is warmup
+    for step in range(total_steps):
+        # Emulate ORTTRainer.train_step() call that updates its train_step_info
+        train_step_info = TrainStepInfo(step=step, optimizer_config=optimizer_config)
+
+        lr_scheduler._step(train_step_info)
+        lr_list = lr_scheduler.get_last_lr()
+        assert len(lr_list) == 1
+        assert_allclose(lr_list[0],
+                        expected_values[step], rtol=rtol, err_msg="lr mismatch")
