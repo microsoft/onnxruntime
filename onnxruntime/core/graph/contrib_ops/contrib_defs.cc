@@ -2857,7 +2857,10 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SinceVersion(1)
       .SetDoc(Trilu_ver1_doc)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-        .Attr("upper", "Boolean whether upper or lower part of matrix retains it's elements", AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("upper",
+              "Boolean whether upper or lower part of matrix retains it's elements. Default value of upper is true.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Input(
             0,
             "X",
@@ -2866,7 +2869,8 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         .Input(
             1,
             "k",
-            "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include.",
+            "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
+            "Default value is 0 if it's not specified.",
             "tensor(int64)",
             OpSchema::Optional)
         .Output(

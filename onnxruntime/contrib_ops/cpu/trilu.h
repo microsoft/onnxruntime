@@ -7,12 +7,14 @@ namespace contrib {
 class Trilu final : public OpKernel {
  public:
   explicit Trilu(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr<int64_t>("upper", &upper_).IsOK());
+    int64_t temp;
+    ORT_ENFORCE(info.GetAttr<int64_t>("upper", &temp).IsOK());
+    upper_ = temp != 0;
   }
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-   int64_t upper_;
+   bool upper_;
    template<typename T>
    struct ComputeImpl;
 };
