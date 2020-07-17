@@ -131,19 +131,6 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 }
 
-std::vector<const OrtValue*>
-GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                std::unordered_map<std::string, int> input_names) {
-  std::vector<const OrtValue*> input_tensors;
-
-  for (auto input_info_iter = input_names.begin();
-       input_info_iter != input_names.end(); ++input_info_iter) {
-    input_tensors.push_back(ort.KernelContext_GetInput(context, input_info_iter->second));
-  }
-
-  return input_tensors;
-}
-
 std::vector<OrtValue*>
 GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
                  InferenceEngine::InferRequest::Ptr infer_request,

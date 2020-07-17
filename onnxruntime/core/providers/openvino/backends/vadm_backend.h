@@ -23,7 +23,7 @@ class VADMBackend : public IBackend {
 
  private:
   void StartAsyncInference(Ort::CustomOpApi& ort,
-                           std::vector<const OrtValue*> input_tensors,
+                           OrtKernelContext* context,
                            size_t batch_slice_idx, size_t infer_req_idx,
                            std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                            std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);

@@ -88,8 +88,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
     
-    std::string input_name = input_info_iter->first;
-    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_name));
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_info_iter->first));
     auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
 
