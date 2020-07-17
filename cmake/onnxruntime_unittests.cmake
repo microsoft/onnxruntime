@@ -124,6 +124,7 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
 if(WIN32)
