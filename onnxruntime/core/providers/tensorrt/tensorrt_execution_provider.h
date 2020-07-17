@@ -62,6 +62,9 @@ struct TensorrtExecutionProviderInfo {
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
+  bool engine_cache_enable;
+  std::string engine_path;
+  nvinfer1::IRuntime* runtime = nullptr;
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
@@ -76,6 +79,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
+  const char* name;
 };
 
 // Logical device representation.

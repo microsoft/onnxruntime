@@ -851,11 +851,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
+      *p = {engine_cache_enable_, engine_cache_path_, runtime_, context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             &engines_[context->node_name], &contexts_[context->node_name], builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, &fp16_enable_,
-            &max_workspace_size_};
+            &max_workspace_size_, context->node_name};
       *state = p.release();
       return 0;
     };
@@ -1035,24 +1035,46 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         auto trt_config = tensorrt_ptr::unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
+		std::string trt_node_name_with_precision = std::string(trt_state->name);
         if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+		  trt_node_name_with_precision += "_fp16";
         }
         trt_state->context->reset();
         trt_state->engine->reset();
-        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
-            trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
 
+		
+      std::ifstream planFile(GetEnginePath(trt_state->engine_path, trt_node_name_with_precision), std::ios::binary | std::ios::in);
+      if (planFile && trt_state->engine_cache_enable) {
+        planFile.seekg(0, std::ios::end);
+        int engine_size = planFile.tellg();
+        planFile.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        planFile.read((char*)engine_buf.get(), engine_size);
+        planFile.close();
+        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
+      } else {
+        *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config));
         if (trt_state->engine->get() == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not build Engine for fused node: " + trt_node_name_with_precision);
         }
-        trt_engine = trt_state->engine->get();
 
+        if (trt_state->engine_cache_enable) {
+          nvinfer1::IHostMemory* serializedModel = trt_state->engine->get()->serialize();
+          std::ofstream file(GetEnginePath(trt_state->engine_path, trt_node_name_with_precision), std::ios::binary | std::ios::out);
+          file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
+          serializedModel->destroy();
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + GetEnginePath(trt_state->engine_path, trt_node_name_with_precision);
+        }
+      }	  
         *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
         if (trt_state->context->get() == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Create Context.");
         }
+		trt_engine = trt_state->engine->get();
         trt_context = trt_state->context->get();
       }
 
