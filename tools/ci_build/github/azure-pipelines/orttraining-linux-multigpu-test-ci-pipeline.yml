@@ -4,7 +4,7 @@ jobs:
 - job: Onnxruntime_Linux_Multi_GPU_Test
   pool: Linux-Multi-GPU-V100
 
-  timeoutInMinutes: 60
+  timeoutInMinutes: 0
 
   steps:
   - checkout: self
