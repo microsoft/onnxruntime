@@ -186,6 +186,33 @@ void ModelBuilder::PreprocessInitializers() {
   }
 }
 
+// Help to get all quantized operators' input and the node(s) using the input
+std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_view) {
+  std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
+  const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
+  for (const auto& node_idx : node_indices) {
+    const auto* node(graph_view.GetNode(node_idx));
+    const auto& op_type = node->OpType();
+    if (op_type == "DequantizeLinear" || op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+      const auto& input_name = node->InputDefs()[0]->Name();
+      if (Contains(all_quantized_op_inputs, input_name))
+        all_quantized_op_inputs.at(input_name).push_back(node);
+      else
+        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+    }
+
+    if (op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+      const auto& input_name = node->InputDefs()[3]->Name();
+      if (Contains(all_quantized_op_inputs, input_name))
+        all_quantized_op_inputs.at(input_name).push_back(node);
+      else
+        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+    }
+  }
+
+  return all_quantized_op_inputs;
+}
+
 void ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
   auto initializer_size = initializers_.size();
@@ -255,27 +282,6 @@ void ModelBuilder::RegisterInitializers() {
   }
 }
 
-// Help to get all quantized operators' input
-// Current we only use the main input (0) since for now this is the only input which is not
-// an initializer for these quantized inputs
-std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_view) {
-  std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
-  const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
-  for (const auto& node_idx : node_indices) {
-    const auto* node(graph_view.GetNode(node_idx));
-    const auto& op_type = node->OpType();
-    if (op_type == "QLinearMatMul" || op_type == "QLinearConv" || op_type == "DequantizeLinear") {
-      const auto& input_name = node->InputDefs()[0]->Name();
-      if (Contains(all_quantized_op_inputs, input_name))
-        all_quantized_op_inputs.at(input_name).push_back(node);
-      else
-        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
-    }
-  }
-
-  return all_quantized_op_inputs;
-}
-
 void ModelBuilder::RegisterModelInputs() {
   const auto all_quantized_op_inputs = GetAllQuantizedOpInputs(graph_view_);
   for (const auto* node_arg : graph_view_.GetInputs()) {
@@ -323,7 +329,7 @@ void ModelBuilder::RegisterModelInputs() {
 
           // TODO, verify the scale and zero point match if there are multiple op using same input
           std::tie(scale, zero_point) =
-              GetQuantizedInputScaleAndZeroPoint(*this, *all_quantized_op_inputs.at(input_name)[0]);
+              GetQuantizedInputScaleAndZeroPoint(*this, *all_quantized_op_inputs.at(input_name)[0], input_name);
           break;
         }
         default:
