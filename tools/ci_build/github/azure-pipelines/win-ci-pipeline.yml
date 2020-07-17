@@ -146,7 +146,9 @@ jobs:
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
 
 - job: 'x86_build'
   pool: 'Win-CPU-2019'
@@ -282,7 +284,9 @@ jobs:
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
    
 - job: 'x86_no_contrib_ops'
   pool: 'Win-CPU-2019'
@@ -407,7 +411,9 @@ jobs:
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
 
 - job: 'build_x64_no_contrib_ops'
   pool: 'Win-CPU-2019'
@@ -534,5 +540,7 @@ jobs:
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
    
