@@ -12,7 +12,7 @@ import torch
 from torch import nn
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
-# from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from tqdm import tqdm, trange
 
@@ -172,14 +172,16 @@ class ORTTransformerTrainer:
             else:
                 return {"weight_decay": self.args.weight_decay, "weight_decay_mode" : 1}
 
+        print("ORTTrainer: self.args.local_rank = ", self.args.local_rank)
         self.model = ORTTrainer(self.model, None,
-            self.model_desc, 
+            self.model_desc,
             "AdamOptimizer",
             map_optimizer_attributes=map_optimizer_attributes,
             learning_rate_description=IODescription('Learning_Rate', [1,], torch.float32),
             device=self.args.device,
             gradient_accumulation_steps=self.args.gradient_accumulation_steps,
-            world_rank=0, world_size=1,     # only support single GPU cases
+            world_rank=self.args.local_rank,
+            world_size=4,
             use_mixed_precision=self.args.fp16,
             allreduce_post_accumulation=True,
             get_lr_this_step=get_lr_this_step,
