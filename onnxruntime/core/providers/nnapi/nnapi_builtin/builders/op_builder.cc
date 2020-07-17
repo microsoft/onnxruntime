@@ -462,6 +462,20 @@ static void VerifyValidInputQuantizedType(const std::string& input_name,
                   ", ONNX input zero point: " + std::to_string(zero_point));
 }
 
+std::pair<float, int32_t> GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder, const Node& node) {
+  const auto& op_type = node.OpType();
+  assert(op_type == "QLinearMatMul" || op_type == "QLinearConv" || op_type == "DequantizeLinear");
+
+  // TODO, support get weight scale and zero point,
+  float scale = GetQuantizationScale(model_builder, node, 1);
+  int32_t zero_point = 0;
+  if (node.InputDefs().size() > 2) {
+    zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
+  }
+
+  return std::make_pair(scale, zero_point);
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
