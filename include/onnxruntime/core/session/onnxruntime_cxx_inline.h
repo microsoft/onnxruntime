@@ -79,44 +79,44 @@ inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, O
 }
 
 inline Allocator::Allocator(const Session& sess, const MemoryInfo& mem_info) {
-  ThrowOnError(Global<void>::api_.CreateAllocator(sess.operator const OrtSession*(),
+  ThrowOnError(GetApi().CreateAllocator(sess.operator const OrtSession*(),
                                                   mem_info.operator const OrtMemoryInfo*(), &p_));
 }
 
 inline void* Allocator::Alloc(size_t size) const {
   void* out = nullptr;
-  ThrowOnError(Global<void>::api_.AllocatorAlloc(p_, size, &out));
+  ThrowOnError(GetApi().AllocatorAlloc(p_, size, &out));
   return out;
 }
 
 inline void Allocator::Free(void* p) const {
-  ThrowOnError(Global<void>::api_.AllocatorFree(p_, p));
+  ThrowOnError(GetApi().AllocatorFree(p_, p));
 }
 
 inline const OrtMemoryInfo* Allocator::GetInfo() const {
   const OrtMemoryInfo* out = nullptr;
-  ThrowOnError(Global<void>::api_.AllocatorGetInfo(p_, &out));
+  ThrowOnError(GetApi().AllocatorGetInfo(p_, &out));
   return out;
 }
 
 inline IoBinding::IoBinding(Session& session) {
-  ThrowOnError(Global<void>::api_.CreateIoBinding(session, &p_));
+  ThrowOnError(GetApi().CreateIoBinding(session, &p_));
 }
 
 inline void IoBinding::BindInput(const char* name, const Value& value) {
-  ThrowOnError(Global<void>::api_.BindInput(p_, name, value));
+  ThrowOnError(GetApi().BindInput(p_, name, value));
 }
 
 inline void IoBinding::BindOutput(const char* name, const Value& value) {
-  ThrowOnError(Global<void>::api_.BindOutput(p_, name, value));
+  ThrowOnError(GetApi().BindOutput(p_, name, value));
 }
 
 inline void IoBinding::ClearBoundInputs() {
-  Global<void>::api_.ClearBoundInputs(p_);
+  GetApi().ClearBoundInputs(p_);
 }
 
 inline void IoBinding::ClearBoundOutputs() {
-  Global<void>::api_.ClearBoundOutputs(p_);
+  GetApi().ClearBoundOutputs(p_);
 }
 
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
@@ -296,7 +296,7 @@ inline void Session::Run(const RunOptions& run_options, const char* const* input
 }
 
 inline void Session::Run(const RunOptions& run_options, const IoBinding& io_binding) {
-  ThrowOnError(Global<void>::api_.RunWithBinding(p_, run_options, io_binding));
+  ThrowOnError(GetApi().RunWithBinding(p_, run_options, io_binding));
 }
 
 inline size_t Session::GetInputCount() const {
