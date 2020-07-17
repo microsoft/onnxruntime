@@ -23,6 +23,7 @@ class TrainStepInfo(object):
         optimizer_config (optim._OptimizerConfig): reference to optimizer config
 
     Example:
+
         .. code-block:: python
 
             info = TrainStepInfo(all_finite=True, step=0, optimizer_config=optim.SGDConfig(lr=0.01))
@@ -46,7 +47,9 @@ class TrainStepInfo(object):
 
 class ORTTrainer(object):
     r"""Pytorch frontend for ONNX Runtime training
+
     Entry point that exposes the C++ backend of ORT as a Pytorch frontend.
+
     Args:
         model (torch.nn.Module or onnx.ModelProto): either a PyTorch or ONNX model.
             When a PyTorch model and :py:attr:`loss_fn` are specified, :py:attr:`model` and :py:obj:`loss_fn` are combined.
@@ -76,8 +79,11 @@ class ORTTrainer(object):
             Inputs to the combined PyTorch model are concatenation of the :py:attr:`model`'s input and :py:attr:`loss_fn`'s label input.
             Outputs of the combined PyTorch model are concatenation of :py:attr:`loss_fn`'s loss output and :py:attr:`model`'s outputs.
         options (ORTTrainerOptions, default is None): options for additional features.
+
     Example:
+
         .. code-block:: python
+
             model = ...
             model_desc = {
                 "inputs": [
@@ -138,17 +144,22 @@ class ORTTrainer(object):
 
     def eval_step(self, *input, **kwargs):
         r"""Evaluation step method
+
         Args:
             *input: Arbitrary arguments that are used as model input (data only)
             **kwargs: Arbitrary keyword arguments that are used as model input (data only)
+
         Returns:
-            ordered :py:obj:`list` with model outputs as described by :py:attr:`ORTTrainer.model_desc`
+            ordered :py:obj:`list` with model outputs as described by :py:attr:`.ORTTrainer.model_desc`
         """
         pass
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
-        The model will be saved as a protobuf file as per ONNX standard.
+
+        The model will be saved as a Google Protocol Buffers (aka protobuf) file as per ONNX standard containing
+        the full graph, including inference and training metadata.
+
         Args:
             path (str): Full path, including filename, to save the model in the filesystem
         """
@@ -156,12 +167,15 @@ class ORTTrainer(object):
 
     def train_step(self, *input, **kwargs):
         r"""Train step method
+
         After forward pass, an ordered list with all outputs described at :py:attr:`ORTTrainer.model_desc` is returned.
         Additional information relevant to the train step is maintend by :py:attr:`ORTTrainer._train_step_info`.
-        See :py:class:`ORTTrainerOptions` for details.
+        See :py:class:`.TrainStepInfo` for details.
+
         Args:
             *input: Arbitrary arguments that are used as model input (data only)
             **kwargs: Arbitrary keyword arguments that are used as model input (data only)
+
         Returns:
             ordered :py:obj:`list` with model outputs as described by :py:attr:`ORTTrainer.model_desc`
         """
