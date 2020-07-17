@@ -40,7 +40,7 @@ jobs:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
-    runCodesignValidationInjection: ${{ parameters.DoNodejsPack }} #For the others, code sign is in a separated job
+    runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     ${{ if eq(parameters.EnableLto, true) }}:
       build_py_lto_flag: --enable_lto
