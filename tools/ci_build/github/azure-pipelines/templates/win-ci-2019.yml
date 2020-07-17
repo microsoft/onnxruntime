@@ -255,7 +255,7 @@ jobs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
-      #Put an unzipped version there to check if all the binaries are signed.
+      # Put an unzipped version there to check if all the binaries are signed.
       - script: |
          7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
          7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
