@@ -16,7 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double, long>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t>()),
     Trilu);
 
 template <typename T>
@@ -77,7 +77,7 @@ Status Trilu::Compute(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensor should have a rank of at least 2");
   }
 
-  utils::MLTypeCallDispatcher<ComputeImpl, float, double, long> t_disp(X->GetElementType());
+  utils::MLTypeCallDispatcher<ComputeImpl, float, double, int64_t> t_disp(X->GetElementType());
   t_disp.Invoke(X, Y, k_val, up);
 
   return Status::OK();
