@@ -57,5 +57,6 @@ class BaseModel(object):
             self.session_ = onnxruntime.InferenceSession(model_new_path, providers=self.providers_, sess_options=self.session_options_)
             return
         except Exception as e:
+            self.session_ = None
             print(e)
             raise

@@ -1,3 +1,4 @@
+import os
 import csv
 import timeit
 from datetime import datetime
@@ -8,6 +9,7 @@ import numpy as np
 import argparse
 import copy
 import json
+import re
 from onnx import numpy_helper
 from perf_utils import analyze_profiling_file
 import pprint
@@ -72,10 +74,10 @@ MODELS = {
     "yolov4": (YoloV4, "yolov4"),
     "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
     "Arc-Face": (ArcFace, "arc-face"),
-    # "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    ##### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
     "Fast-Neural": (FastNeural, "Fast-Neural"),
     "BiDAF": (BiDAF, "BiDAF"),
-    # "GPT2": (GPT2, "GPT2"),
+    ##### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -123,7 +125,6 @@ def get_trt_version():
     stdout = stdout.decode("ascii").strip()
     
     if stdout != "":
-        import re
         stdout = re.sub('\s+', ' ', stdout)
         return stdout 
 
@@ -236,7 +237,7 @@ def validate(all_ref_outputs, all_outputs, decimal):
                 for ref_o, o in zip(ref_output, output):
                     np.testing.assert_almost_equal(ref_o, o, decimal)
     except Exception as e:
-        info.error(e) 
+        logger.error(e) 
         return False
 
     print('ONNX Runtime outputs are similar to reference outputs!')
@@ -276,10 +277,10 @@ def update_fail_model(model_name, ep, ep_model_fail_map):
     if not model_name in ep_model_fail_map:
         ep_model_fail_map[model_name] = [ep]
     else:
-        ep_model_fail_map[model_name].append(ep)
+        if ep not in ep_model_fail_map[model_name]:
+            ep_model_fail_map[model_name].append(ep)
 
 def get_system_info(info):
-    import re
     info["cuda"] = get_cuda_version()
     info["trt"] = get_trt_version()
 
@@ -340,9 +341,7 @@ def run_onnxruntime(args, models=MODELS):
     sys_info = {} 
     get_system_info(sys_info)
 
-    provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
-    # provider_list = ["CPUExecutionProvider"]
-
+    # iterate models
     for name in models.keys():
         info = models[name] 
         model_class = info[0]
@@ -358,12 +357,28 @@ def run_onnxruntime(args, models=MODELS):
         # cleanup files before running a new inference
         remove_profiling_files(path)
 
+        model = None
         inputs = []
         ref_outputs = []
 
+        if args.fp16:
+            provider_list = ["TensorrtExecutionProvider_fp16","TensorrtExecutionProvider", "CUDAExecutionProvider"]
+        else:
+            provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+
+
+        # iterate execution providers 
         for i in range(len(provider_list)):
-            ep = provider_list[i]
+            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
+            fp16 = False 
             ep_fail_flag = False
+            ep = provider_list[i]
+
+            if "fp16" in ep:
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
+                fp16 = True 
+                ep = "TensorrtExecutionProvider"
+                provider_list[i] = ep
 
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
@@ -373,14 +388,26 @@ def run_onnxruntime(args, models=MODELS):
 
             # create onnxruntime inference session
             logger.info("\nInitializing {} with {}...".format(name, provider_list[i:]))
-            model = model_class(providers=provider_list[i:])
+
+            # re-use model instance if possible
+            if model:
+                sess = model.get_session()
+                if sess and sess.get_providers()[0] == ep:
+                    logger.info("re-use session...")
+                    sess.set_providers(provider_list[i:])
+                else:
+                    model = model_class(providers=provider_list[i:])
+            else:
+                proper_povider_list = list(dict.fromkeys(provider_list[i:]))
+                logger.info("use proper list: {}".format(proper_povider_list))
+                model = model_class(providers=proper_povider_list)
+
             model_name = model.get_model_name()
 
             # read input/output of test data
             if not inputs or not ref_outputs:
                 test_data_dir = model.get_onnx_zoo_test_data_dir()
                 inputs, ref_outputs = load_onnx_model_zoo_test_data(test_data_dir)
-
 
             # these settings are temporary
             sequence_length = 1
@@ -391,13 +418,16 @@ def run_onnxruntime(args, models=MODELS):
             options = onnxruntime.SessionOptions()
             options.enable_profiling = True 
             model.set_session_options(options)
-            try: 
-                model.create_session()
-            except Exception as e:
-                logger.error(e)
-                ep_fail_flag = True
-                update_fail_model(model_name, ep, ep_model_fail_map)
-                continue
+
+            # re-use session if possible
+            if not model.get_session():
+                try: 
+                    model.create_session()
+                except Exception as e:
+                    logger.error(e)
+                    ep_fail_flag = True
+                    update_fail_model(model_name, ep, ep_model_fail_map)
+                    continue
 
             sess = model.get_session()
 
@@ -406,7 +436,7 @@ def run_onnxruntime(args, models=MODELS):
                 "version": onnxruntime.__version__,
                 "device": ep,
                 "optimizer": optimize_onnx,
-                "fp16": args.fp16,
+                "fp16": fp16,
                 "io_binding": False,
                 "model_name": model_name,
                 "inputs": len(sess.get_inputs()),
@@ -416,7 +446,10 @@ def run_onnxruntime(args, models=MODELS):
                 "total_time": None,
             }
 
-            logger.info("Start to inference {} with {} ...".format(model_name, ep))
+            if fp16:
+                logger.info("Start to inference {} with {} fp16 ...".format(model_name, ep))
+            else:
+                logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
 
 
@@ -441,28 +474,54 @@ def run_onnxruntime(args, models=MODELS):
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
+            ep = ep + "_fp16" if fp16 else ep 
             latency_result[ep] = result["average_latency_ms"]
 
             logger.info(result)
             results.append(result)
             latency_comparison_map[model_name] = copy.deepcopy(latency_result)
 
+            # end of ep
 
         sess = model.get_session()
         sess.end_profiling()
-
         if not ep_fail_flag:
-            total_ops_in_trt, total_ops, ratio_of_ops_in_trt, ratio_of_execution_time_in_trt = analyze_profiling_file(path)
-            profile_metrics_map[model_name] = {}
-            profile_metrics_map[model_name]['total_ops_in_trt'] = total_ops_in_trt
-            profile_metrics_map[model_name]['total_ops'] = total_ops
-            profile_metrics_map[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-            profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+            presults = analyze_profiling_file(path)
+            for i in range(len(presults)):
+                result = presults[i]
+                total_ops_in_trt = result[0]
+                total_ops = result[1]
+                ratio_of_ops_in_trt = result[2]
+                ratio_of_execution_time_in_trt =  result[3]
+                
+                name = model_name + " (TRT fp16)" if i == 0 else model_name
+                profile_metrics_map[name] = {}
+                profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
+                profile_metrics_map[name]['total_ops'] = total_ops
+                profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
 
-        cleanup_files()
+        # cleanup_files()
         os.chdir(pwd)
 
+        # end of model
+
     return results, latency_comparison_map, ep_model_fail_map, profile_metrics_map
+
+def add_improvement_information(latency_comparison_map):
+    for key, value in latency_comparison_map.items():
+        if not ('TensorrtExecutionProvider' in value and 'CUDAExecutionProvider' in value):
+            continue
+
+        trt_latency = float(value['TensorrtExecutionProvider'])
+        cuda_latency = float(value['CUDAExecutionProvider'])
+        gain = (cuda_latency - trt_latency)*100/trt_latency
+        value["Tensorrt_gain(%)"] = "{:.2f} %".format(gain) 
+
+        if "TensorrtExecutionProvider_fp16" in value:
+            trt_fp16_latency = float(value['TensorrtExecutionProvider_fp16'])
+            gain = (cuda_latency - trt_fp16_latency)*100/trt_fp16_latency
+            value["Tensorrt_fp16_gain(%)"] = "{:.2f} %".format(gain) 
 
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
@@ -499,7 +558,7 @@ def parse_arguments():
 
     parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
 
-    parser.add_argument("--fp16", required=False, action="store_true", help="Use FP16 to accelerate inference")
+    parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Use FP16 to accelerate inference")
 
     parser.add_argument("--fp32", required=False, action="store_true", help="Use FP32 to accelerate inference")
 
@@ -548,8 +607,13 @@ def main():
 
     if latency_comparison_map:
         logger.info("\nCUDA/TRT inference time comparison:")
+        add_improvement_information(latency_comparison_map)
         pp.pprint(latency_comparison_map)
 
+    logger.info("\nSystem information:")
+    info = {}
+    get_system_info(info)
+    pp.pprint(info)
 
     if results:
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -560,9 +624,6 @@ def main():
         csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
         output_latency_comparison(latency_comparison_map, csv_filename)
 
-    info = {}
-    get_system_info(info)
-    pp.pprint(info)
     
 
 
