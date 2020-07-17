@@ -3,8 +3,7 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-# This script benchmarks gpt2 model with past state.
-# For gpt2 model without past state, use benchmark.py to measure performance.
+# This script helps onnx conversion and validation for GPT2 model with past state.
 import os
 import logging
 import torch
