@@ -335,6 +335,8 @@ class Gpt2Helper:
     def test_parity(ort_session, model, device, is_float16=False, rtol=5e-4, atol=5e-4, total_test_cases=100):
         config: GPT2Config = model.config
 
+        logger.info(f"Running parity test (rtol={rtol}, atol={atol}, test_cases={total_test_cases}) ...")
+
         passed_test_cases = 0
         for _ in range(total_test_cases):
             sequence_length = random.randint(1, 32)
@@ -351,7 +353,7 @@ class Gpt2Helper:
             is_all_close = Gpt2Helper.compare_outputs(outputs, ort_outputs, rtol=rtol, atol=atol)
             if is_all_close:
                 passed_test_cases += 1
-        logger.info(f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases} (rtol={rtol}, atol={atol})")
+        logger.info(f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}")
         if passed_test_cases > 0.95 * total_test_cases:
             logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
         return passed_test_cases == total_test_cases

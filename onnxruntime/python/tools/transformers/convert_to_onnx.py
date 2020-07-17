@@ -20,7 +20,7 @@ import coloredlogs
 import logging
 import torch
 from transformers import AutoConfig
-from gpt2_helper import Gpt2Helper, MyGPT2Model, MyGPT2LMHeadModel, MODEL_CLASSES, DEFAULT_TOLERANCE
+from gpt2_helper import Gpt2Helper, MODEL_CLASSES, DEFAULT_TOLERANCE
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 

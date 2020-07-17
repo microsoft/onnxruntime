@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 # This measures the performance of OnnxRuntime, PyTorch and TorchScript on transformer models.
 # Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
 # GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
