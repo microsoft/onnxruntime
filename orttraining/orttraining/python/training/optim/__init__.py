@@ -1,1 +1,1 @@
-from .config import AdamConfig, LambConfig, SGDConfig
+from .config import _OptimizerConfig, AdamConfig, LambConfig, SGDConfig
