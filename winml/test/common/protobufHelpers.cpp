@@ -10,12 +10,16 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "protobufHelpers.h"
-
 #include <fstream>
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "onnxruntime_c_api.h"
+#include "core/platform/env.h"
 
 using namespace wss;
 using namespace wfc;
 using namespace winml;
+
+static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
 // Copy and pasted from LOTUS as is.    temporary code to load tensors from protobufs
 int FdOpen(const std::string& name) {
@@ -41,23 +45,29 @@ void FdClose(int fd) {
 
 // Load Onnx TensorProto from Protobuf File
 bool ProtobufHelpers::LoadOnnxTensorFromProtobufFile(onnx::TensorProto& tensor, std::wstring filePath) {
-  // setup a string converter
-  using convert_type = std::codecvt_utf8<wchar_t>;
-  std::wstring_convert<convert_type, wchar_t> converter;
-
-  // use converter (.to_bytes: wstr->str, .from_bytes: str->wstr)
-  std::string file = converter.to_bytes(filePath.c_str());
-
-  std::ifstream stream(file, std::ios::binary | std::ios::ate);
-  std::streamsize size = stream.tellg();
-  stream.seekg(0, std::ios::beg);
-
-  std::vector<char> buffer(static_cast<size_t>(size));
-  if (stream.read(buffer.data(), size)) {
-    return tensor.ParseFromArray(buffer.data(), static_cast<int>(size));
-  } else {
+  size_t file_size = 0;
+  int block_size = -1;
+  int fd;
+  // Get file descriptor
+  onnxruntime::Status status = onnxruntime::Env::Default().FileOpenRd(filePath, fd);
+  if (!status.IsOK()) {
     return false;
   }
+  // Get size of file
+  status = onnxruntime::Env::Default().GetFileLength(fd, file_size);
+  if (status.IsOK()) {
+    block_size = std::min(DEFAULT_PROTOBUF_BLOCK_SIZE, static_cast<int>(file_size));
+  }
+  else {
+    return false;
+  }
+  // Open protobuf file input stream and parse
+  google::protobuf::io::FileInputStream input(fd, block_size);
+  const bool result = tensor.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
+  if (!result) {
+    return false;
+  }
+  return true;
 }
 
 template <typename DataType>
@@ -79,6 +89,16 @@ template <>
 std::vector<int64_t> GetTypeSpecificDataFromTensorProto(
     onnx::TensorProto tensorProto) {
   return std::vector<int64_t>(std::begin(tensorProto.int64_data()), std::end(tensorProto.int64_data()));
+}
+template <>
+std::vector<uint8_t> GetTypeSpecificDataFromTensorProto(
+    onnx::TensorProto tensorProto) {
+  return std::vector<uint8_t>(std::begin(tensorProto.int32_data()), std::end(tensorProto.int32_data()));
+}
+template <>
+std::vector<double> GetTypeSpecificDataFromTensorProto(
+    onnx::TensorProto tensorProto) {
+  return std::vector<double>(std::begin(tensorProto.double_data()), std::end(tensorProto.double_data()));
 }
 
 template <typename DataType>
@@ -103,8 +123,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(
 static std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
     onnx::TensorProto tensorProto,
     uint64_t elementCount) {
-  if(tensorProto.string_data_size() != elementCount)
-  {
+  if (tensorProto.string_data_size() != elementCount) {
     throw winrt::hresult_invalid_argument(L"Number of elements in TensorProto does not match expected element count.");
   }
   auto& values = tensorProto.string_data();
@@ -139,6 +158,10 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
         return TensorInt64Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount));
       case (onnx::TensorProto::DataType::TensorProto_DataType_STRING):
         return TensorString::CreateFromIterable(tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount));
+      case (onnx::TensorProto::DataType::TensorProto_DataType_UINT8):
+        return TensorUInt8Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<uint8_t>(tensorProto, elementCount));
+      case (onnx::TensorProto::DataType::TensorProto_DataType_DOUBLE):
+        return TensorDouble::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<double>(tensorProto, elementCount));
       default:
         throw winrt::hresult_invalid_argument(L"Tensor type for creating tensor from protobuf file not supported.");
         break;
@@ -153,7 +176,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
   onnx::TensorProto tensorProto;
   if (LoadOnnxTensorFromProtobufFile(tensorProto, filePath)) {
     if (tensorProto.has_data_type()) {
-      if(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16 != tensorProto.data_type()) {
+      if (onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16 != tensorProto.data_type()) {
         throw winrt::hresult_invalid_argument(L"TensorProto datatype isn't of type Float16.");
       }
     } else {
@@ -169,8 +192,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
     uint32_t sizeInBytes;
     spTensorValueNative->GetBuffer(reinterpret_cast<BYTE**>(&data), &sizeInBytes);
 
-    if (!tensorProto.has_raw_data())
-    {
+    if (!tensorProto.has_raw_data()) {
       throw winrt::hresult_invalid_argument(L"Float16 tensor proto buffers are expected to contain raw data.");
     }
 
