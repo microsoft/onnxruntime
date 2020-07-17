@@ -29,10 +29,6 @@ int GetFirstAvailableDevice(GlobalContext& global_context);
 InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
 
-std::vector<const OrtValue*> GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                                             std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                                             std::vector<int> input_indexes);
-
 std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort,
                                         OrtKernelContext* context, size_t batch_size,
                                         InferenceEngine::InferRequest::Ptr infer_request,

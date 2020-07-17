@@ -107,7 +107,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
+void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context,
                                       size_t batch_slice_idx, size_t infer_req_idx,
                                       std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                       std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -130,8 +130,9 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
     auto graph_input_buffer =
         graph_input_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_info_iter->first));
     size_t input_data_size = graph_input_blob->byteSize();
-    const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
+    const char* tensor_data = ort.GetTensorData<char>(tensor);
     const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
 
     // Copy input data into OpenVINO's input buffer
@@ -213,14 +214,13 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 
-  // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, subgraph_context_.input_indexes);
-
   size_t batch_size = 1;
 
   if (subgraph_context_.enable_batching) {
     // Calculate the batch_size from the input tensor shape.
-    batch_size = DeduceBatchSize(ort, input_tensors[0],
+    auto iter = subgraph_context_.input_names.begin();
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(iter->first));
+    batch_size = DeduceBatchSize(ort, tensor,
                                  ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
   }
 
@@ -238,7 +238,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   for (size_t set = 0; set < full_parallel_runs; set++) {
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
-      StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
+      StartAsyncInference(ort, context, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
     }
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
@@ -249,7 +249,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Run parallel inferences for remaining batch slices
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
+    StartAsyncInference(ort, context, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
   }
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;

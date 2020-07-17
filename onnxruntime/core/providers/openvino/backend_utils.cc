@@ -131,20 +131,6 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 }
 
-std::vector<const OrtValue*>
-GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
-                std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network,
-                std::vector<int> input_indexes) {
-  std::vector<const OrtValue*> input_tensors;
-
-  size_t input_count = ie_cnn_network->getInputsInfo().size();
-
-  for (size_t i = 0; i < input_count; i++) {
-    input_tensors.push_back(ort.KernelContext_GetInput(context, input_indexes[i]));
-  }
-  return input_tensors;
-}
-
 std::vector<OrtValue*>
 GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
                  InferenceEngine::InferRequest::Ptr infer_request,

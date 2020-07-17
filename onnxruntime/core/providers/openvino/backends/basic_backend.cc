@@ -65,7 +65,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
-                                       std::vector<const OrtValue*> input_tensors,
+                                       OrtKernelContext* context,
                                        InferenceEngine::InferRequest::Ptr infer_request,
                                        std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto graph_input_info = ie_cnn_network->getInputsInfo();
@@ -87,24 +87,26 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
     auto graph_input_buffer = graph_input_blob->buffer()
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
-
-    auto tensor_shape = ort.GetTensorTypeAndShape(input_tensors[i]);
+    
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_info_iter->first));
+    auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
 
-   if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
+    if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
         (precision == InferenceEngine::Precision::I32)) {
 
-      const int64_t* tensor_data_64 = ort.GetTensorData<int64_t>(input_tensors[i]);
+      const int64_t* tensor_data_64 = ort.GetTensorData<int64_t>(tensor);
       auto data_len = (input_data_size * 2) / sizeof(int64_t)  ;
 
       std::copy(tensor_data_64, tensor_data_64+data_len, (uint32_t*)graph_input_buffer);
     } else {
 
       // Copy input data into OpenVINO's input buffer
-      const char* tensor_data = ort.GetTensorData<char>(input_tensors[i]);
-
+      const char* tensor_data = ort.GetTensorData<char>(tensor);
       std::memcpy(graph_input_buffer, tensor_data, input_data_size);
+
     }
+    
   }
   // Start Async inference
   try {
@@ -179,11 +181,10 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   size_t batch_size = 1;
-  // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, subgraph_context_.input_indexes);
+  // Get Output tensors
   auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_, subgraph_context_.output_names);
 
-  StartAsyncInference(ort, input_tensors, infer_request_, ie_cnn_network_);
+  StartAsyncInference(ort, context, infer_request_, ie_cnn_network_);
   CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
 
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
