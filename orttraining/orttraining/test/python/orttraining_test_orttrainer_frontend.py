@@ -4,7 +4,7 @@ from numpy.testing import assert_allclose
 
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
-from onnxruntime.capi.training import orttrainer, amp
+from onnxruntime.capi.training import orttrainer, amp, optim
 
 
 @pytest.mark.parametrize("test_input", [
@@ -106,8 +106,8 @@ def testDynamicLossScaler():
     default_scaler = amp.loss_scaler.DynamicLossScaler()
 
     # Initial state
-    train_step_info = orttrainer.TrainStepInfo(
-        all_finite=True, epoch=0, step=0)
+    train_step_info = orttrainer.TrainStepInfo(all_finite=True, step=0,
+                                               optimizer_config=None)
     assert_allclose(default_scaler.loss_scale, float(1 << 16),
                     rtol=rtol, err_msg="loss scale mismatch")
     assert default_scaler.up_scale_window == 2000
@@ -186,3 +186,33 @@ def testDynamicLossScalerCustomValues():
     assert_allclose(scaler.max_loss_scale, 10, rtol=rtol,
                     err_msg="max loss scale mismatch")
     assert scaler.up_scale_window == 7
+
+
+def testTrainStepInfo():
+    '''Test valid initializations of TrainStepInfo'''
+
+    step_info = orttrainer.TrainStepInfo(all_finite=True, step=2, optimizer_config=optim.SGDConfig())
+    assert step_info.all_finite is True
+    assert step_info.step == 2
+    assert isinstance(step_info.optimizer_config, optim._OptimizerConfig)
+
+    step_info = orttrainer.TrainStepInfo()
+    assert step_info.all_finite is None
+    assert step_info.step is None
+    assert step_info.optimizer_config is None
+
+
+@pytest.mark.parametrize("test_input", [
+    (-1),
+    ('Hello'),
+])
+def testTrainStepInfoInvalidAllFinite(test_input):
+    '''Test invalid initialization of TrainStepInfo'''
+    with pytest.raises(AssertionError):
+        orttrainer.TrainStepInfo(all_finite=test_input)
+
+    with pytest.raises(AssertionError):
+        orttrainer.TrainStepInfo(step=test_input)
+
+    with pytest.raises(AssertionError):
+        orttrainer.TrainStepInfo(optimizer_config=test_input)

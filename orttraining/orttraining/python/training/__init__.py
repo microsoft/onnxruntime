@@ -9,3 +9,4 @@ from onnxruntime.capi.training.training_session import TrainingSession
 from .orttrainer_options import ORTTrainerOptions
 from . import model_desc_validation
 from . import amp
+from .orttrainer import TrainStepInfo
