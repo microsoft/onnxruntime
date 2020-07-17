@@ -114,7 +114,7 @@ option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
 #A special build option only used for gathering code coverage info
-option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" ON)
+option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
 
 # options for security fuzzing
 # build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
