@@ -84,7 +84,7 @@ if [ "$run_install" = true ] ; then
     pip install onnxruntime-gpu
   fi
   pip install --upgrade onnxruntime-tools
-  pip install transformers==2.11.0
+  pip install --upgrade transformers
 fi
 
 if [ "$run_cli" = true ] ; then
