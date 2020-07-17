@@ -5,7 +5,7 @@
 #endif
 
 #include "dnnl_func_kernel.h"
-#define EXCLUDE_REFERENCE_TO_ORT_DLL
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv.h"

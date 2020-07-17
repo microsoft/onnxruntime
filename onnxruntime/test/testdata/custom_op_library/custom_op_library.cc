@@ -1,8 +1,8 @@
 #include "custom_op_library.h"
 
-#define EXCLUDE_REFERENCE_TO_ORT_DLL
+#define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
-#undef EXCLUDE_REFERENCE_TO_ORT_DLL
+#undef ORT_API_MANUAL_INIT
 
 #include <vector>
 #include <cmath>
