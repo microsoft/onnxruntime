@@ -64,10 +64,10 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       exe_networks.push_back(exe_network);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-    for(size_t i = 0; i < num_inf_reqs_; i++) {
+    for(size_t j = 0; j < num_inf_reqs_; j++) {
       InferenceEngine::InferRequest::Ptr infRequest;
       try {
-        infRequest = exe_networks[i].CreateInferRequestPtr();
+        infRequest = exe_networks[j].CreateInferRequestPtr();
       } catch(InferenceEngine::details::InferenceEngineException e) {
         ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
       } catch (...) {
