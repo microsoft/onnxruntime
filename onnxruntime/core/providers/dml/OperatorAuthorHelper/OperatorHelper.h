@@ -633,7 +633,7 @@ public:
         {
             int dimIndex = axes.empty() ? i : axes[i];
             int stride = steps.empty() ? 1 : steps[i];
-            ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
+            ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(dimIndex) < static_cast<size_t>(inputDimensions.size()), "'axes' must be valid with within actual input dimensions.");
             ML_CHECK_VALID_ARGUMENT(stride != 0, "'steps' must not be 0.");
 
             // Positive values are offsets from 0.
