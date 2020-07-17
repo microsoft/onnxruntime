@@ -35,10 +35,6 @@ constexpr auto static_strings() {
     return StaticStrings<S...>::data;
 }
 
-constexpr static auto A = "tensor(uint8)";
-constexpr static auto B = "tensor(int32)";
-constexpr auto x = static_strings<&A, &B>();
-
 namespace ONNX_NAMESPACE {
 
 template<typename U>
@@ -113,7 +109,7 @@ struct TypeConstraint {
     constexpr TypeConstraint(
             const char* type_param_str_,
             span<const char* const> allowed_type_strs_,
-            const char* description_)
+            const char*)
             : type_param_str(type_param_str_),
               allowed_type_strs(allowed_type_strs_) {}
 
@@ -122,11 +118,21 @@ struct TypeConstraint {
 
     constexpr static auto TENSOR_INT8 = "tensor(int8)";
     constexpr static auto TENSOR_UINT8 = "tensor(uint8)";
+    constexpr static auto TENSOR_INT16 = "tensor(int16)";
+    constexpr static auto TENSOR_UINT16 = "tensor(uint16)";
     constexpr static auto TENSOR_INT32 = "tensor(int32)";
-    constexpr static auto TENSOR_FLOAT16 = "tensor(float16)";
+    constexpr static auto TENSOR_UINT32 = "tensor(int32)";
+    constexpr static auto TENSOR_INT64 = "tensor(int64)";
+    constexpr static auto TENSOR_UINT64 = "tensor(int64)";
     constexpr static auto TENSOR_FLOAT = "tensor(float)";
+    constexpr static auto TENSOR_FLOAT16 = "tensor(float16)";
     constexpr static auto TENSOR_DOUBLE = "tensor(double)";
+    constexpr static auto TENSOR_STRING = "tensor(string)";
+    constexpr static auto TENSOR_BOOL = "tensor(bool)";
+    constexpr static auto TENSOR_COMPLEX64 = "tensor(complex64)";
+    constexpr static auto TENSOR_COMPLEX128 = "tensor(complex128)";
 };
+#define AllTensorTypes StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE, &ONNX_NAMESPACE::TypeConstraint::TENSOR_STRING, &ONNX_NAMESPACE::TypeConstraint::TENSOR_BOOL, &ONNX_NAMESPACE::TypeConstraint::TENSOR_COMPLEX64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_COMPLEX128>::data
 
 class CxOpSchema final {
 public:
@@ -471,7 +477,7 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
 }
 
 constexpr static ONNX_NAMESPACE::Attribute AttentionAttributes[] {
-        ONNX_NAMESPACE::Attribute("num_heads", "Number of attention heads", AttributeProto::INT)
+        { "num_heads", "Number of attention heads", AttributeProto::INT},
 };
 constexpr static ONNX_NAMESPACE::FormalParameter AttentionInputs[] {
         ONNX_NAMESPACE::FormalParameter("input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "T"),
@@ -485,8 +491,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter AttentionOutputs[] {
         ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint AttentionTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", static_strings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>(), "Constrain input and output types to float tensors."),
-        ONNX_NAMESPACE::TypeConstraint("M", static_strings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>(), "Constrain mask index to integer types")
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float tensors."),
+        ONNX_NAMESPACE::TypeConstraint("M", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain mask index to integer types")
 };
 static void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -528,8 +534,8 @@ static void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
 };
 
 constexpr static ONNX_NAMESPACE::Attribute QAttentionAttributes[] {
-        ONNX_NAMESPACE::Attribute("num_heads", "Number of attention heads"_docstring, AttributeProto::INT),
-        ONNX_NAMESPACE::Attribute("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0."_docstring, AttributeProto::INT, static_cast<int64_t>(0))
+        { "num_heads", "Number of attention heads"_docstring, AttributeProto::INT },
+        { "unidirectional", "Whether every token can only attend to previous tokens. Default value is 0."_docstring, AttributeProto::INT, static_cast<int64_t>(0) },
 };
 constexpr static ONNX_NAMESPACE::FormalParameter QAttentionInputs[] {
         ONNX_NAMESPACE::FormalParameter("input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size"_docstring, "T1"),
@@ -547,10 +553,10 @@ constexpr static ONNX_NAMESPACE::FormalParameter QAttentionOutputs[] {
         ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring, "T3", OpSchema::Optional)
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint QAttentionTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T1", tensor_int8__tensor_uint8, "Constrain input and output types to int8 tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T2", tensor_int8__tensor_uint8, "Constrain input and output types to int8 tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T3", tensor_float__tensor_float16, "Constrain input and output types to float tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T4", tensor_int32, "Constrain mask index to integer types"_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input and output types to int8 tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input and output types to int8 tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T3", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T4", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain mask index to integer types"_docstring)
 };
 static void QAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     // Type inference
@@ -566,7 +572,7 @@ static void QAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ct
 }
 
 constexpr static ONNX_NAMESPACE::Attribute EmbedLayerNormalizationAttributes[] {
-        ONNX_NAMESPACE::Attribute("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon),
+        { "epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon },
 };
 constexpr static ONNX_NAMESPACE::FormalParameter EmbedLayerNormalizationInputs[] {
         ONNX_NAMESPACE::FormalParameter("input_ids", "2D words IDs with shape (batch_size, sequence_length)"_docstring, "T1"),
@@ -583,8 +589,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter EmbedLayerNormalizationOutputs[
         ONNX_NAMESPACE::FormalParameter("mask_index", "1D mask_index tensor with shape (batch_size)"_docstring, "T1")
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint EmbedLayerNormalizationTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T1", tensor_int32, "Constrain input and output integer tensors types"_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output float tensors types."_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain input and output integer tensors types"_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output float tensors types."_docstring)
 };
 static void EmbedLayerNormalizationTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -635,11 +641,11 @@ constexpr static ONNX_NAMESPACE::FormalParameter FastGeluOutputs[] {
         ONNX_NAMESPACE::FormalParameter("Y", "output tensor"_docstring, "T")
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint FastGeluTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float or half tensors."_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float or half tensors."_docstring)
 };
 
 constexpr static ONNX_NAMESPACE::Attribute SkipLayerNormalizationAttributes[] {
-        ONNX_NAMESPACE::Attribute("epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        { "epsilon", "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilo})
 };
 constexpr static ONNX_NAMESPACE::FormalParameter SkipLayerNormalizationInputs[] {
         ONNX_NAMESPACE::FormalParameter("input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)"_docstring, "T"),
@@ -654,8 +660,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter SkipLayerNormalizationOutputs[]
         ONNX_NAMESPACE::FormalParameter("inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional),
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint SkipLayerNormalizationTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16, "Constrain input and output types to float or half tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("U", tensor_float, "Constrain mean and inv_std_var to float tensors."_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float or half tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("U", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain mean and inv_std_var to float tensors."_docstring)
 };
 
 static constexpr ONNX_NAMESPACE::CxOpSchema BertSchemas[] {
@@ -741,8 +747,8 @@ void RegisterBertSchemas() {
 }
 
 constexpr static ONNX_NAMESPACE::Attribute AffineAttributes[] {
-        ONNX_NAMESPACE::Attribute("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f),
-        ONNX_NAMESPACE::Attribute("beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f),
+        { "alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, 1.0f},
+        { "beta", "Value of beta"_docstring, AttributeProto::FLOAT, 0.0f},
 };
 constexpr static ONNX_NAMESPACE::FormalParameter AffineInputs[] {
         ONNX_NAMESPACE::FormalParameter("X", "1D input tensor"_docstring, "T"),
@@ -751,12 +757,12 @@ constexpr static ONNX_NAMESPACE::FormalParameter AffineOutputs[] {
         ONNX_NAMESPACE::FormalParameter("Y", "1D output tensor"_docstring, "T"),
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint AffineTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain input and output types to float tensors."_docstring),
 };
 
 constexpr static ONNX_NAMESPACE::Attribute ParametricSoftplusAttributes[] {
-        ONNX_NAMESPACE::Attribute("alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE),
-        ONNX_NAMESPACE::Attribute("beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE),
+        { "alpha", "Value of alpha"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE},
+        { "beta", "Value of beta"_docstring, AttributeProto::FLOAT, OPTIONAL_VALUE},
 };
 constexpr static ONNX_NAMESPACE::FormalParameter ParametricSoftplusInputs[] {
         ONNX_NAMESPACE::FormalParameter("X", "1D input tensor"_docstring, "T"),
@@ -765,12 +771,12 @@ constexpr static ONNX_NAMESPACE::FormalParameter ParametricSoftplusOutputs[] {
         ONNX_NAMESPACE::FormalParameter("Y", "1D output tensor"_docstring, "T"),
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint ParametricSoftplusTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain input and output types to float tensors."_docstring),
 };
 
 constexpr static ONNX_NAMESPACE::Attribute ImageScalerAttributes[] {
-        ONNX_NAMESPACE::Attribute("bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE),
-        ONNX_NAMESPACE::Attribute("scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f),
+        { "bias", "Bias applied to each channel, same size as C."_docstring, AttributeProto::FLOATS, OPTIONAL_VALUE},
+        { "scale", "The scale to apply."_docstring, AttributeProto::FLOAT, 1.0f},
 };
 constexpr static ONNX_NAMESPACE::FormalParameter ImageScalerInputs[] {
         ONNX_NAMESPACE::FormalParameter("input", "Input tensor of shape [N,C,H,W]"_docstring, "T"),
@@ -779,12 +785,12 @@ constexpr static ONNX_NAMESPACE::FormalParameter ImageScalerOutputs[] {
         ONNX_NAMESPACE::FormalParameter("output", "Result, has same shape and type as input"_docstring, "T"),
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint ImageScalerTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain input and output types to float tensors."_docstring),
 };
 
 constexpr static ONNX_NAMESPACE::Attribute CropAttributes[] {
-        ONNX_NAMESPACE::Attribute("border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE),
-        ONNX_NAMESPACE::Attribute("scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE),
+        { "border", "A 1-D values of (leftBorder, topBorder, rightBorder, bottomBorder)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE},
+        { "scale", "A 1-D values of (height, width)."_docstring, AttributeProto::INTS, OPTIONAL_VALUE},
 };
 constexpr static ONNX_NAMESPACE::FormalParameter CropInputs[] {
         ONNX_NAMESPACE::FormalParameter("input", "Input tensor of shape [N,C,H,W]"_docstring, "T"),
@@ -793,7 +799,34 @@ constexpr static ONNX_NAMESPACE::FormalParameter CropOutputs[] {
         ONNX_NAMESPACE::FormalParameter("output", "Result, has same type as input, with H and W dimensions reduced."_docstring, "T"),
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint CropTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", tensor_float__tensor_float16__tensor_double, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain input and output types to float tensors."_docstring),
+};
+
+constexpr static ONNX_NAMESPACE::Attribute ThresholdedReluAttributes[] {
+        { "alpha", "Threshold value"_docstring, AttributeProto::FLOAT, 1.0f},
+};
+constexpr static ONNX_NAMESPACE::FormalParameter ThresholdedReluInputs[] {
+        ONNX_NAMESPACE::FormalParameter("X", "Input tensor"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter ThresholdedReluOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("Y", "Output tensor"_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint ThresholdedReluTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain input and output types to float tensors."_docstring),
+};
+
+constexpr static ONNX_NAMESPACE::FormalParameter DynamicSliceInputs[] {
+        ONNX_NAMESPACE::FormalParameter("data", "Tensor of data to extract slices from."_docstring, "T"),
+        ONNX_NAMESPACE::FormalParameter("starts", "1-D tensor of starting indices of corresponding axis in `axes`"_docstring, "Tind"),
+        ONNX_NAMESPACE::FormalParameter("ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes"_docstring, "Tind"),
+        ONNX_NAMESPACE::FormalParameter("axes", "1-D tensor of axes that `starts` and `ends` apply to."_docstring, "Tind", OpSchema::Optional),
+};
+constexpr static ONNX_NAMESPACE::FormalParameter DynamicSliceOutputs[] {
+        ONNX_NAMESPACE::FormalParameter("output", "Sliced data tensor."_docstring, "T"),
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint DynamicSliceTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", AllTensorTypes, "Constrain input and output types to all tensor types."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("Tind", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain indices to integer types"_docstring),
 };
 
 static constexpr ONNX_NAMESPACE::CxOpSchema ContribSchemas[]{
@@ -824,6 +857,30 @@ static constexpr ONNX_NAMESPACE::CxOpSchema ContribSchemas[]{
         .Inputs(CropInputs)
         .Outputs(CropOutputs)
         .TypeConstraints(CropTypeConstraints),
+    ONNX_NAMESPACE::CxOpSchema("ThresholdedRelu", "", 0)
+        .SinceVersion(1)
+        .Attrs(ThresholdedReluAttributes)
+        .Inputs(ThresholdedReluInputs)
+        .Outputs(ThresholdedReluOutputs)
+        .TypeConstraints(ThresholdedReluTypeConstraints)
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput),
+    ONNX_NAMESPACE::CxOpSchema("DynamicSlice", "", 0)
+        .SinceVersion(1)
+        .Inputs(DynamicSliceInputs)
+        .Outputs(DynamicSliceOutputs)
+        .TypeConstraints(DynamicSliceTypeConstraints),
+};
+
+constexpr static ONNX_NAMESPACE::Attribute GivenTensorFillAttributes[] {
+};
+constexpr static ONNX_NAMESPACE::FormalParameter GivenTensorFillInputs[] {
+        { "shape", "The shape of filled tensor"_docstring, "T", OpSchema::Optional },
+};
+constexpr static ONNX_NAMESPACE::FormalParameter GivenTensorFillOutputs[] {
+        { "X", "The filled tensor"_docstring, "T" },
+};
+constexpr static ONNX_NAMESPACE::TypeConstraint GivenTensorFillTypeConstraints[] {
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain input and output types to float tensors."_docstring),
 };
 
 void RegisterContribSchemas() {
@@ -837,73 +894,12 @@ void RegisterContribSchemas() {
         Register(cx_schema);
     }
 
-  static constexpr const char* ThresholdedRelu_ver1_doc = R"DOC(
-ThresholdedRelu takes one input data (Tensor<T>) and produces one output data
-(Tensor<T>) where the rectified linear function, y = x for x > alpha, y = 0 otherwise,
-is applied to the tensor elementwise. )DOC"_docstring;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ThresholdedRelu)
-      .SinceVersion(1)
-      .SetDoc(ThresholdedRelu_ver1_doc)
-      .Attr("alpha", "Threshold value"_docstring, AttributeProto::FLOAT, 1.0f)
-      .Input(0, "X", "Input tensor"_docstring, "T")
-      .Output(0, "Y", "Output tensor"_docstring, "T")
-      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors."_docstring)
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  static constexpr const char* DynamicSlice_ver1_doc = R"DOC(
-Produces a slice of the input tensor along multiple axes. Similar to numpy:
-https://docs.scipy.org/doc/numpy/reference/arrays.indexing.html
-Slices uses `axes`, `starts` and `ends` inputs to specify the start and end
-dimension for each axis in the list of axes, it uses this information to
-slice the input `data` tensor. If a negative value is passed for any of the
-start or end indices, it represent number of elements before the end of that
-dimension. If the value passed to start or end is larger than the `n` (the
-number of elements in this dimension), it represents `n`. For slicing to the
-end of a dimension with unknown size, it is recommended to pass in `INT_MAX`.
-If `axes` are omitted, they are set to `[0, ..., ndim-1]`.
-Example 1:
-  data = [
-      [1, 2, 3, 4],
-      [5, 6, 7, 8],
-  ]
-  axes = [0, 1]
-  starts = [1, 0]
-  ends = [2, 3]
-  result = [
-      [5, 6, 7],
-  ]
-Example 2:
-  data = [
-      [1, 2, 3, 4],
-      [5, 6, 7, 8],
-  ]
-  starts = [0, 1]
-  ends = [-1, 1000]
-  result = [
-      [2, 3, 4],
-  ]
-)DOC"_docstring;
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
-      .SinceVersion(1)
-      .SetDoc(DynamicSlice_ver1_doc)
-      .Input(0, "data", "Tensor of data to extract slices from."_docstring, "T")
-      .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`"_docstring, "Tind")
-      .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes"_docstring, "Tind")
-      .Input(3, "axes", "1-D tensor of axes that `starts` and `ends` apply to."_docstring, "Tind", OpSchema::Optional)
-      .Output(0, "output", "Sliced data tensor."_docstring, "T")
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to all tensor types."_docstring)
-      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types"_docstring);
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GivenTensorFill)
       .SinceVersion(1)
-      .Input(0, "shape", "The shape of filled tensor"_docstring, "T", OpSchema::Optional)
-      .Output(0, "X", "The filled tensor"_docstring, "T")
+      .Input(0, )
+      .Output(0, )
       .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors."_docstring)
+          )
       .Attr("values", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
       .Attr("shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("input_as_shape", "", AttributeProto::INT, OPTIONAL_VALUE)
@@ -1239,7 +1235,6 @@ value at X[t][n] >= seqLengths[n].)DOC"_docstring;
   ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicSlice)
       .SinceVersion(10)
       .Deprecate()
-      .SetDoc(DynamicSlice_ver1_doc)
       .Input(0, "data", "Tensor of data to extract slices from."_docstring, "T")
       .Input(1, "starts", "1-D tensor of starting indices of corresponding axis in `axes`"_docstring, "Tind")
       .Input(2, "ends", "1-D tensor of ending indices (exclusive) of corresponding axis in axes"_docstring, "Tind")
