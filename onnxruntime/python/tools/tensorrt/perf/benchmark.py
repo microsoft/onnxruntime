@@ -48,36 +48,36 @@ from GPT2 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    "bert-squad": (BERTSquad, "bert-squad"),
-    "resnet50": (Resnet50, "resnet50"),
+    # "bert-squad": (BERTSquad, "bert-squad"),
+    # "resnet50": (Resnet50, "resnet50"),
     "resnet101": (Resnet101, "resnet101"),
-    "resnet152": (Resnet152, "resnet152"),
-    "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    "ssd": (SSD, "ssd"),
-    "inception-v1": (InceptionV1, "inception-v1"),
-    "inception-v2": (InceptionV2, "inception-v2"),
-    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
-    "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
-    "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
-    "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
-    "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
-    "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    "bvlc-caffenet": (Alexnet, "bvlc-caffenet"),
-    "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
-    "vgg19-bn": (Vgg, "vgg19-bn"),
-    "zfnet512": (Zfnet512, "zfnet512"),
-    "retinanet": (Retinanet, "retinanet"),
-    "yolov3": (YoloV3, "yolov3"),
-    "yolov4": (YoloV4, "yolov4"),
-    "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    "Arc-Face": (ArcFace, "arc-face"),
-    ##### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
-    "Fast-Neural": (FastNeural, "Fast-Neural"),
-    "BiDAF": (BiDAF, "BiDAF"),
-    ##### "GPT2": (GPT2, "GPT2"), # OOM
+    # "resnet152": (Resnet152, "resnet152"),
+    # "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    # "ssd": (SSD, "ssd"),
+    # "inception-v1": (InceptionV1, "inception-v1"),
+    # "inception-v2": (InceptionV2, "inception-v2"),
+    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
+    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    # "bvlc-caffenet": (Alexnet, "bvlc-caffenet"),
+    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    # "vgg19-bn": (Vgg, "vgg19-bn"),
+    # "zfnet512": (Zfnet512, "zfnet512"),
+    # "retinanet": (Retinanet, "retinanet"),
+    # "yolov3": (YoloV3, "yolov3"),
+    # "yolov4": (YoloV4, "yolov4"),
+    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    # "Arc-Face": (ArcFace, "arc-face"),
+    # ##### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    # "Fast-Neural": (FastNeural, "Fast-Neural"),
+    # "BiDAF": (BiDAF, "BiDAF"),
+    # ##### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -389,19 +389,21 @@ def run_onnxruntime(args, models=MODELS):
             # create onnxruntime inference session
             logger.info("\nInitializing {} with {}...".format(name, provider_list[i:]))
 
-            # re-use model instance if possible
-            if model:
-                sess = model.get_session()
-                if sess and sess.get_providers()[0] == ep:
-                    logger.info("re-use session...")
-                    sess.set_providers(provider_list[i:])
-                else:
-                    model = model_class(providers=provider_list[i:])
-            else:
-                proper_povider_list = list(dict.fromkeys(provider_list[i:]))
-                logger.info("use proper list: {}".format(proper_povider_list))
-                model = model_class(providers=proper_povider_list)
+            # # re-use model instance if possible
+            # if model:
+                # sess = model.get_session()
+                # if sess and sess.get_providers()[0] == ep:
+                    # logger.info("re-use session...")
+                    # sess.set_providers(provider_list[i:])
+                # else:
+                    # model = model_class(providers=provider_list[i:])
+            # else:
+                # proper_povider_list = list(dict.fromkeys(provider_list[i:]))
+                # logger.info("use proper list: {}".format(proper_povider_list))
+                # model = model_class(providers=proper_povider_list)
 
+            proper_povider_list = list(dict.fromkeys(provider_list[i:]))
+            model = model_class(providers=proper_povider_list)
             model_name = model.get_model_name()
 
             # read input/output of test data
@@ -451,7 +453,7 @@ def run_onnxruntime(args, models=MODELS):
             else:
                 logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
-
+            logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
 
             if model.get_input_name():
                 logger.info("Model inputs name:")
