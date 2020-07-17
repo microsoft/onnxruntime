@@ -487,7 +487,6 @@ def install_python_deps(numpy_version=""):
 
 # We need to install Torch to test certain functionalities of the ORT Python package
 def install_torch():
-    # Command works for both Windows
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host',
                     'files.pythonhosted.org', 'torch===1.5.1+cu101', 'torchvision===0.6.1+cu101',
                     '-f', 'https://download.pytorch.org/whl/torch_stable.html'])
@@ -1238,6 +1237,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 iobinding_test = True
 
                 # Try install Torch on Windows
+                # On Linux, it is installed via the `install_deps.sh` script
                 if is_windows():
                     log.info("Attempting to install Torch to test ORT's IOBinding feature")
                     install_torch()

@@ -113,8 +113,14 @@ if [ $DEVICE_TYPE = "Normal" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
+    # Inferencing pipelines need Torch installed as well to test IOBinding
+    if [ "$PYTHON_VER" = "3.5" ]; then
+        echo "Python 3.6 and above is needed for installing the nightly Torch package!"
+    else
+        echo "Installing nightly Torch package"
+        ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+    fi
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
       ${PYTHON_EXE} -m pip install  transformers==v2.10.0
       # transformers requires sklearn
       ${PYTHON_EXE} -m pip install sklearn
