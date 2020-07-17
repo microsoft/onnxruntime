@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace path_utils {
 
 /** Return a PathString with concatenated args.
- *  TODO: Add support for std::wstring for type std::wstring. Currently it is not supported as the underneath
+ *  TODO: add support for arguments of type std::wstring. Currently it is not supported as the underneath
  *  MakeString doesn't support this type.
 */
 template <typename... Args>
