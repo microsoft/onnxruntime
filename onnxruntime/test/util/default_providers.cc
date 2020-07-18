@@ -23,7 +23,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id,
+                                                                               size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
 
 namespace test {
 

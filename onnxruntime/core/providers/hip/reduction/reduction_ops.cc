@@ -49,7 +49,7 @@ static bool is_matrix_row_reduction(
   if (rank < 2)
     return false;
 
-  if (reduce_type != HipReduceTensorType::HIP_REDUCE_TENSOR_ADD)
+  if (reduce_type != MIOPEN_REDUCE_TENSOR_ADD)
     return false;
 
   // Check if all but the last axis are reduced. For example, reducing
@@ -255,7 +255,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, HipRedu
     return Status::OK();
   }
 
-  if (input_count == 1 && input_count == output_count && reduce_type == HipReduceTensorType::HIP_REDUCE_TENSOR_ADD) {
+  if (input_count == 1 && input_count == output_count && reduce_type == MIOPEN_REDUCE_TENSOR_ADD) {
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(reinterpret_cast<HipT*>(Y->template MutableData<T>()),
                                        reinterpret_cast<const HipT*>(X->template Data<T>()),
                                         X->SizeInBytes(), hipMemcpyDeviceToDevice));

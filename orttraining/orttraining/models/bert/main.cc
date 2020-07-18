@@ -24,7 +24,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
                                                                                size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id,
+                                                                              size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                              onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
 }
 
 using namespace onnxruntime;
@@ -565,7 +567,8 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_HIP
   OrtDevice::DeviceId device_id = static_cast<OrtDevice::DeviceId>(params.mpi_context.local_rank);
-  params.providers.emplace(kHipExecutionProvider, CreateExecutionProviderFactory_HIP(device_id));
+  size_t hip_mem_limit = std::numeric_limits<size_t>::max();
+  params.providers.emplace(kHipExecutionProvider, CreateExecutionProviderFactory_HIP(device_id, hip_mem_limit));
   params.input_allocator = std::make_shared<HIPPinnedAllocator>(device_id, CUDA_PINNED);
 #endif
 
