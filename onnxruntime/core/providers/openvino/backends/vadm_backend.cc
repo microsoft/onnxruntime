@@ -130,7 +130,12 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
     auto graph_input_buffer =
         graph_input_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[i]);
+    #else
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_info_iter->first));
+    #endif
+
     size_t input_data_size = graph_input_blob->byteSize();
     const char* tensor_data = ort.GetTensorData<char>(tensor);
     const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
@@ -218,8 +223,13 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   if (subgraph_context_.enable_batching) {
     // Calculate the batch_size from the input tensor shape.
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[0]);
+    #else
     auto iter = subgraph_context_.input_names.begin();
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(iter->first));
+    #endif
+
     batch_size = DeduceBatchSize(ort, tensor,
                                  ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
   }
