@@ -41,15 +41,6 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()), \
       onnxruntime::Dropout<T1, T2, Trainable>);
 
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, MLFloat16, true)
-REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, float, true)
-REGISTER_KERNEL_TYPED(TrainableDropout, 9, float, double, true)
-REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, MLFloat16, true)
-REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, float, true)
-REGISTER_KERNEL_TYPED(TrainableDropout, 9, double, double, true)
-
 #define REGISTER_GRADIENT_KERNEL_TYPED(OpName, T1, T2)                \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       OpName,                                                         \
@@ -76,15 +67,6 @@ REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, float, double)
 REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double, MLFloat16)
 REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double, float)
 REGISTER_GRADIENT_KERNEL_TYPED(DropoutGrad, double, double)
-
-// Temporary for backward compatibility, will eventually get rid of TrainableDropout when PyTorch exporter will move to
-// opset-12.
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float, MLFloat16)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float, float)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, float, double)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, MLFloat16)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, float)
-REGISTER_GRADIENT_KERNEL_TYPED(TrainableDropoutGrad, double, double)
 
 template <typename T1, typename T2>
 Status DropoutGrad<T1, T2>::Compute(OpKernelContext* context) const {
