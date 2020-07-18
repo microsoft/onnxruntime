@@ -76,13 +76,10 @@ Status DispatchToGatherGradImpl(
   if (utils::IsPrimitiveDataType<float>(t_data_type)) {
     return DispatchToGatherGradImplByTin<float>(
         tin_data_type, hip_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
-  }
-#if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 700
-  else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
+  } else if (utils::IsPrimitiveDataType<MLFloat16>(t_data_type)) {
     return DispatchToGatherGradImplByTin<MLFloat16>(
         tin_data_type, hip_kernel, num_weights, stride, num_inputs, param_itrs, grad, indices, output);
   }
-#endif
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GatherGrad unsupported T type: ", t_data_type);
 }

@@ -78,7 +78,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
       logit_reshape,
       Y->template MutableData<T>(),
       TensorShape({}),
-      HipReduceTensorType::HIP_REDUCE_TENSOR_ADD,
+      MIOPEN_REDUCE_TENSOR_ADD,
       output_dims);
 }
 
@@ -214,7 +214,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   //     label_reshape,
   //     total_loss_data,
   //     TensorShape({}),
-  //     HipReduceTensorType::HIP_REDUCE_TENSOR_ADD,
+  //     MIOPEN_REDUCE_TENSOR_ADD,
   //     output_dims);
 }
 

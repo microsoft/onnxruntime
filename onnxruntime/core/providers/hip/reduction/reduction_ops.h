@@ -10,14 +10,14 @@
 namespace onnxruntime {
 namespace hip {
 
-enum class HipReduceTensorType : int8_t {
-  HIP_REDUCE_TENSOR_MAX,
-  HIP_REDUCE_TENSOR_MIN,
-  HIP_REDUCE_TENSOR_NORM1,
-  HIP_REDUCE_TENSOR_NORM2,
-  HIP_REDUCE_TENSOR_AVG,
-  HIP_REDUCE_TENSOR_MUL,
-  HIP_REDUCE_TENSOR_ADD
+enum HipReduceTensorType {
+  MIOPEN_REDUCE_TENSOR_MAX,
+  MIOPEN_REDUCE_TENSOR_MIN,
+  MIOPEN_REDUCE_TENSOR_NORM1,
+  MIOPEN_REDUCE_TENSOR_NORM2,
+  MIOPEN_REDUCE_TENSOR_AVG,
+  MIOPEN_REDUCE_TENSOR_MUL,
+  MIOPEN_REDUCE_TENSOR_ADD
 };
 
 template <bool allow_multi_axes>
@@ -62,7 +62,7 @@ class ArgMax final : public ReduceKernel<false> {
   ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_MAX);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MAX);
   }
 };
 
@@ -72,7 +72,7 @@ class ArgMin final : public ReduceKernel<false> {
   ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_MIN);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MIN);
   }
 };
 
@@ -82,7 +82,7 @@ class ReduceL1 final : public ReduceKernel<true> {
   ReduceL1(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_NORM1);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM1);
   }
 };
 
@@ -92,7 +92,7 @@ class ReduceL2 final : public ReduceKernel<true> {
   ReduceL2(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_NORM2);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_NORM2);
   }
 };
 
@@ -102,7 +102,7 @@ class ReduceMax final : public ReduceKernel<true> {
   ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_MAX);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MAX);
   }
 };
 
@@ -112,7 +112,7 @@ class ReduceMean final : public ReduceKernel<true> {
   ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_AVG);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_AVG);
   }
 };
 
@@ -122,7 +122,7 @@ class ReduceMin final : public ReduceKernel<true> {
   ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_MIN);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MIN);
   }
 };
 
@@ -132,7 +132,7 @@ class ReduceProd final : public ReduceKernel<true> {
   ReduceProd(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_MUL);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_MUL);
   }
 };
 
@@ -144,7 +144,7 @@ class ReduceSum final : public ReduceKernel<true> {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_ADD);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_ADD);
   }
 };
 
@@ -156,7 +156,7 @@ class ReduceLogSum final : public ReduceKernel<true> {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_ADD);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_ADD);
   }
 };
 
@@ -168,7 +168,7 @@ class ReduceSumSquare final : public ReduceKernel<true> {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_ADD);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_ADD);
   }
 };
 
@@ -180,7 +180,7 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, HipReduceTensorType::HIP_REDUCE_TENSOR_ADD);
+    return ComputeImpl<T>(ctx, MIOPEN_REDUCE_TENSOR_ADD);
   }
 };
 

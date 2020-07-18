@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <hip/hip_runtime.h>
-
-#include "core/graph/constants.h"
-
-#include "core/providers/hip/shared_inc/hip_call.h"
-#include "core/providers/hip/hip_fence.h"
-#include "core/providers/hip/gpu_data_transfer.h"
+#include "hip_common.h"
+#include "hip_fence.h"
+#include "gpu_data_transfer.h"
 
 namespace onnxruntime {
 
 HIPFence::HIPFence(const GPUDataTransfer* data_transfer) : data_transfer_(data_transfer) {
+  // NOTE: hipEventBlockingSync may leads to longer wait time because of thread yield/switching in kernel
+  // if lower CPU usage is more important than latency, we should use this flag to avoid spin-loop in WaitOnCPU
+  // int event_flags = /*hipEventBlockingSync |*/ hipEventDisableTiming;
+  // HIP_CALL_THROW(hipEventCreate(&read_event_, event_flags));
+  // HIP_CALL_THROW(hipEventCreate(&write_event_, event_flags));
   HIP_CALL_THROW(hipEventCreate(&read_event_));
   HIP_CALL_THROW(hipEventCreate(&write_event_));
 }

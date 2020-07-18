@@ -9,67 +9,94 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace contrib {
 namespace hip {
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, FastGelu);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, FastGelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, FastGelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, FastGelu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Gelu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, Gelu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Gelu);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, BiasGelu);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, BiasGelu);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, BiasGelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, BiasGelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, BiasGelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, BiasGelu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, TransposeMatMul);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, TransposeMatMul);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, TransposeMatMul);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Rfft);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, Rfft);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Rfft);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Irfft);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, Irfft);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Irfft);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ComplexMul);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ComplexMul);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ComplexMulConj);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ComplexMulConj);
 
 // These ops were experimental ops in onnx domain which have been removed now. We add them here as
 // contrib ops to maintain backward compatibility
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, Affine);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, Affine);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, Affine);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Attention);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Attention);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ConvTransposeWithDynamicPads);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, Crop);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, Crop);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, Crop);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, int32_t, DynamicSlice);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, int64_t, DynamicSlice);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, EmbedLayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, EmbedLayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ImageScaler);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ImageScaler);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ImageScaler);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ParametricSoftplus);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ParametricSoftplus);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ParametricSoftplus);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ScaledTanh);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ScaledTanh);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ScaledTanh);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, SkipLayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, SkipLayerNormalization);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ThresholdedRelu);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ThresholdedRelu);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ThresholdedRelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, Affine);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, Affine);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, Affine);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Attention);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Attention);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ConvTransposeWithDynamicPads);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, Crop);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, Crop);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, Crop);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, int32_t, DynamicSlice);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, int64_t, DynamicSlice);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, EmbedLayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, EmbedLayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ImageScaler);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ImageScaler);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ImageScaler);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ParametricSoftplus);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ParametricSoftplus);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ParametricSoftplus);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ScaledTanh);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ScaledTanh);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ScaledTanh);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, SkipLayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, SkipLayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, ThresholdedRelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ThresholdedRelu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ThresholdedRelu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float_float, LayerNormalization);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double_float, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double_double, LayerNormalization);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16_float, LayerNormalization);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Inverse);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, int8_t_MLFloat16, QuantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, uint8_t_MLFloat16, QuantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, int8_t_MLFloat16, DequantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, uint8_t_MLFloat16, DequantizeLinear);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float_int8_t, QAttention);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16_int8_t, QAttention);
 
 Status RegisterHipContribKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, FastGelu)>,
-    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, FastGelu)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, FastGelu)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, FastGelu)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Gelu)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, Gelu)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Gelu)>,
-    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, BiasGelu)>,
-    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, BiasGelu)>,
-    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, BiasGelu)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, BiasGelu)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, BiasGelu)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, BiasGelu)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, TransposeMatMul)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, TransposeMatMul)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, TransposeMatMul)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Rfft)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, Rfft)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Rfft)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, Irfft)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, double, Irfft)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, Irfft)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ComplexMul)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ComplexMul)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float, ComplexMulConj)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16, ComplexMulConj)>,
 
-    // These ops were experimental ops in onnx domain which have been removed now. We add them here as
-    // contrib ops to maintain backward compatibility
+    // // These ops were experimental ops in onnx domain which have been removed now. We add them here as
+    // // contrib ops to maintain backward compatibility
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float, Affine)>,
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, Affine)>,
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, Affine)>,
@@ -98,8 +125,16 @@ Status RegisterHipContribKernels(KernelRegistry& kernel_registry) {
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double, ThresholdedRelu)>,
     // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16, ThresholdedRelu)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, float_float, LayerNormalization)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double_float, LayerNormalization)>,
-    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16_float, LayerNormalization)>
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, double_double, LayerNormalization)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 1, MLFloat16_float, LayerNormalization)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, Inverse)>,
+
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, int8_t_MLFloat16, QuantizeLinear)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, uint8_t_MLFloat16, QuantizeLinear)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, int8_t_MLFloat16, DequantizeLinear)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, uint8_t_MLFloat16, DequantizeLinear)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, float_int8_t, QAttention)>,
+    // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kMSDomain, 1, MLFloat16_int8_t, QAttention)>
   };
 
   for (auto& function_table_entry : function_table) {

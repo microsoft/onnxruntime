@@ -2,23 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <hip/hip_runtime.h>
-#include <hip/hip_runtime_api.h>
-#include <hip/hip_fp16.h>
-#include <hipblas.h>
-//#include <hiprand/hiprand.h>
-
+#include "hip_pch.h"
 #include "core/common/status.h"
-#include "core/framework/op_kernel.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/graph_viewer.h"
+#include "shared_inc/hip_call.h"
+#include "hip_execution_provider.h"
+#include "shared_inc/fast_divmod.h"
 #include "core/util/math.h"
-
-#include "core/providers/hip/shared_inc/fast_divmod.h"
-#include "core/providers/hip/shared_inc/hip_call.h"
-#include "core/providers/hip/hip_execution_provider.h"
-#include "core/providers/hip/hip_fwd.h"
+#include "hip_fwd.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -32,17 +25,17 @@ namespace hip {
   ORT_RETURN_IF_ERROR(HIPBLAS_CALL(expr)          \
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPBLAS error executing ", #expr))
-/*
-#define CUSPARSE_RETURN_IF_ERROR(expr)           \
-  ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr)        \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUSPARSE error executing ", #expr))
 
-#define CURAND_RETURN_IF_ERROR(expr)             \
-  ORT_RETURN_IF_ERROR(CURAND_CALL(expr)          \
+#define HIPSPARSE_RETURN_IF_ERROR(expr)           \
+  ORT_RETURN_IF_ERROR(HIPSPARSE_CALL(expr)        \
                           ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CURAND error executing ", #expr))
-*/
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPSPARSE error executing ", #expr))
+
+#define HIPRAND_RETURN_IF_ERROR(expr)             \
+  ORT_RETURN_IF_ERROR(HIPRAND_CALL(expr)          \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPRAND error executing ", #expr))
+
 #define MIOPEN_RETURN_IF_ERROR(expr)              \
   ORT_RETURN_IF_ERROR(MIOPEN_CALL(expr)           \
                           ? common::Status::OK() \
@@ -53,10 +46,10 @@ namespace hip {
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOPEN2 error executing ", #expr))
 
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-
-typedef __half half;
+#define HIPFFT_RETURN_IF_ERROR(expr)              \
+  ORT_RETURN_IF_ERROR(HIPFFT_CALL(expr)           \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPFFT error executing ", #expr))
 
 // -----------------------------------------------------------------------
 // Base class for HIP kernels
@@ -66,7 +59,7 @@ class HipKernel : public OpKernel {
   explicit HipKernel(const OpKernelInfo& info)
       : OpKernel(info),
         // Is this OK to have a non-const execution provider?
-        provider_(const_cast<HIPExecutionProvider*>(dynamic_cast<const HIPExecutionProvider*>(info.GetExecutionProvider()))) {
+        provider_(const_cast<HIPExecutionProvider*>(static_cast<const HIPExecutionProvider*>(info.GetExecutionProvider()))) {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
@@ -105,6 +98,7 @@ class HipKernel : public OpKernel {
   }
 
   const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); };
+
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>
@@ -167,7 +161,6 @@ class HipKernel : public OpKernel {
     const HipKernel* op_kernel_;
   };
 
- protected:
   inline hipblasHandle_t HipblasHandle() const {
     return provider_->PerThreadHipblasHandle();
   }
@@ -175,20 +168,23 @@ class HipKernel : public OpKernel {
   inline miopenHandle_t MiopenHandle() const {
     return provider_->PerThreadMiopenHandle();
   }
-  // inline hiprandGenerator_t CurandGenerator() const {
-  //   return provider_->PerThreadCurandGenerator();
+
+ protected:
+  // inline hiprandGenerator_t HiprandGenerator() const {
+  //   return provider_->PerThreadHiprandGenerator();
   // }
 
-  // template <typename T>
-  // inline const T* GetConstOnes(size_t count) const {
-  //   return provider_->template GetConstOnes<T>(count);
-  // }
+  template <typename T>
+  inline const T* GetConstOnes(size_t count) const {
+    return provider_->template GetConstOnes<T>(count);
+  }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
     return Info().GetDataTransferManager().CopyTensor(src, dst);
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
+
  private:
   HIPExecutionProvider* provider_;
 };
@@ -213,7 +209,6 @@ class ToHipType<MLFloat16> {
   }
 };
 
-
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
   if (dims.empty() || p.size() < dims.size())
@@ -228,37 +223,20 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   return true;
 }
 
-struct DeviceProp {
-  static const std::vector<hipDeviceProp_t>& GetCachedDeviceProps() {
-    std::call_once(s_cachedDevicePropsInitFlag, [=] {
-      int numDevices;
-      // must wait GPU idle, otherwise hipGetDeviceProperties might fail
-      HIP_CALL_THROW(hipDeviceSynchronize());
-      HIP_CALL_THROW(hipGetDeviceCount(&numDevices));
-      s_cachedDeviceProps.resize(numDevices);
-      for (int i = 0; i < numDevices; i++)
-        HIP_CALL_THROW(hipGetDeviceProperties(&s_cachedDeviceProps[i], i));
-    });
+// class HipblasMathModeSetter {
+//  public:
+//   HipblasMathModeSetter(hipblasHandle_t handle, hipblasMath_t mode) : handle_(handle) {
+//     hipblasGetMathMode(handle, &mode_);
+//     hipblasSetMathMode(handle, mode);
+//   }
+//   ~HipblasMathModeSetter() {
+//     hipblasSetMathMode(handle_, mode_);
+//   }
 
-    return s_cachedDeviceProps;
-  }
-
-  static size_t GetCurrentDeviceId() {
-    int deviceId;
-    hipGetDevice(&deviceId);
-    return (size_t)deviceId;
-  }
-
-  // get device properties of current device
-  static const hipDeviceProp_t& GetDeviceProps() {
-    const auto& cachedDevicesProps = GetCachedDeviceProps();
-    return cachedDevicesProps[GetCurrentDeviceId()];
-  }
-
- private:
-  static std::vector<hipDeviceProp_t> s_cachedDeviceProps;
-  static std::once_flag s_cachedDevicePropsInitFlag;
-};
+//  private:
+//   hipblasHandle_t handle_;
+//   hipblasMath_t mode_;
+// };
 
 }  // namespace hip
 }  // namespace onnxruntime

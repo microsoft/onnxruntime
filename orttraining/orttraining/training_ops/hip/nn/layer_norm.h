@@ -25,5 +25,15 @@ class LayerNormGrad final : public HipKernel {
   int64_t axis_;
 };
 
+template <typename T, typename U>
+class InvertibleLayerNormGrad final : public HipKernel {
+ public:
+  InvertibleLayerNormGrad(const OpKernelInfo& op_kernel_info);
+  Status ComputeInternal(OpKernelContext* ctx) const override;
+
+ private:
+  int64_t axis_;
+};
+
 }  // namespace hip
 }  // namespace onnxruntime

@@ -1,33 +1,46 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License
-
-#include <atomic>
+// Licensed under the MIT License.
 
 #include "core/providers/hip/hip_provider_factory.h"
+#include <atomic>
+#include "core/graph/onnx_protobuf.h"
+#include "hip_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
-
-#include "core/providers/hip/hip_execution_provider.h"
+#include "core/framework/bfc_arena.h"
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
 
 struct HIPProviderFactory : IExecutionProviderFactory {
-  HIPProviderFactory(int device_id) : device_id_(device_id) {}
-  ~HIPProviderFactory() = default;
+  HIPProviderFactory(OrtDevice::DeviceId device_id,
+                      size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
+                      ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) 
+      : device_id_(device_id), 
+        hip_mem_limit_(hip_mem_limit), 
+        arena_extend_strategy_(arena_extend_strategy) {}
+  ~HIPProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    HIPExecutionProviderInfo info;
-    info.device_id = device_id_;
-    return std::make_unique<HIPExecutionProvider>(info);
-  }
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-private:
-  int device_id_;
+ private:
+  OrtDevice::DeviceId device_id_;
+  size_t hip_mem_limit_;
+  ArenaExtendStrategy arena_extend_strategy_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id) {
-  return std::make_shared<onnxruntime::HIPProviderFactory>(device_id);
+std::unique_ptr<IExecutionProvider> HIPProviderFactory::CreateProvider() {
+  HIPExecutionProviderInfo info;
+  info.device_id = device_id_;
+  info.hip_mem_limit = hip_mem_limit_;
+  info.arena_extend_strategy = arena_extend_strategy_;
+  return onnxruntime::make_unique<HIPExecutionProvider>(info);
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id,
+                                                                               size_t hip_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo) {
+  return std::make_shared<onnxruntime::HIPProviderFactory>(device_id, hip_mem_limit, arena_extend_strategy);
 }
 
 }  // namespace onnxruntime

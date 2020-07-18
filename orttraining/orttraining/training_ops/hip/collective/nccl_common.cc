@@ -23,7 +23,7 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   } else if (type == DataTypeImpl::GetType<double>()) {
     return ncclFloat64;
   } else {
-    //throw std::logfic_error::logic_error("Tensor type not supported in NCCL.");
+    //throw logfic_error("Tensor type not supported in NCCL.");
   }
   return ncclFloat32;
 }
