@@ -503,9 +503,9 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
           for (int r = 0; r < x_info.shape.Size(); j++, r++) {
             auto jac_t = jacobian_ts[j];
             auto jac_n = jacobian_ns[j];
-            for (size_t i = 0; i < jac_t.size(); i++) {
+            for (size_t k = 0; k < jac_t.size(); k++) {
               // dy_i/dx_j for x with gradient.
-              auto cur_error = std::fabs(jac_t[i] - jac_n[i]);
+              auto cur_error = std::fabs(jac_t[k] - jac_n[k]);
               // Treat any NaN as max_error and immediately return.
               // (Note that std::max may ignore NaN arguments.)
               if (std::isnan(cur_error)) {
@@ -570,7 +570,9 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const std::vector<TensorInfo>& y_infos,
     JAC_T* max_error,
     std::vector<std::vector<X_T>> x_datas,
-    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes) {
+    const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+    bool check_not_have_gradient, /* = true*/
+    bool check_not_have_shape_inferencing /* = false*/) {
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
   for (size_t i = 0; i < y_infos.size(); i++) {
@@ -578,7 +580,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes);
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, 
+                                      attributes, check_not_have_gradient, check_not_have_shape_inferencing);
 }
 
 #define INSTANTIATE_GRAD_ERR_TYPE(X_T, Y_T, JAC_T) \

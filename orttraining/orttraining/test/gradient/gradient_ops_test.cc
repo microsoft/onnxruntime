@@ -1864,6 +1864,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Expand"};
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   //input_shape = (2, 3, 1), target_shape = (2, 3, 4) ==> shape(result) = (2, 3, 4)
   {
@@ -1873,7 +1874,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
 
     TensorInfo y_info({2, 3, 4}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1885,7 +1886,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
 
     TensorInfo y_info({2, 3, 4}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1897,7 +1898,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
 
     TensorInfo y_info({2, 3, 4}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1909,7 +1910,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
 
     TensorInfo y_info({2, 3, 1}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1921,7 +1922,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
 
     TensorInfo y_info({4, 5, 2, 3}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1933,7 +1934,7 @@ TEST(GradientCheckerTest, ExpandGrad) {
 
     TensorInfo y_info({4, 5, 2, 3}, true);
 
-    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas);
+    gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true);
     EXPECT_IS_TINY(max_error);
   }
 }
