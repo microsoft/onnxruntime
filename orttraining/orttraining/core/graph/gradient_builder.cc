@@ -780,17 +780,33 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
   } else if (IsGradientRequiredForSrcNodeInput(0)) {
     // Y = A / B, dA = dY / B
     const ArgDef a = I(0), b = I(1);
-    std::vector<int64_t> a_axes, b_axes;
-    ComputeBroadcastBackwardAxes(GetShape(a), GetShape(b), &a_axes, &b_axes);
-
     std::vector<NodeDef> output;
-    ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
-    output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
-    if (a_axes.size() > 0) {
-      HandleBroadcasting(tmp_grad, a, GI(0), a_axes, output);
-    } else {
-      output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
+    try {
+      std::vector<int64_t> a_axes, b_axes;
+      ComputeBroadcastBackwardAxes(GetShape(a), GetShape(b), &a_axes, &b_axes);
+
+      ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
+      output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
+      if (a_axes.size() > 0) {
+        HandleBroadcasting(tmp_grad, a, GI(0), a_axes, output);
+      } else {
+        output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
+      }
+      std::cout << "INFO: DivGrad : Static Shape Available\n";
+
+    } catch (onnxruntime::OnnxRuntimeException e) {
+      //GetShape failed, build shape-independent gradient graph
+      ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
+      ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
+      ComputeBroadcastBackwardAxesDynamic(a, b, a_axes_arg, b_axes_arg, output);
+
+      ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
+      output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
+      HandleBroadcastingDynamic(tmp_grad, a, GI(0), a_axes_arg, output); 
+
+      std::cout << "INFO: DivGrad : Static Shape Not Available\n";
     }
+
     return output;
   } else if (IsGradientRequiredForSrcNodeInput(1)) {
     return std::vector<NodeDef>{
