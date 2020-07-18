@@ -20,17 +20,18 @@ using Shape = Shaper::Shape;
 
 #pragma region helpers
 
-static const int64_t* GetTensorInt64Data(const ONNX_NAMESPACE::TensorProto& tensor) {
-  return tensor.int64_data().empty()
-             ? reinterpret_cast<const int64_t*>(tensor.raw_data().data())
-             : tensor.int64_data().data();
-}
+#define GET_TENSOR_DATA(FUNC_NAME, ELEMENT_TYPE, DATA)                                         \
+  static const ELEMENT_TYPE* GetTensor##FUNC_NAME(const ONNX_NAMESPACE::TensorProto& tensor) { \
+    return tensor.DATA().empty()                                                               \
+               ? reinterpret_cast<const ELEMENT_TYPE*>(tensor.raw_data().data())               \
+               : tensor.DATA().data();                                                         \
+  }
 
-static const float* GetTensorFloatData(const ONNX_NAMESPACE::TensorProto& tensor) {
-  return tensor.float_data().empty()
-             ? reinterpret_cast<const float*>(tensor.raw_data().data())
-             : tensor.float_data().data();
-}
+GET_TENSOR_DATA(FloatData, float, float_data)
+GET_TENSOR_DATA(Int32Data, int32_t, int32_data)
+GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
+
+#undef GET_TENSOR_DATA
 
 // TODO, move this to a shared location
 #define CASE_UNPACK(TYPE, ELEMENT_TYPE, DATA_SIZE)                              \
@@ -203,13 +204,13 @@ enum DataLayout {
 
 // TODO, replace this with more efficient code in optimizers
 static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
-                                          const std::string& source_name,
+                                          const std::string& name,
                                           const OperandType& source_operand_type,
                                           DataLayout new_layout) {
-  const auto& tensor = model_builder.GetInitializerTensors().at(source_name);
+  const auto& tensor = model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_ENFORCE(shape.size() == 4, "The initializer is not 4D: " +
-                                     source_name + " actual dim " +
+                                     name + " actual dim " +
                                      std::to_string(shape.size()));
 
   // TODO support other data types
@@ -229,7 +230,7 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     }
     default:
-      ORT_THROW("The initializer of graph " + source_name +
+      ORT_THROW("The initializer of graph " + name +
                 " doesn't have valid type: " + std::to_string(tensor.data_type()));
   }
 
@@ -276,8 +277,7 @@ static uint32_t AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
 
-  const auto dest_name = model_builder.GetUniqueName(source_name + "_transposed");
-  return model_builder.AddOperandFromPersistMemoryBuffer(source_name, &buffer[0], operand_type);
+  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
 // TODO, replace this with more efficient code in optimizers
@@ -472,7 +472,7 @@ std::pair<float, int32_t> GetQuantizedInputScaleAndZeroPoint(const ModelBuilder&
   if (op_type == "DequantizeLinear") {
     scale_idx = 1;
     zero_point_idx = 2;
-  } else if (op_type == "QLinearMatMul") {
+  } else if (op_type == "QLinearMatMul" || op_type == "QLinearConv") {
     const auto input_defs(node.InputDefs());
     if (input_name == input_defs[0]->Name()) {
       scale_idx = 1;
@@ -1143,25 +1143,84 @@ class ConvOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& /* node */) const override {
+    return model_builder.UseNCHW() ? 29 : 28;
+  }
+
+  bool HasSupportedInputs(const Node& node) override;
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
+bool ConvOpBuilder::HasSupportedInputs(const Node& node) {
+  if (node.OpType() != "QLinearConv")
+    return BaseOpBuilder::HasSupportedInputs(node);
+
+  // QLinearConv only supports input of uint8 for now
+  int32_t x_input_type, w_input_type;
+  if (!GetType(*node.InputDefs()[0], x_input_type))
+    return false;
+
+  if (!GetType(*node.InputDefs()[3], w_input_type))
+    return false;
+
+  if (x_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || x_input_type != w_input_type) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] x Input type: [" << x_input_type
+                          << "] w Input type: [" << w_input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  const auto& op = node.OpType();
+  const auto input_defs = node.InputDefs();
+
   // skip the weight for conv as we need to transpose
-  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  if (op == "QLinearConv") {
+    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
+    model_builder.AddInitializerToSkip(input_defs[2]->Name());  // x_zero_point
+    model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // w_scale
+    model_builder.AddInitializerToSkip(input_defs[5]->Name());  // w_zero_point
+    model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
+    model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
+    if (input_defs.size() > 8)
+      model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
+  } else {
+    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // w
+  }
 }
 
 bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  const auto& op_type = node.OpType();
+  const auto input_defs = node.InputDefs();
+  const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
 
+  bool is_qlinear_conv = (op_type == "QLinearConv");
+  size_t w_idx = is_qlinear_conv ? 3 : 1;
   const auto group = helper.Get("group", 1);
-  const auto weight_name = node.InputDefs()[1]->Name();
-  if (Contains(model_builder.GetInitializerTensors(), weight_name)) {
-    const auto& tensor = model_builder.GetInitializerTensors().at(weight_name);
+  const auto weight_name = input_defs[w_idx]->Name();
+  if (Contains(initializers, weight_name)) {
+    const auto& tensor = initializers.at(weight_name);
     if (tensor.dims().size() != 4) {
       LOGS_DEFAULT(VERBOSE) << "Only conv 2d is supported.";
       return false;
     }
+
+    const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
+    if (onnx_dilations != vector<int>{1, 1}) {
+      const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+      if (android_sdk_ver < 29) {
+        LOGS_DEFAULT(VERBOSE) << op_type << " dilations is only supported on Android API levle 29+, "
+                              << "actual API level: " << android_sdk_ver;
+        return false;
+      }
+    }
+
     if (group != 1 && tensor.dims()[1] != 1) {
       LOGS_DEFAULT(VERBOSE) << "group != 1 is not supported";
       return false;
@@ -1169,6 +1228,33 @@ bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
   } else {
     LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
     return false;
+  }
+
+  if (is_qlinear_conv) {
+    // For QLinearConv, we only support uint8 output now
+    int32_t output_type;
+    if (!GetType(*node.OutputDefs()[0], output_type))
+      return false;
+
+    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      LOGS_DEFAULT(VERBOSE) << "[" << op_type
+                            << "] output type: [" << output_type
+                            << "] is not supported for now";
+      return false;
+    }
+
+    if (input_defs.size() > 8 && !Contains(initializers, input_defs[8]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
+      return false;
+    }
+
+    // a/b/y_scale
+    if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
+      return false;
+
+    // a/b/y_zero_point
+    if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
+      return false;
   }
 
   return true;
@@ -1180,6 +1266,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
+  const auto input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  bool is_qlinear_conv = (op_type == "QLinearConv");
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1194,7 +1283,11 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
   const auto group = helper.Get("group", 1);
 
-  auto input = node.InputDefs()[0]->Name();
+  size_t x_idx = 0,
+         w_idx = is_qlinear_conv ? 3 : 1,
+         b_idx = is_qlinear_conv ? 8 : 2;
+
+  auto input = input_defs[x_idx]->Name();
   bool use_nchw = model_builder.UseNCHW();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = false;
@@ -1203,7 +1296,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   } else {
     output_is_nhwc = true;
     if (!input_is_nhwc) {
-      const auto& nchw_input = node.InputDefs()[0]->Name();
+      const auto& nchw_input = input_defs[x_idx]->Name();
       if (!model_builder.GetNHWCOperand(nchw_input, input)) {
         input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
         TransposeNCHWToNHWC(model_builder, nchw_input, input);
@@ -1211,8 +1304,24 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     }
   }
 
-  const auto& weight = node.InputDefs()[1]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  float x_scale = 0.0f,
+        w_scale = 0.0f,
+        y_scale = 0.0f;
+  int32_t x_zero_point = 0,
+          w_zero_point = 0,
+          y_zero_point = 0;
+
+  if (is_qlinear_conv) {
+    x_scale = GetQuantizationScale(model_builder, node, 1);
+    w_scale = GetQuantizationScale(model_builder, node, 4);
+    y_scale = GetQuantizationScale(model_builder, node, 6);
+
+    x_zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
+    w_zero_point = GetQuantizationZeroPoint(model_builder, node, 5);
+    y_zero_point = GetQuantizationZeroPoint(model_builder, node, 7);
+  }
+
+  const auto& weight = input_defs[w_idx]->Name();
 
   const auto& weight_tensor = initializers.at(weight);
   bool conv2d = (group == 1);
@@ -1227,12 +1336,15 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       onnx_weight_type = Type::TENSOR_FLOAT32;
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
+      break;
     default:
       ORT_THROW("The initializer of graph " + weight + " doesn't have valid type: " +
                 std::to_string(weight_tensor.data_type()));
   }
 
-  OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape);
+  OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point);
 
   // Pre-process weights
   if (conv2d) {
@@ -1241,8 +1353,21 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230);
   }
 
-  bool hasBias = (node.InputDefs().size() >= 3);
-  std::string bias = hasBias ? node.InputDefs()[2]->Name() : weight + "_bias";
+  if (is_qlinear_conv) {
+    // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
+    const OperandType& x_operand_type = operand_types.at(input);
+    ORT_ENFORCE(x_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                "input type is " + TypeToStr(x_operand_type.type));
+    VerifyValidInputQuantizedType(input, x_operand_type, x_scale, x_zero_point);
+
+    const OperandType& w_operand_type = operand_types.at(weight);
+    ORT_ENFORCE(w_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                "input type is " + TypeToStr(w_operand_type.type));
+    VerifyValidInputQuantizedType(weight, w_operand_type, w_scale, w_zero_point);
+  }
+
+  bool hasBias = (input_defs.size() > b_idx);
+  std::string bias = hasBias ? input_defs[b_idx]->Name() : weight + "_bias";
   if (!hasBias) {
     const auto weight_dimen = shaper[weight];
     Shape bias_dimen;
@@ -1252,16 +1377,39 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       bias_dimen = {weight_dimen[3]};
 
     const auto& weight_type = operand_types.at(weight).type;
+    Type bias_type;
+    void* buffer;
     if (weight_type == Type::TENSOR_FLOAT32) {
-      vector<float> buffer(bias_dimen[0]);
-      for (uint32_t i = 0; i < buffer.size(); i++) {
-        buffer[i] = 0.f;
+      vector<float> float_buffer(bias_dimen[0]);
+      bias_type = Type::TENSOR_FLOAT32;
+      for (uint32_t i = 0; i < float_buffer.size(); i++) {
+        float_buffer[i] = 0.f;
       }
-      OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen);
-      model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type);
+      buffer = float_buffer.data();
+    } else if (weight_type == Type::TENSOR_QUANT8_ASYMM) {
+      vector<int32_t> int32_buffer(bias_dimen[0]);
+      bias_type = Type::TENSOR_INT32;
+      for (uint32_t i = 0; i < int32_buffer.size(); i++) {
+        int32_buffer[i] = 0;
+      }
+      buffer = int32_buffer.data();
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
+
+    OperandType bias_operand_type(bias_type, bias_dimen, x_scale * w_scale);
+    model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type);
+  } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
+    const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
+    ORT_ENFORCE(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                "bias of QLinearConv should be int32, actual type: " + std::to_string(bias_tensor.data_type()));
+    Shape bias_dimen;
+    for (auto dim : bias_tensor.dims())
+      bias_dimen.push_back(SafeInt<uint32_t>(dim));
+
+    const void* buffer = GetTensorInt32Data(bias_tensor);
+    OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
+    model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type);
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1310,6 +1458,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   }
 
   int32_t operationCode;
+  const auto& output = node.OutputDefs()[0]->Name();
   if (conv2d) {
     operationCode = ANEURALNETWORKS_CONV_2D;
     shaper.Conv(input, weight,
@@ -1324,7 +1473,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
                          output);
   }
 
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   model_builder.AddOperation(operationCode, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
@@ -1646,11 +1795,9 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   NodeAttrHelper helper(node);
   bool is_qlinear_matmul = op == "QLinearMatMul";
 
-  size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
-  if (is_qlinear_matmul) {
-    a_idx = 0;
-    b_idx = 3;
-  }
+  size_t a_idx = 0,
+         b_idx = is_qlinear_matmul ? 3 : 1,
+         c_idx = 2;  // QLinearMatMul has no bias
 
   const auto& input1 = input_defs[a_idx]->Name();
   const auto& input2 = input_defs[b_idx]->Name();
@@ -1693,7 +1840,8 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
     input_2_idx = operand_indices.at(input2);
   }
 
-  {  // Verify if the scale and zero point matchs from onnx input and nnapi input
+  // Verify if the scale and zero point matchs from onnx input and nnapi input
+  if (is_qlinear_matmul) {
     const OperandType& a_operand_type = operand_types.at(input1);
     ORT_ENFORCE(a_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
                 "input type is " + TypeToStr(a_operand_type.type));
@@ -2174,7 +2322,11 @@ CreateOpBuilders() {
     op_map.emplace("MaxPool", pool_op_builder);
   }
 
-  op_map.emplace("Conv", std::make_shared<ConvOpBuilder>());
+  {
+    op_map.emplace("Conv", std::make_shared<ConvOpBuilder>());
+    op_map.emplace("QLinearConv", std::make_shared<ConvOpBuilder>());
+  }
+
   op_map.emplace("Cast", std::make_shared<CastOpBuilder>());
   op_map.emplace("Softmax", std::make_shared<SoftMaxOpBuilder>());
   op_map.emplace("Identity", std::make_shared<IdentityOpBuilder>());

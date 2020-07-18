@@ -17,6 +17,8 @@ struct ConvOpAndTestAttributes {
   vector<int64_t> pads;
   vector<int64_t> strides;
   std::unordered_set<std::string> excluded_providers;
+  bool weight_is_initializer{false};
+  bool bias_is_initializer{false};
 };
 
 void TestConvOp(const ConvOpAndTestAttributes& attributes,
@@ -46,9 +48,11 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
-  for (size_t i = 0; i < inputs.size(); i++) {
-    test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
-  }
+  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
+  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], attributes.weight_is_initializer);
+  if (inputs.size() == 3)
+    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2], attributes.bias_is_initializer);
+
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
@@ -182,7 +186,7 @@ TEST(ConvTest, Conv2D_1) {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{1, 1, 1, 2},  // pads
       vector<int64_t>{3, 1},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
   };
 
   vector<float> X = {-0.09103918075561523f, -0.32513630390167236f};
@@ -198,6 +202,9 @@ TEST(ConvTest, Conv2D_1) {
                         -0.04396762326359749f, 0.10081233829259872f, -0.10154513269662857f, -0.13448859751224518f};
 
   attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  attrs.weight_is_initializer = true;
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
@@ -289,6 +296,9 @@ TEST(ConvTest, Conv2D_2) {
                         0.06516310572624207f, -0.015176207758486271f, 0.14682966470718384f, -0.02665453404188156f,
                         -0.18779225647449493f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  attrs.weight_is_initializer = true;
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTest, Conv2D_Bias_1) {
@@ -311,6 +321,10 @@ TEST(ConvTest, Conv2D_Bias_1) {
   vector<int64_t> B_shape = {2};
   auto expected_vals = {13.0f, 17.0f, 25.0f, 29.0f, 11.0f, 15.0f, 23.0f, 27.0f};
 
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  attrs.weight_is_initializer = true;
+  attrs.bias_is_initializer = true;
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
@@ -363,6 +377,10 @@ TEST(ConvTest, Conv2D_Bias_2) {
   attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  attrs.weight_is_initializer = true;
+  attrs.bias_is_initializer = true;
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(ConvTest, Conv2D_AutoPad1) {
@@ -389,6 +407,9 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  attrs.weight_is_initializer = true;
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
@@ -420,6 +441,9 @@ TEST(ConvTest, Conv2D_AutoPad2) {
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  attrs.weight_is_initializer = true;
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
