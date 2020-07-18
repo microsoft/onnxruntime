@@ -2,13 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include <hip/hip_runtime.h>
-
 #include "core/framework/tensor.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
-
 class GPUDataTransfer;
 
 class HIPFence : public IFence {

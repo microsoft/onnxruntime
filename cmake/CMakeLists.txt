@@ -1135,12 +1135,12 @@ if (onnxruntime_ENABLE_TRAINING)
     # Find NCCL and MPI
     if (onnxruntime_USE_NCCL AND MPI_FOUND)
       find_path(NCCL_INCLUDE_DIR
-        NAMES nccl.h
+        NAMES rccl.h
         HINTS
         ${onnxruntime_NCCL_HOME}/include
         $ENV{CUDA_ROOT}/include)
 
-      set(NCCL_LIBNAME "nccl")
+      set(NCCL_LIBNAME "rccl")
 
       find_library(NCCL_LIBRARY
         NAMES ${NCCL_LIBNAME}
@@ -1153,7 +1153,7 @@ if (onnxruntime_ENABLE_TRAINING)
       find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
 
       if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/nccl.h")
+        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/rccl.h")
         message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
         file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
               REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
@@ -1198,17 +1198,6 @@ if (onnxruntime_ENABLE_TRAINING)
       list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external/horovod/third_party/gloo/cmake/Modules/)
       find_package(nccl REQUIRED)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES horovod)
-    endif()
-  endif()
-
-  if (onnxruntime_USE_HIP)
-    if (WIN32)
-      message(WARNING "RCCL is not supported on Windows GPU Build." )
-    elseif (UNIX)
-      if (onnxruntime_USE_MPI)
-        message( "RCCL is enabled in Linux GPU Build." )
-        add_definitions(-DUSE_NCCL=1)
-      endif()
     endif()
   endif()
 

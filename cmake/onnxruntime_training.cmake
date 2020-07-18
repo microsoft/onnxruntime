@@ -33,10 +33,6 @@ if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_training PUBLIC ${HOROVOD_INCLUDE_DIRS})
 endif()
 
-if (onnxruntime_USE_MPI)
-  target_include_directories(onnxruntime_training PUBLIC ${onnxruntime_MPI_HOME}/include)
-endif()
-
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
 source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_training_srcs})
 

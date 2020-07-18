@@ -22,9 +22,8 @@ namespace hip {
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                        \
+    BinaryElementwisePreparation prepare(this);                                                                  \
     Prepare(context, &prepare);                                                                                  \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());    \
     HipAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                                    \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
     Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
@@ -45,6 +44,7 @@ namespace hip {
   ACTIVATION_GRAD_OP_TYPED(name, ver, domain, double)
 
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
 
 }  //namespace hip
 }  // namespace onnxruntime

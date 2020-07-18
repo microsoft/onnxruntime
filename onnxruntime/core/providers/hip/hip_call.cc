@@ -1,27 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "shared_inc/hip_call.h"
+#include "core/common/common.h"
+#include "core/common/status.h"
+#include "core/common/logging/logging.h"
+
 #ifdef _WIN32
 #else  // POSIX
 #include <unistd.h>
 #include <string.h>
 #endif
-
-#include <hip/hip_runtime.h>
-#include <hip/hip_runtime_api.h>
-#include <hipblas.h>
-#include <miopen/miopen.h>
-//#include <hiprand/hiprand.h>
-
-#ifdef USE_NCCL
-#include <rccl.h>
-#endif
-
-#include "core/common/common.h"
-#include "core/common/status.h"
-#include "core/common/logging/logging.h"
-
-#include "core/providers/hip/shared_inc/hip_call.h"
 
 namespace onnxruntime {
 
@@ -41,6 +30,7 @@ const char* HipErrString<hipError_t>(hipError_t x) {
   hipDeviceSynchronize();
   return hipGetErrorString(x);
 }
+
 template <>
 const char* HipErrString<hipblasStatus_t>(hipblasStatus_t e) {
   hipDeviceSynchronize();
@@ -50,27 +40,42 @@ const char* HipErrString<hipblasStatus_t>(hipblasStatus_t e) {
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_INITIALIZED);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_ALLOC_FAILED);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_INVALID_VALUE);
+    CASE_ENUM_TO_STR(HIPBLAS_STATUS_ARCH_MISMATCH);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_MAPPING_ERROR);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_EXECUTION_FAILED);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_INTERNAL_ERROR);
     CASE_ENUM_TO_STR(HIPBLAS_STATUS_NOT_SUPPORTED);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_ARCH_MISMATCH);
-    CASE_ENUM_TO_STR(HIPBLAS_STATUS_HANDLE_IS_NULLPTR); 
+    //CASE_ENUM_TO_STR(HIPBLAS_STATUS_LICENSE_ERROR);
     default:
-      return "(look for hipblasStatus_t in hipblas.h)";
+      return "(look for HIPBLAS_STATUS_xxx in hipblas_api.h)";
   }
 }
 
 // template <>
 // const char* HipErrString<hiprandStatus_t>(hiprandStatus_t) {
 //   hipDeviceSynchronize();
-//   return "(see hiprand.h & look for hiprandStatus_t)";
+//   return "(see hiprand.h & look for hiprandStatus_t or HIPRAND_STATUS_xxx)";
 // }
 
 template <>
-const char* HipErrString<miopenStatus_t >(miopenStatus_t  e) {
+const char* HipErrString<miopenStatus_t>(miopenStatus_t e) {
   hipDeviceSynchronize();
   return miopenGetErrorString(e);
+}
+
+template <>
+const char* HipErrString<hipfftResult>(hipfftResult e) {
+  hipDeviceSynchronize();
+  switch (e) {
+    CASE_ENUM_TO_STR(HIPFFT_SUCCESS);
+    CASE_ENUM_TO_STR(HIPFFT_ALLOC_FAILED);
+    CASE_ENUM_TO_STR(HIPFFT_INVALID_VALUE);
+    CASE_ENUM_TO_STR(HIPFFT_INTERNAL_ERROR);
+    CASE_ENUM_TO_STR(HIPFFT_SETUP_FAILED);
+    CASE_ENUM_TO_STR(HIPFFT_INVALID_SIZE);
+    default:
+      return "Unknown cufft error status";
+  }
 }
 
 #ifdef USE_NCCL
@@ -108,8 +113,7 @@ bool HipCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTY
                hostname,
                exprString, msg);
       if (THRW) {
-        // clear the error as we're throwing an exception with the error info
-        (void)hipGetLastError();
+        // throw an exception with the error info
         ORT_THROW(str);
       } else {
         LOGS_DEFAULT(ERROR) << str;
@@ -130,10 +134,13 @@ template bool HipCall<hipError_t, false>(hipError_t retCode, const char* exprStr
 template bool HipCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 template bool HipCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
 template bool HipCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
-template bool HipCall<miopenStatus_t , false>(miopenStatus_t  retCode, const char* exprString, const char* libName, miopenStatus_t  successCode, const char* msg);
-template bool HipCall<miopenStatus_t , true>(miopenStatus_t  retCode, const char* exprString, const char* libName, miopenStatus_t  successCode, const char* msg);
+template bool HipCall<miopenStatus_t, false>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
+template bool HipCall<miopenStatus_t, true>(miopenStatus_t retCode, const char* exprString, const char* libName, miopenStatus_t successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, true>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
+template bool HipCall<hipfftResult, false>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
+template bool HipCall<hipfftResult, true>(hipfftResult retCode, const char* exprString, const char* libName, hipfftResult successCode, const char* msg);
+
 #ifdef USE_NCCL
 template bool HipCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg);
 #endif

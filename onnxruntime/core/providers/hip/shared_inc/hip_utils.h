@@ -5,7 +5,9 @@
 // as currently nvcc cannot compile all onnxruntime headers
 
 #pragma once
+
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 #include "core/common/common.h"
@@ -22,6 +24,22 @@ enum class SimpleBroadcast : int32_t {
   RightPerChannelBatchN = (int32_t)-5,
 };
 
+enum class BroadcastIndexType : int32_t {
+  NoBroadcast = (int32_t)0,
+  Scalar = (int32_t)1,
+  NeedCompute = (int32_t)2,
+};
+
+template <typename T>
+class IConstantBuffer {
+ public:
+  virtual ~IConstantBuffer(){};
+  virtual const T* GetBuffer(size_t count) = 0;
+};
+
+template <typename T>
+std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
+
 template <typename T>
 void Fill(T* output, T value, int64_t count);
 
@@ -36,14 +54,31 @@ struct TArray {
   }
 
   TArray(int32_t size) : size_(size), data_() {
-    ORT_ENFORCE(size <= capacity, "TArray size was set to ", size, ", exeeding the capacity limit of ", capacity);
+    ORT_ENFORCE(
+        0 <= size && size <= capacity,
+        "TArray size must be within range [0, ", capacity, "]. Actual: ", size);
   }
 
-  TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size()))  {
+  TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
+// std::is_trivially_copyable is not implemented in older versions of GCC
+#if !defined(__GNUC__) || __GNUC__ >= 5
+    static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
+#endif
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 
-  T& operator[](int32_t index) {
+  void SetSize(int32_t size) {
+    ORT_ENFORCE(
+        0 <= size && size <= capacity,
+        "TArray size must be within range [0, ", capacity, "]. Actual: ", size);
+    size_ = size;
+  }
+
+  __host__ __device__ int32_t Size() const {
+    return size_;
+  }
+
+  __host__ __device__ T& operator[](int32_t index) {
     return data_[index];
   }
 
@@ -51,8 +86,17 @@ struct TArray {
     return data_[index];
   }
 
-  static constexpr int32_t GetCapacity() { return capacity; };
+  __host__ __device__ T* Data() {
+    return data_;
+  }
 
+  __host__ __device__ const T* Data() const {
+    return data_;
+  }
+
+  static constexpr int32_t Capacity() { return capacity; };
+
+ private:
   int32_t size_;
   T data_[capacity];
 };

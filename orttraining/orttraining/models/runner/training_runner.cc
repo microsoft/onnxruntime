@@ -863,14 +863,6 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                         average_cpu_usage, peak_workingset_size));
   }
 
-  double e2e_throughput{0};
-  if (end_to_end_perf_start_step < params_.num_train_steps) {
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration_seconds = end - end_to_end_start;
-    double total_e2e_time = duration_seconds.count();
-    e2e_throughput = params_.batch_size * (params_.num_train_steps - std::max(step_start, end_to_end_perf_start_step)) / total_e2e_time;
-  }
-
   std::cout << "Round: " << round_ << "\n"
             << "Batch size: " << params_.batch_size << "\n"
             << "Number of Batches: " << number_of_batches << "\n"
