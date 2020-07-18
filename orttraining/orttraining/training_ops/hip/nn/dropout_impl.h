@@ -9,22 +9,25 @@ namespace onnxruntime {
 namespace hip {
 
 template <typename T>
-void DropoutKernelImpl(
-  const hipDeviceProp_t& prop,
-  const int64_t N,
-  const float ratio,
-  PhiloxGenerator& generator,
-  const T* X_data,
-  T* Y_data,
-  bool* mask_data);
-
-template <typename T>
 void DropoutGradientKernelImpl(
   const int64_t N,
   const T* dY_data,
   const bool* mask_data,
   const float ratio,
   T* dX_data);
+
+template <typename T>
+void BiasDropoutKernelImpl(
+  const hipDeviceProp_t& prop,
+  const int64_t N,
+  const fast_divmod fdm_dim,
+  const float ratio,
+  PhiloxGenerator& generator,
+  const T* X_data,
+  const T* bias_data,
+  const T* residual_data,
+  T* Y_data,
+  bool* mask_data);
 
 }  // namespace hip
 }  // namespace onnxruntime

@@ -804,13 +804,6 @@ if (onnxruntime_USE_HIP)
   find_library(RCCL_LIB rccl REQUIRED)
   set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB} ${RCCL_LIB})
 
-  if (onnxruntime_USE_MPI)
-    add_definitions(-DUSE_MPI=1)
-    list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_MPI_HOME}/lib)
-    find_library(MPI_LIB mpi REQUIRED)
-    set(ONNXRUNTIME_HIP_LIBS ${ONNXRUNTIME_HIP_LIBS} ${MPI_LIB})
-  endif()
-
   file(GLOB_RECURSE onnxruntime_providers_hip_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cc"
@@ -837,8 +830,15 @@ if (onnxruntime_USE_HIP)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cc"
     )
 
-    if (NOT onnxruntime_USE_MPI)
-      list(REMOVE_ITEM onnxruntime_hip_training_ops_cc_srcs
+    # NCCL is not support in Windows build
+    if (WIN32)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
+      )
+    elseif (NOT onnxruntime_USE_NCCL)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_common.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/nccl_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/collective/megatron.cc"
@@ -892,10 +892,7 @@ if (onnxruntime_USE_HIP)
   set_target_properties(onnxruntime_providers_hip PROPERTIES FOLDER "ONNXRuntime")
   target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-error=sign-compare -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_HIP_HOME}/include ${onnxruntime_HIP_HOME}/include/hipcub ${onnxruntime_HIP_HOME}/include/hiprand ${onnxruntime_HIP_HOME}/include/rocrand)
-  if (onnxruntime_USE_MPI)
-    target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_MPI_HOME}/include)
-  endif()
-  target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
+  target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT} ${MPI_INCLUDE_DIRS} ${SAFEINT_INCLUDE_DIR} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_hip PRIVATE ${ORTTRAINING_ROOT})

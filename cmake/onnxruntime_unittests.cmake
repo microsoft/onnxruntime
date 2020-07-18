@@ -574,6 +574,10 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
+  if (onnxruntime_USE_HIP)
+    target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_HIP_HOME}/include/hiprand ${onnxruntime_HIP_HOME}/include/rocrand)
+  endif()
+
   set(test_data_target onnxruntime_test_all)
 
 

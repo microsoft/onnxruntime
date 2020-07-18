@@ -1020,19 +1020,19 @@ std::shared_ptr<KernelRegistry> HIPExecutionProvider::GetKernelRegistry() const 
 }
 
 HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kHipExecutionProvider}, device_id_(info.device_id) {
-
+    : IExecutionProvider{onnxruntime::kHipExecutionProvider},
+      device_id_(info.device_id),      
+      hip_mem_limit_(info.hip_mem_limit),
+      arena_extend_strategy_(info.arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id_));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
   HIP_CALL_THROW(hipDeviceSynchronize());
-  HIP_CALL_THROW(hipGetDeviceProperties(&prop_, device_id_));
+  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, device_id_));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPAllocator>(device_id, CUDA); }, std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_);
-  InsertAllocator(allocator_);
-
+  InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPPinnedAllocator>(device_id, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
@@ -1040,38 +1040,53 @@ HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
 
   // TODO: this is actually used for the hip kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUInput,
-                                                   [](int device_id) { return onnxruntime::make_unique<CPUAllocator>(
-                                                                           onnxruntime::make_unique<OrtMemoryInfo>(
-                                                                               "CUDA_CPU",
-                                                                               OrtAllocatorType::OrtDeviceAllocator,
-                                                                               OrtDevice(),
-                                                                               device_id,
-                                                                               OrtMemTypeCPUInput)); },
-                                                   std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_memory_info(
+      {OrtMemTypeCPUInput,
+       [](int device_id) {
+         return onnxruntime::make_unique<CPUAllocator>(
+             OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                           OrtMemTypeCPUInput));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 }
 
 HIPExecutionProvider::~HIPExecutionProvider() {
   auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    if (v.recorded)
-      HIP_CALL_THROW(hipEventSynchronize(e));
-    for (auto p : v.cpu_ptrs) {
-      cpu_alloc->Free(p);
+  {
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    auto it = deferred_release_cpu_ptr_.begin();
+    while (it != deferred_release_cpu_ptr_.end()) {
+      auto& e = it->first;
+      auto& v = it->second;
+      if (v.recorded)
+        HIP_CALL_THROW(hipEventSynchronize(e));
+      for (auto p : v.cpu_ptrs) {
+        cpu_alloc->Free(p);
+      }
+      HIP_CALL_THROW(hipEventDestroy(e));
+      it = deferred_release_cpu_ptr_.erase(it);
     }
-    HIP_CALL_THROW(hipEventDestroy(e));
-    it = deferred_release_cpu_ptr_.erase(it);
+  }
+
+  // clean up thread local context caches
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+      const auto cache = cache_weak.lock();
+      if (!cache) continue;
+      ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+    }
   }
 }
 
 AllocatorPtr HIPExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
+  // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
+  // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
-    return allocator_;
+    return GetPerThreadContext().GetAllocator();
   } else {
     return IExecutionProvider::GetAllocator(id, mem_type);
   }
@@ -1080,7 +1095,6 @@ AllocatorPtr HIPExecutionProvider::GetAllocator(int id, OrtMemType mem_type) con
 std::unique_ptr<onnxruntime::IDataTransfer> HIPExecutionProvider::GetDataTransfer() const {
   return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
 }
-
 
 std::vector<std::unique_ptr<ComputeCapability>>
 HIPExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -1185,16 +1199,11 @@ Status HIPExecutionProvider::OnRunEnd() {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   HIP_RETURN_IF_ERROR(hipEventRecord(current_deferred_release_event, nullptr));
-  ReleasePerThreadStuffs();
+  ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
  
   return Status::OK();
-}
-
-Status HIPExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_nodes*/,
-                                     std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return Status(ONNXRUNTIME, NOT_IMPLEMENTED);
 }
 
 void HIPExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
@@ -1211,52 +1220,75 @@ void HIPExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
 }
 
 HIPExecutionProvider::PerThreadContext& HIPExecutionProvider::GetPerThreadContext() const {
-  if (per_thread_context_map_ == nullptr) {
-    per_thread_context_map_ = onnxruntime::make_unique<PerThreadContextMap>();
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
   }
 
-  auto* p = per_thread_context_map_.get();
-  if (p->count(this) == 0) {
-    std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    std::shared_ptr<PerThreadContext> ptc;
-    if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_);
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      context = std::make_shared<PerThreadContext>(device_id_, hip_mem_limit_, arena_extend_strategy_);
     } else {
-      ptc = retired_context_pool_.back();
-      retired_context_pool_.pop_back();
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
     }
-    p->insert(std::make_pair(this, ptc));
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
   }
-  return *(p->at(this));
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
 }
 
-void HIPExecutionProvider::ReleasePerThreadStuffs() const {
-  ORT_ENFORCE(per_thread_context_map_ != nullptr);
-  auto iter_ctx = per_thread_context_map_->find(this);
-  ORT_ENFORCE(iter_ctx != per_thread_context_map_->end());
+void HIPExecutionProvider::ReleasePerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
 
-  std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-  retired_context_pool_.push_back(iter_ctx->second);
-  per_thread_context_map_->erase(iter_ctx);
-  // Release TLS if empty to avoid memory leak report
-  if (per_thread_context_map_->empty()) {
-    per_thread_context_map_.reset(nullptr);
+  auto cached_context_it = per_thread_context_cache->find(this);
+  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
+  auto cached_context = cached_context_it->second.lock();
+  ORT_ENFORCE(cached_context);
+
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    context_state_.active_contexts.erase(cached_context);
+    context_state_.retired_context_pool.push_back(cached_context);
   }
+
+  per_thread_context_cache->erase(cached_context_it);
 }
 
-thread_local std::unique_ptr<HIPExecutionProvider::PerThreadContextMap> HIPExecutionProvider::per_thread_context_map_;
-
-HIPExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id) {
+HIPExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
-  // CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
+  //HIPRAND_CALL_THROW(hiprandCreateGenerator(&hiprand_generator_, HIPRAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<HIPAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+       [](OrtDevice::DeviceId id) {
+         return onnxruntime::make_unique<HIPAllocator>(id, CUDA);
+       },
+       hip_mem_limit, 
+       arena_extend_strategy});
 
-  allocator_ = CreateAllocator(default_memory_info, device_id);
+  // CUDA malloc/free is expensive so always use an arena
+  allocator_ = CreateAllocator(default_memory_info, device_id, /*create_arena*/ true);
 }
 
 HIPExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -1274,7 +1306,12 @@ HIPExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
   }
-  // CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
+
+  // try {
+  //   HIPRAND_CALL_THROW(hiprandDestroyGenerator(hiprand_generator_));
+  // } catch (const std::exception& ex) {
+  //   LOGS_DEFAULT(ERROR) << "curandDestroyGenerator threw:" << ex.what();
+  // }
 }
 
 }  // namespace onnxruntime
