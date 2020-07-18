@@ -74,17 +74,15 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
   // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-
-  if (parameters.world_size > 0) {
+  bool use_nccl = parameters.allreduce_post_accumulation;
+  if (!use_nccl && parameters.world_size > 0) {
     std::cout << "auto mpi_context = training::setup_mpi(): " << std::endl;
     auto mpi_context = training::setup_mpi();
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
     std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
-    parameters.world_rank = mpi_context.world_rank;
     parameters.local_rank = mpi_context.local_rank;
-    parameters.world_size = mpi_context.world_size;
     parameters.local_size = mpi_context.local_size;
   }
 #endif
