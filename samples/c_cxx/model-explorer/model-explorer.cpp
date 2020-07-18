@@ -49,10 +49,12 @@ int main(int argc, char** argv) {
     cout << "Usage: ./onnx-api-example <onnx_model.onnx>" << endl;
     return -1;
   }
+  std::string model_file = argv[1];
+
   // onnxruntime setup
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "example-model-explorer");
   Ort::SessionOptions session_options;
-  Ort::Experimental::Session session = Ort::Experimental::Session(env, argv[1], session_options);  // access experimental components via the Experimental namespace
+  Ort::Experimental::Session session = Ort::Experimental::Session(env, model_file, session_options);  // access experimental components via the Experimental namespace
 
   // print name/shape of inputs
   std::vector<std::string> input_names = session.GetInputNames();
