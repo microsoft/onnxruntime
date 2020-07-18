@@ -379,7 +379,8 @@ static void HandleAutoPad(const Shape& input_shape,
       nnapi_padding_code = (AutoPadType::VALID == auto_pad_type) ? ANEURALNETWORKS_PADDING_VALID
                                                                  : ANEURALNETWORKS_PADDING_SAME;
     }
-  } else {
+  } else if (onnx_dilations == std::vector<int32_t>{1, 1}) {
+    // Since NNAPI runs more efficiently using auto_pad, we try to map the NOTSET padding to auto_pad
     const auto same_upper_pads = ComputeConvPads(input_shape, weight_size_y, weight_size_x,
                                                  onnx_pads, onnx_strides, onnx_dilations,
                                                  AutoPadType::SAME_UPPER, use_nchw);
@@ -602,6 +603,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
+  bool IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) override;
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
@@ -612,6 +614,24 @@ int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */
   }
 
   return 27;
+}
+
+bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
+  Shape input1_shape, input2_shape;
+  if (!GetShape(*node.InputDefs()[0], input1_shape) ||
+      !GetShape(*node.InputDefs()[1], input2_shape))
+    return false;
+
+  const auto input1_size = input1_shape.size();
+  const auto input2_size = input2_shape.size();
+  if (input1_size > 4 || input2_size > 4) {
+    LOGS_DEFAULT(VERBOSE) << node.OpType() << " only support up to 4d shape, input1 is "
+                          << input1_size << "d shape, input 2 is "
+                          << input2_size << "d shape";
+    return false;
+  }
+
+  return true;
 }
 
 void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
