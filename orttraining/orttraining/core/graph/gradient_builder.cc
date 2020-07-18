@@ -699,44 +699,75 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
   const ArgDef a = I(0), b = I(1);
 
-  std::vector<Dimension> a_shape = GetShape(a);
-  std::vector<Dimension> b_shape = GetShape(b);
-  std::vector<int64_t> a_axes, b_axes;
-  ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
-
   std::vector<NodeDef> output;
 
-  if (IsGradientRequiredForSrcNodeInput(0)) {
-    output.push_back(
-        NodeDef("Mul",
-                {GO(0), I(1)},
-                {IA("PreReduceGrad0", OType(0))}));
+  try {
+    std::vector<Dimension> a_shape, b_shape;
+    a_shape = GetShape(a);
+    b_shape = GetShape(b);
 
-    if (a_axes.size() > 0) {
-      HandleBroadcasting(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes, output);
-    } else {
+    std::vector<int64_t> a_axes, b_axes;
+    ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
+
+    if (IsGradientRequiredForSrcNodeInput(0)) {
       output.push_back(
-          NodeDef("Identity",
-                  {IA("PreReduceGrad0", OType(0))},
-                  {GI(0)}));
+          NodeDef("Mul",
+                  {GO(0), I(1)},
+                  {IA("PreReduceGrad0", OType(0))}));
+
+      if (a_axes.size() > 0) {
+        HandleBroadcasting(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes, output);
+      } else {
+        output.push_back(
+            NodeDef("Identity",
+                    {IA("PreReduceGrad0", OType(0))},
+                    {GI(0)}));
+      }
     }
+
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(0)},
+                  {IA("PreReduceGrad1", OType(0))}));
+
+      if (b_axes.size() > 0) {
+        HandleBroadcasting(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes, output);
+      } else {
+        output.push_back(
+            NodeDef("Identity",
+                    {IA("PreReduceGrad1", OType(0))},
+                    {GI(1)}));
+      }
+    }
+    std::cout << "INFO: MulGrad : Static Shape Available\n";
+
+  } catch (onnxruntime::OnnxRuntimeException e) {
+    //GetShape failed, build shape-independent gradient graph
+    ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
+    ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
+    ComputeBroadcastBackwardAxesDynamic(a, b, a_axes_arg, b_axes_arg, output);
+
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(1)},
+                  {IA("PreReduceGrad0", OType(0))}));
+
+      HandleBroadcastingDynamic(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes_arg, output);
+    }
+
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(0)},
+                  {IA("PreReduceGrad1", OType(0))}));
+
+      HandleBroadcastingDynamic(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes_arg, output);
+    }
+    std::cout << "INFO: MulGrad : Static Shape Not Available\n";
   }
 
-  if (IsGradientRequiredForSrcNodeInput(1)) {
-    output.push_back(
-        NodeDef("Mul",
-                {GO(0), I(0)},
-                {IA("PreReduceGrad1", OType(0))}));
-
-    if (b_axes.size() > 0) {
-      HandleBroadcasting(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes, output);
-    } else {
-      output.push_back(
-          NodeDef("Identity",
-                  {IA("PreReduceGrad1", OType(0))},
-                  {GI(1)}));
-    }
-  }
   return output;
 }
 
