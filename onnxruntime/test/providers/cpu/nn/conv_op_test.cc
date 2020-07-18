@@ -73,7 +73,9 @@ TEST(ConvTest, Conv1D_1) {
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
       vector<int64_t>{1},     // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = {-0.21559301018714905f, 0.4691687822341919f, 0.4426700472831726f, -0.4517466723918915f,
@@ -96,7 +98,9 @@ TEST(ConvTest, Conv1D_1_DefaultStridesAndDilations) {
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
       vector<int64_t>{},      // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = {-0.21559301018714905f, 0.4691687822341919f, 0.4426700472831726f, -0.4517466723918915f,
@@ -120,7 +124,9 @@ TEST(ConvTest, Conv1D_2) {
       vector<int64_t>{2},     // kernel_shape
       vector<int64_t>{2, 2},  // pads
       vector<int64_t>{2},     // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = {0.11094123125076294f, -0.0038032233715057373f, 0.3896123170852661f, 0.33259105682373047f,
@@ -154,7 +160,9 @@ TEST(ConvTest, Conv1D_Bias) {
       vector<int64_t>{1},     // kernel_shape
       vector<int64_t>{1, 1},  // pads
       vector<int64_t>{3},     // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = {0.4582272171974182f, 0.3877705931663513f, -0.05413919687271118f, -0.3013981878757477f,
@@ -187,6 +195,8 @@ TEST(ConvTest, Conv2D_1) {
       vector<int64_t>{1, 1, 1, 2},  // pads
       vector<int64_t>{3, 1},        // strides
       {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = {-0.09103918075561523f, -0.32513630390167236f};
@@ -216,7 +226,9 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
       vector<int64_t>{2},     // kernel_shape
       vector<int64_t>{0, 0},  // pads
       vector<int64_t>{1},     // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = vector<float>(1, 1.0f);
@@ -238,7 +250,9 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = vector<float>(1 * 3 * 1 * 111, 1.0f);
@@ -262,7 +276,9 @@ TEST(ConvTest, Conv2D_2) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = {0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
@@ -309,7 +325,9 @@ TEST(ConvTest, Conv2D_Bias_1) {
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
@@ -337,7 +355,9 @@ TEST(ConvTest, Conv2D_Bias_2) {
       vector<int64_t>{4, 4},        // kernel_shape
       vector<int64_t>{1, 2, 3, 1},  // pads
       vector<int64_t>{2, 3},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = {-0.22904816269874573f, -0.20278319716453552f, -0.4723144471645355f, 0.027880489826202393f,
@@ -391,7 +411,9 @@ TEST(ConvTest, Conv2D_AutoPad1) {
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // pads
       vector<int64_t>{1, 1},  // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = vector<float>(25, 1.0f);
@@ -421,7 +443,9 @@ TEST(ConvTest, Conv2D_AutoPad2) {
       vector<int64_t>{3, 3},  // kernel_shape
       {},                     // pads
       vector<int64_t>{1, 1},  // strides
-      {}                      // excluded EPs
+      {},                     // excluded EPs
+      false,                  // weight_is_initializer
+      false                   //bias_is_initializer
   };
 
   vector<float> X = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f,
@@ -456,7 +480,9 @@ TEST(ConvTest, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {},                                 // excluded EPs
+      false,                              // weight_is_initializer
+      false                               //bias_is_initializer
   };
 
   vector<float> X = {-0.43337246775627136f, -0.48385289311408997f, -0.30954962968826294f,
@@ -493,7 +519,9 @@ TEST(ConvTest, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {},                                 // excluded EPs
+      false,                              // weight_is_initializer
+      false                               //bias_is_initializer
   };
 
   vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
@@ -536,7 +564,9 @@ TEST(ConvTest, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {},                                 // excluded EPs
+      false,                              // weight_is_initializer
+      false                               //bias_is_initializer
   };
 
   vector<float> X = {0.46796226501464844f, -0.4613912105560303f, 0.33512794971466064f, -0.4010460674762726f,
@@ -619,7 +649,9 @@ TEST(ConvTest, Conv2D_group) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f};
@@ -640,7 +672,9 @@ TEST(ConvTest, ConvDimWithZero) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {},                           // excluded EPs
+      false,                        // weight_is_initializer
+      false                         //bias_is_initializer
   };
 
   vector<float> X = vector<float>();
