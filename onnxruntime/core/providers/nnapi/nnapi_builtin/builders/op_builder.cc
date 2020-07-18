@@ -1377,28 +1377,17 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
       bias_dimen = {weight_dimen[3]};
 
     const auto& weight_type = operand_types.at(weight).type;
-    Type bias_type;
-    void* buffer;
     if (weight_type == Type::TENSOR_FLOAT32) {
-      vector<float> float_buffer(bias_dimen[0]);
-      bias_type = Type::TENSOR_FLOAT32;
-      for (uint32_t i = 0; i < float_buffer.size(); i++) {
-        float_buffer[i] = 0.f;
-      }
-      buffer = float_buffer.data();
+      vector<float> buffer(bias_dimen[0], 0.0f);
+      OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen, x_scale * w_scale);
+      model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type);
     } else if (weight_type == Type::TENSOR_QUANT8_ASYMM) {
-      vector<int32_t> int32_buffer(bias_dimen[0]);
-      bias_type = Type::TENSOR_INT32;
-      for (uint32_t i = 0; i < int32_buffer.size(); i++) {
-        int32_buffer[i] = 0;
-      }
-      buffer = int32_buffer.data();
+      vector<int32_t> buffer(bias_dimen[0], 0);
+      OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
+      model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type);
     } else {
       ORT_THROW("Unknown weight type " + TypeToStr(weight_type));
     }
-
-    OperandType bias_operand_type(bias_type, bias_dimen, x_scale * w_scale);
-    model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer, bias_operand_type);
   } else if (is_qlinear_conv) {  // QLinearConv's bias type need special handling
     const auto& bias_tensor = model_builder.GetInitializerTensors().at(bias);
     ORT_ENFORCE(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
