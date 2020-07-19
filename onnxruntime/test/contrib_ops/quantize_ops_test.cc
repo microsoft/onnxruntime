@@ -204,9 +204,12 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8) {
   TestQuantizeLinearPerTensorFloatUint8(false);
 }
 
+// Only NNAPI EP requires weight to be an initializer
+#ifdef USE_NNAPI
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_uint8_use_initializer_except_x) {
   TestQuantizeLinearPerTensorFloatUint8(true);
 }
+#endif
 
 TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
   OpTester test("QuantizeLinear", 1, onnxruntime::kMSDomain);
