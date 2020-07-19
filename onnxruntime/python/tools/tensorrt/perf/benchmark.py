@@ -452,10 +452,7 @@ def run_onnxruntime(args, models=MODELS):
                 "total_time": None,
             }
 
-            if fp16:
-                logger.info("Start to inference {} with {} fp16 ...".format(model_name, ep))
-            else:
-                logger.info("Start to inference {} with {} ...".format(model_name, ep))
+            logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
             logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
 
@@ -611,7 +608,7 @@ def parse_arguments():
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=1,
+                        default=20,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
