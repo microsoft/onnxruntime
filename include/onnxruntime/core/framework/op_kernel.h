@@ -111,6 +111,8 @@ class OpKernelContext {
   // The memory allocation will be done on-the-fly with given tensor shape.
   // Return nullptr if the output is an unused optional output.
   Tensor* Output(int index, const TensorShape& shape);
+  Tensor* Output(int index, const std::vector<int64_t>& shape);
+  Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
 
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {
