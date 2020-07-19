@@ -62,18 +62,35 @@ class BERTSquad(BaseModel):
         self.extra_data_ = extra_data
         self.eval_examples_ = eval_examples
 
-    def inference(self, input_list=None):
+    def inference(self):
+
+        self.outputs_ = []
+
+        for test_data in self.inputs_:
+            unique_ids_raw_output = test_data[0]
+            input_ids = test_data[1] 
+            input_mask = test_data[2] 
+            segment_ids = test_data[3] 
+
+            n = len(input_ids)
+            batch_size = 1
+            bs = batch_size
+
+            for idx in range(0, n):
+                data = {"unique_ids_raw_output___9:0": unique_ids_raw_output,
+                        "input_ids:0": input_ids[idx:idx+bs],
+                        "input_mask:0": input_mask[idx:idx+bs],
+                        "segment_ids:0": segment_ids[idx:idx+bs]}
+
+                result = self.session_.run(["unique_ids:0","unstack:0", "unstack:1"], data)
+            self.outputs_.append([result])
+
+    def inference_(self, input_list=None):
         session = self.session_
         for input_meta in session.get_inputs():
             print(input_meta)
 
         if input_list:
-            # unique_ids_raw_output = input_list[0][0]
-            # input_ids = input_list[0][1] 
-            # input_mask = input_list[0][2] 
-            # segment_ids = input_list[0][3] 
-            # print(unique_ids_raw_output)
-
             outputs = []
             for test_data in input_list:
                 unique_ids_raw_output = test_data[0]

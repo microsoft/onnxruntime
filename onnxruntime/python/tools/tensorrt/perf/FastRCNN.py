@@ -22,8 +22,8 @@ class FastRCNN(BaseModel):
             subprocess.run("wget https://github.com/onnx/models/raw/master/vision/object_detection_segmentation/faster-rcnn/model/FasterRCNN-10.tar.gz", shell=True, check=True)
             subprocess.run("tar zxf FasterRCNN-10.tar.gz", shell=True, check=True)
 
-        self.image_ = Image.open('dependencies/demo.jpg')
         self.onnx_zoo_test_data_dir_ = os.getcwd() 
+        #self.image_ = Image.open('dependencies/demo.jpg')
 
     def preprocess(self):
         image = self.image_
@@ -54,7 +54,16 @@ class FastRCNN(BaseModel):
 
         self.image_ = image
 
-    def inference(self, input_list=None):
+    def inference(self):
+        self.outputs_ = []
+        for test_data in self.inputs_:
+            img_data = test_data[0]
+            output = self.session_.run(None, {
+                self.session_.get_inputs()[0].name: img_data
+            })
+            self.outputs_.append([output[0]])
+
+        '''
         session = self.session_
         if input_list:
             outputs = []
@@ -75,6 +84,7 @@ class FastRCNN(BaseModel):
             self.boxes_ = boxes
             self.labels_ = labels
             self.scores_ = scores
+        '''
 
     def postprocess(self):
         import matplotlib as mpl

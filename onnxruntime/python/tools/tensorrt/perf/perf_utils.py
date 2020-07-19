@@ -6,10 +6,9 @@ import coloredlogs
 # import os
 
 debug = False 
+debug_verbose = False 
 
-logger = logging.getLogger('')
-
-def parse_file(f):
+def parse_single_file(f):
     import re
     data = json.load(f)
 
@@ -65,7 +64,7 @@ def parse_file(f):
                         provider_op_map[provider] = op_map
 
 
-    if debug:
+    if debug_verbose:
         pp = pprint.PrettyPrinter(indent=4)
         print("------First run ops map (START)------")
         pp.pprint(provider_op_map_first_run)
@@ -162,42 +161,78 @@ def analyze_profiling_file(path):
     data = []
     for profiling_file in profiling_file_dir:
         with open(profiling_file) as f:
-            op_map = parse_file(f)
+            op_map = parse_single_file(f)
             if op_map:
                 data.append(op_map)
 
     trt_op_map = {}
     trt_fp16_op_map = {}
     cuda_op_map = {}
+    cpu_op_map = {}
 
-    # for item in data:
-        # if "TensorrtExecutionProvider" in item:
-            # trt_op_map = item
-        # elif  "CUDAExecutionProvider" in item:
-            # cuda_op_map = item
+    list_of_trt_op_map = []
+    list_of_cuda_op_map = []
+    list_of_cpu_op_map = []
+
+    for op_map in data:
+        if "TensorrtExecutionProvider" in op_map:
+            list_of_trt_op_map.append(op_map)
+        elif  "CUDAExecutionProvider" in op_map:
+            list_of_cuda_op_map.append(op_map)
+        elif "CPUExecutionProvider" in op_map:
+            list_of_cpu_op_map.append(op_map)
+
+    trt_number = len(list_of_trt_op_map)
+    cuda_number = len(list_of_cuda_op_map)
+    cpu_number = len(list_of_cpu_op_map)
+
+    if debug:
+        print("number of list_of_trt_op_map: {}".format(trt_number))
+        print("number of list_of_cuda_op_map: {}".format(cuda_number))
+        print("number of list_of_cpu_op_map: {}".format(cpu_number))
 
     results = []
-    if len(data) == 3:
-        logger.info("Generate the metrics of TRT/TRT_fp16/CUDA ...")
-        trt_op_map = data[0]
-        trt_fp16_op_map = data[1]
-        cuda_op_map = data[2]
+    trt_fall_back = False
+    if trt_number > 0 and cuda_number <= 1: # TRT can execute model without falling back to CUDA/CPU
+        print("Generate the metrics of TRT/TRT_fp16/CUDA ...")
+
+        trt_op_map = list_of_trt_op_map[0]
+        if trt_number > 1:
+            trt_fp16_op_map = list_of_trt_op_map[1]
+
+        if cuda_number > 0:
+            cuda_op_map = list_of_cuda_op_map[0]
 
         results.append(calculate_metrics(trt_op_map, cuda_op_map))
         results.append(calculate_metrics(trt_fp16_op_map, cuda_op_map))
-    elif len(data) ==2:
-        logger.info("Generate the metrics of TRT/CUDA ...")
-        trt_op_map = data[0]
-        cuda_op_map = data[1]
+
+    elif trt_number > 0 and (cuda_number > 1 or cpu_number > 1): # TRT can't execute model and falling back to CUDA/CPU
+        print("Generate the metrics of CUDA/CPU (Fall back due to TRT fails ...")
+        trt_fall_back = True 
+
+        trt_op_map = list_of_trt_op_map[0]
+        if trt_number > 1:
+            trt_fp16_op_map = list_of_trt_op_map[1]
+
+        if cuda_number > 0:
+            cuda_op_map = list_of_cuda_op_map[-1] 
+        if cpu_number > 0 :
+            cpu_op_map = list_of_cpu_op_map[-1]
 
         results.append(calculate_metrics(trt_op_map, cuda_op_map))
+        results.append(calculate_metrics(trt_fp16_op_map, cuda_op_map))
 
     if debug:
+        print('TRT operator map:')
         pp.pprint(trt_op_map)
+        print('TRT FP16 operator map:')
         pp.pprint(trt_fp16_op_map)
+        print('CUDA operator map:')
         pp.pprint(cuda_op_map)
+        print('CPU operator map:')
+        pp.pprint(cpu_op_map)
 
-    return results
+    return (trt_fall_back, results)
 
 
 

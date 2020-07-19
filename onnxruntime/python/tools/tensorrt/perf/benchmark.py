@@ -49,35 +49,35 @@ logger = logging.getLogger('')
 
 MODELS = {
     # "bert-squad": (BERTSquad, "bert-squad"),
-    # "resnet50": (Resnet50, "resnet50"),
-    "resnet101": (Resnet101, "resnet101"),
-    # "resnet152": (Resnet152, "resnet152"),
     # "fast-rcnn": (FastRCNN, "fast-rcnn"),
     # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
     # "ssd": (SSD, "ssd"),
-    # "inception-v1": (InceptionV1, "inception-v1"),
+    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    # "resnet152": (Resnet152, "resnet152"),
     # "inception-v2": (InceptionV2, "inception-v2"),
-    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    # "zfnet512": (Zfnet512, "zfnet512"),
+    # "vgg19-bn": (Vgg, "vgg19-bn"),
+    # "resnet50": (Resnet50, "resnet50"),
+    # "resnet101": (Resnet101, "resnet101"),
+    # "inception-v1": (InceptionV1, "inception-v1"),
     # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
     # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
     # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
     # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
     # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
     # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    # "bvlc-caffenet": (Alexnet, "bvlc-caffenet"),
+    # "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
     # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
-    # "vgg19-bn": (Vgg, "vgg19-bn"),
-    # "zfnet512": (Zfnet512, "zfnet512"),
     # "retinanet": (Retinanet, "retinanet"),
-    # "yolov3": (YoloV3, "yolov3"),
+    # #### "yolov3": (YoloV3, "yolov3"), # runtime error
     # "yolov4": (YoloV4, "yolov4"),
     # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
     # "Arc-Face": (ArcFace, "arc-face"),
-    # ##### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
     # "Fast-Neural": (FastNeural, "Fast-Neural"),
-    # "BiDAF": (BiDAF, "BiDAF"),
-    # ##### "GPT2": (GPT2, "GPT2"), # OOM
+    "BiDAF": (BiDAF, "BiDAF"),
+    # #### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -99,13 +99,16 @@ def get_latency_result(runtimes, batch_size):
 def inference_ort(model, inputs, result_template, repeat_times, batch_size):
     result = {}
 
+    model.set_inputs(inputs)
     try:
-        runtimes = timeit.repeat(lambda: model.inference(inputs), number=1, repeat=repeat_times+1)
+        runtimes = timeit.repeat(lambda: model.inference(), number=1, repeat=repeat_times+1)
     except Exception as e:
         logger.error(e)
         return None
 
+    print(runtimes)
     runtimes[:] = runtimes[1:] # we intentionally skip the first run due to TRT is expensive on first run
+    print(runtimes)
     result.update(result_template)
     result.update({"io_binding": False})
     result.update(get_latency_result(runtimes, batch_size))
@@ -329,9 +332,21 @@ def get_system_info(info):
             infos.append(row)
     info["memory"] = infos 
 
+def generate_proper_ep_list(ep_list):
+    p_list = []  
+
+    for ep in ep_list:
+        ep = ep.split("_")[0]
+        if ep not in p_list:
+            p_list.append(ep)
+
+    return p_list
+
 
 def run_onnxruntime(args, models=MODELS):
     import onnxruntime
+    devnull = open(os.devnull, 'w')
+    old_stdout = sys.stdout
 
     results = []
     latency_comparison_map = {} 
@@ -362,10 +377,11 @@ def run_onnxruntime(args, models=MODELS):
         ref_outputs = []
 
         if args.fp16:
-            provider_list = ["TensorrtExecutionProvider_fp16","TensorrtExecutionProvider", "CUDAExecutionProvider"]
+            provider_list = ["TensorrtExecutionProvider","TensorrtExecutionProvider_fp16", "CUDAExecutionProvider"]
         else:
             provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 
+        # provider_list = ["TensorrtExecutionProvider"]
 
         # iterate execution providers 
         for i in range(len(provider_list)):
@@ -378,7 +394,6 @@ def run_onnxruntime(args, models=MODELS):
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
                 fp16 = True 
                 ep = "TensorrtExecutionProvider"
-                provider_list[i] = ep
 
             if (ep not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep))
@@ -389,20 +404,7 @@ def run_onnxruntime(args, models=MODELS):
             # create onnxruntime inference session
             logger.info("\nInitializing {} with {}...".format(name, provider_list[i:]))
 
-            # # re-use model instance if possible
-            # if model:
-                # sess = model.get_session()
-                # if sess and sess.get_providers()[0] == ep:
-                    # logger.info("re-use session...")
-                    # sess.set_providers(provider_list[i:])
-                # else:
-                    # model = model_class(providers=provider_list[i:])
-            # else:
-                # proper_povider_list = list(dict.fromkeys(provider_list[i:]))
-                # logger.info("use proper list: {}".format(proper_povider_list))
-                # model = model_class(providers=proper_povider_list)
-
-            proper_povider_list = list(dict.fromkeys(provider_list[i:]))
+            proper_povider_list = generate_proper_ep_list(provider_list[i:])
             model = model_class(providers=proper_povider_list)
             model_name = model.get_model_name()
 
@@ -421,15 +423,18 @@ def run_onnxruntime(args, models=MODELS):
             options.enable_profiling = True 
             model.set_session_options(options)
 
-            # re-use session if possible
-            if not model.get_session():
-                try: 
-                    model.create_session()
-                except Exception as e:
-                    logger.error(e)
-                    ep_fail_flag = True
-                    update_fail_model(model_name, ep, ep_model_fail_map)
-                    continue
+            try: 
+                sys.stdout = devnull 
+
+                model.create_session()
+
+                sys.stdout = old_stdout
+            except Exception as e:
+                sys.stdout = old_stdout
+                logger.error(e)
+                ep_fail_flag = True
+                update_fail_model(model_name, ep, ep_model_fail_map)
+                continue
 
             sess = model.get_session()
 
@@ -488,22 +493,27 @@ def run_onnxruntime(args, models=MODELS):
         sess = model.get_session()
         sess.end_profiling()
         if not ep_fail_flag:
-            presults = analyze_profiling_file(path)
-            for i in range(len(presults)):
-                result = presults[i]
-                total_ops_in_trt = result[0]
-                total_ops = result[1]
-                ratio_of_ops_in_trt = result[2]
-                ratio_of_execution_time_in_trt =  result[3]
-                
-                name = model_name + " (TRT fp16)" if i == 0 else model_name
-                profile_metrics_map[name] = {}
-                profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
-                profile_metrics_map[name]['total_ops'] = total_ops
-                profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+            trt_fall_back, presults = analyze_profiling_file(path)
 
-        # cleanup_files()
+            if trt_fall_back:
+                update_fail_model(model_name, "TensorrtExecutionProvider", ep_model_fail_map)
+                latency_comparison_map.pop(model_name, None)
+            else:
+                for i in range(len(presults)):
+                    result = presults[i]
+                    total_ops_in_trt = result[0]
+                    total_ops = result[1]
+                    ratio_of_ops_in_trt = result[2]
+                    ratio_of_execution_time_in_trt =  result[3]
+                    
+                    name = model_name + " (TRT fp16)" if i == 0 else model_name
+                    profile_metrics_map[name] = {}
+                    profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
+                    profile_metrics_map[name]['total_ops'] = total_ops
+                    profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                    profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+
+        cleanup_files()
         os.chdir(pwd)
 
         # end of model
@@ -540,25 +550,58 @@ def output_details(results, csv_filename):
 
     logger.info(f"Detail results are saved to csv file: {csv_filename}")
 
-def output_latency_comparison(results, csv_filename):
+def output_latency(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = ["Model", "CUDA latency (ms)", "TRT latency (ms)"]
+        column_names = ["Model",
+                        "CUDA latency (ms)",
+                        "TRT latency (ms)",
+                        "TRT latency with fp16 (ms)",
+                        "TRT gain (%)",
+                        "TRT f16 gain(%)"]
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
 
         for key, value in results.items():
             row = [key,
                    value['CUDAExecutionProvider'] if 'CUDAExecutionProvider' in value else "  ",
-                   value['TensorrtExecutionProvider'] if 'TensorrtExecutionProvider' in value else "  "]
+                   value['TensorrtExecutionProvider'] if 'TensorrtExecutionProvider' in value else "  ",
+                   value['TensorrtExecutionProvider_fp16'] if 'TensorrtExecutionProvider_fp16' in value else "  ",
+                   value['Tensorrt_gain(%)'] if 'Tensorrt_gain(%)' in value else "  ",
+                   value['Tensorrt_fp16_gain(%)'] if 'Tensorrt_fp16_gain(%)' in value else "  "
+                   ]
             csv_writer.writerow(row)
             
 
-    logger.info(f"Latency comparison are saved to csv file: {csv_filename}")
+    logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
+
+def output_ratio(results, csv_filename):
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = ["Model",
+                        "Total TRT operators",
+                        "Total operators",
+                        "% TRT operator",
+                        "% TRT execution time"]
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(column_names)
+
+        for key, value in results.items():
+            row = [key,
+                   value['total_ops_in_trt'] if 'total_ops_in_trt' in value else "  ",
+                   value['total_ops'] if 'total_ops' in value else "  ",
+                   value['ratio_of_ops_in_trt'] if 'ratio_of_ops_in_trt' in value else "  ",
+                   value['ratio_of_execution_time_in_trt'] if 'ratio_of_execution_time_in_trt' in value else "  ",
+                   ]
+            csv_writer.writerow(row)
+            
+
+    logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-d", "--detail_csv", required=False, default=None, help="CSV file for saving detail results.")
+    parser.add_argument("-r", "--ratio_csv", required=False, default=None, help="CSV file for saving detail results.")
+    parser.add_argument("-l", "--latency_csv", required=False, default=None, help="CSV file for saving detail results.")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Use FP16 to accelerate inference")
 
@@ -567,7 +610,7 @@ def parse_arguments():
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=10,
+                        default=1,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
@@ -606,11 +649,17 @@ def main():
     if len(profile_metrics_map) > 0:
         logger.info("\nTRT related metrics:")
         pp.pprint(profile_metrics_map)
+        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        csv_filename = args.ratio_csv or f"benchmark_ratio_{time_stamp}.csv"
+        output_ratio(profile_metrics_map, csv_filename)
 
     if latency_comparison_map:
         logger.info("\nCUDA/TRT inference time comparison:")
         add_improvement_information(latency_comparison_map)
         pp.pprint(latency_comparison_map)
+        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        csv_filename = args.latency_csv or f"benchmark_latency_{time_stamp}.csv"
+        output_latency(latency_comparison_map, csv_filename)
 
     logger.info("\nSystem information:")
     info = {}
@@ -622,12 +671,7 @@ def main():
         csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"
         output_details(results, csv_filename)
 
-    if latency_comparison_map:
-        csv_filename = args.detail_csv or f"benchmark_latency_{time_stamp}.csv"
-        output_latency_comparison(latency_comparison_map, csv_filename)
-
-    
-
 
 if __name__ == "__main__":
     main()
+    # analyze_profiling_file('BiDAF')

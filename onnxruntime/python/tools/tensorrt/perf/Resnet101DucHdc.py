@@ -24,19 +24,23 @@ class Resnet101DucHdc(BaseModel):
     def preprocess(self):
         return
 
-    def inference(self, input_list=None):
-        if input_list:
-            inputs = input_list
-            test_data_num = len(input_list) 
-        else:
-            inputs = self.inputs_
-            test_data_num = 3
+    def inference(self):
+        # if input_list:
+            # inputs = input_list
+            # test_data_num = len(input_list) 
+        # else:
+            # inputs = self.inputs_
+            # test_data_num = 3
 
-        session = self.session_
+        # session = self.session_
 
-        # get the name of the first input of the model
-        input_name = session.get_inputs()[0].name
-        self.outputs_ = [[session.run([], {input_name: inputs[i][0]})[0]] for i in range(test_data_num)]
+        # # get the name of the first input of the model
+        # input_name = session.get_inputs()[0].name
+        # self.outputs_ = [[session.run([], {input_name: inputs[i][0]})[0]] for i in range(test_data_num)]
+
+        test_data_num = len(self.inputs_)
+        input_name = self.session_.get_inputs()[0].name
+        self.outputs_ = [[self.session_.run([], {input_name: self.inputs_[i][0]})[0]] for i in range(test_data_num)]
 
     def postprocess(self):
         return

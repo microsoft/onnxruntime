@@ -56,6 +56,16 @@ class MaskRCNN(BaseModel):
         self.image_ = image
 
     def inference(self, input_list=None):
+
+        self.outputs_ = []
+        for test_data in self.inputs_:
+            img_data = test_data[0]
+            output = self.session_.run(None, {
+                self.session_.get_inputs()[0].name: img_data
+            })
+            self.outputs_.append([output[0]])
+
+        '''
         session = self.session_
         if input_list:
             outputs = []
@@ -76,6 +86,7 @@ class MaskRCNN(BaseModel):
             self.boxes_ = boxes
             self.labels_ = labels
             self.scores_ = scores
+        '''
 
     def postprocess(self):
         import matplotlib as mpl

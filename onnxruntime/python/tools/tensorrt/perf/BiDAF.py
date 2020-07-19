@@ -31,7 +31,28 @@ class BiDAF(BaseModel):
     def preprocess(self):
         return
 
-    def inference(self, input_list=None):
+    def inference(self):
+        self.outputs_ = []
+        for test_data in self.inputs_:
+            unique_ids_raw_output = test_data[0]
+            input_ids = test_data[1] 
+            input_mask = test_data[2] 
+            segment_ids = test_data[3] 
+
+            n = len(input_ids)
+            batch_size = 1
+            bs = batch_size
+
+            for idx in range(0, n):
+                data = {"context_word": test_data[0],
+                        "context_char": test_data[2],
+                        "query_word": test_data[1],
+                        "query_char": test_data[3]}
+
+                result = self.session_.run(["start_pos","end_pos"], data)
+            self.outputs_.append([result])
+
+    def inference_(self, input_list=None):
         session = self.session_
         for input_meta in session.get_inputs():
             print(input_meta)
