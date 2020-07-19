@@ -51,7 +51,7 @@ MODELS = {
     # "bert-squad": (BERTSquad, "bert-squad"),
     # "fast-rcnn": (FastRCNN, "fast-rcnn"),
     # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    # "ssd": (SSD, "ssd"),
+    "ssd": (SSD, "ssd"),
     # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     # "resnet152": (Resnet152, "resnet152"),
     # "inception-v2": (InceptionV2, "inception-v2"),
@@ -76,7 +76,7 @@ MODELS = {
     # "Arc-Face": (ArcFace, "arc-face"),
     # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
     # "Fast-Neural": (FastNeural, "Fast-Neural"),
-    "BiDAF": (BiDAF, "BiDAF"),
+    # "BiDAF": (BiDAF, "BiDAF"),
     # #### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
@@ -375,28 +375,32 @@ def run_onnxruntime(args, models=MODELS):
         model = None
         inputs = []
         ref_outputs = []
+        ep_fail_set = set()
 
         if args.fp16:
             provider_list = ["TensorrtExecutionProvider","TensorrtExecutionProvider_fp16", "CUDAExecutionProvider"]
         else:
             provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 
-        # provider_list = ["TensorrtExecutionProvider"]
-
-        # iterate execution providers 
+        # iterate ep 
         for i in range(len(provider_list)):
+
             os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
             fp16 = False 
-            ep_fail_flag = False
             ep = provider_list[i]
+            ep_ = ep
 
             if "fp16" in ep:
+                # No need to run TRT FP16 again if TRT already failed on previous run
+                if "TensorrtExecutionProvider" in ep_fail_set:
+                    continue
+
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
                 fp16 = True 
-                ep = "TensorrtExecutionProvider"
+                ep_ = "TensorrtExecutionProvider"
 
-            if (ep not in onnxruntime.get_available_providers()):
-                logger.error("No {} support".format(ep))
+            if (ep_ not in onnxruntime.get_available_providers()):
+                logger.error("No {} support".format(ep_))
                 continue
                 
             start_time = datetime.now()
@@ -424,15 +428,10 @@ def run_onnxruntime(args, models=MODELS):
             model.set_session_options(options)
 
             try: 
-                sys.stdout = devnull 
-
                 model.create_session()
-
-                sys.stdout = old_stdout
             except Exception as e:
-                sys.stdout = old_stdout
                 logger.error(e)
-                ep_fail_flag = True
+                ep_fail_set.add(ep)
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
@@ -468,20 +467,22 @@ def run_onnxruntime(args, models=MODELS):
             # model inference
             result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
             if not result: 
-                ep_fail_flag = True
+                ep_fail_set.add(ep)
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
             end_time = datetime.now()
             result["total_time"] = str(end_time - start_time) 
 
-            status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
+            if ep == "TensorrtExecutionProvider_fp16" and "TensorrtExecutionProvider" not in ep_fail_set:
+                status = True
+            else:
+                status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
             if not status:
-                ep_fail_flag = True
+                ep_fail_set.add(ep)
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
 
-            ep = ep + "_fp16" if fp16 else ep 
             latency_result[ep] = result["average_latency_ms"]
 
             logger.info(result)
@@ -492,7 +493,7 @@ def run_onnxruntime(args, models=MODELS):
 
         sess = model.get_session()
         sess.end_profiling()
-        if not ep_fail_flag:
+        if len(ep_fail_set) == 0:
             trt_fall_back, presults = analyze_profiling_file(path)
 
             if trt_fall_back:
@@ -643,25 +644,34 @@ def main():
     logger.info("Models FAIL/SUCCESS: {}/{}".format(len(failing_models), len(MODELS) - len(failing_models)))
 
     if len(failing_models) > 0:
-        logger.info("\nFailing EPs and Models:")
+        logger.info("\n============================================")
+        logger.info("========== Failing Models/EPs ==============")
+        logger.info("============================================")
         logger.info(failing_models)
 
-    if len(profile_metrics_map) > 0:
-        logger.info("\nTRT related metrics:")
-        pp.pprint(profile_metrics_map)
-        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        csv_filename = args.ratio_csv or f"benchmark_ratio_{time_stamp}.csv"
-        output_ratio(profile_metrics_map, csv_filename)
-
     if latency_comparison_map:
-        logger.info("\nCUDA/TRT inference time comparison:")
+        logger.info("\n=========================================")
+        logger.info("=========== CUDA/TRT latency  ===========")
+        logger.info("=========================================")
         add_improvement_information(latency_comparison_map)
         pp.pprint(latency_comparison_map)
         time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         csv_filename = args.latency_csv or f"benchmark_latency_{time_stamp}.csv"
         output_latency(latency_comparison_map, csv_filename)
 
-    logger.info("\nSystem information:")
+    if len(profile_metrics_map) > 0:
+        logger.info("\n========================================")
+        logger.info("========== TRT detail metrics ==========")
+        logger.info("========================================")
+        pp.pprint(profile_metrics_map)
+        time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        csv_filename = args.ratio_csv or f"benchmark_ratio_{time_stamp}.csv"
+        output_ratio(profile_metrics_map, csv_filename)
+
+
+    logger.info("\n===========================================")
+    logger.info("=========== System information  ===========")
+    logger.info("===========================================")
     info = {}
     get_system_info(info)
     pp.pprint(info)
