@@ -534,6 +534,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
+  if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
+    target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
+  endif()
   if (onnxruntime_USE_FEATURIZERS)
     target_include_directories(onnxruntime_test_all PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/external/FeaturizersLibrary/src)
   endif()
