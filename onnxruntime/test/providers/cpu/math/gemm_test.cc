@@ -31,6 +31,7 @@ TEST(GemmOpTest, GemmNoTrans) {
   TestGemmNoTrans(false);
 }
 
+// NNAPI EP requires weight to be an initializer
 TEST(GemmOpTest, GemmNoTransBIsInitializer) {
   TestGemmNoTrans(true);
 }
@@ -122,6 +123,7 @@ TEST(GemmOpTest, GemmTrans) {
 #endif
 }
 
+// NNAPI EP's GEMM only works as A*B', add case only B is transposed
 TEST(GemmOpTest, GemmTransB) {
   OpTester test("Gemm");
 

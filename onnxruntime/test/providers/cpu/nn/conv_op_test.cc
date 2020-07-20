@@ -203,6 +203,7 @@ TEST(ConvTest, Conv2D_1) {
   attrs.excluded_providers.insert(kCudaExecutionProvider);  // asymmetric padding is not supported by cudnn
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
+  // NNAPI EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -236,7 +237,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
       vector<int64_t>{3, 3},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {},                           // excluded EPs
+      {}                            // excluded EPs
   };
 
   vector<float> X = vector<float>(1 * 3 * 1 * 111, 1.0f);
@@ -295,6 +296,7 @@ TEST(ConvTest, Conv2D_2) {
                         -0.18779225647449493f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
+  // NNAPI EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -320,6 +322,7 @@ TEST(ConvTest, Conv2D_Bias_1) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 
+  // NNAPI EP requires weight to be an initializer
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
@@ -402,6 +405,7 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
+  // NNAPI EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -435,6 +439,7 @@ TEST(ConvTest, Conv2D_AutoPad2) {
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
+  // NNAPI EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 

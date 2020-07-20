@@ -63,6 +63,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul) {
   QLinearMatMul2DTest(false);
 }
 
+// NNAPI EP requires weight to be an initializer
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }

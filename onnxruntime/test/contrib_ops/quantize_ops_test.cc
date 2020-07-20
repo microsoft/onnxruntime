@@ -23,6 +23,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8) {
   TestDequantizeLinearPerTensorFloatUint8(false);
 }
 
+// NNAPI EP requires weight to be an initializer
 TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_uint8_use_initializer_except_x) {
   TestDequantizeLinearPerTensorFloatUint8(true);
 }
@@ -189,14 +190,15 @@ void TestQuantizeLinearPerTensorFloatUint8(bool use_initializer_except_x) {
                                   });
   test.AddInput<float>("y_scale", {}, {2.0f}, use_initializer_except_x);
   test.AddInput<uint8_t>("y_zero_point", {}, {128}, use_initializer_except_x);
-  test.AddOutput<uint8_t>("y", dims, {128, 129,  // Add comments to keep these aligned
-                                      130, 126,  //
-                                      129, 127,  //
-                                      130, 126,  //
-                                      255, 0,    //
-                                      255, 0,    //
-                                      255, 0,    //
-                                      255, 0});
+  test.AddOutput<uint8_t>("y", dims,
+                          {128, 129,
+                           130, 126,
+                           129, 127,
+                           130, 126,
+                           255, 0,
+                           255, 0,
+                           255, 0,
+                           255, 0});
   test.Run();
 }
 
@@ -226,14 +228,15 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_float_int8) {
                                   });
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddInput<int8_t>("y_zero_point", {}, {1});
-  test.AddOutput<int8_t>("y", dims, {1, 2,       // Add comments to keep these aligned
-                                     3, -1,      //
-                                     2, 0,       //
-                                     3, -1,      //
-                                     127, -127,  //
-                                     127, -127,  //
-                                     127, -128,  //
-                                     127, -128});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          3, -1,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -127,
+                          127, -128,
+                          127, -128});
   test.Run();
 }
 
@@ -253,14 +256,15 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_uint8) {
                                       }));
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
-  test.AddOutput<uint8_t>("y", dims, {128, 129,  // Add comments to keep these aligned
-                                      130, 126,  //
-                                      129, 127,  //
-                                      130, 126,  //
-                                      255, 0,    //
-                                      255, 0,    //
-                                      255, 0,    //
-                                      255, 0});
+  test.AddOutput<uint8_t>("y", dims,
+                          {128, 129,
+                           130, 126,
+                           129, 127,
+                           130, 126,
+                           255, 0,
+                           255, 0,
+                           255, 0,
+                           255, 0});
   test.Run();
 }
 
@@ -279,14 +283,15 @@ TEST(QuantizeLinearContribOpTest, QuantizeLinear_per_tensor_half_int8) {
                                       }));
   test.AddInput<MLFloat16>("y_scale", {}, ToFloat16({2.0f}));
   test.AddInput<int8_t>("y_zero_point", {}, {1});
-  test.AddOutput<int8_t>("y", dims, {1, 2,       // Add comments to keep these aligned
-                                     3, -1,      //
-                                     2, 0,       //
-                                     3, -1,      //
-                                     127, -127,  //
-                                     127, -127,  //
-                                     127, -128,  //
-                                     127, -128});
+  test.AddOutput<int8_t>("y", dims,
+                         {1, 2,
+                          3, -1,
+                          2, 0,
+                          3, -1,
+                          127, -127,
+                          127, -127,
+                          127, -128,
+                          127, -128});
   test.Run();
 }
 #endif
