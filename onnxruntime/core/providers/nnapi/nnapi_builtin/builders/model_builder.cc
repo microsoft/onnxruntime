@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #include <core/common/logging/logging.h>
+#include <core/common/safeint.h>
 
-#include "core/common/safeint.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "helper.h"
 #include "model_builder.h"
-#include "node_attr_helper.h"
+#include "op_builder.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -15,14 +15,8 @@ namespace nnapi {
 using namespace android::nn::wrapper;
 using std::vector;
 
-const float* GetTensorFloatDataA(const ONNX_NAMESPACE::TensorProto& tensor) {
-  return tensor.float_data().empty()
-             ? reinterpret_cast<const float*>(tensor.raw_data().data())
-             : tensor.float_data().data();
-}
-
-ModelBuilder::ModelBuilder(ONNX_NAMESPACE::ModelProto& model_proto)
-    : nnapi_(NnApiImplementation()), model_proto_(model_proto) {
+ModelBuilder::ModelBuilder(const GraphViewer& graph_view)
+    : nnapi_(NnApiImplementation()), graph_view_(graph_view) {
   GetAllInitializers();
   op_builders_ = CreateOpBuilders();
 }
@@ -31,21 +25,20 @@ int32_t ModelBuilder::GetAndroidSdkVer() const {
   return nnapi_ ? nnapi_->android_sdk_version : 0;
 }
 
-bool ModelBuilder::IsNodeSupported(
-    const ONNX_NAMESPACE::NodeProto& node) {
-  if (auto* opBuilder = GetOpBuilder(node)) {
-    return opBuilder->IsOpSupported(*this, node);
+bool ModelBuilder::IsNodeSupported(const Node& node) {
+  if (auto* op_builder = GetOpBuilder(node)) {
+    return op_builder->IsOpSupported(*this, node);
   } else {
     return false;
   }
 }
 
-bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
-                              const ONNX_NAMESPACE::ModelProto& model_proto) {
+bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec, const GraphViewer& graph_view) {
   if (!supported_node_vec.empty()) {
     if (supported_node_vec.size() == 1) {
-      const auto& node = model_proto.graph().node(supported_node_vec[0]);
-      const auto& op = node.op_type();
+      const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
+      const auto* node(graph_view.GetNode(node_indices[supported_node_vec[0]]));
+      const auto& op = node->OpType();
       // It is not worth it to perform a single Reshape/Dropout/Identity operator
       // which is only copying the data in NNAPI
       // If this is the case, let it fall back
@@ -58,7 +51,7 @@ bool IsValidSupportedNodesVec(const std::vector<int>& supported_node_vec,
     return true;
   }
   return false;
-}  // namespace nnapi
+}
 
 std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
   std::vector<std::vector<int>> supported_node_vecs;
@@ -73,25 +66,26 @@ std::vector<std::vector<int>> ModelBuilder::GetSupportedNodes() {
 #endif
 
   std::vector<int> supported_node_vec;
-  for (int i = 0; i < model_proto_.graph().node_size(); i++) {
-    const auto& node(model_proto_.graph().node(i));
-    bool supported = IsNodeSupported(node);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.op_type()
+  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_view_.GetNode(node_indices[i]));
+    bool supported = IsNodeSupported(*node);
+    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << i
-                          << "] name: [" << node.name()
+                          << "] name: [" << node->Name()
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
       supported_node_vec.push_back(i);
     } else {
-      if (IsValidSupportedNodesVec(supported_node_vec, model_proto_)) {
+      if (IsValidSupportedNodesVec(supported_node_vec, graph_view_)) {
         supported_node_vecs.push_back(supported_node_vec);
         supported_node_vec.clear();
       }
     }
   }
 
-  if (IsValidSupportedNodesVec(supported_node_vec, model_proto_))
+  if (IsValidSupportedNodesVec(supported_node_vec, graph_view_))
     supported_node_vecs.push_back(supported_node_vec);
 
   LOGS_DEFAULT(VERBOSE) << "Support vectors size is " << supported_node_vecs.size();
@@ -156,16 +150,16 @@ void ModelBuilder::GetTargetDevices() {
   const std::string nnapi_cpu("nnapi-reference");
   uint32_t num_devices = 0;
   THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDeviceCount(&num_devices),
-                           "Getting list of available devices");
+                           "Getting count of available devices");
 
   for (uint32_t i = 0; i < num_devices; i++) {
     ANeuralNetworksDevice* device = nullptr;
     const char* device_name = nullptr;
     THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworks_getDevice(i, &device),
-                             "Getting list of available devices");
+                             "Getting " + std::to_string(i) + "th device");
 
     THROW_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
-                             "Getting list of available devices");
+                             "Getting " + std::to_string(i) + "th device's name");
 
     bool device_is_cpu = nnapi_cpu == device_name;
     if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
@@ -177,27 +171,30 @@ void ModelBuilder::GetTargetDevices() {
 }
 
 void ModelBuilder::GetAllInitializers() {
-  for (const auto& tensor : model_proto_.graph().initializer()) {
-    initializers_.emplace(tensor.name(), tensor);
+  for (const auto& pair : graph_view_.GetAllInitializedTensors()) {
+    initializers_.emplace(pair.first, *pair.second);
   }
 }
 
 void ModelBuilder::PreprocessInitializers() {
-  for (const auto& node : model_proto_.graph().node()) {
-    if (auto* opBuilder = GetOpBuilder(node)) {
-      opBuilder->AddInitializersToSkip(*this, node);
+  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_view_.GetNode(node_indices[i]));
+    if (auto* op_builder = GetOpBuilder(*node)) {
+      op_builder->AddInitializersToSkip(*this, *node);
     }
   }
 }
 
 void ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
-  auto initializer_size = model_proto_.graph().initializer_size();
+  auto initializer_size = initializers_.size();
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
   size_t sizeAll = 0;
 
-  for (int i = 0; i < initializer_size; ++i) {
-    const auto& tensor = model_proto_.graph().initializer(i);
+  int i = 0;
+  for (const auto& pair : initializers_) {
+    const auto& tensor = pair.second;
     const auto& name = tensor.name();
     if (Contains(skipped_initializers_, name))
       continue;
@@ -226,23 +223,24 @@ void ModelBuilder::RegisterInitializers() {
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
-    initializers[i] = std::make_tuple(index, size, padded_size);
+    initializers[i++] = std::make_tuple(index, size, padded_size);
   }
 
   // 2nd pass copies all the initializer data into NNAPI shared memory
+  i = 0;
   nnapi_model_->mem_initializers_ =
       std::make_unique<Model::NNMemory>(nnapi_, "mem_initializers_", sizeAll);
 
   // 2nd pass to copy all the initializers into shared memory
   size_t offset = 0;
-  for (int i = 0; i < initializer_size; ++i) {
-    const auto& tensor = model_proto_.graph().initializer(i);
+  for (const auto& pair : initializers_) {
+    const auto& tensor = pair.second;
     if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
     uint32_t index;
     size_t size, padded_size;
-    std::tie(index, size, padded_size) = initializers[i];
+    std::tie(index, size, padded_size) = initializers[i++];
     const char* src = nullptr;
     if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       src = tensor.float_data().empty()
@@ -258,9 +256,8 @@ void ModelBuilder::RegisterInitializers() {
 }
 
 void ModelBuilder::RegisterModelInputs() {
-  for (int32_t input_idx = 0; input_idx < model_proto_.graph().input_size(); input_idx++) {
-    const auto& input(model_proto_.graph().input(input_idx));
-    std::string input_name = input.name();
+  for (const auto* node_arg : graph_view_.GetInputs()) {
+    const auto& input_name = node_arg->Name();
 
     {  // input should not be an initializer
       if (Contains(operands_, input_name))
@@ -270,15 +267,21 @@ void ModelBuilder::RegisterModelInputs() {
         continue;
     }
 
+    const auto* shape_proto = node_arg->Shape();
+    ORT_ENFORCE(shape_proto != nullptr, "shape_proto cannot be null for input: " + input_name);
     Shaper::Shape shape;
-    for (const auto& dim : input.type().tensor_type().shape().dim()) {
+
+    for (const auto& dim : shape_proto->dim()) {
       // NNAPI uses 0 for dynamic dimension, which is the default value for dim.dim_value()
       shape.push_back(SafeInt<uint32_t>(dim.dim_value()));
     }
 
     Type type = Type::TENSOR_FLOAT32;
-    if (input.type().tensor_type().has_elem_type()) {
-      switch (input.type().tensor_type().elem_type()) {
+    const auto* type_proto = node_arg->TypeAsProto();
+    if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
+      ORT_THROW("The input of graph doesn't have elem_type: " + input_name);
+    } else {
+      switch (type_proto->tensor_type().elem_type()) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           type = Type::TENSOR_FLOAT32;
           break;
@@ -286,27 +289,23 @@ void ModelBuilder::RegisterModelInputs() {
           // TODO: support other type
           ORT_THROW("The input of graph doesn't have valid type, name: " +
                     input_name + " type: " +
-                    std::to_string(input.type().tensor_type().elem_type()));
+                    std::to_string(type_proto->tensor_type().elem_type()));
       }
-    } else {
-      ORT_THROW("The input of graph doesn't have elem_type: " +
-                input_name);
     }
 
     OperandType operand_type(type, shape);
     shaper_.AddShape(input_name, operand_type.dimensions);
 
     auto index = AddNewOperand(input_name, operand_type, false /* is_nhwc */);
-
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
   }
-}  // namespace nnapi
+}
 
 void ModelBuilder::RegisterModelOutputs() {
-  for (int32_t output_idx = 0; output_idx < model_proto_.graph().output_size(); output_idx++) {
-    const auto& output(model_proto_.graph().output(output_idx));
-    const std::string& output_name(output.name());
+  for (const auto* node_arg : graph_view_.GetOutputs()) {
+    const auto& output_name = node_arg->Name();
+
     if (!Contains(operands_, output_name)) {
       ORT_THROW("The output of graph is not registered" + output_name);
     }
@@ -331,9 +330,7 @@ void ModelBuilder::RegisterModelShaper() {
 uint32_t ModelBuilder::AddNewOperand(const std::string& name,
                                      const OperandType& operand_type,
                                      bool is_nhwc) {
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksModel_addOperand(
-      nnapi_model_->model_, &operand_type.operandType));
-  auto idx = next_index_++;
+  auto idx = AddNewNNAPIOperand(operand_type);
   RegisterOperand(name, idx, operand_type, is_nhwc);
   return idx;
 }
@@ -399,12 +396,13 @@ uint32_t ModelBuilder::AddOperandFromPersistMemoryBuffer(
 }
 
 void ModelBuilder::AddOperations() {
-  for (const auto& node : model_proto_.graph().node()) {
-    if (auto* opBuilder = GetOpBuilder(node)) {
-      opBuilder->AddToModelBuilder(*this, node);
+  const auto& node_indices = graph_view_.GetNodesInTopologicalOrder();
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    const auto* node(graph_view_.GetNode(node_indices[i]));
+    if (auto* op_builder = GetOpBuilder(*node)) {
+      op_builder->AddToModelBuilder(*this, *node);
     } else {
-      throw std::invalid_argument(
-          "Node not supported" + node.name());
+      ORT_THROW("Node [" + node->Name() + "], type [" + node->OpType() + "] is not supported");
     }
   }
 }
@@ -472,48 +470,44 @@ std::unique_ptr<Model> ModelBuilder::Compile() {
   return std::move(nnapi_model_);
 }
 
-int32_t ModelBuilder::FindActivation(const std::string& output) {
+int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
-  const ONNX_NAMESPACE::NodeProto* activationNode{nullptr};
-  std::string node_name;
-  for (const auto& _node : model_proto_.graph().node()) {
-    if (_node.op_type() == "Relu" && output == _node.input(0)) {
-      fuse_code = ANEURALNETWORKS_FUSED_RELU;
-      activationNode = &_node;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    const auto& dst_node = it->GetNode();
+    const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
+    if (dst_node.OpType() == "Relu") {
+      if (&output == dst_input) {
+        fuse_code = ANEURALNETWORKS_FUSED_RELU;
+      }
+    } else {
+      // if there is any other non-relu node using the output
+      // will add relu separately
+      if (&output == dst_input)
+        return ANEURALNETWORKS_FUSED_NONE;
     }
   }
 
+  // if output is a graph output, will add relu separately
   if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    for (const auto& _node : model_proto_.graph().node()) {
-      if (&_node == activationNode)
-        continue;
-
-      // if there is any other node using the output
-      // will add relu separately
-      for (const auto& node_input : _node.input()) {
-        if (output == node_input)
-          return ANEURALNETWORKS_FUSED_NONE;
-      }
-    }
-
-    // if output is a graph output
-    // will add relu separately
-    for (const auto& model_output : model_proto_.graph().output()) {
-      if (model_output.name() == output)
+    for (const auto* graph_output : graph_view_.GetOutputs()) {
+      if (&output == graph_output)
         return ANEURALNETWORKS_FUSED_NONE;
     }
 
-    fused_activations_.insert(activationNode->name());
+    LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
+                          << "], fused the output [" << output.Name() << "]";
+
+    fused_activations_.insert(output.Name());
   }
 
   return fuse_code;
 }
 
-IOpBuilder* ModelBuilder::GetOpBuilder(const ONNX_NAMESPACE::NodeProto& node) {
-  if (!Contains(op_builders_, node.op_type()))
+IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
+  if (!Contains(op_builders_, node.OpType()))
     return nullptr;
 
-  return op_builders_[node.op_type()].get();
+  return op_builders_[node.OpType()].get();
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {

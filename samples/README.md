@@ -41,8 +41,9 @@ For a list of available dockerfiles and published images to help with getting st
 
 ## C/C++
 * [C: SqueezeNet](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
+* [C++: model-explorer](./c_cxx/model-explorer) - single and batch processing
 * [C++: SqueezeNet](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
-* [C++:MNIST)](./c_cxx/MNIST)
+* [C++: MNIST](./c_cxx/MNIST)
 
 ## Java
 * [Inference Tutorial](../docs/Java_API.md#getting-started)

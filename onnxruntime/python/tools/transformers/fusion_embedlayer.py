@@ -39,29 +39,29 @@ class FusionEmbedLayerNoMask(Fusion):
     def __init__(self, model: OnnxModel, description='no mask'):
         super().__init__(model, "EmbedLayerNormalization", "SkipLayerNormalization", description)
         self.utils = FusionUtils(model)
+        self.attention = None
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        # already fused. Assumes that only one mebedding layer in a transformer model.
-        if self.nodes_to_add:
-            return
-
         if self.model.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is None:
+            logger.debug("Failed to match path SkipLayerNormalization[0] <-- Add <-- Gather")
             return
 
-        if self.model.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False) is None:
+        self.attention = self.model.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False)
+        if self.attention is None:
             # In case user disables attention fusion, check whether subgraph looks like Attention.
             if node.output[0] not in input_name_to_nodes:
                 return
             children = input_name_to_nodes[node.output[0]]
             children_types = sorted([child.op_type for child in children])
             if children_types != ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']:
+                logger.debug("No Attention like subgraph in children of SkipLayerNormalization")
                 return
 
         # Assume the order of embeddings are word_embedding + position_embedding + segment_embedding
         normalize_node = node
         word_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
         if word_embedding_path is None:
-            logger.info("Failed to find word embedding")
+            logger.info("Word embedding path is not found. Embed layer cannot be fused.")
             return
         add_node, word_embedding_gather = word_embedding_path
         input_ids = word_embedding_gather.input[1]
@@ -87,7 +87,7 @@ class FusionEmbedLayerNoMask(Fusion):
                     if position_embedding_path is not None:
                         position_embedding_weight_node, position_embedding_expand = position_embedding_path
                     else:
-                        logger.info("Failed to find position embedding")
+                        logger.info("Position embedding path is not found. Embed layer cannot be fused.")
                         return
 
             if position_embedding_shape is not None and position_embedding_shape.input[0] != input_ids:
@@ -98,7 +98,7 @@ class FusionEmbedLayerNoMask(Fusion):
         if segment_embedding_path is None:
             segment_embedding_path = self.model.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 1])
             if segment_embedding_path is None:
-                logger.info("Failed to find segment embedding")
+                logger.info("Segment embedding is not found. Embed layer cannot be fused.")
                 return
             _, segment_embedding_gather = segment_embedding_path
         else:
@@ -118,11 +118,6 @@ class FusionEmbedLayerNoMask(Fusion):
         self.nodes_to_remove.extend(segment_embedding_path)
 
         self.nodes_to_remove.extend([normalize_node])
-
-        # store inputs for further processing
-        if self.model.find_graph_input(input_ids):
-            self.model.bert_inputs = [input_ids, segment_ids
-                                      ] if self.model.find_graph_input(segment_ids) else [input_ids]
 
         # Cast input_ids and segment_ids to int32.
         input_ids_cast_node = None
@@ -153,6 +148,8 @@ class FusionEmbedLayerNoMask(Fusion):
                                      value=helper.make_tensor("value", onnx.TensorProto.INT32, [1], [1])))
                 segment_ids = "zeros_for_input_shape"
 
+        node_name = self.model.create_node_name('EmbedLayerNormalization')
+        output_name = node_name + "_output"
         embed_node = helper.make_node(
             'EmbedLayerNormalization',
             inputs=[
@@ -164,8 +161,8 @@ class FusionEmbedLayerNoMask(Fusion):
                 normalize_node.input[2],
                 normalize_node.input[3]  # gamma and beta
             ],
-            outputs=["embed_output", "dummy_mask_index"],
-            name="EmbedLayer")
+            outputs=[node_name + "_output", node_name + "_dummy_mask_index"],
+            name=node_name)
 
         embed_node.domain = "com.microsoft"
 
@@ -174,51 +171,35 @@ class FusionEmbedLayerNoMask(Fusion):
             if att.name == 'epsilon':
                 embed_node.attribute.extend([att])
         # Set default value to 1e-12 if no attribute is found.
+        # OnnxRuntime 1.2.0 or older has no epsilon attribute. The optimized model can only work for 1.3.0 or later.
         if len(embed_node.attribute) == 0:
-            embed_node.attribute.extend([onnx.helper.make_attribute("epsilon", 1.0E-12)])
+            embed_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
-        self.model.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
+        self.model.replace_input_of_all_nodes(normalize_node.output[0], output_name)
         self.nodes_to_add.append(embed_node)
 
 
 class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
-    def __init__(self, model: OnnxModel, mask_indice: Dict, mask_casted: Dict):
+    def __init__(self, model: OnnxModel):
         super().__init__(model, "with mask")
-        self.mask_indice: Dict = mask_indice
-        self.mask_casted: Dict = mask_casted
-        self.mask_input_name = None
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        # already fused. Assumes that only one mebedding layer in a transformer model.
-        if self.nodes_to_add:
-            return
+        old_count = len(self.nodes_to_add)
 
         super().fuse(node, input_name_to_nodes, output_name_to_node)
-        if not self.nodes_to_add:
+        if len(self.nodes_to_add) == old_count:
             return
 
-        if len(self.nodes_to_add[0].input) != 7:
-            return
+        if self.attention is not None:
+            mask_index = self.attention.input[3]
+            if mask_index in output_name_to_node:
+                node = output_name_to_node[mask_index]
+                if node.op_type == "ReduceSum":
+                    embed_node = self.nodes_to_add.pop()
+                    mask_input_name = node.input[0]
+                    self.nodes_to_remove.extend([node])
+                    embed_node.input.append(mask_input_name)
+                    embed_node.output[1] = mask_index
+                    self.nodes_to_add.append(embed_node)
 
-        assert len(self.mask_indice) <= 1, "Unexpected: there are multiple mask inputs found!"
-        if len(self.mask_indice) != 1:
-            logger.info("Fused EmbedLayerNormalization (no mask) count: 1")
-        else:
-            embed_node = self.nodes_to_add.pop()
-            mask_input_name = next(iter(self.mask_indice))
-            mask_output_name = self.mask_indice[mask_input_name]
-            mask_node = output_name_to_node[mask_output_name]
-
-            self.nodes_to_remove.extend([mask_node])
-
-            # store inputs for further processing
-            self.mask_input_name = mask_input_name
-
-            # When mask has been casted to int32, use that casted one as input of embed layer norm.
-            if mask_input_name in self.mask_casted:
-                mask_input_name = self.mask_casted[mask_input_name]
-
-            embed_node.input.append(mask_input_name)
-            embed_node.output[1] = mask_output_name
-            self.nodes_to_add.append(embed_node)
-            self.prune_graph = True
+        self.prune_graph = True

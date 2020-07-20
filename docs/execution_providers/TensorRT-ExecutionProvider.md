@@ -67,9 +67,13 @@ ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioni
 
 ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT
 
-By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000, min subgraph size = 1 and FP16 mode is disabled.
+ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the cases that TensorRT may take long time to optimize and build engine. Engine will be cached after it's built at the first time so that next time when inference session is created the engine can be loaded directly from cache. Note each engine is created for specific settings such as precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engines need to be rebuilt and cached again. Also please clean up any old engine cache files (.engine) before enabling the feature for new models. Right now engine caching is only available for static shape models (subgraphs). For dynamic shape cases, since the engine is dynamically created at run-time it's hard to reuse it from previous run without knowing the profile the engine was created from. Dyanmic shape engine caching will be addressed in the future.
 
-One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE and ORT_TENSORRT_FP16_ENABLE.
+ORT_TENSORRT_ENGINE_CACHE_PATH: Specify path for TensorRT engine files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1
+
+By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000, min subgraph size = 1, FP16 mode is disabled and TensorRT engine caching is disabled.
+
+One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE,  ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE and ORT_TENSORRT_ENGINE_CACHE_PATH.
 e.g. on Linux
 
 ### override default max workspace size to 2GB
@@ -83,3 +87,9 @@ export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
 
 ### Enable FP16 mode in TensorRT
 export ORT_TENSORRT_FP16_ENABLE=1
+
+### Enable TensorRT engine caching
+export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
+
+### Specify TensorRT engine cache path
+export ORT_TENSORRT_ENGINE_CACHE_PATH="cache"

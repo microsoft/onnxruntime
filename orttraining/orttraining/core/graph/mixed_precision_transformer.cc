@@ -41,8 +41,6 @@ bool IsFP32Node(const Node* node) {
 
 // At present, we use these table to identify which input needs to be keep in FP32
 static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_args = {
-    {"TrainableDropout", {1}},
-    {"TrainableDropoutGrad", {2}},
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
 };
@@ -50,8 +48,6 @@ static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_
 // Currently the list here is same as stage1 above due to empty FP32_Nodes.
 // It's possibile we will have more FP32 nodes added, this map will also be extended.
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
-    {"TrainableDropout", {1}},
-    {"TrainableDropoutGrad", {2}},
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
 };
@@ -602,13 +598,6 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   LossSubgraph loss_subgraph(graph);
 
   // Stage 1: Convert whole graph including forward and backward to FP16
-  // Initialize function body for all function nodes
-  // This is required to make sure after converting inputs\weights to FP16
-  // the new NodeArg updates are correctly propagated to the function body nodes as well.
-  for (auto& node : graph.Nodes()) {
-    graph.InitFunctionBodyForNode(node);
-  }
-
   // Insert Cast node to convert inputs from FP32 to FP16
   // If all consumers are from loss graph, don't convert it, and remove it from To-32 loss graph inputs.
   for (const NodeArg* input : graph.GetInputs()) {

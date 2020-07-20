@@ -22,7 +22,7 @@ class Pool final : public onnxruntime::Pool<T, PoolType> {
  public:
   explicit Pool(const OpKernelInfo& info) : onnxruntime::Pool<T, PoolType>(info) {
     provider_ = (const_cast<ArmNNExecutionProvider*>(
-        dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~Pool() {
@@ -49,7 +49,7 @@ class MaxPoolV8 final : public onnxruntime::MaxPoolV8 {
  public:
   explicit MaxPoolV8(const OpKernelInfo& info) : onnxruntime::MaxPoolV8(info) {
     provider_ = (const_cast<ArmNNExecutionProvider*>(
-        dynamic_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
+        static_cast<const ArmNNExecutionProvider*>(info.GetExecutionProvider())));
   }
 
   ~MaxPoolV8() {

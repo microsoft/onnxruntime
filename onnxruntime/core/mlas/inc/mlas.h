@@ -185,6 +185,65 @@ MlasGemm(
     MLAS_THREADPOOL* ThreadPool
     );
 
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+//
+// Buffer packing routines.
+//
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool BIsSigned
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool BIsSigned,
+    void* PackedB
+    );
+
 //
 // Convolution routines.
 //
@@ -476,7 +535,8 @@ MlasFindMinMaxElement(
     );
 
 //
-// LengthA == LengthB, or (LengthA == 1 or LengthB == 1), broadcasting semantic
+// InputA is of size N,
+// Input B is of size 1 if IsScalarB == true, otherwise it is of size N
 //
 template<typename DataType>
 void
@@ -491,6 +551,6 @@ MlasQLinearAdd(
     float ScaleC,
     int32_t ZeroPointC,
     DataType* OutputC,
-    size_t LengthA,
-    size_t LengthB
+    size_t N,
+    bool IsScalarB
     );
