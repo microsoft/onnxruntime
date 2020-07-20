@@ -25,7 +25,7 @@ struct Trilu::ComputeImpl {
     const auto& X_shape = X->Shape();
     int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
 
-    const auto* X_data = reinterpret_cast<const T*>(X->DataRaw());//X->Data<T>();
+    const auto* X_data = reinterpret_cast<const T*>(X->DataRaw());
     int64_t matrix_h = static_cast<int64_t>(X_shape[X_num_dims - 2]);
     int64_t matrix_w = static_cast<int64_t>(X_shape[X_num_dims - 1]);
 
@@ -35,15 +35,15 @@ struct Trilu::ComputeImpl {
     }
 
     int64_t num_matrix_elems = matrix_h * matrix_w;
-    auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());//Y->template MutableData<T>();
+    auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
     for (int64_t b = 0; b < batch_size; b++) {  // can be parallelized if need to
       auto X_batch_data = X_data + (b * num_matrix_elems);
       auto Y_batch_data = Y_data + (b * num_matrix_elems);
-        
+
       auto input_mat = ConstEigenMatrixMapRowMajor<T>(
-	        X_batch_data,
-	        matrix_h,
-	        matrix_w);
+          X_batch_data,
+          matrix_h,
+          matrix_w);
       auto output_mat = EigenMatrixMapRowMajor<T>(
           Y_batch_data,
           matrix_h,
@@ -53,20 +53,20 @@ struct Trilu::ComputeImpl {
 
       if (up) {
         int64_t start_i = k_val > 0 ? 0 : 1 - k_val;
-        for (int64_t i = start_i; i < matrix_h ; i++){
-          for (int64_t j = 0; j < i + k_val && j < matrix_w; j ++) {
+        for (int64_t i = start_i; i < matrix_h; i++) {
+          for (int64_t j = 0; j < i + k_val && j < matrix_w; j++) {
             output_mat(i, j) = static_cast<int64_t>(0);
           }
         }
       } else {
         int64_t start_j = k_val < 0 ? 0 : 1 + k_val;
-        for (int64_t j = start_j; j < matrix_w ; j++){
-          for (int64_t i = 0; i < j - k_val && i < matrix_h; i ++) {
+        for (int64_t j = start_j; j < matrix_w; j++) {
+          for (int64_t i = 0; i < j - k_val && i < matrix_h; i++) {
             output_mat(i, j) = static_cast<int64_t>(0);
           }
         }
       }
-    }    
+    }
   }
 };
 
