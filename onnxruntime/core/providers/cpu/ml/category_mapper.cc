@@ -25,7 +25,7 @@ Status CategoryMapper::Compute(OpKernelContext* context) const {
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& shape = X.Shape();
-  Tensor& Y = *context->Output(0, TensorShape(shape));
+  Tensor& Y = *context->Output(0, shape);
 
   if (X.IsDataTypeString()) {
     if (!Y.IsDataType<int64_t>())

@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 import hashlib
-import itertools
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
@@ -1312,141 +1311,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         cwd=cwd, dll_path=dll_path)
 
 
-def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir,
-                            provider, num_parallel_models,
-                            num_parallel_tests=0):
-    """tensorrt function to run onnx test and model test.
-    """
-    dll_path = os.path.join(args.tensorrt_home, 'lib')
-    for config in configs:
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            exe = os.path.join(cwd, config, 'onnx_test_runner')
-            model_dir = os.path.join(cwd, "models")
-        else:
-            exe = os.path.join(cwd, 'onnx_test_runner')
-            model_dir = os.path.join(build_dir, "models")
-
-        cmd_base = []
-        if provider:
-            cmd_base += ["-e", provider]
-
-        if num_parallel_tests != 0:
-            cmd_base += ['-c', str(num_parallel_tests)]
-
-        if num_parallel_models > 0:
-            cmd_base += ["-j", str(num_parallel_models)]
-
-        # onnx test
-        if os.path.exists(onnx_test_data_dir):
-            onnx_test_cmd = cmd_base + [onnx_test_data_dir]
-            run_subprocess([exe] + onnx_test_cmd, cwd=cwd, dll_path=dll_path)
-
-        # model test
-        # TensorRT can run most of the model tests, but only part of
-        # them is enabled here to save CI build time.
-        if config != 'Debug' and os.path.exists(model_dir):
-            model_dir_opset8 = os.path.join(model_dir, "opset8")
-            model_dir_opset8 = glob.glob(os.path.join(
-                model_dir_opset8, "test_*"))
-            model_dir_opset10 = os.path.join(model_dir, "opset10")
-            model_dir_opset10 = glob.glob(
-                os.path.join(model_dir_opset10, "tf_inception_v1"))
-            for dir_path in itertools.chain(model_dir_opset8,
-                                            model_dir_opset10):
-                model_test_cmd = cmd_base + [dir_path]
-                run_subprocess(
-                    [exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
-
-
-def openvino_run_onnx_tests(build_dir, configs, onnx_test_data_dir,
-                            provider, num_parallel_models,
-                            num_parallel_tests=0):
-    """openvino function to run onnx tests and model tests
-    """
-    for config in configs:
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            exe = os.path.join(cwd, config, 'onnx_test_runner')
-            model_dir = os.path.join(cwd, "models")
-        else:
-            exe = os.path.join(cwd, 'onnx_test_runner')
-            model_dir = os.path.join(build_dir, "models")
-
-        cmd = ['-o', '0']
-        if provider:
-            cmd += ["-e", provider]
-
-        if num_parallel_tests != 0:
-            cmd += ['-c', str(num_parallel_tests)]
-
-        if num_parallel_models > 0:
-            cmd += ["-j", str(num_parallel_models)]
-
-        # onnx test
-        if os.path.exists(onnx_test_data_dir):
-            cmd.append(onnx_test_data_dir)
-            run_subprocess([exe] + cmd, cwd=cwd)
-
-        # model test
-        # OpenVINO can run most of the model tests, but only part of
-        # them are enabled here to save CI build time.
-        if config != 'Debug' and os.path.exists(model_dir):
-            model_dir_opset8 = os.path.join(model_dir, "opset8")
-            model_dir_opset8 = glob.glob(os.path.join(
-                model_dir_opset8, "test_*"))
-            model_dir_opset10 = os.path.join(model_dir, "opset10")
-            model_dir_opset10 = glob.glob(os.path.join(
-                model_dir_opset10, "*v1*"))
-            for dir_path in itertools.chain(model_dir_opset8,
-                                            model_dir_opset10):
-                model_test_cmd = cmd + [dir_path]
-                run_subprocess(
-                    [exe] + model_test_cmd, cwd=cwd)
-
-
-def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
-    """dnnl temporary function for running onnx tests and
-    model tests separately.
-    """
-    for config in configs:
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            exe = os.path.join(cwd, config, 'onnx_test_runner')
-            model_dir = os.path.join(cwd, "models")
-        else:
-            exe = os.path.join(cwd, 'onnx_test_runner')
-            model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-e', 'dnnl', '-c', '1', '-j', '1']
-        if os.path.exists(onnx_test_data_dir):
-            onnxdata_cmd = cmd_base + [onnx_test_data_dir]
-            # /data/onnx
-            run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
-            run_subprocess([exe, '-x'] + onnxdata_cmd, cwd=cwd)
-
-        if config != 'Debug' and os.path.exists(model_dir):
-            opset7_model_dir = os.path.join(model_dir, 'opset7')
-            opset7_cmd = cmd_base + [opset7_model_dir]
-            opset8_model_dir = os.path.join(model_dir, 'opset8')
-            opset8_cmd = cmd_base + [opset8_model_dir]
-            opset9_model_dir = os.path.join(model_dir, 'opset9')
-            opset9_cmd = cmd_base + [opset9_model_dir]
-            opset10_model_dir = os.path.join(model_dir, 'opset10')
-            opset10_cmd = cmd_base + [opset10_model_dir]
-            run_subprocess([exe] + opset7_cmd, cwd=cwd)
-            run_subprocess([exe] + opset8_cmd, cwd=cwd)
-            run_subprocess([exe] + opset9_cmd, cwd=cwd)
-            run_subprocess([exe] + opset10_cmd, cwd=cwd)
-
-            # temporarily disable -x invocations on Windows as they
-            # are causing instability in CI
-            if not is_windows():
-                run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
-                run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
-                run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
-                run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
-
-
 def nuphar_run_python_tests(build_dir, configs):
     """nuphar temporary function for running python tests separately
     as it requires ONNX 1.5.0
@@ -1789,37 +1653,6 @@ def main():
 
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
-        # run the onnx model tests if requested explicitly.
-        if args.enable_onnx_tests and not args.skip_onnx_tests:
-            # directory from ONNX submodule with ONNX test data
-            onnx_test_data_dir = '/data/onnx'
-            if is_windows() or not os.path.exists(onnx_test_data_dir):
-                onnx_test_data_dir = os.path.join(
-                    source_dir, "cmake", "external", "onnx", "onnx",
-                    "backend", "test", "data")
-
-            if args.use_tensorrt:
-                # Disable some onnx unit tests that TensorRT doesn't
-                # supported yet
-                if not is_windows():
-                    trt_onnx_test_data_dir = os.path.join(
-                        source_dir, "cmake", "external", "onnx", "onnx",
-                        "backend", "test", "data", "simple")
-                else:
-                    trt_onnx_test_data_dir = ""
-                tensorrt_run_onnx_tests(
-                    args, build_dir, configs, trt_onnx_test_data_dir,
-                    "tensorrt", 1)
-
-            if args.use_openvino:
-                openvino_run_onnx_tests(
-                    build_dir, configs, onnx_test_data_dir, 'openvino',
-                    1, 1)
-
-            # Run some models are disabled to keep memory utilization
-            # under control.
-            if args.use_dnnl:
-                dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
