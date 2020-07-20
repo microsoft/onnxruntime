@@ -18,9 +18,9 @@ def register_custom_op():
         return g.op("com.microsoft::Gelu", self)
 
     def trilu(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper)
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1)
 
     # Op Registration
     register_custom_op_symbolic('::inverse', inverse, _onnx_opset_version)
     register_custom_op_symbolic('::gelu', gelu, _onnx_opset_version)
-    register_custom_op_symbolic('::trilu', trilu, _onnx_opset_version)
+    register_custom_op_symbolic('::triu', trilu, _onnx_opset_version)

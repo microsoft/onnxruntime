@@ -109,7 +109,7 @@ class ONNXExporterTest(unittest.TestCase):
         for i in range(-5, 5):
             class Module(torch.nn.Module):
                 def forward(self, input):
-                    return input.trilu(diagonal=i)
+                    return input.triu(diagonal=i)
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
@@ -124,7 +124,7 @@ class ONNXExporterTest(unittest.TestCase):
         for i in range(-5, 5):
             class Module2D(torch.nn.Module):
                 def forward(self, input):
-                    return input.trilu(diagonal=i)
+                    return input.triu(diagonal=i)
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)
