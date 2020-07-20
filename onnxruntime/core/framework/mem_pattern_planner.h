@@ -69,6 +69,7 @@ class MemPatternPlanner {
     std::list<int>::iterator best_fit_it = blocks_.end();
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].block_.offset_ >= best_offset) {
+        best_fit_it = it;
         break;
       }
     }
