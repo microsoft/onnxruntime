@@ -45,8 +45,8 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
       } else if (B_dim == 1) {
         b_axes.push_back(k);
       } else {
-        std::vector<T> a(A_dims, A_dims + a_size);
-        std::vector<T> b(B_dims, B_dims + b_size);
+        TensorShape a(A_dims, a_size);
+        TensorShape b(B_dims, b_size);
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Broadcast is not possible between inputs of shapes: ",
                                a, " and ", b);
