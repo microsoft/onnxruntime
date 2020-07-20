@@ -35,7 +35,7 @@ static const std::unordered_set<std::string> FP32_Nodes = {
     "SparseSoftmaxCrossEntropy",
     "SparseSoftmaxCrossEntropyGrad",
     "SoftmaxCrossEntropyLoss",
-    "SoftmaxCrossEntropyLossGrad"
+    "SoftmaxCrossEntropyLossGrad",
     // havenka changes
     "Softmax",
     "SoftmaxGrad",
