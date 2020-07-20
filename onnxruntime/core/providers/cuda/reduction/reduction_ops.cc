@@ -628,7 +628,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     // empty axes and no-op
     if (axes.empty() && noop_with_empty_axes_) {
       auto* Y = ctx->Output(0, X->Shape());
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes() * sizeof(T), cudaMemcpyDeviceToDevice));
       return Status::OK();
     }
   }
@@ -674,7 +674,7 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     // empty axes and no-op
     if (axes.empty() && noop_with_empty_axes_) {
       auto* Y = ctx->Output(0, X->Shape());
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->Shape().Size() * sizeof(int32_t), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes() * sizeof(int32_t), cudaMemcpyDeviceToDevice));
       return Status::OK();
     }
   }

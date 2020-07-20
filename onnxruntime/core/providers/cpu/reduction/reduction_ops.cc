@@ -691,7 +691,7 @@ Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
   // empty axes and no-op
   if (axes.empty() && noop_with_empty_axes_) {
     auto* output = ctx->Output(0, input->Shape());
-    memcpy(output->template MutableData<T>(), input->template Data<T>(), input->Shape().Size() * sizeof(T));
+    memcpy(output->template MutableData<T>(), input->template Data<T>(), input->SizeInBytes() * sizeof(T));
     return Status::OK();
   }
 
