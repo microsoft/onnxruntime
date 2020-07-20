@@ -347,14 +347,53 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
     float beta = attributes.at("beta").f();
     ORT_ENFORCE(beta != 0.0f);
 
-    std::vector<Dimension> C_shape = GetShape(C);
-    std::vector<Dimension> dY_shape = GetShape(dY);
+    try {
+      std::vector<Dimension> C_shape = GetShape(C);
+      std::vector<Dimension> dY_shape = GetShape(dY);
 
-    std::vector<int64_t> C_axes, dY_axes;
-    ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
+      std::vector<int64_t> C_axes, dY_axes;
+      ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
 
-    if (C_axes.size() > 0) {
-      HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
+      if (C_axes.size() > 0) {
+        HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
+
+        if (has_beta && beta != 1.0f) {
+          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          ArgDef SCALE = scale_node.output_args[0];
+          result.push_back(scale_node);
+          result.push_back(
+              NodeDef("Mul",
+                      {IA("dC_reduced"), SCALE},
+                      {dC}));
+        } else {
+          result.push_back(
+              NodeDef("Identity", {IA("dC_reduced")}, {dC}));
+        }
+      } else {
+        if (has_beta && beta != 1.0f) {
+          NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+          ArgDef SCALE = scale_node.output_args[0];
+          result.push_back(scale_node);
+          result.push_back(
+              NodeDef("Mul",
+                      {dY, SCALE},
+                      {dC}));
+        } else {
+          result.push_back(
+              NodeDef("Identity",
+                      {dY},
+                      {dC}));
+        }
+      }
+      std::cout << "INFO: GemmGrad : Static Shape Available\n";
+
+    } catch (onnxruntime::OnnxRuntimeException e) {
+      //GetShape failed, build shape-independent gradient graph
+      ArgDef c_axes_arg = IA("ReduceAxes_" + C.name);
+      ArgDef dy_axes_arg = IA("ReduceAxes_" + dY.name);
+      ComputeBroadcastBackwardAxesDynamic(C, dY, c_axes_arg, dy_axes_arg, result);
+
+      HandleBroadcastingDynamic(dY, C, IA("dC_reduced"), c_axes_arg, result);
 
       if (has_beta && beta != 1.0f) {
         NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
@@ -368,22 +407,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         result.push_back(
             NodeDef("Identity", {IA("dC_reduced")}, {dC}));
       }
-    } else {
-      if (has_beta && beta != 1.0f) {
-        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
-        ArgDef SCALE = scale_node.output_args[0];
-        result.push_back(scale_node);
-        result.push_back(
-            NodeDef("Mul",
-                    {dY, SCALE},
-                    {dC}));
-      } else {
-        result.push_back(
-            NodeDef("Identity",
-                    {dY},
-                    {dC}));
-      }
+
+      std::cout << "INFO: GemmGrad : Static Shape Not Available\n";
     }
+
   }
   return result;
 }

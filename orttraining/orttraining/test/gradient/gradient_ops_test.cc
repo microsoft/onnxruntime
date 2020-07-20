@@ -336,54 +336,55 @@ TEST(GradientCheckerTest, GemmGrad) {
   const float error_tolerance = 2e-2f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Gemm"};
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   // Single Batch with Scalar Bias
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error, attributes, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Single Batch with Vector Bias
   {
-    gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {3}}, {{1, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {3}}, {{1, 3}}, &max_error, attributes, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Scalar Bias
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error, attributes, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Vector Bias
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error, attributes, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Broadcast Bias
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {1, 3}}, {{2, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {1, 3}}, {{2, 3}}, &max_error, attributes, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Non-BroadcastBias
   {
-    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error);
+    gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error, attributes, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // TransA
   {
     gradient_checker.ComputeGradientError(op_def, {{4, 2}, {4, 3}, {3}}, {{2, 3}}, &max_error,
-                                          {MakeAttribute("transA", int64_t(1))});
+                                          {MakeAttribute("transA", int64_t(1))}, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // TransB
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {3, 4}, {3}}, {{2, 3}}, &max_error,
-                                          {MakeAttribute("transB", int64_t(1))});
+                                          {MakeAttribute("transB", int64_t(1))}, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -391,7 +392,7 @@ TEST(GradientCheckerTest, GemmGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{4, 2}, {3, 4}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("transA", int64_t(1)),
-                                           MakeAttribute("transB", int64_t(1))});
+                                           MakeAttribute("transB", int64_t(1))}, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -399,7 +400,7 @@ TEST(GradientCheckerTest, GemmGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("alpha", 0.7f),
-                                           MakeAttribute("beta", 5.0f)});
+                                           MakeAttribute("beta", 5.0f)}, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -407,7 +408,7 @@ TEST(GradientCheckerTest, GemmGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("alpha", 0.7f),
-                                           MakeAttribute("beta", 5.0f)});
+                                           MakeAttribute("beta", 5.0f)}, true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
