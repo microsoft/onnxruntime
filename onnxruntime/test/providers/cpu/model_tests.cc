@@ -58,6 +58,11 @@ TEST_P(ModelTest, Run) {
     // them is enabled here to save CI build time.
     return;
   }
+  if (model_info->GetONNXOpSetVersion() != 12 && provider_name == "dnnl") {
+    // TensorRT can run most of the model tests, but only part of
+    // them is enabled here to save CI build time.
+    return;
+  }
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {

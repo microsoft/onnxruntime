@@ -44,7 +44,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     return status;
 
   // create output tensor
-  auto* output_tensor = context->Output(0, TensorShape(indices_shape));
+  auto* output_tensor = context->Output(0, indices_shape);
 
   // if there are no elements in 'indices' - nothing to process
   if (indices_shape.Size() == 0)
