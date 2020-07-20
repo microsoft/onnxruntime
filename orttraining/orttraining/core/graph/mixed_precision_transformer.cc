@@ -35,7 +35,18 @@ static const std::unordered_set<std::string> FP32_Nodes = {
     "SparseSoftmaxCrossEntropy",
     "SparseSoftmaxCrossEntropyGrad",
     "SoftmaxCrossEntropyLoss",
-    "SoftmaxCrossEntropyLossGrad"};
+    "SoftmaxCrossEntropyLossGrad"
+    // havenka changes
+    "Softmax",
+    "SoftmaxGrad",
+    "Gelu",
+    "GeluGrad",
+    "FastGelu",
+    "FastGeluGrad",
+    "BiasGelu",
+    "BiasGeluGrad_dX",
+    "BiasFastGeluGrad_dX"
+};
 
 bool IsFP32Node(const Node* node) {
   return FP32_Nodes.find(node->OpType()) != FP32_Nodes.cend();
@@ -47,6 +58,16 @@ static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_
     {"TrainableDropoutGrad", {2}},
     {"Dropout", {1}},
     {"DropoutGrad", {2}},
+    // havenka changes
+    {"Softmax", {0}},
+    {"SoftmaxGrad", {0, 1}},
+    {"Gelu", {0}},
+    {"GeluGrad", {0, 1}},
+    {"FastGelu", {0}},
+    {"FastGeluGrad", {0, 1}},
+    {"BiasGelu", {0, 1}},
+    {"BiasGeluGrad_dX", {0, 1, 2}},
+    {"BiasFastGeluGrad_dX", {0, 1, 2}},
 };
 
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
@@ -58,6 +79,17 @@ static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_
     {"SparseSoftmaxCrossEntropyGrad", {0, 1, 3}},
     {"SoftmaxCrossEntropyLoss", {0, 2}},
     {"SoftmaxCrossEntropyLossGrad", {0, 1, 3}},
+
+    // havenka changes
+    {"Softmax", {0}},
+    {"SoftmaxGrad", {0, 1}},
+    {"Gelu", {0}},
+    {"GeluGrad", {0, 1}},
+    {"FastGelu", {0}},
+    {"FastGeluGrad", {0, 1}},
+    {"BiasGelu", {0, 1}},
+    {"BiasGeluGrad_dX", {0, 1, 2}},
+    {"BiasFastGeluGrad_dX", {0, 1, 2}},
 };
 
 bool IsFP32(const std::unordered_map<std::string, std::vector<int>>& map, std::string opname, int argnum) {

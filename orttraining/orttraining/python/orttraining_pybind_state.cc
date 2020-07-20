@@ -214,7 +214,7 @@ void addObjectMethodsForTraining(py::module& m) {
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
-
+        sess->Save("/opt/model_tnlr_v2_traininggraph.onnx", onnxruntime::training::TrainingSession::SaveOption::NO_RELOAD);
         return config_result;
       })
       .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
@@ -225,7 +225,7 @@ void addObjectMethodsForTraining(py::module& m) {
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
-
+        sess->Save("/opt/model_tnlr_v2_traininggraph.onnx", onnxruntime::training::TrainingSession::SaveOption::NO_RELOAD);
         return config_result;
       })
       .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
