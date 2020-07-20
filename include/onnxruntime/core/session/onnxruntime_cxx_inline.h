@@ -218,6 +218,12 @@ inline SessionOptions& SessionOptions::SetLogId(const char* logid) {
   ThrowOnError(GetApi().SetSessionLogId(p_, logid));
   return *this;
 }
+
+inline SessionOptions& SessionOptions::SetLogSeverityLevel(int level) {
+  ThrowOnError(GetApi().SetSessionLogSeverityLevel(p_, level));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) {
   ThrowOnError(GetApi().AddCustomOpDomain(p_, custom_op_domain));
   return *this;
@@ -620,7 +626,7 @@ inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
 
 inline std::vector<std::string> GetAvailableProviders() {
   int len;
-  char **providers;
+  char** providers;
   const OrtApi& api = GetApi();
   ThrowOnError(api.GetAvailableProviders(&providers, &len));
   std::vector<std::string> available_providers(providers, providers + len);

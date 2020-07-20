@@ -25,6 +25,14 @@ Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
+Tensor* OpKernelContext::Output(int index, const std::vector<int64_t>& shape) {
+  return Output(index, TensorShape(shape));
+}
+
+Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>& shape) {
+  return Output(index, TensorShape(shape));
+}
+
 SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape, nnz);
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;

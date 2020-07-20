@@ -190,6 +190,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetExecutionMode(ExecutionMode execution_mode);
 
   SessionOptions& SetLogId(const char* logid);
+  SessionOptions& SetLogSeverityLevel(int level);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 
