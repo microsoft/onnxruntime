@@ -440,7 +440,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
 
       std::cout << "INFO: GemmGrad : Static Shape Not Available\n";
     }
-
   }
   return result;
 }
@@ -521,10 +520,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
   std::vector<int64_t> bw_perm;
   auto attributes = SrcNodeAttributes();
+  std::vector<AttributeProto> new_attributes;
   if (attributes.empty()) {
     const TensorShapeProto& input_shape = I(0).type_proto->tensor_type().shape();
-    for (int i = input_shape.dim_size() - 1; i >= 0; --i) {
-      bw_perm.push_back(i);
+    if (input_shape.dim_size() > 0) {  //input_shape is available
+      for (int i = input_shape.dim_size() - 1; i >= 0; --i) {
+        bw_perm.push_back(i);
+      }
+      new_attributes.push_back(MakeAttribute("perm", bw_perm));
     }
   } else {
     auto fw_perm = RetrieveValues<int64_t>(attributes.at("perm"));
@@ -533,13 +536,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
     for (int i = 0; i < static_cast<int>(size); ++i) {
       bw_perm[fw_perm[i]] = i;
     }
+    new_attributes.push_back(MakeAttribute("perm", bw_perm));
   }
 
   return std::vector<NodeDef>{
       NodeDef("Transpose",
               {GO(0)},
               {GI(0)},
-              {MakeAttribute("perm", bw_perm)})};
+              new_attributes)};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetAveragePoolGradient) {

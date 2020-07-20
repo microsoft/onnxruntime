@@ -401,7 +401,8 @@ TEST(GradientCheckerTest, GemmGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{4, 2}, {3, 4}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("transA", int64_t(1)),
-                                           MakeAttribute("transB", int64_t(1))}, true, true);
+                                           MakeAttribute("transB", int64_t(1))},
+                                          true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -409,7 +410,8 @@ TEST(GradientCheckerTest, GemmGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("alpha", 0.7f),
-                                           MakeAttribute("beta", 5.0f)}, true, true);
+                                           MakeAttribute("beta", 5.0f)},
+                                          true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -417,7 +419,8 @@ TEST(GradientCheckerTest, GemmGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error,
                                           {MakeAttribute("alpha", 0.7f),
-                                           MakeAttribute("beta", 5.0f)}, true, true);
+                                           MakeAttribute("beta", 5.0f)},
+                                          true, true);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -869,7 +872,9 @@ TEST(GradientCheckerTest, TransposeGrad) {
   {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({4, 3, 2});
-    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error);
+    const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
+                                          attributes, true, true /*also test w/o shape inferencing */);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
