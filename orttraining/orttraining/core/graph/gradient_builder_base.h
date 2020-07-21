@@ -169,11 +169,22 @@ class GradientBuilderBase {
     return ConstantValueNode(1.0f, "OneConstant");
   }
 
+  void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
+                                           const ArgDef& b,
+                                           const ArgDef& a_axes,
+                                           const ArgDef& b_axes,
+                                           std::vector<NodeDef>& output) const;
+
   void HandleBroadcasting(const ArgDef& input_grad,
                           const ArgDef& target,
                           const ArgDef& output_grad,
                           const std::vector<int64_t>& reduce_axes,
                           std::vector<NodeDef>& output) const;
+  void HandleBroadcastingDynamic(const ArgDef& input_grad,
+                                 const ArgDef& target,
+                                 const ArgDef& output_grad,
+                                 const ArgDef& reduce_axes,
+                                 std::vector<NodeDef>& output) const;
 
  private:
   friend class GradientGraphBuilder;

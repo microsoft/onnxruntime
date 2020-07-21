@@ -86,9 +86,7 @@ void ComputeBroadcastBackwardAxes(
 }
 
 std::vector<Dimension> GetShape(const ArgDef& arg_def) {
-  ORT_ENFORCE(arg_def.type_proto
-              && arg_def.type_proto->has_tensor_type()
-              && arg_def.type_proto->tensor_type().has_shape(),
+  ORT_ENFORCE(arg_def.type_proto && arg_def.type_proto->has_tensor_type() && arg_def.type_proto->tensor_type().has_shape(),
               "During GetShape, ", arg_def.name, "'s shape is null.");
   std::vector<Dimension> shape;
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
@@ -96,6 +94,29 @@ std::vector<Dimension> GetShape(const ArgDef& arg_def) {
     shape.push_back(*dim);
   }
   return shape;
+}
+
+void GradientBuilderBase::ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
+                                                              const ArgDef& b,
+                                                              const ArgDef& a_axes,
+                                                              const ArgDef& b_axes,
+                                                              std::vector<NodeDef>& output) const {
+  ArgDef a_shape = IA("Shape_" + a.name);
+  ArgDef b_shape = IA("Shape_" + b.name);
+  output.push_back(
+      NodeDef("Shape",
+              {a},
+              {a_shape}));
+
+  output.push_back(
+      NodeDef("Shape",
+              {b},
+              {b_shape}));
+
+  output.push_back(
+      NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
+              {a_shape, b_shape},
+              {a_axes, b_axes}));
 }
 
 void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
@@ -163,6 +184,32 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                 {reduce_grad_arg, target_shape_arg},
                 {output_grad}));
   }
+}
+
+void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
+                                                    const ArgDef& target,
+                                                    const ArgDef& output_grad,
+                                                    const ArgDef& reduce_axes,
+                                                    std::vector<NodeDef>& output) const {
+  ArgDef reduce_grad_arg = IA("ReduceSumTraining_" + input_grad.name + "_for_" + target.name);
+  output.push_back(
+      NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+              {input_grad,
+               reduce_axes},
+              {reduce_grad_arg},
+              {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
+               {"noop_with_empty_axes", ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}}));
+
+  ArgDef target_shape_arg = IA(target.name + "_shape");
+  output.push_back(
+      NodeDef("Shape",
+              {target},
+              {target_shape_arg}));
+
+  output.push_back(
+      NodeDef("Reshape",
+              {reduce_grad_arg, target_shape_arg},
+              {output_grad}));
 }
 
 }  // namespace training

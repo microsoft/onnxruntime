@@ -404,7 +404,7 @@ class OpTester {
   template <typename T>
   void AddAttribute(std::string name, T value) {
     // Generate a the proper AddAttribute call for later
-    add_attribute_funcs_.emplace_back([name = std::move(name), value = std::move(value)](onnxruntime::Node& node) {
+    add_attribute_funcs_.emplace_back([ name = std::move(name), value = std::move(value) ](onnxruntime::Node & node) {
       node.AddAttribute(name, value);
     });
   }
@@ -541,7 +541,7 @@ class OpTester {
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       auto node_arg = NodeArg(name, &type_proto.proto);
-      if (dim_params && !(dim_params->empty())) {
+      if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
         // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
         auto& dim_params_data = *dim_params;
         onnx::TensorShapeProto new_shape;
