@@ -999,7 +999,7 @@ class PoolOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
-  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& /* node */) const override {
     return model_builder.UseNCHW() ? 29 : 28;
   }
 
@@ -1007,7 +1007,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 };
 
 bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
-  const auto& op = node.OpType();
+  const auto& op_type = node.OpType();
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1020,7 +1020,7 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
     return false;
   }
 
-  if (op == "AveragePool" || op == "MaxPool") {
+  if (op_type == "AveragePool" || op_type == "MaxPool") {
     NodeAttrHelper helper(node);
 
     const auto count_include_pad = helper.Get("count_include_pad", 0);
@@ -1085,19 +1085,20 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   }
 
   const auto& output = node.OutputDefs()[0]->Name();
-  const auto& op = node.OpType();
+  const auto& op_type = node.OpType();
 
-  int32_t op_type;
-  if (op == "AveragePool" || op == "GlobalAveragePool")
-    op_type = ANEURALNETWORKS_AVERAGE_POOL_2D;
-  else  // (op == "MaxPool" || op == "GlobalMaxPool")
-    op_type = ANEURALNETWORKS_MAX_POOL_2D;
+  int32_t op_code;
+  bool is_average_pool = op_type == "AveragePool";
+  if (is_average_pool || op_type == "GlobalAveragePool")
+    op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
+  else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
+    op_code = ANEURALNETWORKS_MAX_POOL_2D;
 
   vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
   const auto& input_shape = shaper[input];
-  if (op == "AveragePool" || op == "MaxPool") {
+  if (is_average_pool || op_type == "MaxPool") {
     const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
     kernel_shape = helper.Get("kernel_shape", vector<int32_t>{0, 0});
     onnx_strides = helper.Get("strides", vector<int>{1, 1});
@@ -1108,7 +1109,7 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
                   onnx_strides, {1, 1} /* onnx_dilations */,
                   auto_pad_type, use_nchw,
                   onnx_pads, nnapi_padding_code, use_auto_pad);
-  } else {  // (op == "GlobalAveragePool" || op == "GlobalMaxPool")
+  } else {  // (op_type == "GlobalAveragePool" || op_type == "GlobalMaxPool")
     use_auto_pad = true;
     nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
     onnx_strides = vector<int32_t>{1, 1};
@@ -1150,7 +1151,7 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
               use_nchw,
               output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
-  model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+  model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
 #pragma endregion op_pool
@@ -1688,7 +1689,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
   const auto input_defs(node.InputDefs());
   const auto& initializers(model_builder.GetInitializerTensors());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
-  if (op == "QLinearMatMul") {
+  bool is_qlinear_matmul = op == "QLinearMatMul";
+  if (is_qlinear_matmul) {
     a_idx = 0;
     b_idx = 3;
   }
@@ -1715,40 +1717,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
     }
   }
 
-  if (op == "MatMul") {
-    // Only support A*B B is an initializer
-    if (!Contains(initializers, input_defs[b_idx]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
-      return false;
-    }
-  } else if (op == "QLinearMatMul") {
-    // For QLinearMatMul, we only support uint8 output now
-    int32_t output_type;
-    if (!GetType(*node.OutputDefs()[0], output_type))
-      return false;
-
-    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-      LOGS_DEFAULT(VERBOSE) << "[" << op
-                            << "] output type: [" << output_type
-                            << "] is not supported for now";
-      return false;
-    }
-
-    // Only support A*B B is an initializer
-    // And all scale/zero points are initializer scalars
-    if (!Contains(initializers, input_defs[b_idx]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
-      return false;
-    }
-
-    // a/b/y_scale
-    if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
-      return false;
-
-    // a/b/y_zero_point
-    if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
-      return false;
-  } else if (op == "Gemm") {
+  if (op == "Gemm") {
     // Only support
     // 1. A*B'+C
     // 2. A*B+C and B is an initializer
@@ -1782,6 +1751,35 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
 
         return false;
       }
+    }
+  } else {  // MatMul || QLinearMatMul
+    // Only support A*B B is an initializer
+    if (!Contains(initializers, input_defs[b_idx]->Name())) {
+      LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
+      return false;
+    }
+
+    if (is_qlinear_matmul) {
+      // For QLinearMatMul, we only support uint8 output now
+      int32_t output_type;
+      if (!GetType(*node.OutputDefs()[0], output_type))
+        return false;
+
+      if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+        LOGS_DEFAULT(VERBOSE) << "[" << op
+                              << "] output type: [" << output_type
+                              << "] is not supported for now";
+        return false;
+      }
+
+      // All scale/zero points are initializer scalars
+      // a/b/y_scale
+      if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
+        return false;
+
+      // a/b/y_zero_point
+      if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
+        return false;
     }
   }
 
