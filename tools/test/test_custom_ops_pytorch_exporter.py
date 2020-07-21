@@ -167,7 +167,6 @@ class ONNXExporterTest(unittest.TestCase):
             self.run_test(model, x, custom_opsets={'com.microsoft': 1})
 
 
-
 # opset 10 tests
 TestONNXRuntime_opset10 = type(str("TestONNXRuntime_opset10"),
                                (unittest.TestCase,),
