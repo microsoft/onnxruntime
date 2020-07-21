@@ -2896,6 +2896,8 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Constrain input and output types to int and float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
         if (hasInputShape(ctx, 0)) {
           const TensorShapeProto& input_shape =
               ctx.getInputType(0)->tensor_type().shape();
@@ -2903,7 +2905,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           if (rank < 2) {
             fail_shape_inference("Input rank must be >= 2.")
           }
-          propagateShapeAndTypeFromFirstInput(ctx);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });
 
