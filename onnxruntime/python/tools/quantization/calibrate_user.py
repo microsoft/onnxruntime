@@ -43,8 +43,8 @@ class ResNet50DataReader(CalibrationDataReader):
         return next(self.enum_data_dicts,None)
 
 def main():
-    model_path = '/home/rachel_g/work/onnxruntime/onnxruntime/python/tools/quantization/E2E_example_model/resnet50_v1.onnx'
-    calibration_dataset_path = '/home/rachel_g/work/onnxruntime/onnxruntime/python/tools/quantization/calibration_data_set'
+    model_path = '~/onnxruntime/onnxruntime/python/tools/quantization/E2E_example_model/resnet50_v1.onnx'
+    calibration_dataset_path = '~/onnxruntime/onnxruntime/python/tools/quantization/calibration_data_set'
     dr = ResNet50DataReader(calibration_dataset_path)
     #call calibrate to generate quantization dictionary containing the zero point and scale values
     quantization_params_dict = calibrate(model_path,dr)
@@ -52,7 +52,7 @@ def main():
                                           quantization_mode=QuantizationMode.QLinearOps,
                                           force_fusions=False,
                                           quantization_params=quantization_params_dict)
-    output_model_path = '/home/rachel_g/work/onnxruntime/onnxruntime/python/tools/quantization/calibrated_quantized_model.onnx'
+    output_model_path = '~/onnxruntime/onnxruntime/python/tools/quantization/calibrated_quantized_model.onnx'
     onnx.save(calibrated_quantized_model, output_model_path)
     print('Calibrated and quantized model saved.')
 
