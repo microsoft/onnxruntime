@@ -183,25 +183,7 @@ class ORTTrainer(object):
         """
         pass
 
-    def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
-        # example: {input0:{0:'batch'}, input1:{0:'batch'}}
-        dynamic_axes = {}
-        for input in model_desc.inputs_:
-            symbolic_axis = {}
-            for i, axis in enumerate(input.shape_):
-                if isinstance(axis, str):
-                    symbolic_axis[i] = axis
-            if len(symbolic_axis):
-                dynamic_axes[input.name_] = symbolic_axis
-
-        for output in model_desc.outputs_:
-            symbolic_axis = {}
-            for i, axis in enumerate(output.shape_):
-                if isinstance(axis, str):
-                    symbolic_axis[i] = axis
-            if len(symbolic_axis):
-                dynamic_axes[output.name_] = symbolic_axis
-
+    def convert_torch_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
         input_names = [input.name_ for input in model_desc.inputs_]
         output_names = [output.name_ for output in model_desc.outputs_]
 
@@ -245,7 +227,6 @@ class ORTTrainer(object):
                         input_names=input_names,
                         output_names=output_names,
                         opset_version=opset_version,
-                        dynamic_axes=dynamic_axes,
                         _retain_param_name=True,
                         example_outputs=tuple(sample_outputs),
                         do_constant_folding=False,
@@ -272,29 +253,29 @@ class ORTTrainer(object):
             "Initializer names do not match between PyTorch model and ONNX model, " \
             "please report a bug to ONNX Runtime."
 
-        if _enable_internal_postprocess:
-            onnx_model = postprocess.run_postprocess(onnx_model)
-
         return onnx_model
 
+    def _init_session(self):
+        if self._onnx_model is None: 
+            return
+        
+        if self._enable_internal_postprocess:
+            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
+
+        if self._extra_postprocess:
+            self._extra_postprocess(self.onnx_model_)
+
+        self._verify_fully_optimized_model(self.onnx_model_)
+
     def _init_onnx_model_(self, *input):
-        if self._onnx_model is not None:
+        if self.onnx_model is not None:
             return
 
         if self._torch_model is not None:
             self.torch_model_.cpu()
-            # convert the model
-            # get input, outputs, export model
             self.onnx_model = self.convert_model_loss_fn_to_onnx(self._torch_model, self.loss_fn, self.model_desc, torch.device('cpu'), inputs, opset_version=self.opset_version, _enable_internal_postprocess=self._enable_internal_postprocess)
-            
-            # selected tasks from init_sesion
-            if self._enable_internal_postprocess:
-                self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
-
-            if self._extra_postprocess:
-                self._extra_postprocess(self.onnx_model_)
-
-            self._verify_fully_optimized_model(self.onnx_model_)
+        
+        self._init_session
         
 
 
