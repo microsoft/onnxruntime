@@ -15,6 +15,7 @@ class TransposeMatMul final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  float alpha_attr_;
   int64_t trans_a_attr_, trans_b_attr_;
 };
 

@@ -18,8 +18,9 @@ ONNX_OPERATOR_KERNEL_EX(
 
 TransposeMatMul::TransposeMatMul(const OpKernelInfo& info)
     : OpKernel{info} {
-  ORT_ENFORCE(info.GetAttr("transA", &trans_a_attr_).IsOK());
-  ORT_ENFORCE(info.GetAttr("transB", &trans_b_attr_).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttr("alpha", &alpha_attr_));
+  ORT_THROW_IF_ERROR(info.GetAttr("transA", &trans_a_attr_));
+  ORT_THROW_IF_ERROR(info.GetAttr("transB", &trans_b_attr_));
 }
 
 Status TransposeMatMul::Compute(OpKernelContext* context) const {
@@ -43,7 +44,7 @@ Status TransposeMatMul::Compute(OpKernelContext* context) const {
         trans_a ? CblasTrans : CblasNoTrans,
         trans_b ? CblasTrans : CblasNoTrans,
         helper.M(), helper.N(), helper.K(),
-        1.0f,
+        alpha_attr_,
         A->Data<float>() + helper.LeftOffsets()[i],
         B->Data<float>() + helper.RightOffsets()[i],
         0.0f,

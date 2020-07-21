@@ -1786,6 +1786,11 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
       .Attr(
+          "alpha",
+          "Scalar multiplier for the product of input tensors A * B.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
           "transA",
           "Whether A should be transposed on the last two dimensions before doing multiplication",
           AttributeProto::INT,
