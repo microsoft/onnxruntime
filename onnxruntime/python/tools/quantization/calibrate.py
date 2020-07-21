@@ -45,6 +45,7 @@ class ONNXCalibrater:
         :param black_nodes: operator names that should not be quantized, default = ''
         :param white_nodes: operator names that force to be quantized, default = ''
         :param augmented_model_path: save augmented_model to this path
+
         '''
         self.model_path = model_path
         self.data_reader = data_reader
@@ -207,7 +208,7 @@ class ONNXCalibrater:
 
 
 def calibrate(model_path,
-              data_reader,
+              data_reader:CalibrationDataReader,
               op_types='Conv,MatMul',
               black_nodes='',
               white_nodes='',
@@ -216,7 +217,7 @@ def calibrate(model_path,
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
 
     :param model_path: ONNX model to calibrate
-    :param data_reader: user implemented object to read in and preprocess calibration dataset
+    :param data_reader: user implemented object to read in and preprocess calibration dataset based on CalibrationDataReader interface
     :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
     :param black_nodes: operator names that should not be quantized, default = ''
     :param white_nodes: operator names that force to be quantized, default = ''
