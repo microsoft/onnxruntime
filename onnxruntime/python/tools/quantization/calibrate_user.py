@@ -57,7 +57,6 @@ class CalibrationDataReader(CalibrationDataReaderInterface):
 def main():
     model_path = 'path/to/model.onnx'
     calibration_dataset_path = 'path/to/calibration_data_set'
-
     dr = CalibrationDataReader(calibration_dataset_path)
     #call calibrate to generate quantization dictionary containing the zero point and scale values
     quantization_params_dict = calibrate(model_path,dr)
@@ -65,8 +64,8 @@ def main():
                                           quantization_mode=QuantizationMode.QLinearOps,
                                           force_fusions=False,
                                           quantization_params=quantization_params_dict)
-    #output_model_path = 'path/to/output_model.onnx'
-    #onnx.save(calibrated_quantized_model, output_model_path)
+    output_model_path = 'path/to/output_model.onnx'
+    onnx.save(calibrated_quantized_model, output_model_path)
     print('Calibrated and quantized model saved.')
 
 if __name__ == '__main__':
