@@ -33,6 +33,15 @@ class Session:
         self._providers = None
         self._sess = None
 
+        # At this point, _sess object is still referenced by _sess_options,
+        # because of previously _sess_options = _sess.sess_options being executed in _load_model().
+        # Therefore, _sess reference count is not zero and not being released by python gc yet.
+        #
+        # In order to make _sess reference count become 0 and being destroyed by python gc before
+        # creating new session object, we need to reset _sess_options as well.
+        self._sess_options = None
+        self._sess_options = self._sess_options_initial
+
     def get_session_options(self):
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
@@ -57,11 +66,16 @@ class Session:
         "Return list of registered execution providers."
         return self._providers
 
-    def set_providers(self, providers):
+    def get_provider_options(self):
+        "Return registered execution providers' configurations."
+        return self._provider_options
+
+    def set_providers(self, providers, provider_options=None):
         """
         Register the input list of execution providers. The underlying session is re-created.
 
         :param providers: list of execution providers
+        :param provider_options: list of provider options dict
 
         The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
@@ -69,8 +83,23 @@ class Session:
         if not set(providers).issubset(C.get_available_providers()):
             raise ValueError("{} does not contain a subset of available providers {}".format(
                 providers, C.get_available_providers()))
+
+        if provider_options:
+            if not isinstance(providers, list) or not isinstance(provider_options, list):
+                raise ValueError("Inputs must be two python lists.")
+
+            if len(providers) != len(provider_options):
+                raise ValueError("Two input lists must have same length.")
+
+            for option in provider_options:
+                if not isinstance(option, dict):
+                    raise ValueError("Provider options must be list of python dict.")
+
+                for key, val in option.items():
+                    option[key] = str(val)
+
         self._reset_session()
-        self._load_model(providers)
+        self._load_model(providers, provider_options)
 
     def disable_fallback(self):
         """
@@ -155,11 +184,12 @@ class InferenceSession(Session):
         """
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
+        self._sess_options_initial = sess_options
         self._load_model(providers or [])
         self._enable_fallback = True
         Session.__init__(self, self._sess)
 
-    def _load_model(self, providers):
+    def _load_model(self, providers, provider_options=None):
         if isinstance(self._path_or_bytes, str):
             self._sess = C.InferenceSession(
                 self._sess_options if self._sess_options else C.get_default_session_options(), self._path_or_bytes,
@@ -174,7 +204,10 @@ class InferenceSession(Session):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(self._path_or_bytes)))
 
-        self._sess.load_model(providers)
+        if provider_options:
+            self._sess.load_model(providers, provider_options)
+        else:
+            self._sess.load_model(providers)
 
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
@@ -182,6 +215,7 @@ class InferenceSession(Session):
         self._overridable_initializers = self._sess.overridable_initializers
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
+        self._provider_options = self._sess.get_provider_options()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in C.get_available_providers():

@@ -61,6 +61,7 @@ static void TestBiasDropoutFusion(const PathString& file_path, const logging::Lo
 
   ASSERT_EQ(op_to_count["Add"], add_count);
   ASSERT_EQ(op_to_count["Dropout"], 0);
+  ASSERT_EQ(op_to_count["TrainableDropout"], 0);
   ASSERT_EQ(op_to_count["BiasDropout"], 1);
 }
 
@@ -70,6 +71,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion1.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion2.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_mismatch.onnx", *logger_, 1);
+  TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_trainabledropout_residual_fusion.onnx", *logger_);
 }
 
 Node* GetNodeByName(Graph& graph, std::string node_name) {
