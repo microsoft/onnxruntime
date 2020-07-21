@@ -40,6 +40,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain
 #ifdef BN_ARMNN
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 7, 9, BatchNormalization);
 #endif
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 4, 10, Concat);
 
 static void RegisterArmNNKernels(KernelRegistry& kernel_registry) {
 
@@ -65,6 +66,7 @@ static void RegisterArmNNKernels(KernelRegistry& kernel_registry) {
 #ifdef BN_ARMNN
   kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 7, 9, BatchNormalization)>());
 #endif
+  kernel_registry.Register(BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kArmNNExecutionProvider, kOnnxDomain, 4, 10, Concat)>());
 }
 
 std::shared_ptr<KernelRegistry> GetArmNNKernelRegistry() {
