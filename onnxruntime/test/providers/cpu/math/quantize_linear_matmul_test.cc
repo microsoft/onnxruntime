@@ -70,7 +70,9 @@ static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
   test_empty.AddInput<float>("y_scale", {1}, {0.0107f}, only_t1_not_initializer);
   test_empty.AddInput<uint8_t>("y_zero_point", {1}, {118}, only_t1_not_initializer);
   test_empty.AddOutput<uint8_t>("T3", {0, 3}, {});
-  test_empty.Run();
+
+  // Skip NNAPI as it doesn't support empty output for now
+  test_empty.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul) {
