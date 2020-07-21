@@ -981,7 +981,7 @@ Android Archive (AAR) files, which can be imported directly in Android Studio, w
 
 #### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
 
 ##### Build Instructions
 

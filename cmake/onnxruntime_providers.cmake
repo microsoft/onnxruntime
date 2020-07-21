@@ -511,7 +511,6 @@ endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
   add_definitions(-DUSE_NNAPI=1)
-  add_definitions(-DUSE_NNAPI_BUILTIN=1)
   file(GLOB
     onnxruntime_providers_nnapi_cc_srcs_top CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
