@@ -214,7 +214,8 @@ Status Add<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 + input1.array(); },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() + input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 + input1; });
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 + input1; },
+      1.0f);
 }
 
 template <typename T>
@@ -223,7 +224,8 @@ Status Sub<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 - input1.array(); },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() - input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 - input1; });
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0 - input1; },
+      1.0f);
 }
 
 template <typename T>
@@ -232,7 +234,8 @@ Status Mul<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 * input1.array(); },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() * input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseProduct(input1); });
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseProduct(input1); },
+      1.0f);
 }
 
 template <typename T>
@@ -241,7 +244,8 @@ Status Div<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) { output = input0 / input1.array(); },
       [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() / input1; },
-      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseQuotient(input1); });
+      [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.cwiseQuotient(input1); },
+      1.0f);
 }
 
 
@@ -484,7 +488,8 @@ Status And::Compute(OpKernelContext* context) const {
         else
           output.array() = false;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() && input1.array(); });
+      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() && input1.array(); },
+      1.0f);
 }
 
 Status Or::Compute(OpKernelContext* context) const {
@@ -503,7 +508,8 @@ Status Or::Compute(OpKernelContext* context) const {
         else
           output = input0;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() || input1.array(); });
+      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() || input1.array(); },
+      1.0f);
 }
 
 Status Xor::Compute(OpKernelContext* context) const {
@@ -522,7 +528,8 @@ Status Xor::Compute(OpKernelContext* context) const {
         else
           output = input0;
       },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() ^ input1.array(); });
+      [](EigenVectorMap<bool> output, ConstEigenVectorMap<bool> input0, ConstEigenVectorMap<bool> input1) { output = input0.array() ^ input1.array(); },
+      1.0f);
 }
 
 template <typename T>
@@ -531,7 +538,8 @@ Status Equal<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<bool> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array() == input0; },
       [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() == input1; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() == input1.array(); });
+      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() == input1.array(); },
+      1.0f);
 }
 
 template <typename T>
@@ -540,7 +548,8 @@ Status Less<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<bool> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array() > input0; },
       [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() < input1; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() < input1.array(); });
+      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() < input1.array(); },
+      1.0f);
 }
 
 template <typename T>
@@ -549,7 +558,8 @@ Status Greater<T>::Compute(OpKernelContext* context) const {
       *context,
       [](EigenVectorMap<bool> output, T input0, ConstEigenVectorMap<T> input1) { output = input1.array() < input0; },
       [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, T input1) { output = input0.array() > input1; },
-      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() > input1.array(); });
+      [](EigenVectorMap<bool> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) { output = input0.array() > input1.array(); },
+      1.0f);
 }
 
 template <>
@@ -655,7 +665,8 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
 
         ORT_ENFORCE(cur1 == end1);
         ORT_ENFORCE(cur_out == end_out);
-      });
+      },
+      1.0f);
 }
 
 template <typename T>
@@ -937,7 +948,8 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
       },
       [](EigenVectorMap<float> output, ConstEigenVectorMap<float> input0, ConstEigenVectorMap<float> input1) {
         output = (input0.array() > 0).select(input0, input0.cwiseProduct(input1));
-      });
+      },
+      1.0f);
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
