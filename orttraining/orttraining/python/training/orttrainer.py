@@ -301,7 +301,6 @@ class ORTTrainer(object):
         self._init_session
         
 
-
     def train_step(self, *input, **kwargs):
         r"""Train step method
 
