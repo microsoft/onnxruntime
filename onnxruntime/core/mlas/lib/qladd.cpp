@@ -512,7 +512,6 @@ MlasQLinearAddKernelHelper(
         int32x4_t vacc0_lo, vacc1_lo, vacc0_hi, vacc1_hi;
         if (IsScalarB) {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(TailDataA);
-            InputA += 16;
             const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
             const int16x8_t va1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorA0), VectorZeroPointA));
 
@@ -523,8 +522,6 @@ MlasQLinearAddKernelHelper(
         } else  {
             const typename SUI::i8x16_t VectorA0 = SUI::vld1q_i8(TailDataA);
             const typename SUI::i8x16_t VectorB0 = SUI::vld1q_i8(TailDataB);
-            InputA += 16;
-            InputB += 16;
             const int16x8_t va0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorA0), VectorZeroPointA));
             const int16x8_t vb0_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_low_i8(VectorB0), VectorZeroPointB));
             const int16x8_t va1_s16x8 = SUI::vreinterpretq_s16_i16(SUI::vsubl_i8(SUI::vget_high_i8(VectorA0), VectorZeroPointA));
@@ -704,7 +701,6 @@ MlasQLinearAddKernelHelper(
             MlasCopyTailBytes(TailData, (const uint8_t*)InputA, N);
             const auto va_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)TailData);
             const auto va_i16x8 = _mm_unpacklo_epi8(va_low_half, va_low_half);
-            InputA += 8;
             va_lo = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpacklo_epi16(va_i16x8, va_i16x8), 24));
             va_hi = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpackhi_epi16(va_i16x8, va_i16x8), 24));
         }
@@ -713,7 +709,6 @@ MlasQLinearAddKernelHelper(
             MlasCopyTailBytes(TailData, (const uint8_t*)InputB, N);
             const auto vb_low_half = _mm_loadl_epi64((const MLAS_INT32X4*)TailData);
             const auto vb_i16x8 = _mm_unpacklo_epi8(vb_low_half, vb_low_half);
-            InputB += 8;
             vb_lo = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpacklo_epi16(vb_i16x8, vb_i16x8), 24));
             vb_hi = _mm_cvtepi32_ps(MlasShiftRightInt32<DataType>(_mm_unpackhi_epi16(vb_i16x8, vb_i16x8), 24));
         }
