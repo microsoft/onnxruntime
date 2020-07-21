@@ -109,5 +109,4 @@ class ElementWiseKernel final : public OpKernel {
 #define DEFINE_ELE_KERNEL(X) \
   template <typename T>      \
   using X = ElementWiseKernel<functors::X<T>>;
-
 }  // namespace onnxruntime
