@@ -64,7 +64,8 @@ bool ProtobufHelpers::LoadOnnxTensorFromProtobufFile(onnx::TensorProto& tensor, 
   // Open protobuf file input stream and parse
   google::protobuf::io::FileInputStream input(fd, block_size);
   const bool result = tensor.ParseFromZeroCopyStream(&input) && input.GetErrno() == 0;
-  if (!result) {
+  status = onnxruntime::Env::Default().FileClose(fd);
+  if (!result || !status.IsOK()) {
     return false;
   }
   return true;
