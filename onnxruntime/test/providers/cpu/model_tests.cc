@@ -59,7 +59,7 @@ TEST_P(ModelTest, Run) {
     return;
   }
   if (model_info->GetONNXOpSetVersion() != 12 && provider_name == "dnnl") {
-    // TensorRT can run most of the model tests, but only part of
+    // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     return;
   }
