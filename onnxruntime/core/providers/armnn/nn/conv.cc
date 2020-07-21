@@ -105,6 +105,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     return s;
   }
 
+  if(W->Shape()[2] == 9 && W->Shape()[3] == 9) {
+    LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
+    Status s = onnxruntime::Conv<T>::Compute(context);
+    return s;
+  }
+
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   LOGS_DEFAULT(VERBOSE) << "Conv ArmNN:";
