@@ -1233,17 +1233,17 @@ bool ConvOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
 
     const auto onnx_dilations = helper.Get("dilations", vector<int>{1, 1});
     if (onnx_dilations != vector<int>{1, 1}) {
+      if (group != 1 && tensor.dims()[1] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "dilation is not supported on grouped conv";
+        return false;
+      }
+
       const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
       if (android_sdk_ver < 29) {
         LOGS_DEFAULT(VERBOSE) << op_type << " dilations is only supported on Android API levle 29+, "
                               << "actual API level: " << android_sdk_ver;
         return false;
       }
-    }
-
-    if (group != 1 && tensor.dims()[1] != 1) {
-      LOGS_DEFAULT(VERBOSE) << "group != 1 is not supported";
-      return false;
     }
   } else {
     LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
@@ -1344,8 +1344,16 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   const auto& weight = input_defs[w_idx]->Name();
 
   const auto& weight_tensor = initializers.at(weight);
-  bool conv2d = (group == 1);
-  bool depthwise_conv2d = (weight_tensor.dims()[1] == 1);
+  bool conv_2d = false,
+       depthwise_conv_2d = false,
+       grouped_conv_2d = false;
+
+  if (group == 1)
+    conv_2d = true;
+  else if ((weight_tensor.dims()[1] == 1))
+    depthwise_conv_2d = true;
+  else
+    grouped_conv_2d = true;
 
   Shape onnx_weight_shape;
   for (auto dim : weight_tensor.dims())
@@ -1367,9 +1375,9 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   OperandType onnx_weight_operand_type(onnx_weight_type, onnx_weight_shape, w_scale, w_zero_point);
 
   // Pre-process weights
-  if (conv2d) {
+  if (conv_2d || grouped_conv_2d) {
     AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231);
-  } else {  // depthwise_conv2d
+  } else {  // depthwise_conv_2d
     AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230);
   }
 
@@ -1391,7 +1399,7 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   if (!hasBias) {
     const auto weight_dimen = shaper[weight];
     Shape bias_dimen;
-    if (conv2d)
+    if (conv_2d || grouped_conv_2d)
       bias_dimen = {weight_dimen[0]};
     else
       bias_dimen = {weight_dimen[3]};
@@ -1450,31 +1458,38 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[1]));
   input_indices.push_back(model_builder.AddOperandFromScalar(onnx_strides[0]));
 
-  if (!conv2d && depthwise_conv2d) {
-    int32_t depthwiseMultiplier = shaper[weight][3] / group;
-    input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
+  if (!conv_2d) {
+    if (depthwise_conv_2d) {
+      int32_t depthwiseMultiplier = shaper[weight][3] / group;
+      input_indices.push_back(model_builder.AddOperandFromScalar(depthwiseMultiplier));
+    } else {  // grouped_conv_2d
+      input_indices.push_back(model_builder.AddOperandFromScalar(group));
+    }
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
 
-  // TODO support API 28
-  input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+  if (model_builder.GetAndroidSdkVer() > 28) {
+    input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
 
-  if (onnx_dilations[1] != 1 || onnx_dilations[0] != 1) {
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
-    input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
+    if (!grouped_conv_2d &&
+        (onnx_dilations[1] != 1 || onnx_dilations[0] != 1)) {
+      input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
+      input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[0]));
+    }
   }
 
   int32_t operationCode;
   const auto& output = node.OutputDefs()[0]->Name();
-  if (conv2d) {
-    operationCode = ANEURALNETWORKS_CONV_2D;
+  if (conv_2d || grouped_conv_2d) {
+    operationCode = conv_2d ? ANEURALNETWORKS_CONV_2D
+                            : ANEURALNETWORKS_GROUPED_CONV_2D;
     shaper.Conv(input, weight,
                 onnx_pads, onnx_strides, onnx_dilations,
                 use_nchw,
                 output);
-  } else {  // depthwise_conv2d
+  } else {  // depthwise_conv_2d
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
     shaper.DepthwiseConv(input, weight,
                          onnx_pads, onnx_strides, onnx_dilations,
@@ -1503,10 +1518,10 @@ class CastOpBuilder : public BaseOpBuilder {
 
 bool CastOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   NodeAttrHelper helper(node);
-  auto to = helper.Get("to", 0);
+  const auto to = helper.Get("to", 0);
   if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
       to != ONNX_NAMESPACE::TensorProto::INT32) {
-    LOGS_DEFAULT(VERBOSE) << "[Cast] Only support cast to int32 or float";
+    LOGS_DEFAULT(VERBOSE) << "[Cast] Only support cast to int32 or float, actual to type, " << to;
     return false;
   }
 
@@ -2304,6 +2319,88 @@ void DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
 
 #pragma endregion
 
+#pragma region op_LRN
+
+class LRNOpBuilder : public BaseOpBuilder {
+ private:
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+
+  int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
+    return 28;
+  }
+
+  void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
+};
+
+bool LRNOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
+  Shape input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
+    LOGS_DEFAULT(VERBOSE) << "LRN only support 4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  return true;
+}
+
+void LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  NodeAttrHelper helper(node);
+  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+
+  auto input = node.InputDefs()[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+  if (android_skd_ver < 29) {
+    // on android api level 28, we need to transpose the nchw input to nhwc
+    output_is_nhwc = true;
+    if (!model_builder.IsOperandNHWC(input)) {
+      const auto& nchw_input = node.InputDefs()[0]->Name();
+      if (!model_builder.GetNHWCOperand(nchw_input, input)) {
+        input = model_builder.GetUniqueName(nchw_input + "_nchw_to_nhwc");
+        TransposeNCHWToNHWC(model_builder, nchw_input, input);
+      }
+    }
+  }
+
+  auto alpha = helper.Get("alpha", 0.0001f);
+  const auto beta = helper.Get("beta", 0.75f);
+  const auto bias = helper.Get("bias", 1.0f);
+  const auto size = helper.Get("size", 1);
+
+  const auto radius = (size - 1) / 2;
+  alpha /= size;  // NNAPI's alpha is different than ONNX's alpha
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  input_indices.push_back(model_builder.AddOperandFromScalar(radius));
+  input_indices.push_back(model_builder.AddOperandFromScalar(bias));
+  input_indices.push_back(model_builder.AddOperandFromScalar(alpha));
+  input_indices.push_back(model_builder.AddOperandFromScalar(beta));
+
+  // specify axis is only available on api level >= 29
+  if (android_skd_ver > 28) {
+    // ONNX LRN is always performed on C dimension
+    int32_t axis = output_is_nhwc
+                       ? 3   // nhwc
+                       : 1;  // nchw
+    input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+  }
+
+  shaper.Identity(input, output);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  model_builder.AddOperation(ANEURALNETWORKS_LOCAL_RESPONSE_NORMALIZATION,
+                             input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+}
+
+#pragma endregion
+
 #pragma region CreateOpBuilders
 
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>>
@@ -2364,6 +2461,7 @@ CreateOpBuilders() {
   op_map.emplace("Squeeze", std::make_shared<SqueezeOpBuilder>());
   op_map.emplace("QuantizeLinear", std::make_shared<QuantizeLinearOpBuilder>());
   op_map.emplace("DequantizeLinear", std::make_shared<DequantizeLinearOpBuilder>());
+  op_map.emplace("LRN", std::make_shared<LRNOpBuilder>());
 
   return op_map;
 }
