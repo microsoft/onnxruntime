@@ -183,6 +183,121 @@ class ORTTrainer(object):
         """
         pass
 
+    def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
+        # example: {input0:{0:'batch'}, input1:{0:'batch'}}
+        dynamic_axes = {}
+        for input in model_desc.inputs_:
+            symbolic_axis = {}
+            for i, axis in enumerate(input.shape_):
+                if isinstance(axis, str):
+                    symbolic_axis[i] = axis
+            if len(symbolic_axis):
+                dynamic_axes[input.name_] = symbolic_axis
+
+        for output in model_desc.outputs_:
+            symbolic_axis = {}
+            for i, axis in enumerate(output.shape_):
+                if isinstance(axis, str):
+                    symbolic_axis[i] = axis
+            if len(symbolic_axis):
+                dynamic_axes[output.name_] = symbolic_axis
+
+        input_names = [input.name_ for input in model_desc.inputs_]
+        output_names = [output.name_ for output in model_desc.outputs_]
+
+        if isinstance(inputs, torch.Tensor):
+            inputs = [inputs]
+        if isinstance(inputs, dict):
+            sample_inputs = [inputs[k.name_].to(device=device) for k in model_desc.inputs_]
+        elif isinstance(inputs, (list, tuple)):
+            sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(model_desc.inputs_)]
+        else:
+            raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+
+        # pytorch onnx exporter/trace does not try to match argument names.
+        # e.g. for models with optional inputs, it requires all inputs be present.
+        # this is a problem because the model graph depends on inputs provided.
+        model = wrap_for_input_match(model, loss_fn, input_names)
+
+        model.eval()
+        with torch.no_grad():
+            sample_outputs = model(*sample_inputs)
+        if isinstance(sample_outputs, torch.Tensor):
+            sample_outputs = [sample_outputs]
+        for sample_output, output_desc in zip(sample_outputs, model_desc.outputs_):
+            output_desc.dtype_ = sample_output.dtype
+        model.train()
+
+        f = io.BytesIO()
+
+        # Other export options to use(this is for backward compatibility).
+        other_export_options = {}
+        other_export_options['training'] = True
+
+        # This option was added after 1.4 release.
+        if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
+            other_export_options['enable_onnx_checker'] = False
+        # This option was added after 1.6 release.
+        if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
+            other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
+
+        torch.onnx._export(model, tuple(sample_inputs), f,
+                        input_names=input_names,
+                        output_names=output_names,
+                        opset_version=opset_version,
+                        dynamic_axes=dynamic_axes,
+                        _retain_param_name=True,
+                        example_outputs=tuple(sample_outputs),
+                        do_constant_folding=False,
+                        **other_export_options)
+
+        onnx_model = onnx.load_model_from_string(f.getvalue())
+
+        # Remove 'model_.' prefix introduced by model wrapper for initializers.
+        replace_name_dict = {}
+        for n in onnx_model.graph.initializer:
+            if n.name.startswith('model_.'):
+                replace_name_dict[n.name] = n.name[len('model_.'):]
+                n.name = replace_name_dict[n.name]
+        for n in onnx_model.graph.node:
+            for i, name in enumerate(n.input):
+                if name in replace_name_dict:
+                    n.input[i] = replace_name_dict[name]
+
+        # onnx model initializer may contain non-trainable registered buffers that are not part
+        # of pytorch model named parameteres.
+        named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
+        assert set([n for n, t in named_parameters]).issubset(
+            set([n.name for n in onnx_model.graph.initializer])), \
+            "Initializer names do not match between PyTorch model and ONNX model, " \
+            "please report a bug to ONNX Runtime."
+
+        if _enable_internal_postprocess:
+            onnx_model = postprocess.run_postprocess(onnx_model)
+
+        return onnx_model
+
+    def _init_onnx_model_(self, *input):
+        if self._onnx_model is not None:
+            return
+
+        if self._torch_model is not None:
+            self.torch_model_.cpu()
+            # convert the model
+            # get input, outputs, export model
+            self.onnx_model = self.convert_model_loss_fn_to_onnx(self._torch_model, self.loss_fn, self.model_desc, torch.device('cpu'), inputs, opset_version=self.opset_version, _enable_internal_postprocess=self._enable_internal_postprocess)
+            
+            # selected tasks from init_sesion
+            if self._enable_internal_postprocess:
+                self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
+
+            self._verify_fully_optimized_model(self.onnx_model_)
+        
+
+
     def train_step(self, *input, **kwargs):
         r"""Train step method
 
