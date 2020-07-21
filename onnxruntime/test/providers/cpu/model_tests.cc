@@ -59,7 +59,7 @@ TEST_P(ModelTest, Run) {
     return;
   }
   if (model_info->GetONNXOpSetVersion() != 12 && provider_name == "dnnl") {
-    // TensorRT can run most of the model tests, but only part of
+    // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     return;
   }
@@ -661,7 +661,10 @@ TEST_P(ModelTest, Run) {
         ORT_TSTR("faster_rcnn"),
         ORT_TSTR("split_zero_size_splits"),
         ORT_TSTR("convtranspose_3d")};
-    static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("operator_permute2"),
+    static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                         ORT_TSTR("tf_mobilenet_v2_1.0_224"),
+                                                         ORT_TSTR("tf_mobilenet_v2_1.4_224"),
+                                                         ORT_TSTR("operator_permute2"),
                                                          ORT_TSTR("operator_repeat"),
                                                          ORT_TSTR("operator_repeat_dim_overflow"),
                                                          ORT_TSTR("mlperf_ssd_resnet34_1200"),
@@ -683,10 +686,10 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"),
                                                     ORT_TSTR("faster_rcnn"), ORT_TSTR("tf_pnasnet_large"),
                                                     ORT_TSTR("zfnet512"),ORT_TSTR("keras2coreml_Dense_ImageNet")        };
-    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"),
-                                                     ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"),
-                                                     ORT_TSTR("test_resnet101v2"),
-                                                     ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"),
+    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("densenet121"), ORT_TSTR("resnet18v2"),
+                                                     ORT_TSTR("resnet34v2"), ORT_TSTR("resnet50v2"),
+                                                     ORT_TSTR("resnet101v2"),
+                                                     ORT_TSTR("resnet101v2"), ORT_TSTR("vgg19"),
                                                      ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"),
                                                      ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"),
                                                      ORT_TSTR("tf_mobilenet_v1_1.0_224"),
@@ -697,9 +700,6 @@ TEST_P(ModelTest, Run) {
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"),
                                                      ORT_TSTR("batchnorm_example_training_mode"),
                                                      ORT_TSTR("batchnorm_epsilon_training_mode"),
-                                                     ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-                                                     ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-                                                     ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("mobilenetv2-1.0"),
                                                      ORT_TSTR("candy"),
                                                      ORT_TSTR("range_float_type_positive_delta_expanded"),
