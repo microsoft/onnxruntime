@@ -113,6 +113,9 @@ option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests."
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" ON)
 
+# A special build option only used for gathering code coverage info
+option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mode" OFF)
+
 # options for security fuzzing
 # build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
 option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
@@ -914,6 +917,10 @@ if (onnxruntime_USE_TENSORRT)
     set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
   else()
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+    # needs to link with stdc++fs in Linux
+    if (NOT APPLE)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES stdc++fs)
+    endif()	
   endif()
 endif()
 

@@ -37,7 +37,7 @@ echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EX
 if id -Gnz | grep -zq "^docker$" ; then
     DOCKER_CMD=docker
 else
-    DOCKER_CMD="sudo docker"
+    DOCKER_CMD="sudo --preserve-env docker"
 fi
 
 cd $SCRIPT_DIR/docker

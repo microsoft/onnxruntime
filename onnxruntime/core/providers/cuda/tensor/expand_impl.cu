@@ -63,7 +63,7 @@ __global__ void ExpandKernel(
       CUDA_LONG index = 0;
       CUDA_LONG offset = id;
 #pragma unroll
-      for (auto dim = 0; dim < output_strides.GetCapacity(); dim++) {
+      for (auto dim = 0; dim < output_strides.Capacity(); dim++) {
         if (dim >= rank) {
           break;
         }
@@ -143,7 +143,7 @@ Status ExpandImpl(
     void* output_data,
     const TArray<fast_divmod>& output_strides,
     const TArray<int64_t>& input_strides) {
-  const int rank = static_cast<int>(output_strides.size_);
+  const int rank = static_cast<int>(output_strides.Size());
   if (rank == 1) {
     if (N_input == N_output) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, N_output * element_size, cudaMemcpyDeviceToDevice));
@@ -159,12 +159,12 @@ Status ExpandImpl(
 
   int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(N_output, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
 
-#define EXPAND_ON(TYPE)                                                                                  \
-  case sizeof(TYPE):                                                                                     \
-    ExpandKernel<TYPE, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>                       \
-                <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                     \
-        rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
-        output_strides, input_strides);                                                                  \
+#define EXPAND_ON(TYPE)                                                                                      \
+  case sizeof(TYPE):                                                                                         \
+    ExpandKernel<TYPE, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>                           \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                                 \
+            rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
+            output_strides, input_strides);                                                                  \
     break
 
   switch (element_size) {

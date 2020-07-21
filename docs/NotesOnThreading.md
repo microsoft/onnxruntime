@@ -12,7 +12,7 @@ Examples of these abstractions are: ([threadpool.h](https://github.com/microsoft
 * TryBatchParallelFor
 * TryParallelFor
 * TrySimpleParallelFor
-* static version of NumThreads
+* DegreeOfParallelism
 
 **Please do not write #ifdef pragma omp in operator code**.
 

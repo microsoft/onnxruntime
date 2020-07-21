@@ -60,6 +60,18 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
+#define REGISTER_MS_KERNEL_TYPED(name, T)                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      name,                                                       \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
 // it's safer to wrap it with automatically memory deleter as CudnnReduceDescriptor.
 // An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t
@@ -598,12 +610,34 @@ template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   const Tensor* X = ctx->Input<Tensor>(0);
 
+  const std::string& op_name = this->KernelDef().OpName();
+  std::vector<int64_t> axes_values = axes_;
+  if (op_name == "ReduceSumTraining") {
+    //override the attribute value with the input value for reduction_axes
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->template Data<int64_t>();
+    std::vector<int64_t> axes(data, data + nDims);
+    axes_values = axes;
+    if (axes.size() > 0) {
+      ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
+    }
+
+    // empty axes and no-op
+    if (axes.empty() && noop_with_empty_axes_) {
+      auto* Y = ctx->Output(0, X->Shape());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes() * sizeof(T), cudaMemcpyDeviceToDevice));
+      return Status::OK();
+    }
+  }
+
   PrepareReduceMetadata prepare_reduce_metadata;
   ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
-                                       axes_,
+                                       axes_values,
                                        prepare_reduce_metadata));
-
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   bool fast_reduction = fast_reduction_;
   if (fast_reduction) {
@@ -612,7 +646,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       fast_reduction = false;
   }
 
-  return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes_,
+  return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes_values,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
@@ -622,11 +656,34 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   typedef typename ToCudaType<int32_t>::MappedType CudaT;
 
   const Tensor* X = ctx->Input<Tensor>(0);
+
+  const std::string& op_name = this->KernelDef().OpName();
+  std::vector<int64_t> axes_values = axes_;
+  if (op_name == "ReduceSumTraining") {
+    //override the attribute value with the input value for reduction_axes
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
+    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+    const auto* data = axes_tensor->template Data<int64_t>();
+    std::vector<int64_t> axes(data, data + nDims);
+    axes_values = axes;
+    if (axes.size() > 0) {
+      ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
+    }
+
+    // empty axes and no-op
+    if (axes.empty() && noop_with_empty_axes_) {
+      auto* Y = ctx->Output(0, X->Shape());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<int32_t>(), X->template Data<int32_t>(), X->SizeInBytes() * sizeof(int32_t), cudaMemcpyDeviceToDevice));
+      return Status::OK();
+    }
+  }
+
   PrepareReduceMetadata prepare_reduce_metadata;
 
   ORT_RETURN_IF_ERROR(PrepareForReduce(X,
                                        keepdims_,
-                                       axes_,
+                                       axes_values,
                                        prepare_reduce_metadata));
 
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
@@ -924,6 +981,11 @@ REGISTER_KERNEL_TYPED_12(ReduceMin, double)
 REGISTER_KERNEL_TYPED_12(ReduceMin, int32_t)
 REGISTER_KERNEL_TYPED_12(ReduceMin, int8_t)
 REGISTER_KERNEL_TYPED_12(ReduceMin, uint8_t)
+
+REGISTER_MS_KERNEL_TYPED(ReduceSumTraining, MLFloat16)
+REGISTER_MS_KERNEL_TYPED(ReduceSumTraining, float)
+REGISTER_MS_KERNEL_TYPED(ReduceSumTraining, double)
+REGISTER_MS_KERNEL_TYPED(ReduceSumTraining, int32_t)
 
 REGISTER_KERNEL_HFD(ReduceProd)
 REGISTER_KERNEL_HFD(ReduceSum)

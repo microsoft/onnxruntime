@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "onnx/defs/function.h"
 #include <math.h>
@@ -1058,75 +1059,74 @@ Example 4:
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("TrainableDropout")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
-      .AllowUncheckedAttributes()
-      .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
-             "T1",
-             OpSchema::Optional)
-      .Output(0, "output", "The output.", "T")
-      .Output(1, "mask", "The output mask.", "T2", OpSchema::Optional)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input 'ratio' types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain output 'mask' types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        if (ctx.getNumOutputs() == 2) {
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-          if (hasNInputShapes(ctx, 1)) {
-            propagateShapeFromInputToOutput(ctx, 0, 1);
-          }
-        }
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("TrainableDropoutGrad")
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ReduceSumTraining")
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr("noop_with_empty_axes",
+            "Perform reduction or not when axes is empty, default false mean perform reduction."
+            "when axes is empty and this attribute is set to true, input tensor will not be reduced,"
+            "thus output tensor would be equivalent to input tensor.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .AllowUncheckedAttributes()
-      .Input(0, "dy", "The gradient tensor from output.", "T")
-      .Input(1, "mask",
-             "The mask tensor of the dropout. ", "T2")
-      .Input(2, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
-             "T1",
-             OpSchema::Optional)
-      .Output(0, "dx", "Gradient of the input.", "T")
+      .Input(0, "data", "An input tensor.", "T")
+      .Input(1, "axes",
+             "A list of integers, along which to reduce. The default is to reduce over "
+             "all the dimensions of the input tensor. Accepted range is [-r, r-1] where r = rank(data).",
+             "tensor(int64)")
+      .Output(0, "reduced", "Reduced output tensor.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float)"},
-          "Constrain input 'ratio' types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain 'mask' types to boolean tensors.")
+          OpSchema::numeric_types_for_math_reduction(),
+          "Constrain input and output types to high-precision numeric tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // skip if axes is not an initializer
+        auto axes_proto = ctx.getInputData(1);
+        if (axes_proto == nullptr) {
+          return;
+        }
+
+        int64_t keep_dims = 1;
+        auto attr_proto = ctx.getAttribute("keepdims");
+        if (attr_proto) {
+          keep_dims = attr_proto->i();
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        auto output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        std::vector<int64_t> axes_values = ParseData<int64_t>(axes_proto); 
+        std::vector<int64_t> axes;
+        axes.reserve(axes_values.size());
+        for (int64_t axis : axes_values) {
+          axes.push_back(HandleNegativeAxis(axis, input_ndim));
+        }
+
+        for (int i = 0; i < input_ndim; ++i) {
+          // axes empty means reduce all dim
+          if (!axes.empty() &&
+              std::find(axes.begin(), axes.end(), i) == axes.end()) {
+            auto dim = output_shape->add_dim();
+            dim->CopyFrom(input_shape.dim(i));
+          } else {
+            if (keep_dims == 1) {
+              auto dim = output_shape->add_dim();
+              dim->set_dim_value(1);
+            }
+          }
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DropoutGrad)
