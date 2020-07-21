@@ -70,6 +70,7 @@ int test() {
   const wchar_t* model_path = L"squeezenet.onnx";
   OrtEnv* env;
   ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   OrtSessionOptions* session_option = OrtCreateSessionOptions();
   OrtSession* session;
   OrtSetIntraOpNumThreads(session_option, 1);
@@ -79,6 +80,7 @@ int test() {
   int result = run_inference(session);
 
   OrtReleaseSession(session);
+  OrtReleaseEnv(env);
   OrtReleaseEnv(env);
 }
 
