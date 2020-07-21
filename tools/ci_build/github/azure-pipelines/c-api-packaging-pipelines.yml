@@ -24,6 +24,14 @@ jobs:
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
 
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -52,6 +60,15 @@ jobs:
           artifactName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -168,6 +185,15 @@ jobs:
         buildConfig: RelWithDebInfo
         artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -224,7 +250,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
+        arguments: '--msvc_toolset 14.16 --config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -244,7 +270,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
+        arguments: '--msvc_toolset 14.16 --config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests $(TelemetryOption) $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
@@ -252,6 +278,13 @@ jobs:
         buildConfig: RelWithDebInfo
         artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
