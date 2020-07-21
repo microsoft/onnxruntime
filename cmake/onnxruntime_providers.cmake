@@ -531,11 +531,6 @@ if (onnxruntime_USE_OPENVINO)
 
   if(MSVC)
     target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4275 /wd4100 /wd4005 /wd4244)
-#    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_NGRAPH_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
-#    target_link_libraries(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR}/inference_engine.lib ${OPENVINO_NGRAPH_LIB_DIR}/ngraph.lib ${OPENVINO_LIB_DIR}/inference_engine_legacy.lib ${OPENVINO_TBB_LIB_DIR}/tbb.lib ${PYTHON_LIBRARIES})
-#  else()
-#    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${ngraph_INCLUDE_DIRS} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
-#    target_link_libraries(onnxruntime_providers_openvino -linference_engine -linference_engine_legacy -ltbb ${PYTHON_LIBRARIES})
   endif()
 
 endif()
