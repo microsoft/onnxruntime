@@ -15,8 +15,6 @@ class Trilu final : public OpKernel {
 
  private:
    bool upper_;
-   template<typename T>
-   struct ComputeImpl;
 };
 
 }  // namespace contrib

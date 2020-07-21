@@ -63,7 +63,7 @@ static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
     }
   }
   return Status::OK();
-};
+}
 
 Status Trilu::Compute(OpKernelContext* ctx) const {
   Status status;
