@@ -175,13 +175,30 @@ class ORTTrainer(object):
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
 
-        The model will be saved as a Google Protocol Buffers (aka protobuf) file as per ONNX standard containing
-        the full graph, including inference and training metadata.
+        The model will be saved as a Google Protocol Buffers (aka protobuf) file as per ONNX standard.
+        The graph includes full information, including inference and training metadata.
 
         Args:
-            path (str): Full path, including filename, to save the model in the filesystem
+            path (str): Full path, including filename, to save the ONNX model in the filesystem
+
+        Raises:
+            RuntimeWarning: raised when neither `train_step` or `eval_step` was called at least once
+            ValueError: raised when `path` is not valid path
         """
-        pass
+        if not self.session:
+            raise RuntimeWarning("Training session is not initialized yet. "
+                                 "'train_step' or 'eval_step' methods must be executed at least once before calling 'save_as_onnx()'.")
+        state_tensors = self.session.get_state()
+        self._update_onnx_model_initializers(state_tensors)
+
+        assert isinstance(path, str), "'path' must be a valid path string"
+        dir_name = os.path.dirname(path)
+        file_name = os.path.basename(path)
+        if not dir_name or not os.path.exist(dir_name) or not file_name:
+            raise ValueError("'path' must be a valid path string")
+
+        with open(path, "wb") as f:
+            f.write(self._onnx_model.SerializeToString())
 
     def convert_torch_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
         input_names = [input.name_ for input in model_desc.inputs_]
@@ -277,7 +294,6 @@ class ORTTrainer(object):
         
         self._init_session
         
-
 
     def train_step(self, *input, **kwargs):
         r"""Train step method
@@ -543,3 +559,25 @@ class ORTTrainer(object):
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
         self._eval_io_binding = self._training_session.io_binding()
+
+
+    def _update_onnx_model_initializers(self, state_tensors):
+        r""" Updates ONNX graph initializers with state_tensors's values
+
+        Usually called to save or load an ONNX model.
+
+        The tensors names of state_tensors are compared to all ONNX initializer tensors
+        and when the name matches, the ONNX graph is updated with the new value.
+        """
+        assert isinstance(state_tensors, dict), "state_tensors must be a dict"
+
+        new_weights = []
+        replace_indices = []
+        for i, w in enumerate(self._onnx_model.graph.initializer):
+            if w.name in state_tensors:
+                new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
+                replace_indices.append(i)
+        replace_indices.sort(reverse=True)
+        for w_i in replace_indices:
+            del self._onnx_model.graph.initializer[w_i]
+        self._onnx_model.graph.initializer.extend(new_weights
