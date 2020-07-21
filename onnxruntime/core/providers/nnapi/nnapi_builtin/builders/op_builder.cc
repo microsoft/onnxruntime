@@ -1000,7 +1000,7 @@ class PoolOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 28;
+    return model_builder.UseNCHW() ? 29 : 28;
   }
 
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
@@ -1008,6 +1008,18 @@ class PoolOpBuilder : public BaseOpBuilder {
 
 bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
   const auto& op = node.OpType();
+  Shape input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
+    LOGS_DEFAULT(VERBOSE)
+        << op_type << " only supportes rank-4 tensor, input ["
+        << node.InputDefs()[0]->Name() << "] has actual dim count " << input_size;
+    return false;
+  }
+
   if (op == "AveragePool" || op == "MaxPool") {
     NodeAttrHelper helper(node);
 
@@ -1041,18 +1053,6 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
 
     if (node.OutputDefs().size() != 1) {
       LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
-      return false;
-    }
-  } else if (op == "GlobalAveragePool" || op == "GlobalMaxPool") {
-    Shape input_shape;
-    if (!GetShape(*node.InputDefs()[0], input_shape))
-      return false;
-
-    const auto input_size = input_shape.size();
-    if (input_size != 4) {
-      LOGS_DEFAULT(VERBOSE)
-          << "GlobalAveragePool/GlobalMaxPool Only rank-4 tensor is supported in "
-          << node.InputDefs()[0]->Name() << ", actual dim count " << input_size;
       return false;
     }
   }
@@ -1141,8 +1141,9 @@ void PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   input_indices.push_back(model_builder.AddOperandFromScalar(kernel_shape[0]));
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
 
-  // TODO support API 28
-  input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+  if (model_builder.GetAndroidSdkVer() > 28) {  // nchw only supported on api 29+
+    input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
+  }
 
   shaper.Pool(input,
               onnx_pads, onnx_strides, kernel_shape,
