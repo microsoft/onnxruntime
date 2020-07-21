@@ -349,6 +349,7 @@ class ORTTrainer(object):
 
         return onnx_model
 
+
     def _init_onnx_model(self, inputs):
         if self._onnx_model is not None:
             return
