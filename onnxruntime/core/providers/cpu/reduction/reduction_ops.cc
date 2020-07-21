@@ -684,9 +684,10 @@ Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
   auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
   const auto* data = axes_tensor->template Data<int64_t>();
   std::vector<int64_t> axes(data, data + nDims);
-  if (axes.size() > 0) {
-    ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
-  }
+
+  std::cout << "\nReduceSumTraining Axes:";
+  for (auto i = axes.begin(); i != axes.end(); ++i)
+    std::cout << *i << ' ';
 
   // empty axes and no-op
   if (axes.empty() && noop_with_empty_axes_) {

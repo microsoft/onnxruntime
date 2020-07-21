@@ -108,38 +108,38 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
   OpDef op_def{op_type};
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-  //shape(A) = (2, 3, 4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
-  {
-    TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+  // //shape(A) = (2, 3, 4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
+  // {
+  //   TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
+  //   TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
+  //   TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                          attributes, true, check_not_have_shape_inferencing);
-    EXPECT_IS_TINY(max_error);
-  }
+  //   gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+  //                                         attributes, true, check_not_have_shape_inferencing);
+  //   EXPECT_IS_TINY(max_error);
+  // }
 
-  //shape(A) = (2, 3, 4, 5), shape(B) = (,), i.e. B is a scalar ==> shape(result) = (2, 3, 4, 5)
-  {
-    TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo B_info{{}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+  // //shape(A) = (2, 3, 4, 5), shape(B) = (,), i.e. B is a scalar ==> shape(result) = (2, 3, 4, 5)
+  // {
+  //   TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
+  //   TensorInfo B_info{{}, true, transformer};
+  //   TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                          attributes, true, check_not_have_shape_inferencing);
-    EXPECT_IS_TINY(max_error);
-  }
+  //   gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+  //                                         attributes, true, check_not_have_shape_inferencing);
+  //   EXPECT_IS_TINY(max_error);
+  // }
 
-  //shape(A) = (,), shape(B) = (2, 3, 4, 5), i.e. A is a scalar ==> shape(result) = (2, 3, 4, 5)
-  {
-    TensorInfo A_info{{}, true, transformer};
-    TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+  // //shape(A) = (,), shape(B) = (2, 3, 4, 5), i.e. A is a scalar ==> shape(result) = (2, 3, 4, 5)
+  // {
+  //   TensorInfo A_info{{}, true, transformer};
+  //   TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
+  //   TensorInfo Y_info{{2, 3, 4, 5}};
 
-    gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                          attributes, true, check_not_have_shape_inferencing);
-    EXPECT_IS_TINY(max_error);
-  }
+  //   gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
+  //                                         attributes, true, check_not_have_shape_inferencing);
+  //   EXPECT_IS_TINY(max_error);
+  // }
 
   //shape(A) = (2, 3, 4, 5), shape(B) = (5,), ==> shape(result) = (2, 3, 4, 5)
   {
@@ -148,7 +148,7 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
     TensorInfo Y_info{{2, 3, 4, 5}};
 
     gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                          attributes, true, check_not_have_shape_inferencing);
+                                          attributes, false, check_not_have_shape_inferencing);
     EXPECT_IS_TINY(max_error);
   }
 

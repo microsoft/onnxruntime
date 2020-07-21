@@ -66,6 +66,13 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
       b_axes.push_back(k);
     }
   }
+  std::cout << "\nA_axes: ";
+  for (auto i = a_axes.begin(); i != a_axes.end(); ++i)
+    std::cout << *i << ' ';
+
+  std::cout << "\nB_axes: ";
+  for (auto i = b_axes.begin(); i != b_axes.end(); ++i)
+    std::cout << *i << ' ';
 
   Tensor* A_axes = context->Output(0, {static_cast<T>(a_axes.size())});
   T* A_axes_data = A_axes->template MutableData<T>();

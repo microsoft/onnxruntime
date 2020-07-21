@@ -296,6 +296,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       Status compute_status;
 
       try {
+        std::cout << "Running op: " << node.OpType() << " node Name:'" << node.Name() << "\n";
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       } catch (const std::exception& ex) {
         compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
