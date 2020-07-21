@@ -8,9 +8,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class TransposeMatMul final : public OpKernel {
+class TransposeScaleMatMul final : public OpKernel {
  public:
-  TransposeMatMul(const OpKernelInfo& info);
+  TransposeScaleMatMul(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
