@@ -680,6 +680,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetSqueezeGradient) {
   }
   return result;
 }
+
 IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
   bool is_sub = (SrcNodeOpType() == "Sub");
 
@@ -1073,7 +1074,7 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
     ComputeBroadcastBackwardAxes(B_shape, GetShape(X), &result, nullptr);
     return result;
   }();
-
+  std::cout << "INFO: GetBiasGeluGradNodes : Static Shape Available\n";
   return std::vector<NodeDef>{
       NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
               {dY, X, B},
@@ -1089,7 +1090,26 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
 IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
   const auto dY = GO(0), X = I(0), B = I(1),
              dX = GI(0), dB = GI(1);
-  return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
+  try {
+    return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
+  } catch (onnxruntime::OnnxRuntimeException e) {
+    std::cout << "INFO: GetBiasGeluGradient : Static Shape Not Available\n";
+    std::vector<NodeDef> result;
+    ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
+    ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
+    ComputeBroadcastBackwardAxesDynamic(B, X, b_axes_arg, x_axes_arg, result);
+    result.push_back(
+        NodeDef(OpDef{"BiasGeluGrad_dX", kMSDomain, 1},
+                {dY, X, B},
+                {dX}));
+    result.push_back(
+        NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+                {dX,
+                 b_axes_arg},
+                {dB},
+                {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
+    return result;
+  }
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
@@ -1100,7 +1120,26 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     // FastGeluGrad doesn't support bias - it needs to be composed with other ops
     const auto B = I(1),
                dB = GI(1);
-    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
+    try {
+      return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
+    } catch (onnxruntime::OnnxRuntimeException e) {
+      std::cout << "INFO: GetFastGeluGradient : Static Shape Not Available\n";
+      std::vector<NodeDef> result;
+      ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
+      ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
+      ComputeBroadcastBackwardAxesDynamic(B, X, b_axes_arg, x_axes_arg, result);
+      result.push_back(
+          NodeDef(OpDef{"BiasFastGeluGrad_dX", kMSDomain, 1},
+                  {dY, X, B},
+                  {dX}));
+      result.push_back(
+          NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+                  {dX,
+                   b_axes_arg},
+                  {dB},
+                  {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
+      return result;
+    }
   }
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{

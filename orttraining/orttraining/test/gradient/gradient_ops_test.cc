@@ -1404,10 +1404,12 @@ void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int
 
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type, domain, opset_version};
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   float max_error;
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
-      op_def, {input_shape, bias_shape}, {input_shape}, &max_error));
+      op_def, {input_shape, bias_shape}, {input_shape}, &max_error,
+      attributes, true, true));
 
   EXPECT_IS_TINY(max_error);
 }
