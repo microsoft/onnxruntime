@@ -1636,7 +1636,7 @@ def main():
                     "Only Windows ARM(64) cross-compiled builds supported "
                     "currently through this script")
             install_ubuntu_deps(args)
-            if not is_docker() and not args.use_armnn:
+            if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
