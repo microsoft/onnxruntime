@@ -12,10 +12,6 @@ import numpy as np
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from quantize import quantize, QuantizationMode
-
-#user-implement preprocess function
-from data_preprocess import preprocess_func
 
 import re
 import subprocess
@@ -23,7 +19,7 @@ import json
 
 import abc
 
-class CalibrationDataReaderInterface(metaclass=abc.ABCMeta):
+class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls,subclass):
         return (hasattr(subclass,'get_next') and callable(subclass.get_next) or NotImplemented)
@@ -36,11 +32,20 @@ class CalibrationDataReaderInterface(metaclass=abc.ABCMeta):
 class ONNXCalibrater:
     def __init__(self,
                  model_path,
-                 data_reader,
+                 data_reader:CalibrationDataReader,
                  calibrate_op_types,
                  black_nodes,
                  white_nodes,
                  augmented_model_path):
+        '''
+        :param model_path: ONNX model to calibrate
+        :param data_reader: user implemented object to read in and preprocess calibration dataset
+                            based on CalibrationDataReader Interface
+        :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
+        :param black_nodes: operator names that should not be quantized, default = ''
+        :param white_nodes: operator names that force to be quantized, default = ''
+        :param augmented_model_path: save augmented_model to this path
+        '''
         self.model_path = model_path
         self.data_reader = data_reader
         self.calibrate_op_types = calibrate_op_types
