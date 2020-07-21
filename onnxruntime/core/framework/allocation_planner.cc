@@ -574,8 +574,6 @@ class PlannerImpl {
         const auto current = Index(node_output->Name());
         AllocPlan(current).value_type = utils::GetMLDataType(*node_output);
         AllocPlan(current).p_def_site = ort_value_info_[current].p_def_site;
-        AllocPlan(current).program_counter_start = -1;
-        AllocPlan(current).program_counter_end = -1;
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
@@ -665,7 +663,7 @@ class PlannerImpl {
       if (!AllocateInputsContiguously(*pnode)) continue;
       // This node has requested inputs be allocated contiguously.
       const auto& input_defs = pnode->InputDefs();
-      onnxruntime::AllocKind input_kind;
+      onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
       bool set_input_kind = true;
       for (int input_arg_def_index = 0; static_cast<size_t>(input_arg_def_index) < input_defs.size(); ++input_arg_def_index) {
         const auto& node_input = input_defs[input_arg_def_index];
