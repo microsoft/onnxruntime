@@ -30,9 +30,14 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   std::vector<const Tensor*> input_tensors;
   input_tensors.reserve(input_count);
+
+  LOGS_DEFAULT(VERBOSE) << "Concat ArmNN:";
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
+    LOGS_DEFAULT(VERBOSE) << "X[" << i << "]: " << ctx->Input<Tensor>(i)->Shape().ToString().c_str();
   }
+  LOGS_DEFAULT(VERBOSE) << "axis: " << axis_;
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   std::vector<int64_t> output_dims = input_tensors[0]->Shape().GetDims();
 
@@ -55,8 +60,10 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     output_dims.insert(output_dims.begin() + axis_, static_cast<int64_t>(input_count));
   }
 
-  if(output_dims.size() > 4 || axis_ > 3)
+  if(output_dims.size() > 4 || axis_ > 3) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
     return onnxruntime::Concat::Compute(ctx);
+  }
 
   TensorShape output_shape(output_dims);
   Tensor* Y = ctx->Output(0, output_shape);
@@ -103,6 +110,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Concat::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
+      LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
       return onnxruntime::Concat::Compute(ctx);
     }
 
