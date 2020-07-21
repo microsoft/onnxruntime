@@ -20,8 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Trilu);
 
 template <typename T>
-static Status TriluImpl(OpKernelContext* ctx, const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
-  //void operator()(const Tensor* X, Tensor* Y, int64_t k_val, bool up) const {
+static Status TriluImpl(const Tensor* X, Tensor* Y, int64_t k_val, bool up) {
   const auto& X_shape = X->Shape();
   int64_t X_num_dims = static_cast<int64_t>(X_shape.NumDimensions());
 
@@ -91,10 +90,10 @@ Status Trilu::Compute(OpKernelContext* ctx) const {
   const auto element_size = data_type->Size();
   switch (element_size) {
     case sizeof(float):
-      status = TriluImpl<float>(ctx, X, Y, k_val, up);
+      status = TriluImpl<float>(X, Y, k_val, up);
       break;
     case sizeof(double):
-      status = TriluImpl<double>(ctx, X, Y, k_val, up);
+      status = TriluImpl<double>(X, Y, k_val, up);
       break;
     default:
       ORT_THROW("Unsupported input data type of ", data_type);
