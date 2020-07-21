@@ -186,6 +186,33 @@ void ModelBuilder::PreprocessInitializers() {
   }
 }
 
+// Help to get all quantized operators' input and the node(s) using the input
+std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_view) {
+  std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
+  const auto& node_indices = graph_view.GetNodesInTopologicalOrder();
+  for (const auto& node_idx : node_indices) {
+    const auto* node(graph_view.GetNode(node_idx));
+    const auto& op_type = node->OpType();
+    if (op_type == "DequantizeLinear" || op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+      const auto& input_name = node->InputDefs()[0]->Name();
+      if (Contains(all_quantized_op_inputs, input_name))
+        all_quantized_op_inputs.at(input_name).push_back(node);
+      else
+        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+    }
+
+    if (op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+      const auto& input_name = node->InputDefs()[3]->Name();
+      if (Contains(all_quantized_op_inputs, input_name))
+        all_quantized_op_inputs.at(input_name).push_back(node);
+      else
+        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+    }
+  }
+
+  return all_quantized_op_inputs;
+}
+
 void ModelBuilder::RegisterInitializers() {
   // First pass to get all the stats of the initializers
   auto initializer_size = initializers_.size();
@@ -256,6 +283,7 @@ void ModelBuilder::RegisterInitializers() {
 }
 
 void ModelBuilder::RegisterModelInputs() {
+  const auto all_quantized_op_inputs = GetAllQuantizedOpInputs(graph_view_);
   for (const auto* node_arg : graph_view_.GetInputs()) {
     const auto& input_name = node_arg->Name();
 
@@ -277,6 +305,8 @@ void ModelBuilder::RegisterModelInputs() {
     }
 
     Type type = Type::TENSOR_FLOAT32;
+    float scale = 0.0f;
+    int32_t zero_point = 0;
     const auto* type_proto = node_arg->TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       ORT_THROW("The input of graph doesn't have elem_type: " + input_name);
@@ -285,6 +315,23 @@ void ModelBuilder::RegisterModelInputs() {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           type = Type::TENSOR_FLOAT32;
           break;
+        case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+          // For ONNX the quantized input does not carry scale and zero point info
+          // So we will need to search the operator using this input
+          // And dig out the scale and zero point as the input initializers to the operator
+          type = Type::TENSOR_QUANT8_ASYMM;
+          if (!Contains(all_quantized_op_inputs, input_name)) {
+            // We current do not support uint8 input if it is not a quantized input
+            ORT_THROW("The input of graph doesn't have valid type, name: " +
+                      input_name + " type: " +
+                      std::to_string(type_proto->tensor_type().elem_type()));
+          }
+
+          // TODO, verify the scale and zero point match if there are multiple op using same input
+          std::tie(scale, zero_point) =
+              GetQuantizedInputScaleAndZeroPoint(*this, *all_quantized_op_inputs.at(input_name)[0], input_name);
+          break;
+        }
         default:
           // TODO: support other type
           ORT_THROW("The input of graph doesn't have valid type, name: " +
@@ -293,7 +340,7 @@ void ModelBuilder::RegisterModelInputs() {
       }
     }
 
-    OperandType operand_type(type, shape);
+    OperandType operand_type(type, shape, scale, zero_point);
     shaper_.AddShape(input_name, operand_type.dimensions);
 
     auto index = AddNewOperand(input_name, operand_type, false /* is_nhwc */);

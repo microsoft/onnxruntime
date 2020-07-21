@@ -3,6 +3,7 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "onnx/defs/function.h"
 #include <math.h>
@@ -949,7 +950,7 @@ Example 4:
           updateOutputShape(ctx, 0, TensorShapeProto());
         }
 
-        if(ctx.getNumOutputs() == 2) {
+        if (ctx.getNumOutputs() == 2) {
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
           if (hasInputShape(ctx, 0)) {
             propagateShapeFromInputToOutput(ctx, 0, 1);
@@ -1026,7 +1027,7 @@ Example 4:
              "the case during training.",
              "T1",
              OpSchema::Optional)
-      .Input(4, "training_mode", 
+      .Input(4, "training_mode",
              "If set to true then it indicates dropout is being used for "
              "training. It is an optional value hence unless specified explicitly, it is false. "
              "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
@@ -1058,6 +1059,76 @@ Example 4:
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ReduceSumTraining")
+      .Attr("keepdims",
+            "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr("noop_with_empty_axes",
+            "Perform reduction or not when axes is empty, default false mean perform reduction."
+            "when axes is empty and this attribute is set to true, input tensor will not be reduced,"
+            "thus output tensor would be equivalent to input tensor.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "An input tensor.", "T")
+      .Input(1, "axes",
+             "A list of integers, along which to reduce. The default is to reduce over "
+             "all the dimensions of the input tensor. Accepted range is [-r, r-1] where r = rank(data).",
+             "tensor(int64)")
+      .Output(0, "reduced", "Reduced output tensor.", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::numeric_types_for_math_reduction(),
+          "Constrain input and output types to high-precision numeric tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // skip if axes is not an initializer
+        auto axes_proto = ctx.getInputData(1);
+        if (axes_proto == nullptr) {
+          return;
+        }
+
+        int64_t keep_dims = 1;
+        auto attr_proto = ctx.getAttribute("keepdims");
+        if (attr_proto) {
+          keep_dims = attr_proto->i();
+        }
+        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+        int64_t input_ndim = input_shape.dim_size();
+        auto output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        std::vector<int64_t> axes_values = ParseData<int64_t>(axes_proto); 
+        std::vector<int64_t> axes;
+        axes.reserve(axes_values.size());
+        for (int64_t axis : axes_values) {
+          axes.push_back(HandleNegativeAxis(axis, input_ndim));
+        }
+
+        for (int i = 0; i < input_ndim; ++i) {
+          // axes empty means reduce all dim
+          if (!axes.empty() &&
+              std::find(axes.begin(), axes.end(), i) == axes.end()) {
+            auto dim = output_shape->add_dim();
+            dim->CopyFrom(input_shape.dim(i));
+          } else {
+            if (keep_dims == 1) {
+              auto dim = output_shape->add_dim();
+              dim->set_dim_value(1);
+            }
+          }
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(DropoutGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1074,11 +1145,11 @@ Example 4:
              "T1",
              OpSchema::Optional)
       .Input(3, "training_mode",
-            "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
-            "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
-            "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
-            "T2",
-            OpSchema::Optional)
+             "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+             "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+             "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+             "T2",
+             OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
@@ -1095,6 +1166,23 @@ Example 4:
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(
+          "Returns the reduction axes for computing gradients of s0 op s1 with broadcast."
+          "The ouput axes are deterministic from last to first. "
+          "Output is an empty vector when no reduction is necessary for the corresponding input.")
+      .Input(0, "a_shape", "The 1st input shape as Tensor.", "T")
+      .Input(1, "b_shape", "The 2nd input shape as Tensor.", "T")
+      .Output(0, "a_axes", "The reduction axes for 1st input, last to first.", "T")
+      .Output(1, "b_axes", "The reduction axes for 2nd input, last to first.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(int64)"},
+          "Constrain input and output types to 64-bit integer.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
       .SetDomain(kMSDomain)

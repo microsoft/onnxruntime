@@ -32,7 +32,7 @@ jobs:
 - job: Linux_C_API_Packaging_GPU_x64
   workspace:
     clean: all
-  timeoutInMinutes:  60
+  timeoutInMinutes:  120
   pool: 'Linux-GPU-CUDA10'
   steps:
     - template: templates/set-version-number-variables-step.yml

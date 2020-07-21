@@ -27,8 +27,12 @@ class IOpBuilder {
 // for different onnx operators
 std::unordered_map<std::string, std::shared_ptr<IOpBuilder>> CreateOpBuilders();
 
-// Transpose the NHWCinput to NCHW output
+// Transpose the NHWC input to NCHW output
 void TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input, const std::string& output);
+
+// Get the quantized input's scale and zero point for the given input
+std::pair<float, int32_t> GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+                                                             const Node& node, const std::string& input_name);
 
 }  // namespace nnapi
 }  // namespace onnxruntime
