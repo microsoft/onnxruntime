@@ -621,21 +621,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     const auto* data = axes_tensor->template Data<int64_t>();
     std::vector<int64_t> axes(data, data + nDims);
     axes_values = axes;
-<<<<<<< HEAD
     if (axes.size() > 0) {
       ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
     }
-=======
->>>>>>> 3a1af2530f7c340b4c810a765a65195ef9edd116
 
     // empty axes and no-op
     if (axes.empty() && noop_with_empty_axes_) {
       auto* Y = ctx->Output(0, X->Shape());
-<<<<<<< HEAD
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes() * sizeof(T), cudaMemcpyDeviceToDevice));
-=======
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->Shape().Size() * sizeof(T), cudaMemcpyDeviceToDevice));
->>>>>>> 3a1af2530f7c340b4c810a765a65195ef9edd116
       return Status::OK();
     }
   }
