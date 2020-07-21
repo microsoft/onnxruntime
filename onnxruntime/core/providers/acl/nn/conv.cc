@@ -252,6 +252,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         Status s = onnxruntime::Conv<T>::Compute(context);
         return s;
       } else {
+        if(tconv.k->info()->tensor_shape()[0] == 9 && tconv.k->info()->tensor_shape()[1] == 9) {
+          LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
+          Status s = onnxruntime::Conv<T>::Compute(context);
+          return s;
+        }
         LOGS_DEFAULT(VERBOSE) << "ACL 2D convolution";
         auto layer = std::make_shared<arm_compute::NEConvolutionLayer>(mm_layer);
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
