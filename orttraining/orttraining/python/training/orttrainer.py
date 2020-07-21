@@ -183,6 +183,27 @@ class ORTTrainer(object):
         """
         pass
 
+
+    def _init_onnx_model_(self, *input):
+        if self._onnx_model is not None:
+            return
+
+        if self._torch_model is not None:
+            self.torch_model_.cpu()
+            # convert the model
+            # get input, outputs, export model
+            self.onnx_model = self.convert_model_loss_fn_to_onnx(self._torch_model, self.loss_fn, self.model_desc, torch.device('cpu'), inputs, opset_version=self.opset_version, _enable_internal_postprocess=self._enable_internal_postprocess)
+            
+            # selected tasks from init_sesion
+            if self._enable_internal_postprocess:
+                self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
+
+            self._verify_fully_optimized_model(self.onnx_model_)
+        
+
     def train_step(self, *input, **kwargs):
         r"""Train step method
 
