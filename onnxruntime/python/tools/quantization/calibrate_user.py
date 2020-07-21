@@ -25,7 +25,7 @@ from calibrate import calibrate
 from data_preprocess import preprocess_func
 
 
-class DataRetrieverInterface(metaclass=abc.ABCMeta):
+class CalibrationDataReaderInterface(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls,subclass):
         return (hasattr(subclass,'get_next') and callable(subclass.get_next) or NotImplemented)
@@ -35,7 +35,7 @@ class DataRetrieverInterface(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
-class CalibrationDataRetriever(DataRetrieverInterface):
+class CalibrationDataReader(CalibrationDataReaderInterface):
     def __init__(self,calibration_image_folder,augmented_model_path='augmented_model.onnx'): 
         self.image_folder = calibration_image_folder
         self.augmented_model_path = augmented_model_path
@@ -57,15 +57,16 @@ class CalibrationDataRetriever(DataRetrieverInterface):
 def main():
     model_path = 'path/to/model.onnx'
     calibration_dataset_path = 'path/to/calibration_data_set'
-    dr = CalibrationDataRetriever(calibration_dataset_path)
+
+    dr = CalibrationDataReader(calibration_dataset_path)
     #call calibrate to generate quantization dictionary containing the zero point and scale values
     quantization_params_dict = calibrate(model_path,dr)
     calibrated_quantized_model = quantize(onnx.load(model_path),
                                           quantization_mode=QuantizationMode.QLinearOps,
                                           force_fusions=False,
                                           quantization_params=quantization_params_dict)
-    output_model_path = 'path/to/output_model.onnx'
-    onnx.save(calibrated_quantized_model, output_model_path)
+    #output_model_path = 'path/to/output_model.onnx'
+    #onnx.save(calibrated_quantized_model, output_model_path)
     print('Calibrated and quantized model saved.')
 
 if __name__ == '__main__':

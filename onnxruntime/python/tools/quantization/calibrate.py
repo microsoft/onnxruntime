@@ -23,7 +23,7 @@ import json
 
 import abc
 
-class DataRetrieverInterface(metaclass=abc.ABCMeta):
+class CalibrationDataReaderInterface(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls,subclass):
         return (hasattr(subclass,'get_next') and callable(subclass.get_next) or NotImplemented)
@@ -36,13 +36,13 @@ class DataRetrieverInterface(metaclass=abc.ABCMeta):
 class ONNXCalibrater:
     def __init__(self,
                  model_path,
-                 data_retriever,
+                 data_reader,
                  calibrate_op_types,
                  black_nodes,
                  white_nodes,
                  augmented_model_path):
         self.model_path = model_path
-        self.data_retriever = data_retriever
+        self.data_reader = data_reader
         self.calibrate_op_types = calibrate_op_types
         self.black_nodes = black_nodes
         self.white_nodes = white_nodes
@@ -104,12 +104,12 @@ class ONNXCalibrater:
 
         intermediate_outputs = []
         while True:
-            inputs = self.data_retriever.get_next()
+            inputs = self.data_reader.get_next()
             if not inputs:
                 break
             intermediate_outputs.append(session.run(None, inputs))
         node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-        output_dicts_list = [dict(zip(node_output_names, intermediate_outputs[i])) for i in range(self.data_retriever.datasize)]
+        output_dicts_list = [dict(zip(node_output_names, intermediate_outputs[i])) for i in range(self.data_reader.datasize)]
         
         #number of outputs in original model
         model = onnx.load(self.model_path)
@@ -202,7 +202,7 @@ class ONNXCalibrater:
 
 
 def calibrate(model_path,
-              data_retriever,
+              data_reader,
               op_types='Conv,MatMul',
               black_nodes='',
               white_nodes='',
@@ -211,14 +211,14 @@ def calibrate(model_path,
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
 
     :param model_path: ONNX model to calibrate
-    :param data_retriever: user implemented object to retrieve and preprocess calibration dataset
+    :param data_reader: user implemented object to read in and preprocess calibration dataset
     :param op_types: operator types to be calibrated and quantized, default = 'Conv,MatMul'
     :param black_nodes: operator names that should not be quantized, default = ''
     :param white_nodes: operator names that force to be quantized, default = ''
     :param augmented_model_path: save augmented_model to this path
     '''
     #1. initialize a calibrater
-    calibrater = ONNXCalibrater(model_path,data_retriever,op_types,black_nodes,white_nodes,augmented_model_path)
+    calibrater = ONNXCalibrater(model_path,data_reader,op_types,black_nodes,white_nodes,augmented_model_path)
     #2. augment
     augmented_model = calibrater.augment_graph()
     onnx.save(augmented_model,augmented_model_path)
