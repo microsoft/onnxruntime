@@ -367,9 +367,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         "Initializer names do not match between PyTorch model and ONNX model, " \
         "please report a bug to ONNX Runtime."
 
-    if _enable_internal_postprocess:
-        onnx_model = postprocess.run_postprocess(onnx_model)
-
     return onnx_model
 
 def create_ort_training_session_with_optimizer(model, device, training_optimizer_name, lr_params_feed_name,
@@ -622,6 +619,12 @@ class ORTTrainer():
             # TODO: accept loss_fn as an onnx model. build self.onnx_model_ with model and loss_fn
             self.loss_fn_ = None
 
+            if self._enable_internal_postprocess:
+                postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
+
         self.model_desc_ = model_desc
         self.input_desc_with_lr = [*self.model_desc_.inputs_, learning_rate_description]
 
@@ -669,12 +672,6 @@ class ORTTrainer():
     def _init_session(self):
         if self.onnx_model_ is None:
             return
-
-        if self._enable_internal_postprocess:
-            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
-
-        if self._extra_postprocess:
-            self._extra_postprocess(self.onnx_model_)
 
         self._verify_fully_optimized_model(self.onnx_model_)
         self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
@@ -734,6 +731,12 @@ class ORTTrainer():
             self.frozen_weights_ = self.frozen_weights_ + torch_buffers
             self.onnx_model_ = convert_model_loss_fn_to_onnx(
                 self.torch_model_, self.loss_fn_, self.model_desc_, torch.device('cpu'), inputs, opset_version=self.opset_version_, _enable_internal_postprocess=self._enable_internal_postprocess)
+
+            if self._enable_internal_postprocess:
+                postprocess.run_postprocess(self.onnx_model_)
+
+            if self._extra_postprocess:
+                self._extra_postprocess(self.onnx_model_)
 
         self._init_session()
 
