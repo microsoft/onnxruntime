@@ -89,6 +89,13 @@ TEST(DynamicQuantizeMatMul, UInt8_test) {
   TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8.onnx");
 }
 
+TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
+  std::vector<int64_t> A_dims{0, 128};
+  std::vector<int64_t> B_dims{128, 128};
+  std::vector<int64_t> Y_dims{0, 128};
+
+  TestDynamicQuantizeMatMul<uint8_t>(A_dims, B_dims, "testdata/dynamic_quantize_matmul_uint8.onnx");
+}
 TEST(DynamicQuantizeMatMul, UInt8_test_bias) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
