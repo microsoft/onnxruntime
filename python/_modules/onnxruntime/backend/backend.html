@@ -1,19 +1,22 @@
 
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>onnxruntime.backend.backend &#8212; ONNX Runtime 1.2.0 documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>onnxruntime.backend.backend &#8212; ONNX Runtime 1.4.0 documentation</title>
     <link rel="stylesheet" href="../../../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/gallery.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
-    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
-    <script type="text/javascript" src="../../../_static/jquery.js"></script>
-    <script type="text/javascript" src="../../../_static/underscore.js"></script>
-    <script type="text/javascript" src="../../../_static/doctools.js"></script>
-    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/gallery-dataframe.css" />
+    <script id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" />
    
@@ -33,17 +36,18 @@
           <div class="body" role="main">
             
   <h1>Source code for onnxruntime.backend.backend</h1><div class="highlight"><pre>
-<span></span><span class="c1">#-------------------------------------------------------------------------</span>
+<span></span><span class="c1"># -------------------------------------------------------------------------</span>
 <span class="c1"># Copyright (c) Microsoft Corporation. All rights reserved.</span>
 <span class="c1"># Licensed under the MIT License.</span>
-<span class="c1">#--------------------------------------------------------------------------</span>
+<span class="c1"># --------------------------------------------------------------------------</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Implements ONNX&#39;s backend API.</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="kn">from</span> <span class="nn">onnx.checker</span> <span class="k">import</span> <span class="n">check_model</span>
-<span class="kn">from</span> <span class="nn">onnx.backend.base</span> <span class="k">import</span> <span class="n">Backend</span>
-<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="k">import</span> <span class="n">InferenceSession</span><span class="p">,</span> <span class="n">SessionOptions</span><span class="p">,</span> <span class="n">get_device</span>
-<span class="kn">from</span> <span class="nn">onnxruntime.backend.backend_rep</span> <span class="k">import</span> <span class="n">OnnxRuntimeBackendRep</span>
+<span class="kn">from</span> <span class="nn">onnx</span> <span class="kn">import</span> <span class="n">ModelProto</span>
+<span class="kn">from</span> <span class="nn">onnx.checker</span> <span class="kn">import</span> <span class="n">check_model</span>
+<span class="kn">from</span> <span class="nn">onnx.backend.base</span> <span class="kn">import</span> <span class="n">Backend</span>
+<span class="kn">from</span> <span class="nn">onnxruntime</span> <span class="kn">import</span> <span class="n">InferenceSession</span><span class="p">,</span> <span class="n">SessionOptions</span><span class="p">,</span> <span class="n">get_device</span>
+<span class="kn">from</span> <span class="nn">onnxruntime.backend.backend_rep</span> <span class="kn">import</span> <span class="n">OnnxRuntimeBackendRep</span>
 
 
 <span class="k">class</span> <span class="nc">OnnxRuntimeBackend</span><span class="p">(</span><span class="n">Backend</span><span class="p">):</span>
@@ -55,7 +59,8 @@
 <span class="sd">    multiple runtimes with the same API.</span>
 <span class="sd">    `Importing models from ONNX to Caffe2 &lt;https://github.com/onnx/tutorials/blob/master/tutorials/OnnxCaffe2Import.ipynb&gt;`_</span>
 <span class="sd">    shows how to use *caffe2* as a backend for a converted model.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    Note: This is not the official Python API.</span>
+<span class="sd">    &quot;&quot;&quot;</span>  <span class="c1"># noqa: E501</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span> <span class="nf">is_compatible</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
@@ -189,7 +194,7 @@
     </form>
     </div>
 </div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
+<script>$('#searchbox').show(0);</script>
 
 
 
@@ -206,7 +211,7 @@
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
     </div>

@@ -1,5 +1,9 @@
 :orphan:
 
+
+
+.. _sphx_glr_auto_examples:
+
 Gallery of examples
 ===================
 
@@ -14,9 +18,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_pipeline_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_pipeline_thumb.png
+     :alt: Draw a pipeline
 
-        :ref:`sphx_glr_auto_examples_plot_pipeline.py`
+     :ref:`sphx_glr_auto_examples_plot_pipeline.py`
 
 .. raw:: html
 
@@ -34,9 +39,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_load_and_predict_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_load_and_predict_thumb.png
+     :alt: Load and predict with ONNX Runtime and a very simple model
 
-        :ref:`sphx_glr_auto_examples_plot_load_and_predict.py`
+     :ref:`sphx_glr_auto_examples_plot_load_and_predict.py`
 
 .. raw:: html
 
@@ -54,9 +60,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_backend_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_backend_thumb.png
+     :alt: ONNX Runtime Backend for ONNX
 
-        :ref:`sphx_glr_auto_examples_plot_backend.py`
+     :ref:`sphx_glr_auto_examples_plot_backend.py`
 
 .. raw:: html
 
@@ -74,9 +81,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_metadata_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_metadata_thumb.png
+     :alt: Metadata
 
-        :ref:`sphx_glr_auto_examples_plot_metadata.py`
+     :ref:`sphx_glr_auto_examples_plot_metadata.py`
 
 .. raw:: html
 
@@ -94,9 +102,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_profiling_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_profiling_thumb.png
+     :alt: Profile the execution of a simple model
 
-        :ref:`sphx_glr_auto_examples_plot_profiling.py`
+     :ref:`sphx_glr_auto_examples_plot_profiling.py`
 
 .. raw:: html
 
@@ -114,9 +123,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_dl_keras_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_dl_keras_thumb.png
+     :alt: ONNX Runtime for Keras
 
-        :ref:`sphx_glr_auto_examples_plot_dl_keras.py`
+     :ref:`sphx_glr_auto_examples_plot_dl_keras.py`
 
 .. raw:: html
 
@@ -134,9 +144,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_convert_pipeline_vectorizer_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_convert_pipeline_vectorizer_thumb.png
+     :alt: Train, convert and predict with ONNX Runtime
 
-        :ref:`sphx_glr_auto_examples_plot_convert_pipeline_vectorizer.py`
+     :ref:`sphx_glr_auto_examples_plot_convert_pipeline_vectorizer.py`
 
 .. raw:: html
 
@@ -154,9 +165,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_common_errors_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_common_errors_thumb.png
+     :alt: Common errors with onnxruntime
 
-        :ref:`sphx_glr_auto_examples_plot_common_errors.py`
+     :ref:`sphx_glr_auto_examples_plot_common_errors.py`
 
 .. raw:: html
 
@@ -174,9 +186,10 @@ Gallery of examples
 
 .. only:: html
 
-    .. figure:: /auto_examples/images/thumb/sphx_glr_plot_train_convert_predict_thumb.png
+ .. figure:: /auto_examples/images/thumb/sphx_glr_plot_train_convert_predict_thumb.png
+     :alt: Train, convert and predict with ONNX Runtime
 
-        :ref:`sphx_glr_auto_examples_plot_train_convert_predict.py`
+     :ref:`sphx_glr_auto_examples_plot_train_convert_predict.py`
 
 .. raw:: html
 
@@ -189,7 +202,7 @@ Gallery of examples
    /auto_examples/plot_train_convert_predict
 .. raw:: html
 
-    <div style='clear:both'></div>
+    <div class="sphx-glr-clear"></div>
 
 
 
@@ -199,19 +212,19 @@ Gallery of examples
     :class: sphx-glr-footer-gallery
 
 
-  .. container:: sphx-glr-download
+  .. container:: sphx-glr-download sphx-glr-download-python
 
-    :download:`Download all examples in Python source code: auto_examples_python.zip </C:/xadupre/microsoft_xadupre/onnxruntime/docs/python/auto_examples/auto_examples_python.zip>`
+    :download:`Download all examples in Python source code: auto_examples_python.zip </d:/dev/ort_1.4/docs/python/auto_examples/auto_examples_python.zip>`
 
 
 
-  .. container:: sphx-glr-download
+  .. container:: sphx-glr-download sphx-glr-download-jupyter
 
-    :download:`Download all examples in Jupyter notebooks: auto_examples_jupyter.zip </C:/xadupre/microsoft_xadupre/onnxruntime/docs/python/auto_examples/auto_examples_jupyter.zip>`
+    :download:`Download all examples in Jupyter notebooks: auto_examples_jupyter.zip </d:/dev/ort_1.4/docs/python/auto_examples/auto_examples_jupyter.zip>`
 
 
 .. only:: html
 
  .. rst-class:: sphx-glr-signature
 
-    `Gallery generated by Sphinx-Gallery <https://sphinx-gallery.readthedocs.io>`_
+    `Gallery generated by Sphinx-Gallery <https://sphinx-gallery.github.io>`_

@@ -1,20 +1,22 @@
 
-
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Index &#8212; ONNX Runtime 1.2.0 documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index &#8212; ONNX Runtime 1.4.0 documentation</title>
     <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="_static/gallery.css" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
-    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
-    <script type="text/javascript" src="_static/jquery.js"></script>
-    <script type="text/javascript" src="_static/underscore.js"></script>
-    <script type="text/javascript" src="_static/doctools.js"></script>
-    <script type="text/javascript" src="_static/language_data.js"></script>
+    <link rel="stylesheet" type="text/css" href="_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="_static/gallery-binder.css" />
+    <link rel="stylesheet" type="text/css" href="_static/gallery-dataframe.css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
     <link rel="index" title="Index" href="#" />
     <link rel="search" title="Search" href="search.html" />
    
@@ -50,6 +52,7 @@
  | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
+ | <a href="#U"><strong>U</strong></a>
  | <a href="#V"><strong>V</strong></a>
  
 </div>
@@ -68,8 +71,6 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.disable_fallback">disable_fallback() (onnxruntime.InferenceSession method)</a>
-</li>
       <li><a href="api_summary.html#onnxruntime.ModelMetadata.domain">domain() (onnxruntime.ModelMetadata property)</a>
 </li>
   </ul></td>
@@ -80,15 +81,11 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_cpu_mem_arena">enable_cpu_mem_arena() (onnxruntime.SessionOptions property)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.enable_fallback">enable_fallback() (onnxruntime.InferenceSession method)</a>
-</li>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_mem_pattern">enable_mem_pattern() (onnxruntime.SessionOptions property)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.enable_profiling">enable_profiling() (onnxruntime.SessionOptions property)</a>
-</li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.end_profiling">end_profiling() (onnxruntime.InferenceSession method)</a>
 </li>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.execution_mode">execution_mode() (onnxruntime.SessionOptions property)</a>
 </li>
@@ -102,20 +99,8 @@
 </li>
       <li><a href="api_summary.html#onnxruntime.datasets.get_example">get_example() (in module onnxruntime.datasets)</a>
 </li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_inputs">get_inputs() (onnxruntime.InferenceSession method)</a>
-</li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_modelmeta">get_modelmeta() (onnxruntime.InferenceSession method)</a>
-</li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_outputs">get_outputs() (onnxruntime.InferenceSession method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_overridable_initializers">get_overridable_initializers() (onnxruntime.InferenceSession method)</a>
-</li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_providers">get_providers() (onnxruntime.InferenceSession method)</a>
-</li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.get_session_options">get_session_options() (onnxruntime.InferenceSession method)</a>
-</li>
       <li><a href="api_summary.html#onnxruntime.ModelMetadata.graph_name">graph_name() (onnxruntime.ModelMetadata property)</a>
 </li>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.graph_optimization_level">graph_optimization_level() (onnxruntime.SessionOptions property)</a>
@@ -188,6 +173,10 @@
 <h2 id="O">O</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.RunOptions.only_execute_path_to_fetches">only_execute_path_to_fetches() (onnxruntime.RunOptions property)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions.optimized_model_filepath">optimized_model_filepath() (onnxruntime.SessionOptions property)</a>
 </li>
   </ul></td>
@@ -209,11 +198,7 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.backend.run">run() (in module onnxruntime.backend)</a>
-
-      <ul>
-        <li><a href="api_summary.html#onnxruntime.InferenceSession.run">(onnxruntime.InferenceSession method)</a>
 </li>
-      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.RunOptions">RunOptions (class in onnxruntime)</a>
@@ -225,8 +210,6 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.SessionOptions">SessionOptions (class in onnxruntime)</a>
-</li>
-      <li><a href="api_summary.html#onnxruntime.InferenceSession.set_providers">set_providers() (onnxruntime.InferenceSession method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -245,6 +228,14 @@
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_summary.html#onnxruntime.NodeArg.type">type() (onnxruntime.NodeArg property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="U">U</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_summary.html#onnxruntime.SessionOptions.use_deterministic_compute">use_deterministic_compute() (onnxruntime.SessionOptions property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -300,7 +291,7 @@
     </form>
     </div>
 </div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
+<script>$('#searchbox').show(0);</script>
 
 
 
@@ -317,7 +308,7 @@
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.1.2</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
     </div>
