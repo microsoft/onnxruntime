@@ -763,8 +763,6 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
 }
 
 int main(int argc, char* argv[]) {
-  bool keep_running = true;
-  while(keep_running);
   BertParameters params;
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
