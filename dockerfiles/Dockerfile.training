@@ -167,7 +167,7 @@ RUN apt-get -y update && apt-get -y install \
         libnuma-dev &&\
     ldconfig
 
-# copy conda environment (includes mkl, numpy, pytorch, onnxruntime)
+# copy conda environment (includes mkl, numpy, mpi4py, pytorch, onnxruntime)
 COPY --from=build /opt/conda /opt/conda
 ENV PATH=/opt/conda/bin:${PATH}
 
