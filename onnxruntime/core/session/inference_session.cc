@@ -987,6 +987,10 @@ const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() c
   return execution_providers_.GetIds();
 }
 
+const ProviderOptionsMap& InferenceSession::GetAllProviderOptions() const {
+  return execution_providers_.GetAllProviderOptions();
+}
+
 const SessionOptions& InferenceSession::GetSessionOptions() const {
   return session_options_;
 }
