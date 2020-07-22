@@ -97,10 +97,8 @@ ENV LD_LIBRARY_PATH=/opt/ompi4/lib:$LD_LIBRARY_PATH
 # install mpi4py (be sure to link existing /opt/ompi4)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-# build pytorch (using v1.6.0-rc3 + patch)
+# build pytorch (using v1.6.0-rc3)
 # todo: need to update to pytorch 1.6.0 releaase when ready
-# note: FindNCCL.patch is in pytorch master
-COPY FindNCCL.patch /stage/
 ENV CUDA_HOME="/usr/local/cuda" \
     CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
     NCCL_INCLUDE_DIR="/usr/include" \
@@ -110,7 +108,6 @@ RUN apt-get -y update && apt-get -y --no-install-recommends install git &&\
     cd /stage && git clone https://github.com/pytorch/pytorch.git &&\
     cd pytorch &&\
     git checkout v1.6.0-rc3 &&\
-    patch cmake/Modules/FindNCCL.cmake /stage/FindNCCL.patch &&\
     git submodule update --init --recursive &&\
     python setup.py bdist_wheel -d build/wheel &&\
     pip install build/wheel/*.whl
