@@ -273,20 +273,17 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   // Contigiously allocate activations.
   // TODO(codemzs): Refacor this code.
   for (auto ml_value_idx : exe_plan->activation_allocation_order) {
-
     const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
       continue;
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-    
-    // TODO(codemzs): Assert everything is kAllocate.
-
     if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
         ml_data_type != DataTypeImpl::GetType<std::string>()) {
       //calculate size
       auto* arg = exe_plan->allocation_plan[ml_value_idx].p_def_site;
       if (!arg->Shape())
-        continue;
+        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute while trying to allocate tensors continuously.");
+
       size_t size = 0;
       SafeInt<size_t> len = 1;
       for (auto& dim : arg->Shape()->dim()) {
@@ -311,12 +308,13 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
         return Status(ONNXRUNTIME, FAIL, "Size overflow");
       }
-      mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
-       exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
 
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+
+      mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
+                                  exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
     }
   }
-
 
   for (auto& node_plan : exe_plan->execution_plan) {
     int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
@@ -326,7 +324,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
       const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-          !(std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) == exe_plan->activation_allocation_order.end()))
+          (std::find(exe_plan->activation_allocation_order.begin(), exe_plan->activation_allocation_order.end(), ml_value_idx) != exe_plan->activation_allocation_order.end()))
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
@@ -363,9 +361,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
         if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
           return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
-        mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start, 
-          exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
-
+        mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
+                                    exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
       }
     }
 

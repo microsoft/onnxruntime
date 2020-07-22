@@ -49,7 +49,7 @@ class MemPatternPlanner {
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       // This block can be re-used, consider it as a gap.
-      if(allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
+      if (allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
         continue;
 
       if (allocs_[*it].block_.offset_ >= current) {
@@ -74,7 +74,7 @@ class MemPatternPlanner {
       }
     }
 
-    blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));    
+    blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
   }
 
   void TraceAllocation(int ml_value_idx, size_t size) {
@@ -145,8 +145,7 @@ class MemPatternPlanner {
     bool reuse_;
     OrtValueAllocationBlock() = default;
     OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false} {}
-    OrtValueAllocationBlock(int index, size_t program_counter_start, size_t program_counter_end, const MemoryBlock& block) :
-      index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}
+    OrtValueAllocationBlock(int index, size_t program_counter_start, size_t program_counter_end, const MemoryBlock& block) : index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}
   };
 
   std::vector<OrtValueAllocationBlock> allocs_;

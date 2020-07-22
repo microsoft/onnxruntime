@@ -13,6 +13,7 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/utils.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/utils.h"
@@ -296,6 +297,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       Status compute_status;
 
       try {
+        if (p_op_kernel->KernelDef().AllocateInputsContiguously())
+          utils::VerifyTensorsAllocatedContiguously(&op_kernel_context);
+
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       } catch (const std::exception& ex) {
         compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());

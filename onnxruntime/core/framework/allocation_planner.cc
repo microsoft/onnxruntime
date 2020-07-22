@@ -596,6 +596,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter_start = program_counter;
         } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
@@ -672,15 +673,15 @@ class PlannerImpl {
         const auto& current_plan = AllocPlan(current_idx);
         const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
         const auto& actual_plan = AllocPlan(actual_idx);
-        if(set_input_kind) {
+        if (set_input_kind) {
           input_kind = actual_plan.alloc_kind;
           set_input_kind = false;
         }
 
         if ((actual_plan.alloc_kind == AllocKind::kAllocateStatically) && (input_kind != AllocKind::kAllocateStatically))
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() does handle mixed input types.");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() requires all inputs to be initializers, or all inputs to be non-initializers.");
 
-        if(actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
+        if (actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
           if (std::find(initializer_allocation_order.begin(), initializer_allocation_order.end(), actual_idx) == initializer_allocation_order.end())
             initializer_allocation_order.push_back(actual_idx);
         } else {
@@ -764,15 +765,20 @@ class PlannerImpl {
     if (has_prev_dealloc_point)
       plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
 
-    int program_counter = 0;
+    // For each activation that is "allocated", fill in it's deallocation point.
+    size_t program_counter = 0;
     for (auto& node_plan : plan_.execution_plan) {
-        for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
-          auto ml_value_idx = plan_.to_be_freed[index];
-          // TODO(codemzs): Assert program_counter_start is not equal to -1.
+      for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
+        auto ml_value_idx = plan_.to_be_freed[index];
+        if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
+
+          ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter_start <= program_counter);
+          
           AllocPlan(ml_value_idx).program_counter_end = program_counter;
         }
+      }
 
-        program_counter += 1;
+      program_counter += 1;
     }
   }
 
@@ -806,12 +812,12 @@ Status PlannerImpl::CreatePlan() {
   // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
-  // Determine allocation order for weights. This needs to be done after ComputeReusePlan.
+  // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
 
   // convert information in the freelist_ into a deallocation plan in required format
   GenerateDeallocationPlan();
-  
+
   return Status::OK();
 }
 
@@ -821,7 +827,6 @@ Status SequentialPlanner::CreatePlan(const Node* parent_node, const onnxruntime:
                                      const OrtValueNameIdxMap& ort_value_name_idx_map,
                                      const ISequentialPlannerContext& context,
                                      std::unique_ptr<SequentialExecutionPlan>& plan) {
-
   // allocate/reset here so we know it's clean
   plan = onnxruntime::make_unique<SequentialExecutionPlan>();
 

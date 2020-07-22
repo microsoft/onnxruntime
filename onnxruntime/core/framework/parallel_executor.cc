@@ -191,6 +191,9 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
     // Execute the kernel.
     try {
+      if (p_op_kernel->KernelDef().AllocateInputsContiguously())
+        utils::VerifyTensorsAllocatedContiguously(&op_kernel_context);
+
       status = p_op_kernel->Compute(&op_kernel_context);
     } catch (const std::exception& ex) {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());

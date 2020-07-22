@@ -159,5 +159,7 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
+common::Status VerifyTensorsAllocatedContiguously(OpKernelContext* context);
+
 }  // namespace utils
 }  // namespace onnxruntime
