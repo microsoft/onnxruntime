@@ -175,17 +175,19 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
 ### OpenVINO on VAD-M Accelerator Version
 
-1. Install the drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+1. Download OpenVINO **Full package** for version **2020.3** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
 
-2. Build the docker image from the DockerFile in this repository.
+2. Install the drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
+
+3. Build the docker image from the DockerFile in this repository.
      ```
       docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 --network host .
      ```
-2. Run hddldaemon on the host in a separate terminal session using the following command: 
+4. Run hddldaemon on the host in a separate terminal session using the following command: 
      ```
       $HDDL_INSTALL_DIR/bin/hddldaemon
      ```
-4. Run the docker image by mounting the device drivers
+5. Run the docker image by mounting the device drivers
     ```
     docker run -it --device --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
 
