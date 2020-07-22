@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <list>
+#include <stack>
 #include <memory.h>
 
 #include "core/platform/ort_mutex.h"
@@ -17,6 +18,11 @@ struct memory;
 };
 
 namespace onnxruntime {
+
+// Forward class declaration for DnnlKernel
+namespace ort_dnnl {
+class DnnlKernel;
+}
 
 // Information needed to construct DNNL execution providers.
 struct DNNLExecutionProviderInfo {
@@ -80,7 +86,21 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
   common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+#ifdef ENABLE_TRAINING
+  // Add the DnnlKernel to a map using the NodeIndex key.
+  // Note if the a DnnlKernel already exists this will replace the existing kernel with the
+  // new kernel. This was done so the latest kernel is always placed in the map.
+  void SetForwardKernel(onnxruntime::NodeIndex key, std::shared_ptr<ort_dnnl::DnnlKernel> kernel) {
+    fwd_kernal_map[key] = kernel;
+  }
 
+  // Fetch the kerenel using the NodeIndex
+  std::shared_ptr<ort_dnnl::DnnlKernel> GetForwardKernal(onnxruntime::NodeIndex key) {
+    return fwd_kernal_map.at(key);
+  }
+
+  std::stack<std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_conv_stack;
+#endif // ENABLE_TRAINING
  private:
   // dnnl weights(filer data) memory blocks from first iteration
   // saved by weights name
@@ -93,7 +113,13 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // Conv+BathNorm fusion bias memory buffer.
   std::vector<IAllocatorUniquePtr<void>> biass_buffers_;
   OrtMutex mutex_;
-
+#ifdef ENABLE_TRAINING
+  // map used to hold and lookup forward DnnlKernels. This should only be needed in when
+  // running in training mode.The backward Kernels need access the forward kernals; typically
+  // to obtain the forward primitive description but it may be need for other items like
+  // accessing workspace memory.
+  std::map<onnxruntime::NodeIndex, std::shared_ptr<ort_dnnl::DnnlKernel>> fwd_kernal_map;
+#endif
   // SUBGRAPH
  private:
   static int GetOnnxOpSet(const GraphViewer& graph_viewer) {
@@ -166,7 +192,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
  private:
   // supported Dnnl Operators
-  std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
+  std::set<std::string> dnnl_ops_ = {"Conv", "ConvGrad", "BatchNormalization", "Relu", "ReluGrad", "Sum",
                                      "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;

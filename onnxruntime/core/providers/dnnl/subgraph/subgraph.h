@@ -11,6 +11,11 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
+struct InputNode {
+  onnxruntime::NodeIndex index;
+  std::string op_type;
+};
+
 struct DnnlNode {
   std::string name;
   int node_index = -1;
@@ -19,7 +24,13 @@ struct DnnlNode {
   int output_index = -1;       // index in output()
   std::string weight_name;
   std::string output_name;
+  int num_outputs = 0; // how many outputs
+  std::vector<std::string> output_names;
   std::vector<size_t> parent_nodes;  // index to parents in vector mklnodes
+
+  onnxruntime::NodeIndex onnx_index; // the index of the onnx runtime node
+  std::vector<InputNode> input_nodes;  // index and node name of the onnx runtime input nodes to this node
+
 
   std::string ToString() const {
     std::string key;

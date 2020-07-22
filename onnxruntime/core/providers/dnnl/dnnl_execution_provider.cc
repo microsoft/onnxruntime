@@ -129,11 +129,30 @@ void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
   if (!fused) {
     ort_dnnl::DnnlNode dnnl_node;
     dnnl_node.name = node->OpType();
+    // When running training mode the backward pass will need to access the forwardpass
+    // operations. Store the index of the node and the the list of input nodes.
+    // The input nodes can be used to find the forward pass node.
+    // The onnx node index is being used instead of the subgraph index because forwardpass
+    // and backward pass nodes are likly to span beyond the subgraph.
+    dnnl_node.onnx_index = node->Index();
+    for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
+      ort_dnnl::InputNode input_node;
+      input_node.index = (*iter).Index();
+      input_node.op_type = (*iter).OpType();
+      dnnl_node.input_nodes.push_back(input_node);
+    }
+
     dnnl_node.num_inputs = static_cast<int>(node->InputDefs().size());
     dnnl_node.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
     dnnl_node.node_index = static_cast<int>(subgraph_ptr->dnnl_nodes.size()) + 1;
     const auto& node_outputs = node->OutputDefs();
     dnnl_node.output_name = node_outputs[0]->Name();
+    dnnl_node.num_outputs = static_cast<int>(node->OutputDefs().size());
+    if (dnnl_node.num_outputs > 1) {
+      for (auto n : node_outputs) {
+        dnnl_node.output_names.push_back(n->Name());
+      }
+    }
     if (node->OpType() == "Conv") {
       dnnl_node.weight_name = node->InputDefs()[1]->Name();
     }
@@ -236,6 +255,8 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       // can we fuse (at Dnnl level) nodes?
       bool fused = false;
+// Operation fusion currently not yet supported for TRAINING
+#ifndef ENABLE_TRAINING
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "BatchNormalization") {
         if (subgraph_ptr->dnnl_nodes.back().name == "Conv") {
           subgraph_ptr->dnnl_nodes.back().name += "-BatchNormalization";
@@ -248,6 +269,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
           fused = true;
         }
       }
+#endif
 
       // Create Dnnl node:
       //   Update inputs, outputs and parent nodes
@@ -390,8 +412,14 @@ void DNNLExecutionProvider::CreateMetaDef(const GraphViewer& graph_viewer,
     auto itr = std::find(sub_var.outputs_as_input_other_node.begin(),
                          sub_var.outputs_as_input_other_node.end(), mklnode.output_name);
     if (itr == sub_var.outputs_as_input_other_node.end()) {
-      meta_def->outputs().push_back(mklnode.output_name);
-      mklnode.output_index = static_cast<int>(meta_def->outputs().size()) - 1;
+      if (mklnode.num_outputs == 1) {
+        meta_def->outputs().push_back(mklnode.output_name);
+      } else {
+        for (auto output : mklnode.output_names) {
+          meta_def->outputs().push_back(output);
+        }
+      }
+        mklnode.output_index = static_cast<int>(meta_def->outputs().size()) - 1;
     }
   }
 

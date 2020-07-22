@@ -21,6 +21,15 @@
 #include <mutex>
 #include <tuple>
 
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+}
+
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
@@ -44,6 +53,7 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Use GIST encoding/decoding.")
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
+      ("use_dnnl", "Use DNNL execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("2000"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
@@ -154,6 +164,12 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{}));
     }
 #endif
+//#ifdef USE_DNNL
+    bool use_dnnl = flags.count("use_dnnl") > 0;
+    if (use_dnnl) {
+      params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(1));
+    }
+//#endif
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -220,7 +236,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   if (!params.log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
-  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /**/) {
+  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /*tag*/) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
     if (tensorboard != nullptr) {

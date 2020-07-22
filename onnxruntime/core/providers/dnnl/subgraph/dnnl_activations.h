@@ -182,6 +182,10 @@ class DnnlRelu : public DnnlKernel {
     return Status::OK();
   }
 
+  dnnl::eltwise_forward::primitive_desc* GetPrimitiveDesc() {
+    return relu_fwd_pd_.get();
+  }
+
  private:
   std::shared_ptr<dnnl::memory> src_mem_;
   std::shared_ptr<dnnl::memory> src_mem_gpu_;

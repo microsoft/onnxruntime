@@ -257,7 +257,22 @@ class DnnlConv : public DnnlKernel {
           dnnl::memory::desc({bias_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::memory::dims conv_zero_padding = {0, 0};
-
+#ifdef ENABLE_TRAINING
+    if (!bias_dims_mkl.empty()) {
+      fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
+          dnnl::convolution_forward::desc(
+              dnnl::prop_kind::forward_training, dnnl::algorithm::convolution_direct, *src_md_,
+              *filter_md_, *bias_md_, *primitive_dst_md_,
+              strides_mkl, dilations_mkl, padding_left_mkl,
+              padding_right_mkl));
+    } else {
+      fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
+          dnnl::convolution_forward::desc(
+              dnnl::prop_kind::forward_training, dnnl::algorithm::convolution_direct, *src_md_,
+              *filter_md_, *primitive_dst_md_, strides_mkl,
+              dilations_mkl, padding_left_mkl, padding_right_mkl));
+    }
+#else
     if (!bias_dims_mkl.empty()) {
       fwd_desc_ = onnxruntime::make_unique<dnnl::convolution_forward::desc>(
           dnnl::convolution_forward::desc(
@@ -272,6 +287,7 @@ class DnnlConv : public DnnlKernel {
               *filter_md_, *primitive_dst_md_, strides_mkl,
               dilations_mkl, padding_left_mkl, padding_right_mkl));
     }
+#endif //ENABLE_TRAINING
 
     if (fuse_relu_) {
       dnnl::primitive_attr attr;
@@ -564,6 +580,9 @@ class DnnlConv : public DnnlKernel {
     return Status::OK();
   }
 
+  dnnl::convolution_forward::primitive_desc* GetPrimitiveDesc() {
+    return conv_fwd_pd_.get();
+  }
  private:
   void ReadAttributes(const NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {

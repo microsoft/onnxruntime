@@ -17,9 +17,9 @@ void GradientOpTester::Run(
     int data_index_of_output,
     ExpectResult expect_result,
     const std::string& expected_failure_string,
-    const std::unordered_set<std::string>&,
+    const std::unordered_set<std::string>& /*excluded_provider_types*/,
     const RunOptions* run_options,
-    std::vector<std::unique_ptr<IExecutionProvider>>*) {
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -121,6 +121,51 @@ void GradientOpTester::Run(
     };
     bool has_run = false;
 
+
+    if (execution_providers) {
+      for (auto& entry : *execution_providers) {
+        if (entry->Type() == kDmlExecutionProvider) {
+          so.enable_mem_pattern = false;
+          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+          break;
+        }
+      }
+
+      onnxruntime::training::TrainingSession session_object{so, GetEnvironment()};
+
+      ASSERT_TRUE(!execution_providers->empty())
+          << "Empty execution providers vector.";
+      std::string provider_types;
+
+      for (auto& entry : *execution_providers) {
+        provider_types += entry->Type() + ":";
+
+        std::unique_ptr<IExecutionProvider> execution_provider;
+        if (entry->Type() == onnxruntime::kCpuExecutionProvider)
+          execution_provider = DefaultCpuExecutionProvider();
+        else if (entry->Type() == onnxruntime::kCudaExecutionProvider)
+          execution_provider = DefaultCudaExecutionProvider();
+        else if (entry->Type() == onnxruntime::kDnnlExecutionProvider)
+          execution_provider = DefaultDnnlExecutionProvider(1);
+        else if (entry->Type() == onnxruntime::kNupharExecutionProvider)
+          execution_provider = DefaultNupharExecutionProvider();
+        else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider)
+          execution_provider = DefaultTensorrtExecutionProvider();
+        // skip if execution provider is disabled
+        if (execution_provider == nullptr)
+          continue;
+
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+      }
+
+      has_run = true;
+
+      fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(
+          *p_model, session_object, expect_result, expected_failure_string,
+          run_options, feeds, output_names, provider_types);
+
+
+    } else {
     for (const std::string& provider_type : all_provider_types) {
       std::unique_ptr<IExecutionProvider> execution_provider;
       if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -170,6 +215,7 @@ void GradientOpTester::Run(
           }
           if (!valid)
             break;
+          } else {
         }
       }
 
@@ -183,6 +229,7 @@ void GradientOpTester::Run(
 
       fetches_ = ExecuteModel<onnxruntime::training::TrainingSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
                                                                       feeds, output_names, provider_type);
+    }
     }
     EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
 

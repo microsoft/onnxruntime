@@ -78,7 +78,8 @@ class GradientChecker {
       // Remove this flag when the gradient op is fixed.
       bool check_not_have_gradient = true,
       // Also check gradient builder for op for cases where input shapes are not available
-      bool check_not_have_shape_inferencing = false);
+      bool check_not_have_shape_inferencing = false,
+      std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
   Status ComputeGradientError(
       const training::OpDef& op_def,
@@ -93,7 +94,8 @@ class GradientChecker {
       // Remove this flag when the gradient op is fixed.
       bool check_not_have_gradient = true,
       // Also check gradient builder for op for cases where input shapes are not available
-      bool check_not_have_shape_inferencing = false);
+      bool check_not_have_shape_inferencing = false,
+      std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
  private:
   Status InitJacobians(const std::vector<TensorInfo>& x_infos,
@@ -149,6 +151,7 @@ class GradientChecker {
                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
                                       bool check_not_have_gradient = true,
                                       bool check_not_have_shape_inferencing = false);
+  std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers_;
 };
 }  // namespace test
 }  // namespace onnxruntime

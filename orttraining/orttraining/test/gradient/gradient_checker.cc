@@ -98,7 +98,7 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     std::string name = "output" + std::to_string(data_index);
     op_session.AddOutput<Y_T>(name.c_str(), y_infos[data_index].shape.GetDims(), (*y_datas)[data_index]);
   }
-
+  //op_session.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, execution_providers_);
   op_session.Run();
   return op_session.GetFetches();
 }
@@ -169,7 +169,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // inputs is treated as a vector of vectors. The parameters of the function call below, y_idx and c
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
       // to pertrub to 1.
-      op_session.Run(y_idx, static_cast<int>(c));
+
+      op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, execution_providers_);
       auto gradients = op_session.GetFetches();
 
       for (int x_idx = 0, grad_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {
@@ -528,7 +529,10 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     JAC_T* max_error,
     const std::vector<AttributeProto>& attributes,
     bool check_not_have_gradient, /* = true*/
-    bool check_not_have_shape_inferencing /* = false*/) {
+    bool check_not_have_shape_inferencing /* = false*/,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
+
+  execution_providers_ = execution_providers;
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
@@ -570,7 +574,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     std::vector<std::vector<X_T>> x_datas,
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
     bool check_not_have_gradient, /* = true*/
-    bool check_not_have_shape_inferencing /* = false*/) {
+    bool check_not_have_shape_inferencing /* = false*/,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers /* = nullptr */) {
+
+  execution_providers_ = execution_providers;
+
   // Generate dummy placeholders with zero for y_datas
   std::vector<std::vector<Y_T>> y_datas(y_infos.size());
   for (size_t i = 0; i < y_infos.size(); i++) {
