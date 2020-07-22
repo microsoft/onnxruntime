@@ -1,10 +1,10 @@
 import onnx
 import torch
+from inspect import signature
 
 from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
-
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -73,8 +73,8 @@ class ORTTrainer(object):
             Note that only one loss output is supported per model.
         optimizer_config (optim._OptimizerConfig): optimizer config.
             One of :py:class:`.optim.AdamConfig`, :py:class:`.optim.LambConfig` or :py:class:`.optim.SGDConfig`.
-        loss_fn (default is None): a PyTorch loss function.
-            It takes two inputs [prediction, label] and output a loss tensor.
+        loss_fn (callable, default is None): a PyTorch loss function.
+            It takes two inputs [prediction, label] and outputs a scalar loss tensor.
             If provided, :py:attr:`loss_fn` is combined with the PyTorch :py:attr:`model` to form a combined PyTorch model.
             Inputs to the combined PyTorch model are concatenation of the :py:attr:`model`'s input and :py:attr:`loss_fn`'s label input.
             Outputs of the combined PyTorch model are concatenation of :py:attr:`loss_fn`'s loss output and :py:attr:`model`'s outputs.
@@ -85,6 +85,7 @@ class ORTTrainer(object):
         .. code-block:: python
 
             model = ...
+            loss_fn = ...
             model_desc = {
                 "inputs": [
                     ("input_ids", ["batch", "max_seq_len_in_batch"]),
@@ -101,7 +102,7 @@ class ORTTrainer(object):
                                                              { 'params' : ['model_param1' , 'model_param_2'], 'alpha' : 0.0}
                                                            ],
                                             alpha=0.9, beta=0.999)
-            ort_trainer = ORTTrainer(model, model_desc, optim_config)
+            ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
@@ -110,8 +111,8 @@ class ORTTrainer(object):
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\
             "'optim_config' is required and must be any of 'AdamConfig', 'LambConfig' or 'SGDConfig'"
-        assert loss_fn is None or isinstance(loss_fn, torch.nn.Module),\
-            "'loss_fn' must be either 'None' or 'torch.nn.Module'"
+        assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
+            "'loss_fn' must be either 'None' or a callable with two parameters"
         assert options is None or isinstance(options, ORTTrainerOptions),\
             "'loss_fn' must be either 'None' or 'ORTTrainerOptions'"
 
@@ -165,101 +166,6 @@ class ORTTrainer(object):
         """
         pass
 
-    def convert_torch_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, opset_version=DEFAULT_OPSET_VERSION, _enable_internal_postprocess=True):
-        input_names = [input.name_ for input in model_desc.inputs_]
-        output_names = [output.name_ for output in model_desc.outputs_]
-
-        if isinstance(inputs, torch.Tensor):
-            inputs = [inputs]
-        if isinstance(inputs, dict):
-            sample_inputs = [inputs[k.name_].to(device=device) for k in model_desc.inputs_]
-        elif isinstance(inputs, (list, tuple)):
-            sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(model_desc.inputs_)]
-        else:
-            raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
-
-        # pytorch onnx exporter/trace does not try to match argument names.
-        # e.g. for models with optional inputs, it requires all inputs be present.
-        # this is a problem because the model graph depends on inputs provided.
-        model = wrap_for_input_match(model, loss_fn, input_names)
-
-        model.eval()
-        with torch.no_grad():
-            sample_outputs = model(*sample_inputs)
-        if isinstance(sample_outputs, torch.Tensor):
-            sample_outputs = [sample_outputs]
-        for sample_output, output_desc in zip(sample_outputs, model_desc.outputs_):
-            output_desc.dtype_ = sample_output.dtype
-        model.train()
-
-        f = io.BytesIO()
-
-        # Other export options to use(this is for backward compatibility).
-        other_export_options = {}
-        other_export_options['training'] = True
-
-        # This option was added after 1.4 release.
-        if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
-            other_export_options['enable_onnx_checker'] = False
-        # This option was added after 1.6 release.
-        if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
-            other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
-
-        torch.onnx._export(model, tuple(sample_inputs), f,
-                        input_names=input_names,
-                        output_names=output_names,
-                        opset_version=opset_version,
-                        _retain_param_name=True,
-                        example_outputs=tuple(sample_outputs),
-                        do_constant_folding=False,
-                        **other_export_options)
-
-        onnx_model = onnx.load_model_from_string(f.getvalue())
-
-        # Remove 'model_.' prefix introduced by model wrapper for initializers.
-        replace_name_dict = {}
-        for n in onnx_model.graph.initializer:
-            if n.name.startswith('model_.'):
-                replace_name_dict[n.name] = n.name[len('model_.'):]
-                n.name = replace_name_dict[n.name]
-        for n in onnx_model.graph.node:
-            for i, name in enumerate(n.input):
-                if name in replace_name_dict:
-                    n.input[i] = replace_name_dict[name]
-
-        # onnx model initializer may contain non-trainable registered buffers that are not part
-        # of pytorch model named parameteres.
-        named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
-        assert set([n for n, t in named_parameters]).issubset(
-            set([n.name for n in onnx_model.graph.initializer])), \
-            "Initializer names do not match between PyTorch model and ONNX model, " \
-            "please report a bug to ONNX Runtime."
-
-        return onnx_model
-
-    def _init_session(self):
-        if self._onnx_model is None: 
-            return
-        
-        if self._enable_internal_postprocess:
-            self._onnx_model_ = postprocess.run_postprocess(self.onnx_model_)
-
-        if self._extra_postprocess:
-            self._extra_postprocess(self.onnx_model_)
-
-        self._verify_fully_optimized_model(self.onnx_model_)
-
-    def _init_onnx_model_(self, *input):
-        if self.onnx_model is not None:
-            return
-
-        if self._torch_model is not None:
-            self.torch_model_.cpu()
-            self.onnx_model = self.convert_model_loss_fn_to_onnx(self._torch_model, self.loss_fn, self.model_desc, torch.device('cpu'), inputs, opset_version=self.opset_version, _enable_internal_postprocess=self._enable_internal_postprocess)
-        
-        self._init_session
-        
-
 
     def train_step(self, *input, **kwargs):
         r"""Train step method
@@ -275,5 +181,4 @@ class ORTTrainer(object):
         Returns:
             ordered :py:obj:`list` with model outputs as described by :py:attr:`ORTTrainer.model_desc`
         """
-        if self._onnx_model is None:
-            self._init_onnx_model_(*input) 
+        pass
