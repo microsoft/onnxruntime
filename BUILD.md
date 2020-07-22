@@ -537,6 +537,10 @@ The Relu operator is set by default to use the CPU execution provider for better
 ```
 ./build.sh --use_armnn --armnn_relu
 ```
+The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
+```
+./build.sh --use_armnn --armnn_bn
+```
 
 ---
 

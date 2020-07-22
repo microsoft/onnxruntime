@@ -868,6 +868,8 @@ common::Status TrainingSession::Run(const RunOptions& run_options, IOBinding& io
 }
 
 static const std::unordered_set<std::string> Nodes_Need_Eval_Feeds = {
+    // TODO remove this once ONNX TrainableDropout is completely deprecated.
+    "TrainableDropout",
     "Dropout",
 };
 Status TrainingSession::SetEvalFeedNames() {
@@ -879,7 +881,16 @@ Status TrainingSession::SetEvalFeedNames() {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
     if(it != Nodes_Need_Eval_Feeds.cend()) {
       // The opset is < 12, add each ratio input to graph inputs for overriding.
-    if(node.InputArgCount().size() > 2) {
+      // Needs to be removed when TrainableDropout is deprecated.
+      if(it->compare("TrainableDropout") == 0) {
+        auto& ratio_name = node.InputDefs()[1]->Name();
+        dropout_eval_feeds_.insert(ratio_name);
+        ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
+        "Input: " + ratio_name + " should not have any producer node.");
+        defs.AddGraphInputs({ratio_name});
+      }
+      // Found an opset-12 dropout node, replace initializer name.
+      else if(node.InputArgCount().size() > 2) {
         auto& mode_input = node.MutableInputDefs()[2];
         const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
         if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {

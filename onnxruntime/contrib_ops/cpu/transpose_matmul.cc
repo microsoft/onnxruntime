@@ -37,6 +37,10 @@ Status TransposeMatMul::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, helper.OutputShape());
 
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
   const size_t num_offsets = helper.OutputOffsets().size();
   for (size_t i = 0; i < num_offsets; ++i) {
     math::Gemm<float, concurrency::ThreadPool>(
