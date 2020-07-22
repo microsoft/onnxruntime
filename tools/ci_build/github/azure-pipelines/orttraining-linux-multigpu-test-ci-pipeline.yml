@@ -21,8 +21,9 @@ jobs:
   #         "
   #   displayName: 'Build'
 
-  # - script: |
-  #     docker run \
+  - script: |
+      docker run \
+      hello-world
   #       --gpus all \
   #       --rm \
   #       --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -30,8 +31,7 @@ jobs:
   #       onnxruntime-ubuntu16.04-cuda10.1-cudnn7.6 \
   #         /onnxruntime_src/orttraining/tools/ci_test/run_multi_gpu_test.py \
   #           --binary_dir /build/RelWithDebInfo 
-  #   displayName: 'Run convergence test'
-  #   condition: succeededOrFailed() # ensure all tests are run
-    - script: "docker run hello-world"
+    displayName: 'Run convergence test'
+    condition: succeededOrFailed() # ensure all tests are run
 
   - template: templates/clean-agent-build-directory-step.yml
