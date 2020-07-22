@@ -21,7 +21,18 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
-// this method will be shared between 'Concat' (CPU and GPU) and 
+namespace contrib {
+ONNX_OPERATOR_KERNEL_EX(
+    ConcatTraining,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    ConcatTraining);
+}  // namespace contrib
+
+// this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const std::vector<const Tensor*>& input_tensors,
@@ -46,6 +57,8 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
   p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_ ? inputs_0_rank : inputs_0_rank + 1));
 
+  // Add the length of input0 at 'axis' dim to create vector 'per_input_length'
+  p.per_input_length.push_back(inputs_0_dims[p.axis]);
   // Note if input tensor is empty for later use (it's expensive to call Size() on TensorShape)
   std::vector<int64_t> input_tensor_sizes(input_count);
   // Assign the number of values in the first input tensor
@@ -70,8 +83,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
       // In 'concat' mode, the axis to be concatenated may be different
       // But in 'stack' mode, all input shapes must be the same and must be validated
-      if (!is_stack_ && axis_index == p.axis)
+      if (!is_stack_ && axis_index == p.axis) {
+        // Add the length of input_n at 'axis' dim to create vector 'per_input_length'
+        p.per_input_length.push_back(dim_value);
         continue;
+      }
 
       ORT_RETURN_IF_NOT(dim_value == inputs_0_dims[axis_index],
                         "Non concat axis dimensions must match: Axis ",
@@ -169,7 +185,7 @@ Status ConcatBase::ComputeImpl(Prepare& p) const {
     auto input_size = prep.num_elements;
 
     // Copy the data across. For every 'input_axis_pitch' values copied, we move over by the 'output_axis_pitch'
-    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this 
+    // TODO: Optimization possibility: There are cases where we simply need to "merge" raw buffers and this
     // could be done without the pointer house-keeping as below. Some scenarios whether this is possible are:
     // 1) Concatenating on input axis = 0
     // 2) Stacking on output axis = 0
@@ -222,6 +238,37 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   // Return at this point if output tensor is going to be empty
   if (p.output_num_elements == 0)
     return Status::OK();
+
+  // Compute values to be placed in the output tensor
+  return ComputeImpl(p);
+}
+
+// core Compute() method for the 'Concat' kernel
+Status ConcatTraining::Compute(OpKernelContext* ctx) const {
+  // Number of input tensors to concatenate
+  auto input_count = Node().InputArgCount().front();
+
+  // Hold pointers to the input tensors to be used in the PrepareForCompute() step
+  std::vector<const Tensor*> input_tensors;
+  input_tensors.reserve(input_count);
+  for (int i = 0; i < input_count; ++i) {
+    input_tensors.push_back(ctx->Input<Tensor>(i));
+  }
+
+  // Validate inputs and prepare some metadata used during actual compute
+  Prepare p;
+  auto status = PrepareForCompute(ctx, input_tensors, p);
+  if (!status.IsOK())
+    return status;
+
+  // Return at this point if output tensor is going to be empty
+  if (p.output_num_elements == 0)
+    return Status::OK();
+
+  // Create output tensor for 'per_input_length'
+  Tensor* output_1_tensor = ctx->Output(1, {input_count});
+  int64_t* output_1_tensor_data = output_1_tensor->template MutableData<int64_t>();
+  std::copy(p.per_input_length.begin(), p.per_input_length.end(), output_1_tensor_data);
 
   // Compute values to be placed in the output tensor
   return ComputeImpl(p);

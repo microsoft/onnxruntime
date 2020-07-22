@@ -18,6 +18,9 @@ struct Prepare {
     int64_t num_elements;
   };
   std::vector<InputInfo> inputs;
+  // Hold the dim values of each concatenated tensor at the 'axes' dim
+  // Used to create the second output of ConcatTraining
+  std::vector<int64_t> per_input_length;
   int64_t output_num_elements;
   int64_t output_axis_pitch;
   Tensor* output_tensor;
@@ -39,7 +42,7 @@ class ConcatBase {
     }
   }
 
-  // the core method that will be invoked by the 'Concat' (CPU and GPU) 
+  // the core method that will be invoked by the 'Concat' (CPU and GPU)
   // and 'ConcatFromSequence' kernels
   Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
                            Prepare& p) const;
@@ -54,6 +57,13 @@ class ConcatBase {
 class Concat : public OpKernel, public ConcatBase {
  public:
   Concat(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+class ConcatTraining : public OpKernel, public ConcatBase {
+ public:
+  ConcatTraining(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };

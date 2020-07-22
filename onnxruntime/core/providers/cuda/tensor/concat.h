@@ -15,5 +15,11 @@ class Concat final : public CudaKernel, public ConcatBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+class ConcatTraining final : public CudaKernel, public ConcatBase {
+ public:
+  ConcatTraining(const OpKernelInfo& info) : CudaKernel(info), ConcatBase(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime
