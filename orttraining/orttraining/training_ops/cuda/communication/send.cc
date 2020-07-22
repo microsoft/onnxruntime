@@ -9,6 +9,8 @@
 #include <limits>
 #include <mpi.h>
 
+#include "orttraining/core/framework/mpi_setup.h"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -28,8 +30,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 void CUDART_CB HostSend(void* args) {
   CommInfo_t* info = reinterpret_cast<CommInfo_t*>(args);
-  int mpi_code = MPI_Send(info->buffer, info->size, MPI_CHAR, info->rank, info->tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+  MPI_CHECK(MPI_Send(info->buffer, info->size, MPI_CHAR, info->rank, info->tag, MPI_COMM_WORLD));
 }
 
 Status Send::ComputeInternal(OpKernelContext* ctx) const {
@@ -126,14 +127,12 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
                        dst,
                        static_cast<int>(tag_)};
 
-  int mpi_code = 0;
 
   // Directly use CPU to wait MPI_Send. We cannot use GPU callback because
   // MPI_Send may block the entire GPU until it returns.
-  mpi_code = MPI_Send(
+  MPI_CHECK(MPI_Send(
     info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD));
 
 #ifdef ENABLE_NVTX_PROFILE
   preRange.End();
@@ -148,18 +147,17 @@ Status Send::ComputeInternal(OpKernelContext* ctx) const {
   sendRange.Begin();
 #endif
 
-  mpi_code = MPI_Send(
+  MPI_CHECK(MPI_Send(
     info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
-  mpi_code = MPI_Send(
+    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD));
+
+  MPI_CHECK(MPI_Send(
     info_shapes.buffer, info_shapes.size, MPI_CHAR,
-    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
-  mpi_code = MPI_Send(
+    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD));
+
+  MPI_CHECK(MPI_Send(
     info_data.buffer, info_data.size, MPI_CHAR,
-    info_data.rank, info_data.tag, MPI_COMM_WORLD);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Send fails.");
+    info_data.rank, info_data.tag, MPI_COMM_WORLD));
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of major communication tasks.
