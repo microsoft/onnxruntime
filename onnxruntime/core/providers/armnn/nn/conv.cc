@@ -55,6 +55,9 @@ armnn::Convolution2dDescriptor createConvDescriptor(std::vector<int64_t> pads, s
     armnnPads[3] = pads[2];
   }
 
+  LOGS_DEFAULT(VERBOSE) << "padding: {" << armnnPads[0] << "," << armnnPads[1] << "," << armnnPads[2] << "," << armnnPads[3] << "}";
+  LOGS_DEFAULT(VERBOSE) << "strides: {" << armnnStrides[0] << "," << armnnStrides[1] << "}";
+
   armnn::Convolution2dDescriptor convolutionDescriptor;
   convolutionDescriptor.m_PadLeft = armnnPads[0];
   convolutionDescriptor.m_PadRight = armnnPads[1];
@@ -97,11 +100,23 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
 
   if (X->Shape().NumDimensions() != PREF_DIM) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
+    Status s = onnxruntime::Conv<T>::Compute(context);
+    return s;
+  }
+
+  if(W->Shape()[2] == 9 && W->Shape()[3] == 9) {
+    LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
     Status s = onnxruntime::Conv<T>::Compute(context);
     return s;
   }
 
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+
+  LOGS_DEFAULT(VERBOSE) << "Conv ArmNN:";
+  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
+  if (B != nullptr) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
 
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
@@ -156,7 +171,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     if (conv_attrs_.group > 1) {
       if (conv_attrs_.group == inputShape[1]) {
-        // depthwise convolution
+        LOGS_DEFAULT(VERBOSE) << "ArmNN depthwise convolution";
         armnn::DepthwiseConvolution2dDescriptor depthwiseDescriptor = createDepthwiseDescriptor(convolutionDescriptor);
 
         weightShape[1] = weightShape[0];
@@ -179,11 +194,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         }
       } else {
         // NCHWc convolution
+        LOGS_DEFAULT(WARNING) << "ArmNN does not have support for NCHWc convolution; defaulting to cpu implementation";
         Status s = onnxruntime::Conv<T>::Compute(context);
         return s;
       }
     } else {
-      // normal convolution
+      LOGS_DEFAULT(VERBOSE) << "ArmNN 2D convolution";
       armnn::TensorInfo weightsInfo(weightShape, armnn::DataType::Float32);
       armnn::ConstTensor weights(weightsInfo, k_data);
 
@@ -208,15 +224,19 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
     if (activation_type == "Relu") {
       desc.m_Function = armnn::ActivationFunction::ReLu;
+      LOGS_DEFAULT(VERBOSE) << "ArmNN Conv-Relu fused implementation";
       armnn_activ_enabled = true;
     } else if (activation_type == "LeakyRelu") {
       desc.m_Function = armnn::ActivationFunction::LeakyReLu;
+      LOGS_DEFAULT(VERBOSE) << "ArmNN Conv-LeakyRelu fused implementation";
       armnn_activ_enabled = true;
     } else if (activation_type == "Tanh") {
       desc.m_Function = armnn::ActivationFunction::TanH;
+      LOGS_DEFAULT(VERBOSE) << "ArmNN Conv-Tanh fused implementation";
       armnn_activ_enabled = true;
     } else if (activation_type == "Sigmoid") {
       desc.m_Function = armnn::ActivationFunction::Sigmoid;
+      LOGS_DEFAULT(VERBOSE) << "ArmNN Conv-Sigmoid fused implementation";
       armnn_activ_enabled = true;
     } else if (!activation_type.empty()) {
       ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_type);
@@ -250,6 +270,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Conv::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
+      LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
       return onnxruntime::Conv<T>::Compute(context);
     }
 
@@ -271,6 +292,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   // Execute network
   Conv::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
+
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   return Status::OK();
 }
