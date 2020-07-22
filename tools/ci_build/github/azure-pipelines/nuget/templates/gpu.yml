@@ -242,6 +242,9 @@ jobs:
 - job: Publish_NuGet_Package_And_Report
   workspace:
     clean: all
+  variables:
+  - name: GDN_CODESIGN_TARGETDIRECTORY
+    value: $(Build.BinariesDirectory)\nuget-artifact\final-package
   pool: 'Win-CPU-2019'
   condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
