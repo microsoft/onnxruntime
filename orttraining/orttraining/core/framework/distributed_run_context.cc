@@ -14,7 +14,8 @@ int32_t GetPipelineStageId(const int32_t world_rank,
     return world_rank;
   }
   else{
-    return world_rank % (horizontal_parallel_size * data_parallel_size);
+    // return world_rank % (horizontal_parallel_size * data_parallel_size);
+    return world_rank / (data_parallel_size * horizontal_parallel_size);
   }
 }
 
@@ -60,48 +61,22 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   params_.pipeline_stage_size = pipeline_stage_size;
   groups_.resize(static_cast<size_t>(WorkerGroupType::WorkerGroupTypeCount));
 
-  const int32_t slice_index = world_rank / (data_parallel_size * horizontal_parallel_size);
+  // Initialize Data Parallel Group
+  const int32_t data_group_id = pipeline_stage_size == 1 ? world_rank % horizontal_parallel_size : world_rank / pipeline_stage_size;
 
-// Initialize Data Parallel Group
-  const int32_t data_group_id = (world_rank / (data_parallel_size * horizontal_parallel_size)) * horizontal_parallel_size + world_rank % horizontal_parallel_size;
-  const int32_t rank_in_owning_data_group = (world_rank % (data_parallel_size * horizontal_parallel_size)) / horizontal_parallel_size;
+  const int32_t rank_in_owning_data_group = pipeline_stage_size == 1 ? world_rank / horizontal_parallel_size : world_rank % pipeline_stage_size ;
   std::vector<int32_t> data_group_ranks;
-
-  // for (auto r = 0; r < data_parallel_size; r++) {
-  //   data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
-  // }
-  if (data_group_id == 1 && data_parallel_size > 1){
-    data_group_ranks.push_back(2);
-    data_group_ranks.push_back(3);
-  } else if(data_parallel_size == 1){
-    data_group_ranks.push_back(world_rank);
-  }
-  else{
+  if (pipeline_stage_size == 1) {
     for (auto r = 0; r < data_parallel_size; r++) {
-      data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
+      data_group_ranks.push_back(data_group_id + horizontal_parallel_size * r);
+    }
+  } else {
+    for (auto r = 0; r < data_parallel_size; r++) {
+      data_group_ranks.push_back(data_group_id * pipeline_stage_size + r);
     }
   }
-  ORT_ENFORCE(
-      data_group_ranks[rank_in_owning_data_group] == world_rank,
-      "data parallel distributed group cal wrong: ", world_rank, " ", data_group_ranks[rank_in_owning_data_group]);
   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
                                             WorkerGroupType::DataParallel, rank_in_owning_data_group};
-
-  std::cout<<"** world rank["<<world_rank<<"] DP: data_parallel_size: "<<data_parallel_size<<" "
-  // <<data_group_ranks[0]<<" "
-  // <<data_group_ranks[1]
-  <<" data_group_id: "<<data_group_id<<" "
-  <<" in_group_id: "<<data_group_ranks[rank_in_owning_data_group]<<std::endl;
-  // <<rank_in_owning_data_group<<std::endl;
-  // // Initialize Data Parallel Group
-  // const int32_t data_group_id = world_rank_with_offset % (horizontal_parallel_size);
-  // const int32_t rank_in_owning_data_group = world_rank_with_offset / (horizontal_parallel_size);
-  // std::vector<int32_t> data_group_ranks;
-  // for (auto r = 0; r < data_parallel_size; r++) {
-  //   data_group_ranks.push_back(data_group_id + horizontal_parallel_size * r);
-  // }
-  // groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
-  //                                           WorkerGroupType::DataParallel, rank_in_owning_data_group};
 
   // Horizontal Model Parallel Group
   const int32_t hori_group_id = world_rank / horizontal_parallel_size;
@@ -110,51 +85,114 @@ DistributedRunContext::DistributedRunContext(int32_t world_rank,
   for (auto r = 0; r < horizontal_parallel_size; r++) {
     hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
   }
-    ORT_ENFORCE(
-      hori_group_ranks[rank_in_owning_hori_group] == world_rank,
-      "hori parallel distributed group cal wrong: ", world_rank, " ", hori_group_ranks[rank_in_owning_hori_group]);
-
   groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
                                                   WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
 
-  std::cout<<"** world rank["<<world_rank<<"] HP: horizontal_parallel_size: "<<horizontal_parallel_size<<" "
-  // <<hori_group_ranks[0]<<" "
-  // <<hori_group_ranks[1]
-  <<" data_group_id: "<<hori_group_id
-  <<" in_group_id: "<<hori_group_ranks[rank_in_owning_hori_group]<<std::endl;
-  // <<" "<<rank_in_owning_hori_group<<std::endl;
-  // // Horizontal Model Parallel Group
-  // const int32_t hori_group_id = world_rank_with_offset / horizontal_parallel_size;
-  // const int32_t rank_in_owning_hori_group = world_rank_with_offset % horizontal_parallel_size;
-  // std::vector<int32_t> hori_group_ranks;
-  // for (auto r = 0; r < horizontal_parallel_size; r++) {
-  //   hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
-  // }
-  // groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
-  //                                                 WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
-
-  // Pipeline Model Parallel Group
-  const int32_t pipeline_group_id = world_rank % (horizontal_parallel_size * data_parallel_size);
-  const int32_t rank_in_owning_pipeline_group = world_rank / (horizontal_parallel_size * data_parallel_size);
+  // Model Parallel Group
+  // **** ranks in the same pipeline group is from different pipeline stage.
+  const int32_t pipeline_group_id = world_rank % (data_parallel_size * horizontal_parallel_size);
+  const int32_t rank_in_owning_pipeline_group = world_rank / (data_parallel_size * horizontal_parallel_size);
   std::vector<int32_t> pipeline_group_ranks;
   for (auto r = 0; r < pipeline_stage_size; r++) {
-    pipeline_group_ranks.push_back(pipeline_group_id + horizontal_parallel_size * data_parallel_size * r);
+    pipeline_group_ranks.push_back(pipeline_group_id + r * (data_parallel_size * horizontal_parallel_size) );
   }
-      ORT_ENFORCE(
-      pipeline_group_ranks[rank_in_owning_pipeline_group] == world_rank,
-      "pipeline parallel distributed group cal wrong: ", world_rank, " ", pipeline_group_ranks[rank_in_owning_pipeline_group]);
-
   groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipeline_group_id,
                                                   WorkerGroupType::ModelParallel, rank_in_owning_pipeline_group};
 
-  std::cout<<"** world rank["<<world_rank<<"] MP: pipeline_stage_size: "<<pipeline_stage_size<<" "
-  <<" data_group_id: "<<pipeline_group_id
-  <<" in_group_id: "<<pipeline_group_ranks[rank_in_owning_pipeline_group]<<std::endl;
+// //   const int32_t slice_index = world_rank / (data_parallel_size * horizontal_parallel_size);
+
+// // // Initialize Data Parallel Group
+// //   const int32_t data_group_id = (world_rank / (data_parallel_size * horizontal_parallel_size)) * horizontal_parallel_size + world_rank % horizontal_parallel_size;
+// //   const int32_t rank_in_owning_data_group = (world_rank % (data_parallel_size * horizontal_parallel_size)) / horizontal_parallel_size;
+// //   std::vector<int32_t> data_group_ranks;
+
+// //   // for (auto r = 0; r < data_parallel_size; r++) {
+// //   //   data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
+// //   // }
+// //   if (data_group_id == 1 && data_parallel_size > 1){
+// //     data_group_ranks.push_back(2);
+// //     data_group_ranks.push_back(3);
+// //   } else if(data_parallel_size == 1){
+// //     data_group_ranks.push_back(world_rank);
+// //   }
+// //   else{
+// //     for (auto r = 0; r < data_parallel_size; r++) {
+// //       data_group_ranks.push_back(slice_index * (data_parallel_size * horizontal_parallel_size) + data_group_id  + horizontal_parallel_size * r);
+// //     }
+// //   }
+// //   ORT_ENFORCE(
+// //       data_group_ranks[rank_in_owning_data_group] == world_rank,
+// //       "data parallel distributed group cal wrong: ", world_rank, " ", data_group_ranks[rank_in_owning_data_group]);
+// //   groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
+// //                                             WorkerGroupType::DataParallel, rank_in_owning_data_group};
+
+  std::cout<<"** world rank["<<world_rank<<"] DP: data_parallel_size: "<<data_parallel_size<<" "
+// //   // <<data_group_ranks[0]<<" "
+// //   // <<data_group_ranks[1]
+  <<" data_group_id: "<<data_group_id<<" "
+  <<" in_group_id: "<<rank_in_owning_data_group<<std::endl;
+// //   // <<rank_in_owning_data_group<<std::endl;
+// //   // // Initialize Data Parallel Group
+// //   // const int32_t data_group_id = world_rank_with_offset % (horizontal_parallel_size);
+// //   // const int32_t rank_in_owning_data_group = world_rank_with_offset / (horizontal_parallel_size);
+// //   // std::vector<int32_t> data_group_ranks;
+// //   // for (auto r = 0; r < data_parallel_size; r++) {
+// //   //   data_group_ranks.push_back(data_group_id + horizontal_parallel_size * r);
+// //   // }
+// //   // groups_[WorkerGroupType::DataParallel] = {data_group_ranks, data_group_id,
+// //   //                                           WorkerGroupType::DataParallel, rank_in_owning_data_group};
+
+// //   // Horizontal Model Parallel Group
+// //   const int32_t hori_group_id = world_rank / horizontal_parallel_size;
+// //   const int32_t rank_in_owning_hori_group = world_rank % horizontal_parallel_size;
+// //   std::vector<int32_t> hori_group_ranks;
+// //   for (auto r = 0; r < horizontal_parallel_size; r++) {
+// //     hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
+// //   }
+// //     ORT_ENFORCE(
+// //       hori_group_ranks[rank_in_owning_hori_group] == world_rank,
+// //       "hori parallel distributed group cal wrong: ", world_rank, " ", hori_group_ranks[rank_in_owning_hori_group]);
+
+  // // groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
+  // //                                                 WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
+
+   std::cout<<"** world rank["<<world_rank<<"] HP: horizontal_parallel_size: "<<horizontal_parallel_size<<" "
+// //   // <<hori_group_ranks[0]<<" "
+// //   // <<hori_group_ranks[1]
+   <<" data_group_id: "<<hori_group_id
+   <<" in_group_id: "<<rank_in_owning_hori_group<<std::endl;
+// //   // <<" "<<rank_in_owning_hori_group<<std::endl;
+// //   // // Horizontal Model Parallel Group
+// //   // const int32_t hori_group_id = world_rank_with_offset / horizontal_parallel_size;
+// //   // const int32_t rank_in_owning_hori_group = world_rank_with_offset % horizontal_parallel_size;
+// //   // std::vector<int32_t> hori_group_ranks;
+// //   // for (auto r = 0; r < horizontal_parallel_size; r++) {
+// //   //   hori_group_ranks.push_back(hori_group_id * horizontal_parallel_size + r);
+// //   // }
+// //   // groups_[WorkerGroupType::HorizontalParallel] = {hori_group_ranks, hori_group_id,
+// //   //                                                 WorkerGroupType::HorizontalParallel, rank_in_owning_hori_group};
+
+// //   // Pipeline Model Parallel Group
+// //   const int32_t pipeline_group_id = world_rank % (horizontal_parallel_size * data_parallel_size);
+// //   const int32_t rank_in_owning_pipeline_group = world_rank / (horizontal_parallel_size * data_parallel_size);
+// //   std::vector<int32_t> pipeline_group_ranks;
+// //   for (auto r = 0; r < pipeline_stage_size; r++) {
+// //     pipeline_group_ranks.push_back(pipeline_group_id + horizontal_parallel_size * data_parallel_size * r);
+// //   }
+// //       ORT_ENFORCE(
+// //       pipeline_group_ranks[rank_in_owning_pipeline_group] == world_rank,
+// //       "pipeline parallel distributed group cal wrong: ", world_rank, " ", pipeline_group_ranks[rank_in_owning_pipeline_group]);
+
+// //   groups_[WorkerGroupType::ModelParallel] = {pipeline_group_ranks, pipeline_group_id,
+// //                                                   WorkerGroupType::ModelParallel, rank_in_owning_pipeline_group};
+   std::cout<<"** world rank["<<world_rank<<"] MP: pipeline_stage_size: "<<pipeline_stage_size<<" "
+   <<" data_group_id: "<<pipeline_group_id
+   <<" in_group_id: "<<rank_in_owning_pipeline_group<<std::endl;
 
 
-  // const int32_t slice_index = world_rank / (horizontal_parallel_size * data_parallel_size);
-  // const int32_t offset = (slice_index * horizontal_parallel_size * data_parallel_size);
-  // auto world_rank_with_offset = world_rank - offset;
+  // // // const int32_t slice_index = world_rank / (horizontal_parallel_size * data_parallel_size);
+  // // // const int32_t offset = (slice_index * horizontal_parallel_size * data_parallel_size);
+  // // // auto world_rank_with_offset = world_rank - offset;
 
 }
 

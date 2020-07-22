@@ -4,6 +4,8 @@
 #include "orttraining/core/graph/pipeline_transformer.h"
 #include <queue>
 
+#include "orttraining/core/framework/distributed_run_context.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -855,6 +857,11 @@ common::Status SplitGraph(Graph& graph,
   //    newly inserted send's input. Also, to keep this on going for any following cut, we create an updated_node_arg_v2,
   //    and update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg_v2
   std::map<NodeArg*, NodeArg*> updated_node_args;
+
+  // auto pipeline_current_stage_id = DistributedRunContext::IdInGroup(WorkerGroupType::ModelParallel);
+  // auto pipeline_next_stage_id = DistributedRunContext::GetPipelineNextStageId();
+  auto ranks = DistributedRunContext::GetPipelineRanks();
+
   for (size_t index = 0; index < split_edge_groups.size(); ++index) {
     // each entry in split_edge_groups represents a partition cut. Each cut can contain the split of
     // several edges.
@@ -884,13 +891,13 @@ common::Status SplitGraph(Graph& graph,
     AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                       "send_dst_rank" + cut_index_str,
                                       ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                      index + 1, /* initializer data */
+                                      ranks[index + 1], /* initializer data */
                                       send_input_args,
                                       new_input_names);
     AddNewScalarNodeArgAndInitializer<size_t>(graph,
                                       "recv_src_rank" + cut_index_str,
                                       ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                                      index, /* initializer data */
+                                      ranks[index], /* initializer data */
                                       recv_input_args,
                                       new_input_names);
     // add output node_arg for send/recv

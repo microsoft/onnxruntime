@@ -115,7 +115,9 @@ Status TrainingRunner::Initialize() {
   auto pipeline_stage_id = GetPipelineStageId(params_.mpi_context.world_rank,
                            params_.horizontal_parallel_size,
                            params_.data_parallel_size);
-  if (params_.pipeline_parallel_size == 1 || (pipeline_stage_id +1) == params_.pipeline_parallel_size) {
+  if (params_.pipeline_parallel_size == 1 ||
+   (pipeline_stage_id +1) == params_.pipeline_parallel_size) {
+
     TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
     lf.loss_function_info = params_.loss_func_info;
 

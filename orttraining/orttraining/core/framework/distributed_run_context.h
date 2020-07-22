@@ -4,6 +4,7 @@
 #pragma once
 #include "core/common/common.h"
 
+#include <cassert>
 namespace onnxruntime {
 namespace training {
 enum WorkerGroupType {
@@ -82,10 +83,38 @@ class DistributedRunContext {
   }
 
   static bool IsPipelineLastStage(){
-    auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).group_id;
+    // auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).group_id;
+    // auto pipeline_stage_size = DistributedRunContext::GetInstance().GetRunConfig().pipeline_stage_size;
+    // return (id + 1) == pipeline_stage_size;
+    auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).rank_in_group;
     auto pipeline_stage_size = DistributedRunContext::GetInstance().GetRunConfig().pipeline_stage_size;
     return (id + 1) == pipeline_stage_size;
   }
+
+  static std::vector<int32_t> GetPipelineRanks(){
+    return DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).ranks;
+  }
+
+  static int32_t GetPipelineCurrentStageId(){
+    auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).rank_in_group;
+    // assert(id + 1 < pipeline_stage_size);
+    // return DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).ranks[id + 1];
+    return id;
+  }
+
+  static int32_t GetPipelineNextStageId(){
+    auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).rank_in_group;
+    auto pipeline_stage_size = DistributedRunContext::GetInstance().GetRunConfig().pipeline_stage_size;
+    assert(id + 1 < pipeline_stage_size);
+    return DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).ranks[id + 1];
+  }
+
+  static int32_t GetPipelinePrevStageId(){
+    auto id = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).rank_in_group;
+    assert(id > 0);
+    return DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::ModelParallel).ranks[id - 1];
+  }
+
   // Get total rank of specified group.
   static int32_t GroupSize(WorkerGroupType group_type) {
     return static_cast<int32_t>(DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks.size());
