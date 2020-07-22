@@ -12,7 +12,7 @@ stages:
       --enable_training
       --wheel_name_suffix training
     docker_image_prefix: onnxruntime-training
-    linux_gpu_dockerfile: Dockerfile.ubuntu_gpu
+    linux_gpu_dockerfile: ../../../../dockerfiles/Dockerfile.training
     python.version: 3.6
     BuildCommand: >
       tools/ci_build/github/linux/run_dockerbuild.sh
@@ -42,48 +42,49 @@ stages:
         clean: true
         submodules: recursive
 
-      # - template: templates/set-py-packaging-variables-step.yml
+      - template: templates/set-py-packaging-variables-step.yml
 
-      # - task: CmdLine@2
-      #   inputs:
-      #     script: |
-      #       sudo docker build \
-      #         --pull \
-      #         -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-      #         --build-arg BUILD_USER=onnxruntimedev \
-      #         --build-arg BUILD_UID=$(id -u) \
-      #         --build-arg PYTHON_VERSION=$(python.version) \
-      #         --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
-      #         --build-arg CONDA_VERSION="${{ parameters.conda_version }}" \
-      #         -f ${{ variables.linux_gpu_dockerfile }} .
-      #     workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+      - task: CmdLine@2
+        inputs:
+          script: |
+            sudo docker build \
+              --pull \
+              -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+              --build-arg BUILD_USER=onnxruntimedev \
+              --build-arg BUILD_UID=$(id -u) \
+              --build-arg PYTHON_VERSION=$(python.version) \
+              --build-arg BUILD_EXTR_PAR="${{ variables.actual_extra_build_py_parameters }}" \
+              --build-arg CONDA_VERSION="${{ parameters.conda_version }}" \
+              -f ${{ variables.linux_gpu_dockerfile }} .
+          workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
-      #  - task: CmdLine@2
-      #   inputs:
-      #     script: |
-      #       sudo --preserve-env docker run \
-      #         --gpus all \
-      #         --rm \
-      #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
-      #         --volume $(Build.BinariesDirectory):/build \
-      #         --volume /data/models:/build/models:ro \
-      #         -e NVIDIA_VISIBLE_DEVICES=all \
-      #         -e NIGHTLY_BUILD \
-      #         -e BUILD_BUILDNUMBER \
-      #         ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
-      #         $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-      #           --build_dir /build \
-      #           --config Release \
-      #           --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-      #           --skip_submodule_sync \
-      #           --parallel \
-      #           --build_wheel \
-      #           --enable_onnx_tests \
-      #           --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
-      #           ${{ variables.actual_extra_build_py_parameters }}
-      #     workingDirectory: $(Build.SourcesDirectory)
-      - script: ${{ variables.BuildCommand }}
-        displayName: 'Command Line Script'
+       - task: CmdLine@2
+        inputs:
+          script: |
+            sudo --preserve-env docker run \
+              --gpus all \
+              --rm \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
+              $(python.manylinux.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                --build_dir /build \
+                --config Release \
+                --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.manylinux.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                --skip_submodule_sync \
+                --parallel \
+                --build_wheel \
+                --enable_onnx_tests \
+                --use_cuda \
+                ${{ variables.actual_extra_build_py_parameters }}
+          workingDirectory: $(Build.SourcesDirectory)
+        # --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.1 --cudnn_home=/usr/local/cuda-10.1 \
+      # - script: ${{ variables.BuildCommand }}
+      #   displayName: 'Command Line Script'
 
       - task: AzureKeyVault@1
         inputs:
