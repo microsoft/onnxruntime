@@ -40,6 +40,7 @@ jobs:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
+    runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     ${{ if eq(parameters.EnableLto, true) }}:
       build_py_lto_flag: --enable_lto
@@ -195,9 +196,10 @@ jobs:
       # Esrp signing
       - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)'
+          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
+          Pattern: 'onnx_test_runner.exe, onnxruntime_perf_test.exe,*.dll' #keep sync with src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
 
       - template: win-esrp-dll.yml
         parameters:
@@ -253,6 +255,13 @@ jobs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
+      # Put an unzipped version there to check if all the binaries are signed.
+      - script: |
+         7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
+         7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
+        displayName: 'Unzip package to test'
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
     # Compliance tasks require logs from Debug Build
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
@@ -261,4 +270,6 @@ jobs:
       parameters :
         condition : 'succeeded'
 
-    - template: clean-agent-build-directory-step.yml
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()

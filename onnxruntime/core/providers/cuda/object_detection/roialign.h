@@ -1,5 +1,5 @@
-// Copyright (c) Microsoft Corporation. All rights reserved. 
-// Licensed under the MIT License. 
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 
@@ -12,8 +12,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-struct RoiAlign final : CudaKernel, RoiAlignBase<T> {
-  RoiAlign(const OpKernelInfo& info) : CudaKernel(info), RoiAlignBase<T>(info) {}
+struct RoiAlign final : CudaKernel, RoiAlignBase {
+  RoiAlign(const OpKernelInfo& info) : CudaKernel(info), RoiAlignBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
