@@ -59,8 +59,6 @@ namespace Dml
         DML_BUFFER_TENSOR_DESC m_bufferTensorDesc = {};
     };
 
-
-
     class TensorDescBuilder
     {
     public:
