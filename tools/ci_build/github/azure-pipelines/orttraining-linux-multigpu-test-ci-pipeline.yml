@@ -32,6 +32,6 @@ jobs:
   #           --binary_dir /build/RelWithDebInfo 
   #   displayName: 'Run convergence test'
   #   condition: succeededOrFailed() # ensure all tests are run
-    - script: docker run hello-world
+    - script: "docker run hello-world"
 
   - template: templates/clean-agent-build-directory-step.yml
