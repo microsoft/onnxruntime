@@ -46,6 +46,16 @@ class BaseModel(object):
             return self.session_.get_inputs()
         return None
 
+    def get_ort_inputs(self, inputs):
+        data = {
+            self.session_.get_inputs()[0].name: inputs[0] 
+        }
+
+        return data
+
+    def get_ort_outputs(self):
+        return None
+
     def create_session(self, model_path=None):
         if not model_path:
             model_path = self.model_path_

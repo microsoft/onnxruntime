@@ -31,6 +31,16 @@ class BiDAF(BaseModel):
     def preprocess(self):
         return
 
+    def get_ort_inputs(self, inputs):
+        data = {"context_word": inputs[0],
+                "context_char": inputs[2],
+                "query_word": inputs[1],
+                "query_char": inputs[3]}
+        return data
+
+    def get_ort_outputs(self):
+        return ["start_pos", "end_pos"]
+
     def inference(self):
         self.outputs_ = []
         for test_data in self.inputs_:

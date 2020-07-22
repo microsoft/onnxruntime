@@ -62,6 +62,26 @@ class BERTSquad(BaseModel):
         self.extra_data_ = extra_data
         self.eval_examples_ = eval_examples
 
+    def get_ort_inputs(self, inputs):
+        unique_ids_raw_output = inputs[0]
+        input_ids = inputs[1] 
+        input_mask = inputs[2] 
+        segment_ids = inputs[3] 
+
+        n = len(input_ids)
+        batch_size = 1
+        bs = batch_size
+
+        data = {"unique_ids_raw_output___9:0": unique_ids_raw_output,
+                "input_ids:0": input_ids[0:1],
+                "input_mask:0": input_mask[0:1],
+                "segment_ids:0": segment_ids[0:1]}
+
+        return data
+
+    def get_ort_outputs(self):
+        return ["unique_ids:0", "unstack:0", "unstack:1"]
+
     def inference(self):
 
         self.outputs_ = []

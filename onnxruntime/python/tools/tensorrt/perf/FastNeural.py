@@ -26,6 +26,16 @@ class FastNeural(BaseModel):
     def preprocess(self):
         return
 
+    def get_ort_inputs(self, inputs):
+        data = {
+            self.session_.get_inputs()[0].name: inputs[0] 
+        }
+
+        return data
+
+    def get_ort_outputs(self):
+        return None
+
     def inference(self):
         # session = self.session_
         # if input_list:

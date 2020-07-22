@@ -48,14 +48,14 @@ from GPT2 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    # "bert-squad": (BERTSquad, "bert-squad"),
+    "bert-squad": (BERTSquad, "bert-squad"),
     # "fast-rcnn": (FastRCNN, "fast-rcnn"),
     # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    "ssd": (SSD, "ssd"),
+    # "ssd": (SSD, "ssd"),
     # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     # "resnet152": (Resnet152, "resnet152"),
     # "inception-v2": (InceptionV2, "inception-v2"),
-    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
     # "zfnet512": (Zfnet512, "zfnet512"),
     # "vgg19-bn": (Vgg, "vgg19-bn"),
     # "resnet50": (Resnet50, "resnet50"),
@@ -96,15 +96,19 @@ def get_latency_result(runtimes, batch_size):
     }
 
 
-def inference_ort(model, inputs, result_template, repeat_times, batch_size):
+def inference_ort(model, ort_inputs, result_template, repeat_times, batch_size):
     result = {}
 
-    model.set_inputs(inputs)
-    try:
-        runtimes = timeit.repeat(lambda: model.inference(), number=1, repeat=repeat_times+1)
-    except Exception as e:
-        logger.error(e)
-        return None
+    runtimes = []
+    for ort_input in ort_inputs:
+        session = model.get_session() 
+        inputs = model.get_ort_inputs(ort_input)
+        outputs = model.get_ort_outputs()
+        try:
+            runtimes = runtimes + timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times+1)
+        except Exception as e:
+            logger.error(e)
+            return None
 
     print(runtimes)
     runtimes[:] = runtimes[1:] # we intentionally skip the first run due to TRT is expensive on first run
@@ -376,11 +380,15 @@ def run_onnxruntime(args, models=MODELS):
         inputs = []
         ref_outputs = []
         ep_fail_set = set()
+        trt_fall_back = False
 
         if args.fp16:
             provider_list = ["TensorrtExecutionProvider","TensorrtExecutionProvider_fp16", "CUDAExecutionProvider"]
         else:
             provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+
+
+        # provider_list = ["CUDAExecutionProvider"]
 
         # iterate ep 
         for i in range(len(provider_list)):
@@ -436,6 +444,7 @@ def run_onnxruntime(args, models=MODELS):
                 continue
 
             sess = model.get_session()
+            sess.disable_fallback()
 
             result_template = {
                 "engine": "onnxruntime",
@@ -461,16 +470,27 @@ def run_onnxruntime(args, models=MODELS):
                 for input_meta in model.get_input_name():
                     logger.info(input_meta)
 
-            # model inference
+            # first, run inference and validate the result
+            if ep in ['TensorrtExecutionProvider', 'CUDAExecutionProvider']:
+                try:
+                    model.set_inputs(inputs)
+                    model.inference()
+                    status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
+                    if not status:
+                        ep_fail_set.add(ep)
+                        update_fail_model(model_name, ep, ep_model_fail_map)
+                        continue
+                except Exception as e:
+                    logger.error(e)
+                    ep_fail_set.add(ep)
+                    update_fail_model(model_name, ep, ep_model_fail_map)
+                    continue
+
+
+            # measure inference
             result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
-            if not result: 
-                ep_fail_set.add(ep)
-                update_fail_model(model_name, ep, ep_model_fail_map)
-                continue
 
-            end_time = datetime.now()
-            result["total_time"] = str(end_time - start_time) 
-
+            #skip TRT fp16 validation if it already passed on previous non-fp16 TRT
             if ep == "TensorrtExecutionProvider_fp16" and "TensorrtExecutionProvider" not in ep_fail_set:
                 status = True
             else:
@@ -479,6 +499,9 @@ def run_onnxruntime(args, models=MODELS):
                 ep_fail_set.add(ep)
                 update_fail_model(model_name, ep, ep_model_fail_map)
                 continue
+
+            end_time = datetime.now()
+            result["total_time"] = str(end_time - start_time) 
 
             latency_result[ep] = result["average_latency_ms"]
 
@@ -491,27 +514,40 @@ def run_onnxruntime(args, models=MODELS):
         sess = model.get_session()
         sess.end_profiling()
         if len(ep_fail_set) == 0:
-            trt_fall_back, presults = analyze_profiling_file(path)
+            presults = analyze_profiling_file(path)
+            for i in range(len(presults)):
+                result = presults[i]
+                total_ops_in_trt = result[0]
+                total_ops = result[1]
+                ratio_of_ops_in_trt = result[2]
+                ratio_of_execution_time_in_trt =  result[3]
+                
+                name = model_name + " (TRT fp16)" if i == 0 else model_name
+                profile_metrics_map[name] = {}
+                profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
+                profile_metrics_map[name]['total_ops'] = total_ops
+                profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
 
-            if trt_fall_back:
-                update_fail_model(model_name, "TensorrtExecutionProvider", ep_model_fail_map)
-                latency_comparison_map.pop(model_name, None)
-            else:
-                for i in range(len(presults)):
-                    result = presults[i]
-                    total_ops_in_trt = result[0]
-                    total_ops = result[1]
-                    ratio_of_ops_in_trt = result[2]
-                    ratio_of_execution_time_in_trt =  result[3]
+            # if trt_fall_back:
+                # update_fail_model(model_name, "TensorrtExecutionProvider", ep_model_fail_map)
+                # latency_comparison_map.pop(model_name, None)
+            # else:
+                # for i in range(len(presults)):
+                    # result = presults[i]
+                    # total_ops_in_trt = result[0]
+                    # total_ops = result[1]
+                    # ratio_of_ops_in_trt = result[2]
+                    # ratio_of_execution_time_in_trt =  result[3]
                     
-                    name = model_name + " (TRT fp16)" if i == 0 else model_name
-                    profile_metrics_map[name] = {}
-                    profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
-                    profile_metrics_map[name]['total_ops'] = total_ops
-                    profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                    profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+                    # name = model_name + " (TRT fp16)" if i == 0 else model_name
+                    # profile_metrics_map[name] = {}
+                    # profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
+                    # profile_metrics_map[name]['total_ops'] = total_ops
+                    # profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                    # profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
 
-        cleanup_files()
+        # cleanup_files()
         os.chdir(pwd)
 
         # end of model
@@ -608,7 +644,7 @@ def parse_arguments():
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=20,
+                        default=3,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 

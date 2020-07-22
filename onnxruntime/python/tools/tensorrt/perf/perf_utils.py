@@ -192,6 +192,25 @@ def analyze_profiling_file(path):
         print("number of list_of_cpu_op_map: {}".format(cpu_number))
 
     results = []
+
+    if trt_number == 2:
+        trt_op_map = list_of_trt_op_map[0]
+        trt_fp16_op_map = list_of_trt_op_map[1]
+
+        if cuda_number > 0:
+            cuda_op_map = list_of_cuda_op_map[0]
+            results.append(calculate_metrics(trt_op_map, cuda_op_map))
+            results.append(calculate_metrics(trt_fp16_op_map, cuda_op_map))
+
+    elif trt_number == 1:
+        trt_op_map = list_of_trt_op_map[0]
+
+        if cuda_number > 0:
+            cuda_op_map = list_of_cuda_op_map[0]
+            results.append(calculate_metrics(trt_op_map, cuda_op_map))
+
+
+    '''
     trt_fall_back = False
     if trt_number > 0 and cuda_number <= 1: # TRT can execute model without falling back to CUDA/CPU
         print("Generate the metrics of TRT/TRT_fp16/CUDA ...")
@@ -221,6 +240,7 @@ def analyze_profiling_file(path):
 
         results.append(calculate_metrics(trt_op_map, cuda_op_map))
         results.append(calculate_metrics(trt_fp16_op_map, cuda_op_map))
+    '''
 
     if debug:
         print('TRT operator map:')
@@ -232,7 +252,7 @@ def analyze_profiling_file(path):
         print('CPU operator map:')
         pp.pprint(cpu_op_map)
 
-    return (trt_fall_back, results)
+    return results
 
 
 
