@@ -40,7 +40,7 @@ RUN conda install -y \
     pip install \
         onnx=="${ONNX_VERSION}"
 
-# install mellanox libraries for ib etc.
+# install mellanox libraries for ib etc. (see below notes for user requirements)
 ARG MOFED_VERSION
 ARG MOFED_OS=ubuntu18.04
 ARG MOFED_TARNAME=MLNX_OFED_LINUX-${MOFED_VERSION}-${MOFED_OS}-x86_64
@@ -139,6 +139,7 @@ WORKDIR /stage
 
 # install mellanox libraries (again)
 # note: launch with infiniband drivers and --net=host or docker swarm
+# note: user should install firmware on host using ${MOFED_VERSION} or higher
 ARG MOFED_VERSION
 COPY --from=build /stage/mofed-${MOFED_VERSION} /stage/mofed-${MOFED_VERSION}
 RUN apt-get -y update && apt-get -y install build-essential &&\
