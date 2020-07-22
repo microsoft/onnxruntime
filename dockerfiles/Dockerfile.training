@@ -103,8 +103,8 @@ RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 COPY FindNCCL.patch /stage/
 ENV CUDA_HOME="/usr/local/cuda" \
     CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
-    NCCL_INCLUDE_DIR="/usr/local/cuda/include" \
-    NCCL_LIB_DIR="/usr/local/cuda/lib64" \
+    NCCL_INCLUDE_DIR="/usr/include" \
+    NCCL_LIB_DIR="/usr/lib/x86_64-linux-gnu" \
     USE_SYSTEM_NCCL=1 
 RUN apt-get -y update && apt-get -y --no-install-recommends install git &&\
     cd /stage && git clone https://github.com/pytorch/pytorch.git &&\
@@ -128,7 +128,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --use_cuda \
         --cuda_home /usr/local/cuda \
         --cudnn_home /usr/lib/x86_64-linux-gnu/ \
-        --nccl_home /usr/local/cuda/targets/x86_64-linux \
+        --nccl_home /usr/lib/x86_64-linux-gnu/ \
         --update \
         --parallel \
         --build_dir build \
