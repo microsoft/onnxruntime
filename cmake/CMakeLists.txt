@@ -782,10 +782,6 @@ endif()
 
 if(onnxruntime_USE_OPENVINO)
 
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for OpenVINO execution provider.")
-  endif()
-
   add_definitions(-DUSE_OPENVINO=1)
 
   # Check OpenVINO version for support
@@ -809,8 +805,6 @@ if(onnxruntime_USE_OPENVINO)
       list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
     endif()
   endif()
-
-  add_definitions(-DUSE_OPENVINO=1)
 
   if(onnxruntime_USE_OPENVINO_MYRIAD)
     add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
