@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
 from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo
+from pt_model import TransformerModel
 
 
 @pytest.mark.parametrize("test_input", [
@@ -442,3 +443,24 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         assert len(lr_list) == 1
         assert_allclose(lr_list[0],
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
+
+def my_loss(x, target):
+    x = x.view(-1, 28785) #thiagofc: hard-coded for testing
+    return nn.CrossEntropyLoss()(x, target)
+
+def transformer_model_description():
+    bptt=35
+    ntokens = 2300 #temp
+
+    model_desc = {'inputs':  [('input1', [bptt, 'batch']),
+                              ('label', [bptt, 'batch', ntokens],)],
+                  'outputs': [('loss', [], True)]}
+    return model_desc
+
+def testInstantiateORTTrainer():
+    model = TransformerModel(2300, 200, 2, 200, 2, 0.2)
+    model_desc = transformer_model_description()
+    optim_config = optim.LambConfig()
+    model_opts = orttrainer_options.ORTTrainerOptions({})
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=None)
+
