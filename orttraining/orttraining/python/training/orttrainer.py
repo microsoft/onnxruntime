@@ -402,6 +402,7 @@ class ORTTrainer(object):
             if input_desc[0] in kwargs:
                 input = input + (kwargs[input_desc[0]],)
 
+
         return input
 
     # TODO: Test this througly along with train step, including
