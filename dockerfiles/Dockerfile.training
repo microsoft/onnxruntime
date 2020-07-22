@@ -15,6 +15,11 @@ FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
 
 # set location for builds
 WORKDIR /stage
+
+# install curl
+RUN apt-get -y update &&\
+    apt-get -y --no-install-recommends install \
+        curl
     
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
@@ -55,7 +60,7 @@ RUN cd /stage && curl -fSsL ${MOFED_URL} | tar -zxpf - &&\
 ARG UCX_VERSION
 ARG UCX_TARNAME=ucx-$UCX_VERSION
 ARG UCX_URL=https://github.com/openucx/ucx/releases/download/v${UCX_VERSION}/${UCX_TARNAME}.tar.gz
-RUN apt-get -y update && apt-get -y install \
+RUN apt-get -y update && apt-get -y --no-install-recommends install \
         libnuma-dev &&\
     cd /stage && curl -fSsL ${UCX_URL} | tar xzf - &&\
     cd ${UCX_TARNAME} &&\
@@ -101,7 +106,7 @@ ENV CUDA_HOME="/usr/local/cuda" \
     NCCL_INCLUDE_DIR="/usr/local/cuda/include" \
     NCCL_LIB_DIR="/usr/local/cuda/lib64" \
     USE_SYSTEM_NCCL=1 
-RUN apt-get -y update && apt-get -y install git &&\
+RUN apt-get -y update && apt-get -y --no-install-recommends install git &&\
     cd /stage && git clone https://github.com/pytorch/pytorch.git &&\
     cd pytorch &&\
     git checkout v1.6.0-rc3 &&\
@@ -142,7 +147,7 @@ WORKDIR /stage
 # note: user should install firmware on host using ${MOFED_VERSION} or higher
 ARG MOFED_VERSION
 COPY --from=build /stage/mofed-${MOFED_VERSION} /stage/mofed-${MOFED_VERSION}
-RUN apt-get -y update && apt-get -y install build-essential &&\
+RUN apt-get -y update && apt-get -y --no-install-recommends install build-essential &&\
     cd /stage/mofed-${MOFED_VERSION} &&\
     ./mlnxofedinstall --basic --force --user-space-only --without-fw-update
 
@@ -161,7 +166,7 @@ ENV LD_LIBRARY_PATH=/opt/ompi4/lib:$LD_LIBRARY_PATH
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 ENV OMPI_MCA_pml=ucx
-RUN apt-get -y update && apt-get -y install \
+RUN apt-get -y update && apt-get -y --no-install-recommends install \
         openssh-server \
         openssh-client \
         libnuma-dev &&\
