@@ -344,7 +344,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #ifdef USE_NNAPI
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(sf));
 #else
-      fprintf(stderr, "DNNLibrary/NNAPI is not supported in this build");
+      fprintf(stderr, "NNAPI is not supported in this build");
       return -1;
 #endif
     }
