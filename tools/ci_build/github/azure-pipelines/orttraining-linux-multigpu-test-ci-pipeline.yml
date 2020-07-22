@@ -2,7 +2,8 @@ trigger: none
 
 jobs:
 - job: Onnxruntime_Linux_Multi_GPU_Test
-  pool: Linux-Multi-GPU-V100
+  #pool: Linux-Multi-GPU-V100
+  pool: Linux-GPU-CUDA10
 
   timeoutInMinutes: 0
 
