@@ -451,16 +451,62 @@ def my_loss(x, target):
 def transformer_model_description():
     bptt=35
     ntokens = 2300 #temp
+    batch_size = 20
 
-    model_desc = {'inputs':  [('input1', [bptt, 'batch']),
-                              ('label', [bptt, 'batch', ntokens],)],
+    model_desc = {'inputs':  [('input1', [bptt, batch_size]),
+                              ('label', [bptt, batch_size, ntokens],)],
                   'outputs': [('loss', [], True)]}
     return model_desc
+
+def batchify(data, bsz, TEXT, device):
+    data = TEXT.numericalize([data.examples[0].text])
+    # Divide the dataset into bsz parts.
+    nbatch = data.size(0) // bsz
+    # Trim off any extra elements that wouldn't cleanly fit (remainders).
+    data = data.narrow(0, 0, nbatch * bsz)
+    # Evenly divide the data across the bsz batches.
+    data = data.view(bsz, -1).t().contiguous()
+    return data.to(device)
+
+def get_batch(source, i, bptt=35):
+    # import pdb; pdb.set_trace()
+    seq_len = min(bptt, len(source) - 1 - i)
+    data = source[i:i+seq_len]
+    target = source[i+1:i+1+seq_len].view(-1)
+    return data, target
+
+def my_loss(x, target):
+    x = x.view(-1, 28785) #thiagofc: hard-coded for testing
+    return nn.CrossEntropyLoss()(x, target)
 
 def testInstantiateORTTrainer():
     model = TransformerModel(2300, 200, 2, 200, 2, 0.2)
     model_desc = transformer_model_description()
     optim_config = optim.LambConfig()
-    model_opts = orttrainer_options.ORTTrainerOptions({})
+    # make trainer
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=None)
+
+    # prep data
+    import torchtext
+    from torchtext.data.utils import get_tokenizer
+    TEXT = torchtext.data.Field(tokenize=get_tokenizer("basic_english"),
+                            init_token='<sos>',
+                            eos_token='<eos>',
+                            lower=True)
+    train_txt, val_txt, test_txt = torchtext.datasets.WikiText2.splits(TEXT)
+    TEXT.build_vocab(train_txt)
+    device = torch.device("cpu") #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    batch_size = 20
+    eval_batch_size = 20 # thiagofc: original was 10
+    train_data = batchify(train_txt, batch_size, TEXT, device)
+    val_data = batchify(val_txt, eval_batch_size, TEXT, device)
+    test_data = batchify(test_txt, eval_batch_size, TEXT, device)
+
+    # start training
+    for batch, i in enumerate(range(0, train_data.size(0)-1, 35)):
+        data, targets = get_batch(train_data, i)
+        trainer.train_step(data, targets) # removed learning rate here and in model desc
+        break
+
 
