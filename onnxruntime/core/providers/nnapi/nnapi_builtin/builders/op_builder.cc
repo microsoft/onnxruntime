@@ -1570,13 +1570,13 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
 
   int32_t GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& /* node */) const override {
-    return 29;
+    return 28;
   }
 
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
 
-bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
+bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
   Shape input_shape;
   if (!GetShape(*node.InputDefs()[0], input_shape))
     return false;
@@ -1587,6 +1587,19 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, cons
                           << input_size << "d shape";
     return false;
   }
+
+  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
+  if (android_skd_ver < 29) {
+    NodeAttrHelper helper(node);
+    int32_t axis = helper.Get("axis", 1);
+    if (axis != 1) {
+      LOGS_DEFAULT(VERBOSE)
+          << "SoftMax only support axis 1 on Android API level: " << android_skd_ver
+          << " input axis: " << axis;
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -1594,30 +1607,45 @@ void SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
+  const auto android_skd_ver = model_builder.GetAndroidSdkVer();
   NodeAttrHelper helper(node);
 
   auto input = node.InputDefs()[0]->Name();
-  if (model_builder.IsOperandNHWC(input)) {
-    // We want to transpose nhwc operand back to nchw before softmax
-    const auto& nhwc_input = node.InputDefs()[0]->Name();
-    if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
-      input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
-      TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+  bool input_is_nhwc = model_builder.IsOperandNHWC(input);
+  bool output_is_nhwc = input_is_nhwc;
+  if (android_skd_ver < 29) {
+    if (model_builder.IsOperandNHWC(input)) {
+      output_is_nhwc = false;
+      // We want to transpose nhwc operand back to nchw before softmax
+      const auto& nhwc_input = node.InputDefs()[0]->Name();
+      if (!model_builder.GetNCHWOperand(nhwc_input, input)) {
+        input = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
+        TransposeNHWCToNCHW(model_builder, nhwc_input, input);
+      }
     }
+  }
+
+  int32_t axis = helper.Get("axis", 1);
+  if (output_is_nhwc) {
+    const int32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
+    axis = axis_nchw_to_nhwc[axis];
   }
 
   const auto& output = node.OutputDefs()[0]->Name();
   float beta = 1.f;
-  int32_t axis = helper.Get("axis", 1);
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(model_builder.AddOperandFromScalar(beta));
-  input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+
+  if (android_skd_ver > 28) {
+    // you can only specify axis for android api level 29+
+    input_indices.push_back(model_builder.AddOperandFromScalar(axis));
+  }
 
   shaper.Identity(input, output);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices, {output},
-                             {output_operand_type}, {false});
+                             {output_operand_type}, {output_is_nhwc});
 }
 
 #pragma endregion
