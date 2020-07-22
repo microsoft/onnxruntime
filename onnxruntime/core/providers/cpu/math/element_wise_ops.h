@@ -794,7 +794,12 @@ void BroadcastOneSpan(concurrency::ThreadPool* tp, double unit_cost, TOutput* ou
 }
 
 template <typename TInput, typename TOutput, typename Input0Scalar, typename Input1Scalar, typename General>
-Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1Scalar input1scalar, General general, double unit_cost) {
+Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1Scalar input1scalar, General general, double unit_cost=-1.0f) {
+  if (unit_cost == -1.0f) { // no paralellization 
+    TBroadcaster<TInput, TInput> bc(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
+    TBroadcastOutput<TOutput> output(bc.GetSpanSize(), *context.Output(0, bc.GetOutputShape()));
+    BroadcastLoop(bc, output, input0scalar, input1scalar, general);
+  } else {
   const Tensor* input0_tensor = context.Input<Tensor>(0);
   const Tensor* input1_tensor = context.Input<Tensor>(1);
   TBroadcaster<TInput, TInput> bc(*input0_tensor, *input1_tensor);
@@ -805,10 +810,10 @@ Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1S
   concurrency::ThreadPool* tp = context.GetOperatorThreadPool();
   if (span_size != 0) {
     if (output_size == static_cast<int64_t>(span_size)) {  // Only one big span for all data, parallel inside it
-      BroadcastOneSpan(tp, unit_cost, output_tensor.MutableData<TOutput>(), output_size, 
-                        input0_tensor->Data<TInput>(), input0_tensor->Shape().Size(), 
-                        input1_tensor->Data<TInput>(), input1_tensor->Shape().Size(),
-                        input0scalar, input1scalar, general);
+      BroadcastOneSpan(tp, unit_cost, output_tensor.MutableData<TOutput>(), output_size,
+                       input0_tensor->Data<TInput>(), input0_tensor->Shape().Size(),
+                       input1_tensor->Data<TInput>(), input1_tensor->Shape().Size(),
+                       input0scalar, input1scalar, general);
     } else {
       concurrency::ThreadPool::TryParallelFor(
           tp, output_size / span_size, unit_cost * span_size,
@@ -819,6 +824,7 @@ Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1S
             BroadcastLoop(span_bc, span_output, input0scalar, input1scalar, general);
           });
     }
+  }
   }
   return Status::OK();
 }
