@@ -113,6 +113,14 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
                                             ::onnxruntime::MakeString(__VA_ARGS__))
 
+// Specific to shape inferencing check. Check condition.
+// NOTE: The arguments get streamed into a string via ostringstream::operator<<
+// DO NOT use a printf format string, as that will not work as you expect.
+#define ORT_SHAPE_ENFORCE(condition, ...)                                          \
+  if (!(condition))                                                                \
+  throw ::onnxruntime::OnnxRuntimeShapeException(ORT_WHERE_WITH_STACK, #condition, \
+                                                 ::onnxruntime::MakeString(__VA_ARGS__))
+
 #define ORT_MAKE_STATUS(category, code, ...)                     \
   ::onnxruntime::common::Status(::onnxruntime::common::category, \
                                 ::onnxruntime::common::code,     \

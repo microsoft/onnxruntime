@@ -21,7 +21,6 @@ limitations under the License.
 #include "orttraining/core/graph/gradient_config.h"
 #include "test/util/include/test_random_seed.h"
 #include <random>
-#include <chrono>
 namespace onnxruntime {
 namespace test {
 
@@ -439,19 +438,11 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     bool check_not_have_gradient,
     bool check_not_have_shape_inferencing) {
   // Initialize numeric Jacobian to zeros.
-  auto start = std::chrono::high_resolution_clock::now();
   std::vector<std::vector<JAC_T>> jacobian_ns;
   InitJacobians(x_infos, y_infos, &jacobian_ns);
-  auto finish = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> diff = finish - start;
-  std::cout << "LOG:ComputeGradientErrorInternal.InitJacobians:" << diff.count() << "\n";
   // Compute numeric Jacobian.
-  start = std::chrono::high_resolution_clock::now();
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(
       op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas, &jacobian_ns, attributes));
-  finish = std::chrono::high_resolution_clock::now();
-  diff = finish - start;
-  std::cout << "LOG:ComputeGradientErrorInternal.ComputeNumericJacobianTranspose:" << diff.count() << "\n";
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
@@ -477,13 +468,9 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
                       [](const TensorInfo& info) { return !info.has_gradient; }))
         // a gradient node cannot get created without any has_gradient node.
         continue;
-      start = std::chrono::high_resolution_clock::now();
       // Compute theoretical Jacobian.
       ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(
           op_def, x_infos_gradient_variation, y_infos, x_datas, y_datas, &jacobian_ts, attributes, add_shape));
-      finish = std::chrono::high_resolution_clock::now();
-      diff = finish - start;
-      std::cout << "LOG:ComputeGradientErrorInternal.ComputeTheoreticalJacobianTranspose:" << diff.count() << "\n";
       // We have numeric jacobians regardless of has_gradient (computed once).
       // We only have theoretical jacobians for those has_gradient.
       // Theoretical jacobians are 0 for those not has_gradient.

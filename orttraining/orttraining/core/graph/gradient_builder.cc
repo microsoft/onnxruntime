@@ -248,8 +248,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         }
       }
     }
-    std::cout << "INFO: MatMulGrad : Static Shape Available\n";
-  } catch (onnxruntime::OnnxRuntimeException e) {
+  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg, b_axes_arg;
 
@@ -277,7 +276,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
       ComputeBroadcastBackwardAxesDynamic(IA("PreReduceGrad1"), B, a_axes_arg, b_axes_arg, result);
       HandleBroadcastingDynamic(IA("PreReduceGrad1"), B, GI(1), b_axes_arg, result);
     }
-    std::cout << "INFO: MatMulGrad : Static Shape Not Available\n";
   }
 
   return result;
@@ -415,9 +413,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
                       {dC}));
         }
       }
-      std::cout << "INFO: GemmGrad : Static Shape Available\n";
-
-    } catch (onnxruntime::OnnxRuntimeException e) {
+    } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
       //GetShape failed, build shape-independent gradient graph
       ArgDef c_axes_arg = IA("ReduceAxes_" + C.name);
       ArgDef dy_axes_arg = IA("ReduceAxes_" + dY.name);
@@ -437,8 +433,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
         result.push_back(
             NodeDef("Identity", {IA("dC_reduced")}, {dC}));
       }
-
-      std::cout << "INFO: GemmGrad : Static Shape Not Available\n";
     }
   }
   return result;
@@ -730,9 +724,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
         }
       }
     }
-    std::cout << "INFO: AddSubGrad : Static Shape Available\n";
-
-  } catch (onnxruntime::OnnxRuntimeException e) {
+  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
     ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
@@ -753,7 +745,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
                     {GI(1)}));
       }
     }
-    std::cout << "INFO: AddSubGrad : Static Shape Not Available\n";
   }
   return output;
 }
@@ -802,9 +793,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                     {GI(1)}));
       }
     }
-    std::cout << "INFO: MulGrad : Static Shape Available\n";
-
-  } catch (onnxruntime::OnnxRuntimeException e) {
+  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
     ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
@@ -827,7 +816,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
 
       HandleBroadcastingDynamic(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes_arg, output);
     }
-    std::cout << "INFO: MulGrad : Static Shape Not Available\n";
   }
 
   return output;
@@ -854,9 +842,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
       } else {
         output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
       }
-      std::cout << "INFO: DivGrad : Static Shape Available\n";
-
-    } catch (onnxruntime::OnnxRuntimeException e) {
+    } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
       //GetShape failed, build shape-independent gradient graph
       ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
       ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
@@ -865,8 +851,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
       ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
       output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
       HandleBroadcastingDynamic(tmp_grad, a, GI(0), a_axes_arg, output);
-
-      std::cout << "INFO: DivGrad : Static Shape Not Available\n";
     }
 
     return output;
@@ -1050,7 +1034,6 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
     ComputeBroadcastBackwardAxes(B_shape, GetShape(X), &result, nullptr);
     return result;
   }();
-  std::cout << "INFO: GetBiasGeluGradNodes : Static Shape Available\n";
   return std::vector<NodeDef>{
       NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
               {dY, X, B},
@@ -1068,8 +1051,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
              dX = GI(0), dB = GI(1);
   try {
     return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
-  } catch (onnxruntime::OnnxRuntimeException e) {
-    std::cout << "INFO: GetBiasGeluGradient : Static Shape Not Available\n";
+  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
     std::vector<NodeDef> result;
     ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
     ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
@@ -1098,8 +1080,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
                dB = GI(1);
     try {
       return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
-    } catch (onnxruntime::OnnxRuntimeException e) {
-      std::cout << "INFO: GetFastGeluGradient : Static Shape Not Available\n";
+    } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
       std::vector<NodeDef> result;
       ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
       ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
@@ -1258,17 +1239,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
                   {GO(0)},
                   {GI(0)}));
     }
-    std::cout << "INFO: ExpandGrad : Static Shape Available\n";
-
-  } catch (onnxruntime::OnnxRuntimeException e) {
+  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
     ArgDef y_axes_arg = IA("ReduceAxes_" + y.name);
     ComputeBroadcastBackwardAxesDynamic(a, y, a_axes_arg, y_axes_arg, output);
 
     HandleBroadcastingDynamic(GO(0), a, GI(0), a_axes_arg, output);
-
-    std::cout << "INFO: ExpandGrad : Static Shape Not Available\n";
   }
 
   return output;
