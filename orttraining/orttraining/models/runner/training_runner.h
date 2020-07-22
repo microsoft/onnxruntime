@@ -247,7 +247,7 @@ class TrainingRunner {
   // Information for running pipeline.
   pipeline::PipelineContext pipeline_context_;
   // Pipeline schedule for deciding when to run batch, forward, or backward.
-  pipeline::PipelineSchedule pipeline_schedule_;
+  pipeline::PipelineScheduler pipeline_schedule_;
   // Workers to run pipeline stage.
   pipeline::PipelineWorkerPool pipeline_worker_pool_;
 };

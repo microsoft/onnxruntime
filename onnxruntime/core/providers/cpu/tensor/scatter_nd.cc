@@ -16,16 +16,16 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <typename Tind>
 Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
-  auto input_tensor = context->Input<Tensor>(0);
-  auto indice_tensor = context->Input<Tensor>(1);
-  auto update_tensor = context->Input<Tensor>(2);
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto* indice_tensor = context->Input<Tensor>(1);
+  const auto* update_tensor = context->Input<Tensor>(2);
   ORT_ENFORCE(input_tensor != nullptr);
   ORT_ENFORCE(indice_tensor != nullptr);
   ORT_ENFORCE(update_tensor != nullptr);
 
-  auto input_shape = input_tensor->Shape();
-  auto indice_shape = indice_tensor->Shape();
-  auto update_shape = update_tensor->Shape();
+  const auto& input_shape = input_tensor->Shape();
+  const auto& indice_shape = indice_tensor->Shape();
+  const auto& update_shape = update_tensor->Shape();
   if (indice_shape.NumDimensions() == 0 || input_shape.NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input tensor and indices tensor must has rank larger than 0. ",
@@ -63,7 +63,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
                            "updates shape: ", update_shape, ", indices shape: ", indice_shape, ", data shape: ", input_shape);
   }
 
-  auto output_tensor = context->Output(0, TensorShape(input_shape));
+  auto output_tensor = context->Output(0, input_shape);
 
   const auto* src_base = input_tensor->DataRaw();
   auto* dst_base = output_tensor->MutableDataRaw();

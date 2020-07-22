@@ -5,6 +5,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/optional.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {
@@ -224,31 +225,29 @@ TEST(PathTest, RelativePathFailure) {
 
 TEST(PathTest, Concat) {
   auto check_concat =
-      [](const std::string& a, const std::string& b, const std::string& expected_a) {
+      [](const optional<std::string>& a, const std::string& b, const std::string& expected_a, bool expect_throw = false) {
         Path p_a{}, p_expected_a{};
-        ASSERT_STATUS_OK(Path::Parse(ToPathString(a), p_a));
+        if (a.has_value()) {
+          ASSERT_STATUS_OK(Path::Parse(ToPathString(a.value()), p_a));
+        }
         ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
 
-        EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
+        if (expect_throw) {
+          EXPECT_THROW(p_a.Concat(ToPathString(b)).ToPathString(), OnnxRuntimeException);
+        } else {
+          EXPECT_EQ(p_a.Concat(ToPathString(b)).ToPathString(), p_expected_a.ToPathString());
+        }
       };
 
-  check_concat("/a/b", "c", "/a/bc");
-  check_concat("a/b", "cd", "a/bcd");
-}
-
-TEST(PathTest, ConcatIndex) {
-  auto check_concat_index =
-      [](const std::string& a, const int i, const std::string& expected_a) {
-        Path p_a{}, p_expected_a{};
-        ASSERT_STATUS_OK(Path::Parse(ToPathString(a), p_a));
-        ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_a), p_expected_a));
-
-        EXPECT_EQ(p_a.ConcatIndex(i).ToPathString(), p_expected_a.ToPathString());
-      };
-
-  check_concat_index("/a/b", 0, "/a/b0");
-  check_concat_index("a/b", 123, "a/b123");
-  check_concat_index("a/b", -1, "a/b-1");
+  check_concat({"/a/b"}, "c", "/a/bc");
+  check_concat({"a/b"}, "cd", "a/bcd");
+  check_concat({""}, "cd", "cd");
+  check_concat({}, "c", "c");
+#ifdef _WIN32
+  check_concat({"a/b"}, R"(c\d)", "", true /* expect_throw */);
+#else
+  check_concat({"a/b"}, "c/d", "", true /* expect_throw */);
+#endif
 }
 
 }  // namespace test

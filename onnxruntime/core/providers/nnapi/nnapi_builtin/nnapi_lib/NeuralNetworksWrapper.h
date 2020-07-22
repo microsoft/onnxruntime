@@ -113,6 +113,8 @@ struct OperandType {
   // Get the whole blob size in bytes
   size_t GetOperandBlobByteSize() const;
 
+  void SetDimensions(const std::vector<uint32_t>& d);
+
   operator ANeuralNetworksOperandType() const { return operandType; }
 };
 }  // namespace wrapper

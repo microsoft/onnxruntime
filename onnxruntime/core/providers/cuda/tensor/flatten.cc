@@ -50,7 +50,7 @@ Status Flatten::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis, "The rank of input tensor must be >= axis");
 
-  Tensor* Y = ctx->Output(0, TensorShape({X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)}));
+  Tensor* Y = ctx->Output(0, {X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)});
   //If source and target pointers are not equal (non-inplace operation), we need to copy the data.
   const void* source = X->DataRaw();
   void* target = Y->MutableDataRaw();
