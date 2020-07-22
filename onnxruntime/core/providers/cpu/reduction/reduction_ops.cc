@@ -811,4 +811,17 @@ template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
 
+template void ReduceSumCore<float>(const float* input_data, float* output_data, bool no_transpose,
+                                   int64_t blocks, int64_t block_size, FastAllocVector<float>& transposed_input_data,
+                                   concurrency::ThreadPool* tp);
+template void ReduceSumCore<double>(const double* input_data, double* output_data, bool no_transpose,
+                                    int64_t blocks, int64_t block_size, FastAllocVector<double>& transposed_input_data,
+                                    concurrency::ThreadPool* tp);
+template void ReduceSumCore<int64_t>(const int64_t* input_data, int64_t* output_data, bool no_transpose,
+                                     int64_t blocks, int64_t block_size, FastAllocVector<int64_t>& transposed_input_data,
+                                     concurrency::ThreadPool* tp);
+template void ReduceSumCore<int32_t>(const int32_t* input_data, int32_t* output_data, bool no_transpose,
+                                     int64_t blocks, int64_t block_size, FastAllocVector<int32_t>& transposed_input_data,
+                                     concurrency::ThreadPool* tp);
+
 }  // namespace onnxruntime
