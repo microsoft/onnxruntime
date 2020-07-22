@@ -10,7 +10,7 @@ namespace Dml
 {
     using namespace OperatorHelper;
 
-    static const int MaximumDimensionCount = DML_TENSOR_DIMENSION_COUNT_MAX;
+    static const int MaximumDimensionCount = DML_TENSOR_DIMENSION_COUNT_MAX1;
 
     DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataType(MLOperatorTensorDataType tensorDataType);
     DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataType tensorDataType) noexcept;
