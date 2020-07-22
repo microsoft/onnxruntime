@@ -118,7 +118,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
     -  To build your docker image, download the OpenVINO **online installer** package for version **2020.3** for Linux from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and copy the OpenVINO tar file to the same directory before building the Docker image. The online installer size is 19MB and the components needed for the accelerators are mentioned in the dockerfile. Providing the docker build argument DEVICE enables the onnxruntime build for that particular device. You can also provide arguments ONNXRUNTIME_REPO and ONNXRUNTIME_BRANCH to test that particular repo and branch. Default repository is http://github.com/microsoft/onnxruntime and default branch is master.
        ```
-       docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE .
+       docker build --rm -t onnxruntime --build-arg DEVICE=$DEVICE -f Dockerfile.openvino .
        ```
     - Pull the official image from DockerHub.
 
@@ -142,7 +142,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 1. Build the docker image from the DockerFile in this repository.
 
      ```
-     docker build --rm -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host .
+     docker build --rm -t onnxruntime-cpu --build-arg DEVICE=CPU_FP32 --network host -f Dockerfile.openvino .
      ```
 2. Run the docker image
     ```
@@ -153,7 +153,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
 1. Build the docker image from the DockerFile in this repository.
      ```
-      docker build --rm -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host .
+      docker build --rm -t onnxruntime-gpu --build-arg DEVICE=GPU_FP32 --network host -f Dockerfile.openvino .
      ```
 2. Run the docker image
     ```
@@ -163,7 +163,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
 1. Build the docker image from the DockerFile in this repository.
      ```
-      docker build --rm -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host .
+      docker build --rm -t onnxruntime-myriad --build-arg DEVICE=MYRIAD_FP16 --network host -f Dockerfile.openvino .
      ```
 2. Install the Myriad rules drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
 
@@ -181,7 +181,7 @@ Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting
 
 3. Build the docker image from the DockerFile in this repository.
      ```
-      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 --network host .
+      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 --network host -f Dockerfile.openvino .
      ```
 4. Run hddldaemon on the host in a separate terminal session using the following command: 
      ```

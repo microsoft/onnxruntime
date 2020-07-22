@@ -99,6 +99,11 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
 
       bool excludePadding = (pool_type == arm_compute::PoolingType::AVG && pool_attrs.count_include_pad) ? false : true;
 
+      LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
+      LOGS_DEFAULT(VERBOSE) << "kernel shape: {" << aclKernelShape[0] << "," << aclKernelShape[1] << "}";
+      LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
+      LOGS_DEFAULT(VERBOSE) << "excludePadding: " << excludePadding;
+
       arm_compute::PoolingLayerInfo pool_info(pool_type, aclSize, aclPadStride, excludePadding);
       layer->configure(tpool.in.get(), tpool.out.get(), pool_info);
     }
@@ -145,8 +150,14 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
-  if ((X->Shape().NumDimensions() != PREF_DIM) ||
-      (aclDilations[0] * aclDilations[1] > 1)) {
+  if (X->Shape().NumDimensions() != PREF_DIM) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
+    Status s = onnxruntime::Pool<T, PoolType>::Compute(context);
+    return s;
+  }
+
+  if (aclDilations[0] * aclDilations[1] > 1) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for dilation; defaulting to cpu implementation";
     Status s = onnxruntime::Pool<T, PoolType>::Compute(context);
     return s;
   }
@@ -154,10 +165,14 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   arm_compute::PoolingType pool_type;
   if (PoolBase::op_name_ == "GlobalAveragePool" || PoolBase::op_name_ == "AveragePool")
     pool_type = arm_compute::PoolingType::AVG;
+    LOGS_DEFAULT(VERBOSE) << "AveragePool";
   else if (PoolBase::op_name_ == "GlobalMaxPool" || PoolBase::op_name_ == "MaxPool")
     pool_type = arm_compute::PoolingType::MAX;
-  else
+    LOGS_DEFAULT(VERBOSE) << "MaxPool";
+  else {
+    LOGS_DEFAULT(WARNING) << "Pooling operation not supported in ArmNN; defaulting to cpu implementation";
     return onnxruntime::Pool<T, PoolType>::Compute(context);
+  }
 
   PoolLayersIterator it = Pool::poolLayers.find((OpKernel*) this);
   bool insert = it == Pool::poolLayers.end();
@@ -166,6 +181,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     std::pair<PoolLayersIterator, bool> ret;
     ret = Pool::poolLayers.insert(std::pair<OpKernel*, ACLNEPool>((OpKernel*) this, pPool));
   }
+
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   return Status::OK();
 }
@@ -179,11 +196,19 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
-  if ((X->Shape().NumDimensions() != PREF_DIM) ||
-      (aclDilations[0] * aclDilations[1] > 1)) {
+  if (X->Shape().NumDimensions() != PREF_DIM) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
     Status s = onnxruntime::MaxPoolV8::Compute(context);
     return s;
   }
+
+  if (aclDilations[0] * aclDilations[1] > 1) {
+    LOGS_DEFAULT(WARNING) << "ArmNN does not have support for dilation; defaulting to cpu implementation";
+    Status s = onnxruntime::MaxPoolV8::Compute(context);
+    return s;
+  }
+
+  LOGS_DEFAULT(VERBOSE) << "MaxPoolV8";
 
   PoolLayersIterator it = MaxPoolV8::maxPoolLayers.find((OpKernel*) this);
   bool insert = it == MaxPoolV8::maxPoolLayers.end();
@@ -192,6 +217,8 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
     std::pair<PoolLayersIterator, bool> ret;
     ret = MaxPoolV8::maxPoolLayers.insert(std::pair<OpKernel*, ACLNEPool>((OpKernel*) this, pPool));
   }
+
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   return Status::OK();
 }
