@@ -141,7 +141,8 @@ def main():
                                device,
                                args.precision == Precision.FLOAT16,
                                rtol=args.tolerance,
-                               atol=args.tolerance)
+                               atol=args.tolerance,
+                               model_class=args.model_class)
 
     logger.info(f"Done. Output model: {output_path}")
 
