@@ -392,4 +392,70 @@ class ORTTrainer(object):
             if input_desc[0] in kwargs:
                 input = input + (kwargs[input_desc[0]],)
 
+
         return input
+
+
+    def _create_ort_training_session(self):
+        # Validating frozen_weights names
+        unused_frozen_weights = [n for n in options.utils.frozen_weights if n not in [i.name for i in model.graph.initializer]]
+        if unused_frozen_weights:
+            raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(unused_frozen_weights))
+
+        # Get loss name from model description
+        loss_name = [name for item in self.model_desc.outputs if len(item) == 3 and item[2]]
+        assert len(loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
+        loss_name = loss[0]
+
+        # Parse optimizer parameters
+        optimizer_attributes_map = {}
+        optimizer_int_attributes_map = {}
+        trainable_params = set()
+        for initializer in model.graph.initializer:
+            if initializer.name in frozen_weights:
+                continue  # only trainable parameters are passed to the backend
+            trainable_params.add(initializer.name)
+            optimizer_attributes_map[initializer.name] = {}
+            optimizer_int_attributes_map[initializer.name] = {}
+            for param_group in self.optimizer_config.params:
+                if initializer.name not in param_group['params']:
+                    continue  # keep looking for a matching param_group
+                optimizer_attributes_map[initializer.name] = {}
+                optimizer_int_attributes_map[initializer.name] = {}
+                for k, v in param_group.items():
+                    if k == 'params':
+                        continue  # 'params' is not a hyper parameter, skip it
+                    if isinstance(v, float):
+                        optimizer_attributes_map[initializer.name][k] = v
+                    elif isinstance(v, int):
+                        optimizer_int_attributes_map[initializer.name][k] = v
+                    else:
+                        raise ValueError("Optimizer attributes must be either float or int.")
+
+        # TrainingParameters
+        ort_parameters = ort.TrainingParameters()
+        ort_parameters.loss_output_name = loss_name
+        ort_parameters.use_mixed_precision = options.mixed_precision.enabled
+        ort_parameters.world_rank = options.distributed.world_rank
+        ort_parameters.world_size = options.distributed.world_size
+        ort_parameters.gradient_accumulation_steps = options.batch.gradient_accumulation_steps
+        ort_parameters.allreduce_post_accumulation = options.distributed.allreduce_post_accumulation
+        ort_parameters.deepspeed_zero_stage = options.distributed.deepspeed_zero_stage
+        ort_parameters.enable_grad_norm_clip = options.utils.grad_norm_clip
+        ort_parameters.set_gradients_as_graph_outputs = False
+        ort_parameters.training_optimizer_name = optimizer_config.name
+        ort_parameters.lr_params_feed_name = optimizer_config.lr
+        ort_parameters.trainable_params = trainable_params
+        ort_parameters.optimizer_attributes_map = optimizer_attributes_map
+        ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
+
+        # SessionOptions
+        session_options = ort.SessionOptions()
+        session_options.use_deterministic_compute = use_deterministic_compute
+
+        # TrainingSession
+        self._training_session = ort.TrainingSession(model.SerializeToString(), ort_parameters, session_options)
+
+        # I/O bindings
+        self._train_io_binding = session.io_binding()
+        self._eval_io_binding = session.io_binding()
