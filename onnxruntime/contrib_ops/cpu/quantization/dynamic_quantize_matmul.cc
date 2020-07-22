@@ -83,6 +83,10 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   ORT_RETURN_IF_ERROR(helper.Compute(a_shape, b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
   const auto* b_data = static_cast<const uint8_t*>(b->DataRaw());
   const bool b_is_signed = b->IsDataType<int8_t>();
   auto* y_data = y->template MutableData<float>();
