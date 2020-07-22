@@ -58,7 +58,7 @@ stages:
               -f ${{ variables.linux_gpu_dockerfile }} .
           workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
-       - task: CmdLine@2
+      - task: CmdLine@2
         inputs:
           script: |
             sudo --preserve-env docker run \
