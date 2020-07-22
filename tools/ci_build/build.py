@@ -355,6 +355,9 @@ def parse_arguments():
         "--armnn_relu", action='store_true',
         help="Use the Relu operator implementation from the ArmNN EP.")
     parser.add_argument(
+        "--armnn_bn", action='store_true',
+        help="Use the Batch Normalization operator implementation from the ArmNN EP.")
+    parser.add_argument(
         "--build_micro_benchmarks", action='store_true',
         help="Build ONNXRuntime micro-benchmarks.")
     return parser.parse_args()
@@ -654,6 +657,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
             "OFF" if args.armnn_relu else "ON"),
+        "-Donnxruntime_ARMNN_BN_USE_CPU=" + (
+            "OFF" if args.armnn_bn else "ON"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
             "ON" if args.enable_nvtx_profile else "OFF"),
@@ -1631,7 +1636,7 @@ def main():
                     "Only Windows ARM(64) cross-compiled builds supported "
                     "currently through this script")
             install_ubuntu_deps(args)
-            if not is_docker() and not args.use_armnn:
+            if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
