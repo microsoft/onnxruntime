@@ -135,9 +135,15 @@ class ORTTrainerOptions(object):
                             'default' : True
                         },
                         'extra_postprocess' : {
-                            'check_with' : 'callable',
+                            'type' : 'callable',
                             'nullable' : True,
                             'default' : None
+                        },
+                        'onnx_opset_version': {
+                            'type': 'integer',
+                            'min' : 10,
+                            'max' : 12,
+                            'default': 12
                         }
                     }
                 }
@@ -187,12 +193,14 @@ class ORTTrainerOptions(object):
         utils.grad_norm_clip (bool, default is False):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
         _internal_use (dict):
-            internal, possibly undocumented, options that might be removed in the next release
+            internal options, possibly undocumented, that might be removed without notice
         _internal_use.enable_internal_postprocess (bool, default is True):
             enable internal internal post processing of the ONNX model
         _internal_use.extra_postprocess (callable, default is None)
             a functor to postprocess the ONNX model.
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
+        _internal_use.onnx_opset_version (int, default is 12):
+            ONNX opset version used during model exporting.
 
     Example:
         .. code-block:: python
@@ -413,7 +421,12 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'check_with': _check_is_callable,
                 'nullable': True,
                 'default': None
-
+            },
+            'onnx_opset_version': {
+                'type': 'integer',
+                'min' : 10,
+                'max' : 12,
+                'default': 12
             }
         }
     }
