@@ -991,10 +991,6 @@ If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Pro
 
 Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
-##### Build Instructions
-
-Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
-
 ---
 
 ### AMD MIGraphX
