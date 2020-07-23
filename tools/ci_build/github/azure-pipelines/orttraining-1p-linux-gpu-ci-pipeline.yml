@@ -48,7 +48,7 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            sudo docker build \
+            docker build \
               --pull \
               -t ${{ variables.docker_image_prefix }}-manylinux-gpu-$(python.version) \
               --build-arg BUILD_USER=onnxruntimedev \
@@ -62,7 +62,7 @@ stages:
       - task: CmdLine@2
         inputs:
           script: |
-            sudo --preserve-env docker run \
+            --preserve-env docker run \
               --gpus all \
               --rm \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
