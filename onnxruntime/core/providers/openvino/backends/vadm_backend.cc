@@ -148,7 +148,7 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
       const int64_t* tensor_data_64 = ort.GetTensorData<int64_t>(tensor);
       auto data_len = (input_data_size * 2) / sizeof(int64_t);
       const int64_t* batch_memory_offset = tensor_data_64 + data_len * batch_slice_idx;
-      
+
       std::copy(batch_memory_offset, batch_memory_offset+data_len, (uint32_t*)graph_input_buffer);
     } else {
 
