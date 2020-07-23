@@ -167,6 +167,8 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
                       use_gpu, precision, optimize_onnx, validate_onnx, use_raw_attention_mask, overwrite,
                       model_fusion_statistics):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
+    if hasattr(config, 'return_tuple'):
+        config.return_tuple = True
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir)
     model.cpu()
 
