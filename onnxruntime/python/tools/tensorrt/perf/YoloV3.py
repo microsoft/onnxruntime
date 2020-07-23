@@ -23,22 +23,30 @@ class YoloV3(BaseModel):
         self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "yolov3") 
 
 
-    def preprocess(self):
-        return
+    def get_ort_inputs(self, ort_inputs):
 
-    def inference(self, input_list=None):
-        session = self.session_
-        if input_list:
-            outputs = []
-            for test_data in input_list:
-                img_data = test_data[0]
-                img_data_2 = test_data[1]
-                output = session.run(None, {
-                    session.get_inputs()[0].name: img_data,
-                    session.get_inputs()[1].name: img_data_2,
-                })
-                outputs.append([output[0]])
-            self.outputs_ = outputs
+        data = {}
+        for i in range(len(ort_inputs)):
+            ort_input = ort_inputs[i]
+            name = self.session_.get_inputs()[i].name 
+            data[name] = ort_input
+        return data
+
+
+    def inference(self):
+        self.outputs_ = []
+
+        for ort_inputs in self.inputs_:
+
+            data = {}
+            for i in range(len(ort_inputs)):
+                ort_input = ort_inputs[i]
+                name = self.session_.get_inputs()[i].name 
+                data[name] = ort_input
+
+            output = self.session_.run(None, data) 
+
+            self.outputs_.append([output[0]])
 
     def postprocess(self):
         return

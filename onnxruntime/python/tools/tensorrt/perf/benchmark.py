@@ -13,6 +13,7 @@ import re
 from onnx import numpy_helper
 from perf_utils import analyze_profiling_file
 import pprint
+import torch
 
 from BERTSquad import *
 from Resnet50 import *
@@ -49,35 +50,35 @@ logger = logging.getLogger('')
 
 MODELS = {
     "bert-squad": (BERTSquad, "bert-squad"),
-    # "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    # "ssd": (SSD, "ssd"),
-    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
-    # "resnet152": (Resnet152, "resnet152"),
-    # "inception-v2": (InceptionV2, "inception-v2"),
-    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    # "zfnet512": (Zfnet512, "zfnet512"),
-    # "vgg19-bn": (Vgg, "vgg19-bn"),
-    # "resnet50": (Resnet50, "resnet50"),
-    # "resnet101": (Resnet101, "resnet101"),
-    # "inception-v1": (InceptionV1, "inception-v1"),
-    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
-    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
-    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
-    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
-    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
-    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    # "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
-    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    # "retinanet": (Retinanet, "retinanet"),
-    # #### "yolov3": (YoloV3, "yolov3"), # runtime error
-    # "yolov4": (YoloV4, "yolov4"),
-    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    # "Arc-Face": (ArcFace, "arc-face"),
-    # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
-    # "Fast-Neural": (FastNeural, "Fast-Neural"),
-    # "BiDAF": (BiDAF, "BiDAF"),
-    # #### "GPT2": (GPT2, "GPT2"), # OOM
+    "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    "ssd": (SSD, "ssd"),
+    "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    "resnet152": (Resnet152, "resnet152"),
+    "inception-v2": (InceptionV2, "inception-v2"),
+    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    "zfnet512": (Zfnet512, "zfnet512"),
+    "vgg19-bn": (Vgg, "vgg19-bn"),
+    "resnet50": (Resnet50, "resnet50"),
+    "resnet101": (Resnet101, "resnet101"),
+    "inception-v1": (InceptionV1, "inception-v1"),
+    "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
+    "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
+    "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    "retinanet": (Retinanet, "retinanet"),
+    ##### "yolov3": (YoloV3, "yolov3"), # TRT runtime error
+    ##### "yolov4": (YoloV4, "yolov4"),
+    "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    "Arc-Face": (ArcFace, "arc-face"),
+    #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    "Fast-Neural": (FastNeural, "Fast-Neural"),
+    "BiDAF": (BiDAF, "BiDAF"),
+    ### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -97,24 +98,81 @@ def get_latency_result(runtimes, batch_size):
 
 
 def inference_ort(model, ort_inputs, result_template, repeat_times, batch_size):
-    result = {}
 
     runtimes = []
     for ort_input in ort_inputs:
         session = model.get_session() 
+
         inputs = model.get_ort_inputs(ort_input)
         outputs = model.get_ort_outputs()
         try:
-            runtimes = runtimes + timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times+1)
+            runtimes = runtimes + timeit.repeat(lambda: session.run(outputs, inputs), number=1, repeat=repeat_times)
         except Exception as e:
             logger.error(e)
             return None
 
     print(runtimes)
-    runtimes[:] = runtimes[1:] # we intentionally skip the first run due to TRT is expensive on first run
-    print(runtimes)
+
+    result = {}
     result.update(result_template)
     result.update({"io_binding": False})
+    result.update(get_latency_result(runtimes, batch_size))
+    return result
+
+def inference_ort_with_io_binding(model, ort_inputs, result_template, repeat_times, batch_size, device='cuda'):
+    runtimes = []
+
+    session = model.get_session() 
+
+    # Bind inputs and outputs to onnxruntime session
+    io_binding = session.io_binding()
+
+    for ort_input in ort_inputs:
+
+        # Bind inputs to device
+        if model.get_model_name() == 'BERT-Squad':
+            name = session.get_inputs()[0].name
+            print(name)
+            np_input = torch.from_numpy(ort_input[0]).to(device)
+            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
+            name = session.get_inputs()[1].name
+            print(name)
+            np_input = torch.from_numpy(ort_input[1][0:1]).to(device)
+            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
+            name = session.get_inputs()[2].name
+            print(name)
+            np_input = torch.from_numpy(ort_input[2][0:1]).to(device)
+            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
+            name = session.get_inputs()[3].name
+            print(name)
+            np_input = torch.from_numpy(ort_input[3][0:1]).to(device)
+            io_binding.bind_input(name, np_input.device.type, 0, numpy.longlong, np_input.shape, np_input.data_ptr())
+        else:
+            name = session.get_inputs()[0].name
+            print(ort_input[0])
+            np_input = torch.from_numpy(ort_input[0]).to(device)
+            io_binding.bind_input(name, np_input.device.type, 0, numpy.float32, np_input.shape, np_input.data_ptr())
+
+        name_o = session.get_outputs()[0].name
+        io_binding.bind_output(name_o)
+
+        # name = session.get_inputs()[0].name
+        # np_input = torch.from_numpy(numpy.asarray(ort_inputs[0][0])).to(device)
+        # io_binding.bind_input(name, np_input.device.type, 0, numpy.float32, np_input.shape, np_input.data_ptr())
+        # name_o = session.get_outputs()[0].name
+        # io_binding.bind_output(name_o, 'cpu', 0, numpy.float32, session.get_outputs()[0].shape, None)
+
+        try:
+            runtimes = runtimes + timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+        except Exception as e:
+            logger.error(e)
+            return None
+
+    print(runtimes)
+
+    result = {}
+    result.update(result_template)
+    result.update({"io_binding": True})
     result.update(get_latency_result(runtimes, batch_size))
     return result
 
@@ -156,8 +214,8 @@ def get_trt_version():
 #
 # The following two lists will be generated.
 #
-# inputs: [[[test_data_0_input_0.pb], [test_data_0_input_1.pb] ...], [[test_data_1_input_0.pb], [test_data_1_input_1.pb] ...] ...]
-# outputs: [[[test_data_0_output_0.pb], [test_data_0_output_1.pb] ...], [[test_data_1_output_0.pb], [test_data_1_output_1.pb] ...] ...]
+# inputs: [[test_data_0_input_0.pb, test_data_0_input_1.pb ...], [test_data_1_input_0.pb, test_data_1_input_1.pb ...] ...]
+# outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #
 def load_onnx_model_zoo_test_data(path):
     print("Parsing inputs/outputs of test data in {} ...".format(path))
@@ -387,8 +445,8 @@ def run_onnxruntime(args, models=MODELS):
         else:
             provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 
+        provider_list = ["CUDAExecutionProvider"]
 
-        # provider_list = ["CUDAExecutionProvider"]
 
         # iterate ep 
         for i in range(len(provider_list)):
@@ -411,8 +469,6 @@ def run_onnxruntime(args, models=MODELS):
                 logger.error("No {} support".format(ep_))
                 continue
                 
-            start_time = datetime.now()
-
             # create onnxruntime inference session
             logger.info("\nInitializing {} with {}...".format(name, provider_list[i:]))
 
@@ -430,9 +486,10 @@ def run_onnxruntime(args, models=MODELS):
             optimize_onnx = False
             batch_size = 1
 
-            # enable profiling
+            # enable profiling to generate profiling file for analysis
             options = onnxruntime.SessionOptions()
             options.enable_profiling = True 
+            options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
             model.set_session_options(options)
 
             try: 
@@ -446,29 +503,19 @@ def run_onnxruntime(args, models=MODELS):
             sess = model.get_session()
             sess.disable_fallback()
 
-            result_template = {
-                "engine": "onnxruntime",
-                "version": onnxruntime.__version__,
-                "device": ep,
-                "optimizer": optimize_onnx,
-                "fp16": fp16,
-                "io_binding": False,
-                "model_name": model_name,
-                "inputs": len(sess.get_inputs()),
-                "batch_size": batch_size,
-                "sequence_length": sequence_length,
-                "datetime": str(datetime.now()),
-                "total_time": None,
-            }
 
             logger.info("Start to inference {} with {} ...".format(model_name, ep))
             logger.info(sess.get_providers())
             logger.info("ORT_TENSORRT_FP16_ENABLE={}".format(os.environ["ORT_TENSORRT_FP16_ENABLE"]))
 
-            if model.get_input_name():
-                logger.info("Model inputs name:")
-                for input_meta in model.get_input_name():
+            if model.get_input_nodes():
+                logger.info("Model inputs nodes:")
+                for input_meta in model.get_input_nodes():
                     logger.info(input_meta)
+            if model.get_output_nodes():
+                logger.info("Model outputs nodes:")
+                for output_meta in model.get_output_nodes():
+                    logger.info(output_meta)
 
             # first, run inference and validate the result
             if ep in ['TensorrtExecutionProvider', 'CUDAExecutionProvider']:
@@ -487,32 +534,46 @@ def run_onnxruntime(args, models=MODELS):
                     continue
 
 
-            # measure inference
-            result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
+            # make sure profiling file will be generated by runing one inference
+            inference_ort(model, inputs, {}, 1, batch_size)
+            sess.end_profiling()
 
-            #skip TRT fp16 validation if it already passed on previous non-fp16 TRT
-            if ep == "TensorrtExecutionProvider_fp16" and "TensorrtExecutionProvider" not in ep_fail_set:
-                status = True
-            else:
-                status = validate(ref_outputs, model.get_outputs(), model.get_decimal())
-            if not status:
-                ep_fail_set.add(ep)
-                update_fail_model(model_name, ep, ep_model_fail_map)
-                continue
+            for io_binding in [True, False]:
+                result_template = {
+                    "engine": "onnxruntime",
+                    "version": onnxruntime.__version__,
+                    "device": ep,
+                    "optimizer": optimize_onnx,
+                    "fp16": fp16,
+                    "io_binding": io_binding,
+                    "model_name": model_name,
+                    "inputs": len(sess.get_inputs()),
+                    "batch_size": batch_size,
+                    "sequence_length": sequence_length,
+                    "datetime": str(datetime.now()),
+                }
 
-            end_time = datetime.now()
-            result["total_time"] = str(end_time - start_time) 
+                result = None
 
-            latency_result[ep] = result["average_latency_ms"]
+                # measure inference
+                if io_binding:
+                    # can't do io-binding for BiDAF
+                    if model.get_model_name() != 'BiDAF':
+                        result = inference_ort_with_io_binding(model, inputs, result_template, args.test_times, batch_size)
+                        latency_result[ep + "_io_binding"] = result["average_latency_ms"]
+                else:
+                    result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
+                    latency_result[ep] = result["average_latency_ms"]
 
-            logger.info(result)
-            results.append(result)
+
+                if result:
+                    logger.info(result)
+                    results.append(result)
+
             latency_comparison_map[model_name] = copy.deepcopy(latency_result)
 
             # end of ep
 
-        sess = model.get_session()
-        sess.end_profiling()
         if len(ep_fail_set) == 0:
             presults = analyze_profiling_file(path)
             for i in range(len(presults)):
@@ -528,24 +589,6 @@ def run_onnxruntime(args, models=MODELS):
                 profile_metrics_map[name]['total_ops'] = total_ops
                 profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
                 profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
-
-            # if trt_fall_back:
-                # update_fail_model(model_name, "TensorrtExecutionProvider", ep_model_fail_map)
-                # latency_comparison_map.pop(model_name, None)
-            # else:
-                # for i in range(len(presults)):
-                    # result = presults[i]
-                    # total_ops_in_trt = result[0]
-                    # total_ops = result[1]
-                    # ratio_of_ops_in_trt = result[2]
-                    # ratio_of_execution_time_in_trt =  result[3]
-                    
-                    # name = model_name + " (TRT fp16)" if i == 0 else model_name
-                    # profile_metrics_map[name] = {}
-                    # profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
-                    # profile_metrics_map[name]['total_ops'] = total_ops
-                    # profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                    # profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
 
         # cleanup_files()
         os.chdir(pwd)
@@ -573,7 +616,7 @@ def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "engine", "version", "device", "fp16", "optimizer", "io_binding", "model_name", "inputs", "batch_size",
-            "sequence_length", "datetime", "total_time", "test_times", "QPS", "average_latency_ms", "latency_variance",
+            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
@@ -588,8 +631,11 @@ def output_latency(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
                         "CUDA latency (ms)",
+                        "CUDA latency with io_binding (ms)",
                         "TRT latency (ms)",
+                        "TRT latency with io_binding (ms)",
                         "TRT latency with fp16 (ms)",
+                        "TRT latency with fp16 and io_binding (ms)",
                         "TRT gain (%)",
                         "TRT f16 gain(%)"]
         csv_writer = csv.writer(csv_file)
@@ -598,8 +644,11 @@ def output_latency(results, csv_filename):
         for key, value in results.items():
             row = [key,
                    value['CUDAExecutionProvider'] if 'CUDAExecutionProvider' in value else "  ",
+                   value['CUDAExecutionProvider_io_binding'] if 'CUDAExecutionProvider_io_binding' in value else "  ",
                    value['TensorrtExecutionProvider'] if 'TensorrtExecutionProvider' in value else "  ",
+                   value['TensorrtExecutionProvider_io_binding'] if 'TensorrtExecutionProvider_io_binding' in value else "  ",
                    value['TensorrtExecutionProvider_fp16'] if 'TensorrtExecutionProvider_fp16' in value else "  ",
+                   value['TensorrtExecutionProvider_fp16_io_binding'] if 'TensorrtExecutionProvider_fp16_io_binding' in value else "  ",
                    value['Tensorrt_gain(%)'] if 'Tensorrt_gain(%)' in value else "  ",
                    value['Tensorrt_fp16_gain(%)'] if 'Tensorrt_fp16_gain(%)' in value else "  "
                    ]
@@ -644,7 +693,7 @@ def parse_arguments():
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=3,
+                        default=20,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 

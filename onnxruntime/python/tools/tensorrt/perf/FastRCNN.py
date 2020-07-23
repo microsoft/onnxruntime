@@ -61,7 +61,8 @@ class FastRCNN(BaseModel):
             output = self.session_.run(None, {
                 self.session_.get_inputs()[0].name: img_data
             })
-            self.outputs_.append([output[0]])
+            # self.outputs_.append([output[0]])
+            self.outputs_.append(output)
 
         '''
         session = self.session_

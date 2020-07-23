@@ -41,9 +41,14 @@ class BaseModel(object):
     def set_session_options(self, session_options):
         self.session_options_ = session_options 
 
-    def get_input_name(self):
+    def get_input_nodes(self):
         if self.session_:
             return self.session_.get_inputs()
+        return None
+
+    def get_output_nodes(self):
+        if self.session_:
+            return self.session_.get_outputs()
         return None
 
     def get_ort_inputs(self, inputs):
