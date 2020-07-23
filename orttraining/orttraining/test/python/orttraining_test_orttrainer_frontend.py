@@ -506,4 +506,11 @@ def testInstantiateORTTrainer():
         trainer.train_step(data, targets, learning_rate) # removed learning rate here and in model desc
         break
 
+    assert trainer.get_onnx() is not None
+    model = trainer.get_onnx()
+    import onnx
+    #print(onnx.helper.printable_graph(model.graph))
+    print(model.graph.input)
+    print(model.graph.output)
+
 
