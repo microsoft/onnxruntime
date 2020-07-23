@@ -25,16 +25,16 @@ For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorf
 
 ### GPT-2 Model conversion
 
-For GPT2 model, it is not straightforward in exporting when past state is involved. We add a [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/convert_to_onnx.py) tool that could help you on converting GPT-2 model from PyTorch to ONNX.
+Converting GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. We add a tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/convert_to_onnx.py) to help you.
 
-you can use commands like the following to convert a pre-trained PyTorch model to ONNX for given precision (float32, float16 or int8):
+You can use commands like the following to convert a pre-trained PyTorch GPT-2 model to ONNX for given precision (float32, float16 or int8):
 ```
 python -m onnxruntime_tools.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
 python -m onnxruntime_tools.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
 python -m onnxruntime_tools.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p int32 --optimize_onnx
 ```
 
-The tool will also verify wheather the ONNX model generates same outputs as the PyTorch model given same random inputs.
+The tool will also verify whether the ONNX model and corresponding PyTorch model generate same outputs given same random inputs.
 
 ## Model Optimizer
 
@@ -82,7 +82,7 @@ See below for description of some options of optimizer.py:
 
 ### Supported Models
 
-Here is list of models from [Huggingface Transformers](https://github.com/huggingface/transformers/) that have been tested using the optimizer:
+Here is a list of PyTorch models from [Huggingface Transformers](https://github.com/huggingface/transformers/) that have been tested using the optimizer:
 - BERT
 - DistilBERT
 - DistilGPT2
@@ -90,11 +90,12 @@ Here is list of models from [Huggingface Transformers](https://github.com/huggin
 - ALBERT
 - GPT-2 (**GPT2Model**, **GPT2LMHeadModel**)
 
+For Tensorflow model, we only tested BERT model so far.
+
 Most optimizations require exact match of a subgraph. Any layout change in subgraph might cause some optimization not working. Note that different versions of training or export tool might lead to different graph layouts. It is recommended to use latest released version of PyTorch and Transformers.
 
 If your model is not in the list, it might only be partial optimized or not optimized at all.
 
-For Tensorflow model, we only tested BERT model so far.
 
 ## Benchmark
 There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.
