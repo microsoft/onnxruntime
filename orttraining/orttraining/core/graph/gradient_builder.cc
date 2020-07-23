@@ -248,7 +248,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         }
       }
     }
-  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+  } catch (onnxruntime::OnnxRuntimeShapeException e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg, b_axes_arg;
 
@@ -413,7 +413,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
                       {dC}));
         }
       }
-    } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+    } catch (onnxruntime::OnnxRuntimeShapeException e) {
       //GetShape failed, build shape-independent gradient graph
       ArgDef c_axes_arg = IA("ReduceAxes_" + C.name);
       ArgDef dy_axes_arg = IA("ReduceAxes_" + dY.name);
@@ -724,7 +724,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
         }
       }
     }
-  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+  } catch (onnxruntime::OnnxRuntimeShapeException e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
     ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
@@ -793,7 +793,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                     {GI(1)}));
       }
     }
-  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+  } catch (onnxruntime::OnnxRuntimeShapeException e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
     ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
@@ -842,7 +842,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
       } else {
         output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
       }
-    } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+    } catch (onnxruntime::OnnxRuntimeShapeException e) {
       //GetShape failed, build shape-independent gradient graph
       ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
       ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
@@ -1051,7 +1051,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
              dX = GI(0), dB = GI(1);
   try {
     return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
-  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+  } catch (onnxruntime::OnnxRuntimeShapeException e) {
     std::vector<NodeDef> result;
     ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
     ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
@@ -1080,7 +1080,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
                dB = GI(1);
     try {
       return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
-    } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+    } catch (onnxruntime::OnnxRuntimeShapeException e) {
       std::vector<NodeDef> result;
       ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
       ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
@@ -1239,7 +1239,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
                   {GO(0)},
                   {GI(0)}));
     }
-  } catch (const onnxruntime::OnnxRuntimeShapeException& e) {
+  } catch (onnxruntime::OnnxRuntimeShapeException e) {
     //GetShape failed, build shape-independent gradient graph
     ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
     ArgDef y_axes_arg = IA("ReduceAxes_" + y.name);
