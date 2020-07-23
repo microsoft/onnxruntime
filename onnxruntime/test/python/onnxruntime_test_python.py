@@ -613,6 +613,35 @@ class TestInferenceSession(unittest.TestCase):
             # Make sure the usage of the feature is disabled after this test
             os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)
 
+    def testCloningSessionOptions(self):
+        so = onnxrt.SessionOptions()
+        so.log_verbosity_level = 1  # Non-default value
+        cloned_options = so.clone()
+        self.assertEqual(cloned_options.log_verbosity_level, 1)
+        self.assertEqual(so.log_verbosity_level, 1)
+
+    def testSessionOptionsAddFreeDimensionOverride(self):
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override("DATA_BATCH", 3)
+        so.add_free_dimension_override("DATA_CHANNEL", 5)
+        sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "x")
+        input_shape = sess.get_inputs()[0].shape
+        # Free dims with denotations - "DATA_BATCH" and "DATA_CHANNEL" have values assigned to them.
+        self.assertEqual(input_shape, [3, 5, 5])
+
+    def testSessionOptionsAddFreeDimensionOverrideByName(self):
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_name("Dim1", 4)
+        so.add_free_dimension_override_by_name("Dim2", 6)
+        sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "x")
+        input_shape = sess.get_inputs()[0].shape
+        # "Dim1" and "Dim2" have values assigned to them.
+        self.assertEqual(input_shape, [4, 6, 5])
+
 
 if __name__ == '__main__':
     unittest.main()
