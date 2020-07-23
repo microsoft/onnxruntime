@@ -110,13 +110,17 @@ void LearningModelSession::Initialize() {
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
   }
 
-  // Make onnxruntime apply the batch size override, if any
-  if (session_options_ && session_options_.BatchSizeOverride() != 0) {
-    WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
-  }
-  com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
-  if (session_options_ && session_options_impl->NamedDimensionOverrides().size() > 0) {
-    WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+  if (session_options_) {
+    // Make onnxruntime apply the batch size override, if any
+    if (session_options_.BatchSizeOverride() != 0) {
+      WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
+    }
+
+    // Make onnxruntime apply named dimension overrides, if any
+    com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
+    if (session_options_impl && !session_options_impl->NamedDimensionOverrides().empty()) {
+      WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+    }
   }
 
   com_ptr<_winml::IEngine> engine;
