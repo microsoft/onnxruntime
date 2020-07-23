@@ -1019,7 +1019,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
                      R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
       .def(
-          "add_free_dimension_override",
+          "add_free_dimension_override_by_denotation",
           [](SessionOptions* options, const char* dim_name, int64_t dim_value)
               -> void { options->free_dimension_overrides.push_back(
                             onnxruntime::FreeDimensionOverride{
@@ -1035,11 +1035,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                                 dim_name,
                                 onnxruntime::FreeDimensionOverrideType::Name,
                                 dim_value}); },
-          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc")
-      .def(
-          "clone", [](SessionOptions* options) -> SessionOptions { 
-              SessionOptions cloned = *options;  
-              return cloned; }, R"pbdoc(Clone this SessionOptions instance.)pbdoc");
+          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())

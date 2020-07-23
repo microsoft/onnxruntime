@@ -613,17 +613,10 @@ class TestInferenceSession(unittest.TestCase):
             # Make sure the usage of the feature is disabled after this test
             os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)
 
-    def testCloningSessionOptions(self):
+    def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
         so = onnxrt.SessionOptions()
-        so.log_verbosity_level = 1  # Non-default value
-        cloned_options = so.clone()
-        self.assertEqual(cloned_options.log_verbosity_level, 1)
-        self.assertEqual(so.log_verbosity_level, 1)
-
-    def testSessionOptionsAddFreeDimensionOverride(self):
-        so = onnxrt.SessionOptions()
-        so.add_free_dimension_override("DATA_BATCH", 3)
-        so.add_free_dimension_override("DATA_CHANNEL", 5)
+        so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
+        so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
         sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "x")
