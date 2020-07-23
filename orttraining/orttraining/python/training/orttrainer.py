@@ -2,6 +2,7 @@ import onnx
 import torch
 from inspect import signature
 import io
+from inspect import signature
 
 from distutils.version import LooseVersion
 import onnx
@@ -9,7 +10,6 @@ import onnxruntime.capi.postprocess as postprocess
 from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
-
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
