@@ -54,6 +54,7 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
   // If only need to load partial data for data-parallelism training
   if (world_size > 1) {
     if (world_rank >= world_size) {
+      std::cout<<"in data_loader: "<<world_rank<<" "<<world_size<<std::endl;
       ORT_THROW("world_rank must be 0~", world_size - 1);
     }
 

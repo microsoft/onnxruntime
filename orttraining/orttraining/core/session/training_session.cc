@@ -126,6 +126,7 @@ const std::string TrainingSession::training_mode_string_ = "training_mode";
 
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
+
   ORT_RETURN_IF(
       IsInitialized(),
       "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
@@ -135,8 +136,9 @@ Status TrainingSession::ConfigureForTraining(
   std::unordered_set<std::string> filtered_config_weight_names_to_train;
   FilterUnusedWeights(config.weight_names_to_train, filtered_config_weight_names_to_train);
 
-  TrainingConfigurationResult config_result{};
 
+  TrainingConfigurationResult config_result{};
+std::cout<<"** inside ConfigureForTraining 1"<<std::endl;
   ORT_ENFORCE(config.distributed_config.pipeline_parallel_size > 0,
               "This parameter should be 1 if there is no pipelie parallelism. Otherwise, it's the number of pipeline stages.");
 
@@ -147,14 +149,22 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.data_parallel_size,
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
-
+std::cout<<"** inside ConfigureForTraining 3"<<std::endl;
+  int32_t pipeline_stage_id = -1;
+  if (config.pipeline_config.has_value()){
+    // pipeline_stage_id = DistributedRunContext::GroupId(WorkerGroupType::ModelParallel);
+    // a pipeline group contains ranks that compose to a whole graph, with each partition belong to
+    // a single rank.
+    pipeline_stage_id = DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel);
+  }
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    std::cout<<"*** pipeline_stage_id: "<<pipeline_stage_id<<std::endl;
     ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
                                                           config.pipeline_config.value().cut_list,
-                                                          config.distributed_config.world_rank,
-                                                          config.distributed_config.world_size));
+                                                          pipeline_stage_id,
+                                                          config.distributed_config.pipeline_parallel_size));
   }
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
@@ -166,7 +176,7 @@ Status TrainingSession::ConfigureForTraining(
   // enabled, we need to devise another way to check MP stages.
   bool enable_loss_scale = is_mixed_precision_enabled_ &&
                            (!config.pipeline_config.has_value() ||
-                            (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
+                            (pipeline_stage_id + 1 == config.distributed_config.pipeline_parallel_size));
   optional<std::string> loss_scale_input_name =
       enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
@@ -180,9 +190,13 @@ Status TrainingSession::ConfigureForTraining(
         config.loss_function_config.has_value()
             ? config.loss_function_config.value().loss_function_info
             : optional<LossFunctionInfo>{};
+    std::cout<<" ** loss_function_info "<<loss_function_info.has_value()<<std::endl;
     ORT_RETURN_IF_ERROR(ConfigureLossFunction(
         config.loss_name, loss_function_info,
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
+  }
+  else{
+    std::cout<<"** loss_name: "<<loss_name<<std::endl;
   }
 
   ORT_ENFORCE(
@@ -357,6 +371,7 @@ Status TrainingSession::ConfigureForTraining(
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
   // conflict. It is user's responsibility to make sure different rank is passed in with different
   // model_with_training_graph_path value.
+  // TODO: fix d+m
   if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
@@ -416,6 +431,7 @@ static Status ConfigureLossFunctionInternal(
     Graph& graph,
     std::string* loss_scale_input_name,
     std::string& actual_loss_name) {
+  std::cout<<" ** "<<(loss_func_info.has_value() && loss_graph_builder)<<" "<<external_loss_name.has_value()<<std::endl;
   // build loss function or use external one
   ORT_RETURN_IF_NOT(
       (loss_func_info.has_value() && loss_graph_builder) ^ external_loss_name.has_value(),
@@ -910,7 +926,7 @@ Status TrainingSession::SetEvalFeedNames() {
       }
     }
   }
-  
+
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
   return DoPostLoadProcessing(*model_);
 }

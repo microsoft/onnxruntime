@@ -67,6 +67,8 @@ class TrainingSession : public InferenceSession {
       int horizontal_parallel_size{1};
       // The number of pipeline stages.
       int pipeline_parallel_size{1};
+
+      int pipeline_stage_id{0};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};

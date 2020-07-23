@@ -421,6 +421,54 @@ TEST(DistributedRunContextTest, MixedParallelTest4) {
   }
 }
 
+TEST(DistributedRunContextTest, MixedParallelTest_pipeline) {
+
+  // int32_t world_rank{0};  // Get global world rank
+  // int32_t world_size{1};  // Get global world size
+  // int32_t local_rank{0};  // Get local rank on one physical node.
+  // int32_t local_size{1};  // Get local size of one physical node.
+  // int32_t data_parallel_size{1};
+  // int32_t horizontal_parallel_size{1};
+  // int32_t pipeline_stage_size{1};
+
+  DistributedRunConfig config = {0, 8, 0, 8, 2, 2, 2};
+  DistributedRunTestContext ctx(config);
+  ASSERT_EQ(ctx.GetRunConfig().world_rank, config.world_rank);
+  ASSERT_EQ(ctx.GetRunConfig().world_size, config.world_size);
+  ASSERT_EQ(ctx.GetRunConfig().local_rank, config.local_rank);
+  ASSERT_EQ(ctx.GetRunConfig().local_size, config.local_size);
+  ASSERT_EQ(ctx.GetRunConfig().data_parallel_size, config.data_parallel_size);
+  ASSERT_EQ(ctx.GetRunConfig().horizontal_parallel_size, config.horizontal_parallel_size);
+
+  auto data_group = ctx.GetWorkerGroup(WorkerGroupType::DataParallel);
+  ASSERT_EQ(data_group.group_id, 0);
+  ASSERT_EQ(data_group.group_type, WorkerGroupType::DataParallel);
+  ASSERT_EQ(data_group.rank_in_group, 0);
+  ASSERT_EQ(data_group.ranks.size(), 2);
+  std::vector<int32_t> expected = {0, 2};
+  for (auto i = 0; i < 2; i++) {
+    ASSERT_EQ(data_group.ranks[i], expected[i]);
+  }
+
+  auto hori_group = ctx.GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+  ASSERT_EQ(hori_group.group_id, 0);
+  ASSERT_EQ(hori_group.group_type, WorkerGroupType::HorizontalParallel);
+  ASSERT_EQ(hori_group.rank_in_group, 0);
+  ASSERT_EQ(hori_group.ranks.size(), 2);
+  for (auto i = 0; i < 2; i++) {
+    ASSERT_EQ(hori_group.ranks[i], i);
+  }
+
+  auto mp_group = ctx.GetWorkerGroup(WorkerGroupType::ModelParallel);
+  ASSERT_EQ(mp_group.group_id, 0);
+  ASSERT_EQ(mp_group.group_type, WorkerGroupType::ModelParallel);
+  ASSERT_EQ(mp_group.rank_in_group, 0);
+  ASSERT_EQ(mp_group.ranks.size(), 2);
+  for (auto i = 0; i < 2; i++) {
+    ASSERT_EQ(mp_group.ranks[i], i * 2 * 2);
+  }
+}
+
 TEST(DistributedRunContextTest, FailTest) {
   try {
     DistributedRunConfig config = {63, 64, 3, 4, 65, 1};
