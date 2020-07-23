@@ -5,6 +5,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/nn/dropout_impl.h"
+#include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/common.h"
 #include "core/framework/random_seed.h"
 
@@ -37,6 +38,7 @@ struct DropoutComputeImpl {
   }
 };
 
+template <bool trainable_dropout>
 class Dropout final : public CudaKernel {
  public:
   Dropout(const OpKernelInfo& info) : CudaKernel(info) {
@@ -53,7 +55,8 @@ class Dropout final : public CudaKernel {
   static constexpr float default_ratio_ = 0.5f;
 };
 
-Status Dropout::ComputeInternal(OpKernelContext* context) const {
+template <bool trainable_dropout>
+Status Dropout<trainable_dropout>::ComputeInternal(OpKernelContext* context) const {
   //Get X_data
   const Tensor* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
@@ -77,7 +80,8 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
-  if ((0 == ratio_data) ||(training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
+  if ((0 == ratio_data /*Backward compat with TrainableDropout*/) ||
+      (!trainable_dropout && (training_mode == nullptr || *(training_mode->Data<bool>()) == false))) {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {

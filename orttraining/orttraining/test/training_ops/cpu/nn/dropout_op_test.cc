@@ -34,9 +34,9 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
   return ort_value.Get<Tensor>();
 }
 
-void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
+void RunDropoutTest(const char* op, const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                     bool training_mode = true, bool use_float16_ratio = false) {
-  OpTester t{"Dropout", k_dropout_opset_version, kOnnxDomain};
+  OpTester t{op, k_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
       input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
@@ -63,10 +63,12 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     }
   }
 
-  if (training_mode)
+  if (strcmp(op, "TrainableDropout") != 0 && training_mode) {
     t.AddInput("training_mode", {}, {true});
+  }
 
   t.AddOutput<float>("output", input_shape, input);  // we'll do our own output verification
+
   std::unique_ptr<bool[]> mask_buffer{};
   if (use_mask) {
     mask_buffer = onnxruntime::make_unique<bool[]>(input_size);
@@ -122,19 +124,35 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 // Dropout
 
 TEST(DropoutTest, Basic) {
-  RunDropoutTest(false, {10, 10, 10}, 0.75f);
+  RunDropoutTest("Dropout", false, {10, 10, 10}, 0.75f);
 }
 
 TEST(DropoutTest, Mask) {
-  RunDropoutTest(true, {1000}, 0.25f);
+  RunDropoutTest("Dropout", true, {1000}, 0.25f);
 }
 
 TEST(DropoutTest, RatioLimit) {
-  RunDropoutTest(true, {1000}, 0.0f, false);
+  RunDropoutTest("Dropout", true, {1000}, 0.0f, false);
 }
 
 TEST(DropoutTest, EmptyRatio) {
-  RunDropoutTest(true, {1000});
+  RunDropoutTest("Dropout", true, {1000});
+}
+
+TEST(TrainableDropoutTest, Basic) {
+  RunDropoutTest("TrainableDropout", false, {10, 10, 10}, 0.75f);
+}
+
+TEST(TrainableDropoutTest, Mask) {
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.25f);
+}
+
+TEST(TrainableDropoutTest, RatioLimit) {
+  RunDropoutTest("TrainableDropout", true, {1000}, 0.0f, false);
+}
+
+TEST(TrainableDropoutTest, EmptyRatio) {
+  RunDropoutTest("TrainableDropout", true, {1000});
 }
 
 // BiasDropout kernel is only implemented for CUDA
@@ -261,9 +279,9 @@ TEST(BiasDropoutTest, EmptyRatio) {
 #endif
 
 namespace {
-void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
+void RunDropoutGradTest(const char* op, float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
   const auto input_shape = TensorShape(input_dims);
-  OpTester test("DropoutGrad", 1, kMSDomain);
+  OpTester test(op, 1, kMSDomain);
   if (default_ratio) {
     ratio = 0.5f;
   }
@@ -294,9 +312,13 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   } else {
     test.AddMissingOptionalInput<float>();
   }
-  
-  test.AddInput<bool>("training_mode", {}, {true});
+
+  if (strcmp(op, "TrainableDropoutGrad") != 0) {
+    test.AddInput<bool>("training_mode", {}, {true});
+  }
+
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
+
   test.Run();
 }
 }  // namespace
@@ -305,19 +327,38 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
 
 TEST(DropoutGradTest, Basic) {
   //Ratio 0.2, 1D
-  RunDropoutGradTest(0.2f, {16}, false);
+  RunDropoutGradTest("DropoutGrad", 0.2f, {16}, false);
 
   //Ratio 0.3, 2D
-  RunDropoutGradTest(0.3f, {8, 2}, false);
+  RunDropoutGradTest("DropoutGrad", 0.3f, {8, 2}, false);
 
   //Ratio 0.4, 3D
-  RunDropoutGradTest(0.4f, {2, 4, 2}, false);
+  RunDropoutGradTest("DropoutGrad", 0.4f, {2, 4, 2}, false);
 
   //default Ratio, 3D
-  RunDropoutGradTest(0.5f, {2, 4, 2});
+  RunDropoutGradTest("DropoutGrad", 0.5f, {2, 4, 2});
 }
+
 TEST(DropoutGradTest, RatioLimit) {
-  RunDropoutGradTest(0.0f, {16}, false);
+  RunDropoutGradTest("DropoutGrad", 0.0f, {16}, false);
+}
+
+TEST(TrainableDropoutGradTest, Basic) {
+  //Ratio 0.2, 1D
+  RunDropoutGradTest("TrainableDropoutGrad", 0.2f, {16}, false);
+
+  //Ratio 0.3, 2D
+  RunDropoutGradTest("TrainableDropoutGrad", 0.3f, {8, 2}, false);
+
+  //Ratio 0.4, 3D
+  RunDropoutGradTest("TrainableDropoutGrad", 0.4f, {2, 4, 2}, false);
+
+  //default Ratio, 3D
+  RunDropoutGradTest("TrainableDropoutGrad", 0.5f, {2, 4, 2});
+}
+
+TEST(TrainableDropoutGradTest, RatioLimit) {
+  RunDropoutGradTest("TrainableDropoutGrad", 0.0f, {16}, false);
 }
 
 }  // namespace test

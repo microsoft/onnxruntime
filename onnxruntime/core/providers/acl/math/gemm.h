@@ -65,6 +65,7 @@ class Gemm : public onnxruntime::Gemm<T> {
     bool useC = C != nullptr && beta_ != 0;
 
     if(trans_A_ == CblasTrans){ // transpose input
+      LOGS_DEFAULT(WARNING) << "Transposed input not supported ; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
@@ -72,31 +73,34 @@ class Gemm : public onnxruntime::Gemm<T> {
     if(useC &&
       (cShape.num_dimensions() > 2 ||
       (cShape.num_dimensions() == 2 && cShape[0] > 1 && cShape[1] > 1))) { // Multi-dimensional Bias
+      LOGS_DEFAULT(WARNING) << "Multi-dimensional Bias not supported in this implementation; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
     if(useC && (cShape.num_dimensions() == 1 && cShape[0] != (long unsigned int) N)) { // Broadcast
+      LOGS_DEFAULT(WARNING) << "Multi-dimensional Bias not supported in this implementation; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
+    LOGS_DEFAULT(VERBOSE) << "Gemm ACL:";
     if(useC && cShape.num_dimensions() == 2){
       if((cShape[0] == 1 && cShape[1] != (long unsigned int) N) ||
          (cShape[1] == 1 && cShape[0] != (long unsigned int) N)) {
         return onnxruntime::Gemm<T>::Compute(context);
       }
       cShape = arm_compute::TensorShape(1, N);
+      LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {1," << N << "}";
     }
 
     int64_t K = helper.K();
-    LOGS_DEFAULT(VERBOSE) << "Gemm ACL:" << std::endl;
-    if (A) LOGS_DEFAULT(VERBOSE) << "A " << A->Shape().ToString().c_str() << std::endl;
-    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str() << std::endl;
-    if (C) LOGS_DEFAULT(VERBOSE) << "C " << C->Shape().ToString().c_str() << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "D " << D->Shape().ToString().c_str() << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_ << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans) << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans) << std::endl;
+    if (A) LOGS_DEFAULT(VERBOSE) << "A " << A->Shape().ToString().c_str();
+    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
+    if (C) LOGS_DEFAULT(VERBOSE) << "C " << C->Shape().ToString().c_str();
+    LOGS_DEFAULT(VERBOSE) << "D " << D->Shape().ToString().c_str();
+    LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K;
+    LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_;
+    LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans);
+    LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans);
     LOGS_DEFAULT(VERBOSE) << std::endl;
 
     ACLNEGEMM* pGEMM;

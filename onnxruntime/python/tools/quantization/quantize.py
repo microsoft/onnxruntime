@@ -356,6 +356,8 @@ class ONNXQuantizer:
                     new_list += self._handle_activation_ops(node, new_list)
                 elif node.op_type == 'Attention':
                     new_list += self._quantize_attention(node, new_list)
+                elif node.op_type == 'EmbedLayerNormalization':
+                    new_list += self._quantize_embed_layernorm(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -1128,6 +1130,15 @@ class ONNXQuantizer:
         gather_original_output = node.output[0]
         node.output[0] = gather_new_output
         node.input[0] = quantized_input_names[0]
+        nodes.append(node)
+
+        return nodes
+
+    def _quantize_embed_layernorm(self, node, new_nodes_list):
+        assert (node.op_type == "EmbedLayerNormalization")
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [2, 3, 4], new_nodes_list)
+
         nodes.append(node)
 
         return nodes

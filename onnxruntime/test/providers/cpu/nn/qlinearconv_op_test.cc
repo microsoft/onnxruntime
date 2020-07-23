@@ -73,22 +73,22 @@ void TestQLinearConvOp(OpTester& test,
                        const QuantizedBiasTensor* B,
                        const QuantizedTensor& Y,
                        const std::vector<int64_t>& Y_shape,
+                       bool all_input_initializer_except_x = false,
                        const std::unordered_set<std::string>& excluded_provider_types = {}) {
-
   test.AddInput<uint8_t>("x", X_shape, X.quantized_);
-  test.AddInput<float>("x_scale", {}, {X.scale_});
-  test.AddInput<uint8_t>("x_zero_point", {}, {X.zero_point_});
+  test.AddInput<float>("x_scale", {}, {X.scale_}, all_input_initializer_except_x);
+  test.AddInput<uint8_t>("x_zero_point", {}, {X.zero_point_}, all_input_initializer_except_x);
 
-  test.AddInput<uint8_t>("w", W_shape, W.quantized_);
-  test.AddInput<float>("w_scale", {}, {W.scale_});
-  test.AddInput<uint8_t>("w_zero_point", {}, {W.zero_point_});
+  test.AddInput<uint8_t>("w", W_shape, W.quantized_, all_input_initializer_except_x);
+  test.AddInput<float>("w_scale", {}, {W.scale_}, all_input_initializer_except_x);
+  test.AddInput<uint8_t>("w_zero_point", {}, {W.zero_point_}, all_input_initializer_except_x);
 
-  test.AddInput<float>("y_scale", {}, {Y.scale_});
-  test.AddInput<uint8_t>("y_zero_point", {}, {Y.zero_point_});
+  test.AddInput<float>("y_scale", {}, {Y.scale_}, all_input_initializer_except_x);
+  test.AddInput<uint8_t>("y_zero_point", {}, {Y.zero_point_}, all_input_initializer_except_x);
 
   if (B != nullptr) {
     const std::vector<int64_t> B_shape{static_cast<int64_t>(B->quantized_.size())};
-    test.AddInput<int32_t>("b", B_shape, B->quantized_);
+    test.AddInput<int32_t>("b", B_shape, B->quantized_, all_input_initializer_except_x);
   }
 
   test.AddOutput<uint8_t>("y", Y_shape, Y.quantized_);
@@ -96,7 +96,7 @@ void TestQLinearConvOp(OpTester& test,
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
-TEST(QLinearConvTest, Conv2DTest) {
+void RunConv2DTest(bool all_input_initializer_except_x) {
   QuantizedTensor X({0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
                      0.2626858949661255f, 0.13414543867111206f, -0.27184486389160156f, -0.43028733134269714f,
                      -0.26825493574142456f, 0.3893144130706787f, -0.13631996512413025f, -0.009590476751327515f,
@@ -131,7 +131,16 @@ TEST(QLinearConvTest, Conv2DTest) {
                     X, {1, 1, 7, 7},
                     W, {1, 1, 1, 1},
                     nullptr,
-                    Y, {1, 1, 7, 7});
+                    Y, {1, 1, 7, 7},
+                    all_input_initializer_except_x);
+}
+
+TEST(QLinearConvTest, Conv2DTest) {
+  RunConv2DTest(false);
+}
+
+TEST(QLinearConvTest, Conv2DTestAllInputInitializerExceptX) {
+  RunConv2DTest(true);
 }
 
 TEST(QLinearConvTest, Conv3DTest) {
@@ -172,7 +181,7 @@ TEST(QLinearConvTest, Conv3DTest) {
                     Y, {1, 1, 4, 4, 4});
 }
 
-TEST(QLinearConvTest, WithBias_2D) {
+void RunConv2DWithBiasTest(bool all_input_initializer_except_x) {
   QuantizedTensor X({6, 81, 214, 151, 234, 42, 50, 89, 30, 91, 125, 141, 52, 31, 58, 224, 84, 251, 67, 137,
                      223, 119, 79, 220, 249, 75, 131, 246, 113, 56, 54, 197, 110, 142, 126, 171, 53, 228,
                      240, 83, 229, 218, 185, 9, 80, 116, 176, 193, 175, 253},
@@ -203,7 +212,16 @@ TEST(QLinearConvTest, WithBias_2D) {
                     W, {4, 2, 3, 3},
                     &B,
                     Y, {1, 4, 5, 5},
+                    all_input_initializer_except_x,
                     {kNGraphExecutionProvider});
+}
+
+TEST(QLinearConvTest, WithBias_2D) {
+  RunConv2DWithBiasTest(false);
+}
+
+TEST(QLinearConvTest, WithBias_2D_AllInputInitializerExceptX) {
+  RunConv2DWithBiasTest(true);
 }
 
 TEST(QLinearConvTest, WithGroup_2D) {
@@ -236,6 +254,7 @@ TEST(QLinearConvTest, WithGroup_2D) {
                     W, {6, 2, 2, 2},
                     &B,
                     Y, {1, 6, 2, 3},
+                    false,
                     {kNGraphExecutionProvider});
 }
 

@@ -206,7 +206,11 @@ class OnnxModel:
                 return i, matched, return_indice
         return -1, None, None
 
-    def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None,
+    def match_parent_path(self,
+                          node,
+                          parent_op_types,
+                          parent_input_index,
+                          output_name_to_node=None,
                           return_indice=None):
         '''
         Find a sequence of input edges based on constraints on parent op_type and index.
