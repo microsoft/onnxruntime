@@ -11,6 +11,7 @@ from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
 
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
