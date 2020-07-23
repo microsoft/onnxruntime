@@ -328,8 +328,8 @@ void ModelBuilder::RegisterModelInputs() {
           }
 
           // TODO, verify the scale and zero point match if there are multiple op using same input
-          std::tie(scale, zero_point) =
-              GetQuantizedInputScaleAndZeroPoint(*this, *all_quantized_op_inputs.at(input_name)[0], input_name);
+          ORT_THROW_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
+              *this, *all_quantized_op_inputs.at(input_name)[0], input_name, scale, zero_point));
           break;
         }
         default:
