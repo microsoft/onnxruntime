@@ -4,6 +4,8 @@
 #include "nccl_common.h"
 #include <mpi.h>
 
+#include "orttraining/core/framework/mpi_setup.h"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -39,25 +41,25 @@ static Status CreateNcclCommunicator(MPI_Group* mpi_world_group,
 
   // Create new group
   MPI_Group mpi_group;
-  MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group);
+  MPI_CHECK(MPI_Group_incl(*mpi_world_group, worker_group.ranks.size(), worker_group.ranks.data(), &mpi_group));
 
   // Create new MPI communicator
   MPI_Comm mpi_comm;
   static int32_t mpi_group_id = 0;
-  MPI_Comm_create_group(MPI_COMM_WORLD, mpi_group, ++mpi_group_id, &(mpi_comm));
+  MPI_CHECK(MPI_Comm_create_group(MPI_COMM_WORLD, mpi_group, ++mpi_group_id, &(mpi_comm)));
   ORT_ENFORCE(mpi_comm != MPI_COMM_NULL, "MPI communicator creation failed.");
 
   // Create new NCCL communicator
   ncclUniqueId nccl_id;
   if (worker_group.rank_in_group == 0) {
-    ncclGetUniqueId(&nccl_id);
+    NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
   }
-  MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, mpi_comm);
-  ncclCommInitRank(group_comm, worker_group.ranks.size(), nccl_id, worker_group.rank_in_group);
+  MPI_CHECK(MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, mpi_comm));
+  NCCL_RETURN_IF_ERROR(ncclCommInitRank(group_comm, worker_group.ranks.size(), nccl_id, worker_group.rank_in_group));
 
   // Clean up
-  MPI_Group_free(&mpi_group);
-  MPI_Comm_free(&mpi_comm);
+  MPI_CHECK(MPI_Group_free(&mpi_group));
+  MPI_CHECK(MPI_Comm_free(&mpi_comm));
   return Status::OK();
 }
 

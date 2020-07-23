@@ -512,6 +512,10 @@ The Relu operator is set by default to use the CPU execution provider for better
 ```
 ./build.sh --use_armnn --armnn_relu
 ```
+The Batch Normalization operator is set by default to use the CPU execution provider. To use the ArmNN implementation build with --armnn_bn flag
+```
+./build.sh --use_armnn --armnn_bn
+```
 
 ---
 
@@ -981,7 +985,11 @@ Android Archive (AAR) files, which can be imported directly in Android Studio, w
 
 #### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+##### Build Instructions
+
+Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
 ##### Build Instructions
 

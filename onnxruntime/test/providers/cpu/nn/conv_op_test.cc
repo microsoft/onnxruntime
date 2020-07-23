@@ -626,6 +626,9 @@ TEST(ConvTest, Conv2D_group) {
   auto expected_vals = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f, 32.0f, 34.0f};
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+
+  // NNAPI EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
 TEST(ConvTest, ConvDimWithZero) {
