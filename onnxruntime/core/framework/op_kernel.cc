@@ -9,14 +9,9 @@
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-OpKernelContext::OpKernelContext(IExecutionFrame* frame,
-                                 const OpKernel* kernel,
-                                 concurrency::ThreadPool* threadpool,
-                                 const logging::Logger& logger)
-    : execution_frame_(frame),
-      kernel_(kernel),
-      threadpool_(threadpool),
-      logger_(&logger) {
+OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
+                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
+    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 
@@ -28,6 +23,14 @@ OpKernelContext::OpKernelContext(IExecutionFrame* frame,
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
+}
+
+Tensor* OpKernelContext::Output(int index, const std::vector<int64_t>& shape) {
+  return Output(index, TensorShape(shape));
+}
+
+Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>& shape) {
+  return Output(index, TensorShape(shape));
 }
 
 SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& shape) {

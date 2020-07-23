@@ -11,18 +11,11 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "protobufHelpers.h"
 
-#pragma warning(push)
-#pragma warning(disable : 4100)
-#include "onnx/onnx-ml.pb.h"
-#pragma warning(pop)
-
 #include <fstream>
 
-#include "winrt/Windows.Storage.Streams.h"
-
-using namespace winrt::Windows::Storage::Streams;
-using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation::Collections;
+using namespace wss;
+using namespace wfc;
+using namespace winml;
 
 // Copy and pasted from LOTUS as is.    temporary code to load tensors from protobufs
 int FdOpen(const std::string& name) {
@@ -46,8 +39,8 @@ void FdClose(int fd) {
   }
 }
 
-// Copy and pasted from LOTUS as is.    temporary code to load tensors from protobufs
-bool LoadTensorFromPb(onnx::TensorProto& tensor, std::wstring filePath) {
+// Load Onnx TensorProto from Protobuf File
+bool ProtobufHelpers::LoadOnnxTensorFromProtobufFile(onnx::TensorProto& tensor, std::wstring filePath) {
   // setup a string converter
   using convert_type = std::codecvt_utf8<wchar_t>;
   std::wstring_convert<convert_type, wchar_t> converter;
@@ -126,7 +119,7 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
     bool isFp16) {
   // load from the file path into the onnx format
   onnx::TensorProto tensorProto;
-  if (LoadTensorFromPb(tensorProto, filePath)) {
+  if (LoadOnnxTensorFromProtobufFile(tensorProto, filePath)) {
     std::vector<int64_t> tensorShape = std::vector<int64_t>(tensorProto.dims().begin(), tensorProto.dims().end());
     int64_t initialValue = 1;
     int64_t elementCount = std::accumulate(tensorShape.begin(), tensorShape.end(), initialValue, std::multiplies<int64_t>());
@@ -158,7 +151,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
     const std::wstring& filePath) {
   // load from the file path into the onnx format
   onnx::TensorProto tensorProto;
-  if (LoadTensorFromPb(tensorProto, filePath)) {
+  if (LoadOnnxTensorFromProtobufFile(tensorProto, filePath)) {
     if (tensorProto.has_data_type()) {
       if(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16 != tensorProto.data_type()) {
         throw winrt::hresult_invalid_argument(L"TensorProto datatype isn't of type Float16.");
@@ -192,8 +185,8 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
   return nullptr;
 }
 
-winrt::Windows::AI::MachineLearning::LearningModel ProtobufHelpers::CreateModel(
-    winrt::Windows::AI::MachineLearning::TensorKind kind,
+winml::LearningModel ProtobufHelpers::CreateModel(
+    winml::TensorKind kind,
     const std::vector<int64_t>& shape,
     uint32_t num_elements) {
   onnx::ModelProto model;

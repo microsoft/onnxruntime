@@ -4,9 +4,13 @@
 #pragma once
 //TODO(): delete this file from public interface
 #ifdef __GNUC__
+#include "onnxruntime_config.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#ifdef HAS_DEPRECATED_DECLARATIONS
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #else
 #pragma warning(push)
 #pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
@@ -25,6 +29,9 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 6011) /*Dereferencing NULL pointer*/
+#pragma warning(disable : 6387) /*'value' could be '0'*/
+#pragma warning(disable : 26495) /*Variable is uninitialized.*/
 #endif
 #include "onnx/defs/schema.h"
 #include "onnx/onnx_pb.h"

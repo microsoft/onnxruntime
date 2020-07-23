@@ -1,0 +1,204 @@
+parameters:
+  BuildArch: 'x64'
+  RunTests : 'true'
+  BuildForStore: 'false'
+
+steps:
+  - template: telemetry-steps.yml
+
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      ${{ if eq(parameters.BuildArch, 'x64') }}:
+        architecture: ${{ parameters.BuildArch }}
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        architecture: ${{ parameters.BuildArch }}
+      ${{ if eq(parameters.BuildArch, 'arm64') }}:
+        architecture: 'x64'
+      ${{ if eq(parameters.BuildArch, 'arm') }}:
+        architecture: 'x64'
+
+  - task: BatchScript@1
+    displayName: 'Setup Environment'
+    inputs:
+      ${{ if eq(parameters.BuildArch, 'x64') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_x86.bat'
+      ${{ if eq(parameters.BuildArch, 'arm64') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      ${{ if eq(parameters.BuildArch, 'arm') }}:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PythonScript@0
+    displayName: 'Generate CMake Configuration'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti'
+      ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'true')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --enable_windows_store'
+      ${{ if and(eq(parameters.BuildArch, 'x86'), eq(parameters.BuildForStore, 'false')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --x86'
+      ${{ if and(eq(parameters.BuildArch, 'x86'), eq(parameters.BuildForStore, 'true')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --x86 --enable_windows_store'
+      ${{ if and(eq(parameters.BuildArch, 'arm64'), eq(parameters.BuildForStore, 'false')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --arm64'
+      ${{ if and(eq(parameters.BuildArch, 'arm64'), eq(parameters.BuildForStore, 'true')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --arm64 --enable_windows_store'
+      ${{ if and(eq(parameters.BuildArch, 'arm'), eq(parameters.BuildForStore, 'false')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --arm'
+      ${{ if and(eq(parameters.BuildArch, 'arm'), eq(parameters.BuildForStore, 'true')) }}:
+        arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos $(TelemetryOption) --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti --arm --enable_windows_store'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
+    # Use cross-compiled protoc
+    - script: |
+       @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\host_protoc\Release
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+      ${{ if ne(parameters.BuildArch, 'x86') }}:
+        platform: ${{ parameters.BuildArch }}
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        platform: 'Win32'
+      configuration: RelWithDebInfo
+      msbuildArchitecture: ${{ parameters.BuildArch }}
+      maximumCpuCount: true
+      logProjectEvents: true
+      workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      createLogFile: true
+
+  - ${{ if eq(parameters.BuildArch, 'x64') }}:
+    - script: |
+        mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
+        DIR dist\ /S /B > wheel_filename_file
+        set /p WHEEL_FILENAME=<wheel_filename_file
+        del wheel_filename_file
+        python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+        set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+        @echo %PATH%
+        python $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --config RelWithDebInfo --enable_lto --disable_rtti %BUILD_ARCH_SWITCH%
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      displayName: 'Run Unit Tests'
+      env:
+        ${{ if eq(parameters.BuildArch, 'x64') }}:
+          BUILD_ARCH_SWITCH: ''
+        ${{ if ne(parameters.BuildArch, 'x64') }}:
+          BUILD_ARCH_SWITCH: '--${{ parameters.BuildArch }}'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**\*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+  
+  - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.BuildForStore, 'false')) }}:
+    - script: |
+       xcopy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_api.exe $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_scenario.exe $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\winml\test\api\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\winml\test\scenario\cppwinrt\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\winml\test\scenario\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\winml\test\common\testdata\squeezenet\* $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\winml\test\collateral\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+       xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory\ /i
+       copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.png $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.jpg $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_length.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+       copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_construct.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+      displayName: 'Copy WinML test collateral to artifact directory'
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
+  - task: BatchScript@1
+    displayName: 'Setup VS2019 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+      ${{ if eq(parameters.BuildArch, 'x64') }}:
+        arguments: 'x64'
+      ${{ if eq(parameters.BuildArch, 'x86') }}:
+        arguments: 'x86'
+      ${{ if eq(parameters.BuildArch, 'arm64') }}:
+        arguments: 'x64'
+      ${{ if eq(parameters.BuildArch, 'arm') }}:
+        arguments: 'x64'
+      modifyEnvironment: true
+
+  - script: msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform="Any CPU" /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -restore
+    workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
+    displayName: 'Build Microsoft.AI.MachineLearning.Interop.dll'
+
+  # Esrp signing
+  - template: win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      DisplayName: 'ESRP - Sign Native dlls'
+      DoEsrp: 'true'
+
+
+  - ${{ if eq(parameters.BuildArch, 'x64') }}:
+    - script: |
+       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory)
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      displayName: 'Create NuGet Package'
+
+  - ${{ if eq(parameters.BuildArch, 'x86') }}:
+    - script: |
+       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=x86
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      displayName: 'Create NuGet Package'
+
+  - ${{ if eq(parameters.BuildArch, 'arm64') }}:
+    - script: |
+       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm64 /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      displayName: 'Create NuGet Package'
+
+  - ${{ if eq(parameters.BuildArch, 'arm') }}:
+    - script: |
+       msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+       copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      displayName: 'Create NuGet Package'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: Microsoft.AI.MachineLearning ${{ parameters.BuildArch }}'
+    inputs:
+      artifactName: 'Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishSymbols@2
+    displayName: 'Publish Build Symbols'
+    condition: eq(variables['IsReleaseBuild'], 'true')
+    inputs:
+      symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      searchPattern: '**/*.pdb'
+      symbolServerType: teamServices
+
+  # Compliance tasks require logs from Debug Build
+  - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+    - template: compliance.yml
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - template: clean-agent-build-directory-step.yml

@@ -21,7 +21,7 @@ struct OneHotEncoderTransformerImpl {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
-          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().Size());
           return Microsoft::Featurizer::Featurizers::OneHotEncoderTransformer<InputT>(archive);
         }());
 

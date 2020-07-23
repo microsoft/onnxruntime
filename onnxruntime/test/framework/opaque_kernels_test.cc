@@ -282,7 +282,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   // Both the session and the model need custom registries
   // so we construct it here before the model
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
 
   auto ops_schema = GetConstructSparseTensorSchema();

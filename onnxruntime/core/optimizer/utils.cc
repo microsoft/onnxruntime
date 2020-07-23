@@ -126,7 +126,26 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
   return false;
 }
 
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
+bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_name, const std::vector<int64_t>& expected_values) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr == attr_proto) || attr_proto->ints_size() != (int)expected_values.size()) {
+    return false;
+  }
+
+  for (int i = 0; i < attr_proto->ints_size(); i++) {
+    if (attr_proto->ints(i) != expected_values[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data, bool require_constant) {
+  if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
+    return false;
+  }
+
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
@@ -198,6 +217,18 @@ int32_t IndexOfNodeInput(const Node& node, const NodeArg& node_arg) {
   return -1;
 }
 
+int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
+  int32_t index = 0;
+  for (auto& output_arg : node.OutputDefs()) {
+    if (output_arg->Name().compare(node_arg.Name()) == 0) {
+      return index;
+    }
+    index++;
+  }
+
+  return -1;
+}
+
 bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types) {
   for (const auto& input_arg : node.InputDefs()) {
     if (std::find(supported_data_types.begin(), supported_data_types.end(),
@@ -206,6 +237,15 @@ bool IsSupportedDataType(const Node& node, const std::vector<std::string>& suppo
     }
   }
   return true;
+}
+
+
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
+  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    return false;
+  }
+
+  return node.GetOutputEdgesCount() == expected_output_edges;
 }
 
 }  // namespace optimizer_utils

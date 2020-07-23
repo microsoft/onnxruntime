@@ -12,6 +12,13 @@ struct IndexedSubGraph;
 
 namespace onnxruntime {
 
+// use value-based compare to make sure transformer output order is consistent
+struct NodeCompare {
+  bool operator()(const Node* n1, const Node* n2) const {
+    return n1->Index() < n2->Index();
+  }
+};
+
 /**
 @class GraphViewer
 Class that provides a read-only view of the Graph.
@@ -84,9 +91,9 @@ class GraphViewer {
   /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
 
-  /** 
+  /**
   Gets the NodeIndex values for the root nodes in the Graph.
-  The root nodes are the topmost nodes in the Graph that receive inputs from the Graph inputs 
+  The root nodes are the topmost nodes in the Graph that receive inputs from the Graph inputs
   and no other nodes in the Graph.
   */
   const std::vector<NodeIndex>& GetRootNodes() const;
@@ -108,8 +115,11 @@ class GraphViewer {
   /** Checks if this is a Subgraph */
   bool IsSubgraph() const;
 
-  /** 
-  returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+  /** Get the internal graph*/
+  const Graph& GetGraph() const { return *graph_; }
+
+  /**
+  returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
   @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name' if not found in 'graph_'.
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;

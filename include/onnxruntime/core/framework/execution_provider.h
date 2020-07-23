@@ -15,9 +15,6 @@
 namespace onnxruntime {
 class GraphViewer;
 class Node;
-}  // namespace onnxruntime
-namespace onnxruntime {
-
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
@@ -27,11 +24,18 @@ class KernelRegistryManager;
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
 
-// if we are export the fused function to dll, the function will still in the same binary as lotus
+// if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
+
+//unordered maps
+using UnorderedMapStringToString = std::unordered_map<std::string, std::string>;
+
+//data types for execution provider options
+using ProviderOptionsVector = std::vector<UnorderedMapStringToString>;  
+using ProviderOptionsMap = std::unordered_map<std::string, UnorderedMapStringToString>;  
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
@@ -49,7 +53,7 @@ class IExecutionProvider {
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+  const std::vector<AllocatorPtr>& GetAllocators() const {
     return allocator_list_;
   }
 
@@ -97,6 +101,23 @@ class IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
+     Get the device id of current execution provider
+  */
+  virtual int GetDeviceId() const { return -1; };
+
+  /**
+     Get execution provider's configurations. 
+   */
+  const UnorderedMapStringToString& GetProviderOptions() const { return provider_options_; }
+
+  /**
+     Store execution provider's configurations. 
+   */
+  void SetProviderOptions(UnorderedMapStringToString& options) { 
+    provider_options_ = options;
+  }
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting
@@ -136,6 +157,13 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd();
 
+  /**
+     Called when session creation is complete
+     This provides an opportunity for execution providers to optionally synchronize and
+     clean up its temporary resources to reduce memory and ensure the first run is fast.
+  */
+  virtual common::Status OnSessionInitializationEnd();
+
   void InsertAllocator(AllocatorPtr allocator);
 
   /**
@@ -169,6 +197,8 @@ class IExecutionProvider {
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
-  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
+  std::vector<AllocatorPtr> allocator_list_;
+  // It will be set when constructor is being called
+  UnorderedMapStringToString provider_options_;
 };
 }  // namespace onnxruntime

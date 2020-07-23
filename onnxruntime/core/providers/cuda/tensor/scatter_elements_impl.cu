@@ -1,13 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "scatter_elements_impl.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cuda/tensor/gather_elements_grad_impl.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename Tin, bool OUTERAXIS>
+template <typename T, typename Tin, bool OUTERAXIS, typename FuncT>
 __global__ void _ScatterElementsKernel2D(
     const int max_dim,  // max dim on the scattered axis
     const T* input_data,
@@ -16,7 +20,8 @@ __global__ void _ScatterElementsKernel2D(
     const fast_divmod indices_stride_row,
     const T* updates,
     const int64_t output_row_size,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
 
   int row, col, data_idx;
@@ -29,24 +34,26 @@ __global__ void _ScatterElementsKernel2D(
     } else {
       data_idx = row * output_row_size + dim;
     }
-    output_data[data_idx] = updates[indices_index];
+
+    func(output_data + data_idx, updates + indices_index);
   }
   // else invalid index
 }
 
-template <typename T, typename Tin>
+template <typename T, typename Tin, typename FuncT>
 __global__ void _ScatterElementsKernel(
     const int rank,
     const T* input_data,
-    const int64_t* input_dims,
-    const int64_t* input_strides,
+    const TArray<int64_t> input_dims,
+    const TArray<int64_t> input_strides,
     const Tin* indices_data,
     const int64_t indices_size,
-    const int64_t* indices_dims,
-    const fast_divmod* indices_strides,
+    const TArray<int64_t> indices_dims,
+    const TArray<fast_divmod> indices_strides,
     const T* updates,
     const int axis,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, indices_size);
   int dim, remain = indices_index;
   size_t data_idx = 0;
@@ -61,7 +68,7 @@ __global__ void _ScatterElementsKernel(
     }
     data_idx += input_strides[i] * dim;
   }
-  output_data[data_idx] = updates[indices_index];
+  func(output_data + data_idx, updates + indices_index);
 }
 
 // From the innermost axis (largest) check equality of dim value of input and indices.
@@ -135,7 +142,7 @@ static int CompactInputIndicesDims(
   return new_axis;
 }
 
-template <typename T, typename Tin>
+template <typename T, typename Tin, typename FuncT>
 Status ScatterElementsImpl2D(
     const T* input_data,
     const std::vector<int64_t>& input_dims,
@@ -144,37 +151,39 @@ Status ScatterElementsImpl2D(
     const std::vector<int64_t>& indices_dims,
     const T* updates,
     const int axis,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
   fast_divmod indices_stride_row(indices_dims[1]);
   if (axis == 0) {
-    _ScatterElementsKernel2D<T, Tin, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel2D<T, Tin, true, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         gsl::narrow_cast<int>(input_dims[0]), input_data,
         indices_data, indices_size, indices_stride_row,
-        updates, input_dims[1], output_data);
+        updates, input_dims[1], output_data, func);
   } else {
-    _ScatterElementsKernel2D<T, Tin, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _ScatterElementsKernel2D<T, Tin, false, FuncT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         gsl::narrow_cast<int>(input_dims[1]), input_data,
         indices_data, indices_size, indices_stride_row,
-        updates, input_dims[1], output_data);
+        updates, input_dims[1], output_data, func);
   }
   return Status::OK();
 }
 
-template <typename T, typename Tin>
-Status ScatterElementsImpl(
+template <typename T, typename Tin, typename FuncT>
+Status ScatterElementsImplInternal(
     const int rank,
     const T* input_data,
     const int64_t input_size,
-    CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_dims,
-    CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_strides,
+    TArray<int64_t>& buffer_input_dims,
+    TArray<int64_t>& buffer_input_strides,
     const Tin* indices_data,
     const int64_t indices_size,
-    CudaKernel::CudaAsyncBuffer<int64_t>& buffer_indices_dims,
-    CudaKernel::CudaAsyncBuffer<fast_divmod>& fdm_indices_strides,
+    TArray<int64_t>& buffer_indices_dims,
+    TArray<fast_divmod>& fdm_indices_strides,
     const T* updates,
     const int axis,
-    T* output_data) {
+    T* output_data,
+    const FuncT& func) {
   if (input_data != output_data) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, input_size * sizeof(T), cudaMemcpyDeviceToDevice, 0));
   }
@@ -183,56 +192,131 @@ Status ScatterElementsImpl(
     std::vector<int64_t> eff_input_dims;
     std::vector<int64_t> eff_indices_dims;
     int new_axis = CompactInputIndicesDims(
-        rank, axis, buffer_input_dims.CpuPtr(), buffer_indices_dims.CpuPtr(), eff_input_dims, eff_indices_dims);
+        rank, axis, buffer_input_dims.Data(), buffer_indices_dims.Data(), eff_input_dims, eff_indices_dims);
     if (eff_input_dims.size() == 2) {
       return ScatterElementsImpl2D(
-          input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data);
+          input_data, eff_input_dims, indices_data, indices_size, eff_indices_dims, updates, new_axis, output_data,
+          func);
     }
 
-    ORT_RETURN_IF_ERROR(buffer_input_dims.CopyToGpu());
-    ORT_RETURN_IF_ERROR(buffer_input_strides.CopyToGpu());
-    ORT_RETURN_IF_ERROR(buffer_indices_dims.CopyToGpu());
-    ORT_RETURN_IF_ERROR(fdm_indices_strides.CopyToGpu());
     int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(indices_size, GridDim::maxThreadsPerBlock));
     _ScatterElementsKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        rank, input_data, buffer_input_dims.GpuPtr(), buffer_input_strides.GpuPtr(),
-        indices_data, indices_size, buffer_indices_dims.GpuPtr(), fdm_indices_strides.GpuPtr(),
-        updates, axis, output_data);
+        rank, input_data, buffer_input_dims, buffer_input_strides,
+        indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
+        updates, axis, output_data, func);
   }
   return Status::OK();
 }
 
-#define SPECIALIZED_TINDEX_IMPL(T, TIndex)                        \
-  template Status ScatterElementsImpl<T, TIndex>(                 \
-      const int rank,                                             \
-      const T* input_data,                                        \
-      const int64_t input_size,                                   \
-      CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_dims,    \
-      CudaKernel::CudaAsyncBuffer<int64_t>& buffer_input_strides, \
-      const TIndex* indices_data,                                 \
-      const int64_t indices_size,                                 \
-      CudaKernel::CudaAsyncBuffer<int64_t>& buffer_indices_dims,  \
-      CudaKernel::CudaAsyncBuffer<fast_divmod>& indices_strides,  \
-      const T* updates,                                           \
-      const int axis,                                             \
+template <class T>
+struct Func_Assignment {
+  __device__ __inline__ void operator()(T* a, const T* b) const {
+    *a = *b;
+  }
+};
+
+template <typename T, typename Tin>
+Status ScatterElementsImpl(
+    const int rank,
+    const T* input_data,
+    const int64_t input_size,
+    TArray<int64_t>& buffer_input_dims,
+    TArray<int64_t>& buffer_input_strides,
+    const Tin* indices_data,
+    const int64_t indices_size,
+    TArray<int64_t>& buffer_indices_dims,
+    TArray<fast_divmod>& fdm_indices_strides,
+    const T* updates,
+    const int axis,
+    T* output_data) {
+  return ScatterElementsImplInternal(rank, input_data, input_size, buffer_input_dims,
+                                     buffer_input_strides, indices_data, indices_size, buffer_indices_dims, fdm_indices_strides,
+                                     updates, axis, output_data, Func_Assignment<T>());
+}
+
+#define SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex) \
+  template Status ScatterElementsImpl<T, TIndex>(           \
+      const int rank,                                       \
+      const T* input_data,                                  \
+      const int64_t input_size,                             \
+      TArray<int64_t>& buffer_input_dims,                   \
+      TArray<int64_t>& buffer_input_strides,                \
+      const TIndex* indices_data,                           \
+      const int64_t indices_size,                           \
+      TArray<int64_t>& buffer_indices_dims,                 \
+      TArray<fast_divmod>& indices_strides,                 \
+      const T* updates,                                     \
+      const int axis,                                       \
       T* output_data)
 
-#define SPECIALIZED_IMPL(T)            \
-  SPECIALIZED_TINDEX_IMPL(T, int32_t); \
-  SPECIALIZED_TINDEX_IMPL(T, int64_t);
+#define SCATTER_ELEMENTS_SPECIALIZED_IMPL(T)            \
+  SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int32_t); \
+  SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int64_t);
 
-SPECIALIZED_IMPL(int8_t)
-SPECIALIZED_IMPL(int16_t)
-SPECIALIZED_IMPL(int32_t)
-SPECIALIZED_IMPL(int64_t)
-SPECIALIZED_IMPL(uint8_t)
-SPECIALIZED_IMPL(uint16_t)
-SPECIALIZED_IMPL(uint32_t)
-SPECIALIZED_IMPL(uint64_t)
-SPECIALIZED_IMPL(half)
-SPECIALIZED_IMPL(float)
-SPECIALIZED_IMPL(double)
-SPECIALIZED_IMPL(bool)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int8_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int16_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int32_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int64_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint8_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint16_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint32_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint64_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(half)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(float)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(double)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(bool)
+
+#ifdef ENABLE_TRAINING
+
+template <class T>
+struct Func_AtomicAdd {
+  __device__ __inline__ void operator()(T* a, const T* b) const {
+    atomic_add(a, *b);
+  }
+};
+
+template <typename T, typename Tin>
+Status GatherElementsGradImpl(
+    const int rank,
+    TArray<int64_t>& buffer_input_dims,
+    TArray<int64_t>& buffer_input_strides,
+    const Tin* indices_data,
+    const int64_t indices_size,
+    TArray<int64_t>& buffer_indices_dims,
+    TArray<fast_divmod>& fdm_indices_strides,
+    const T* updates,
+    const int axis,
+    T* output_data) {
+  // Give output_data as the input_data parameter by intention,
+  // to skip input_data copy, which is not applicable for GatherElementsGrad.
+  return ScatterElementsImplInternal(rank, output_data, 0,
+                                     buffer_input_dims, buffer_input_strides, indices_data,
+                                     indices_size, buffer_indices_dims, fdm_indices_strides,
+                                     updates, axis, output_data, Func_AtomicAdd<T>());
+}
+
+#define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex) \
+  template Status GatherElementsGradImpl<T, TIndex>(            \
+      const int rank,                                           \
+      TArray<int64_t>& buffer_input_dims,                       \
+      TArray<int64_t>& buffer_input_strides,                    \
+      const TIndex* indices_data,                               \
+      const int64_t indices_size,                               \
+      TArray<int64_t>& buffer_indices_dims,                     \
+      TArray<fast_divmod>& indices_strides,                     \
+      const T* updates,                                         \
+      const int axis,                                           \
+      T* output_data)
+
+#define GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(T) \
+  GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int32_t);  \
+  GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int64_t);
+
+GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(half)
+GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(float)
+GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(double)
+
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

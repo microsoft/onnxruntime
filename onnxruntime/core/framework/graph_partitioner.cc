@@ -97,7 +97,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
       auto& fused_node = graph.FuseSubGraph(std::move(capability), node_name);
       fused_node.SetExecutionProviderType(provider_type);
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
-      if (!kernel_registry_mgr.HasImplementationOf(fused_node, provider_type)) {
+      if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, fused_node, provider_type)) {
         return &fused_node;
       }
     }
@@ -190,24 +190,25 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
 
   // To see if the node with no provider can be inlined. If one such nodes can be
   // successfully inlined, we re-run the partitioner on the modified graph.
-  bool inline_flag = false;
+  std::vector<Node*> nodes_need_inline;
   for (auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty()) {
       auto node_func = node.GetFunctionBody();
       if (nullptr == node_func) {
         continue;
       }
-      // If the node has a functionbody with no kernel and cannot be inlined
-      // it is a invalid function
-      ORT_RETURN_IF_ERROR(graph.InlineFunction(node));
-      // Set the flag for re-run graph partition after successful inlining
-      inline_flag = true;
-      break;
+      nodes_need_inline.push_back(&node);      
     }
+  }  
+
+  for (auto* node : nodes_need_inline) {
+    // If the node has a functionbody with no kernel and cannot be inlined
+    // it is an invalid function
+    ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
   }
 
   // Resolve and rerun graph partition
-  if (inline_flag) {
+  if (!nodes_need_inline.empty()) {
     ORT_RETURN_IF_ERROR(graph.Resolve());
     ORT_RETURN_IF_ERROR(Partition(graph, export_dll, func_mgr));
   }

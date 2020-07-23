@@ -19,6 +19,8 @@ void* MockedOrtAllocator::Alloc(size_t size) {
   constexpr size_t extra_len = sizeof(size_t);
   memory_inuse.fetch_add(size += extra_len);
   void* p = ::malloc(size);
+  if (p == nullptr)
+    return p;
   *(size_t*)p = size;
   return (char*)p + extra_len;
 }

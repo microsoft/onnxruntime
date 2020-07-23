@@ -72,7 +72,7 @@ CMake creates a target to this project
     </Exec>
   </Target>
 
-   <Target Name="ObtainPackageVersion" BeforeTargets="CreatePackage">
+   <Target Name="ObtainPackageVersion" BeforeTargets="CreatePackage;CreateWindowsAIPackage">
     <ReadLinesFromFile File="..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
     </ReadLinesFromFile>   
@@ -119,8 +119,24 @@ CMake creates a target to this project
     <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
-    
   </Target>
 
-  
+  <ItemGroup>
+    <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>
+  </ItemGroup>
+
+  <Target Name="CreateWindowsAIPackage">  
+    <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeSourceDirectory)\%(Filename).txt')"/>
+
+    <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />
+    <Exec ContinueOnError="False" Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name Microsoft.AI.MachineLearning --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild)" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
+    </Exec>
+
+    <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec -Symbols -SymbolPackageFormat snupkg" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+  </Target>
+
 </Project>

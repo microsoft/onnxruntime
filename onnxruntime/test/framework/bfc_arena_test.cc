@@ -3,6 +3,7 @@
 
 #include "core/framework/bfc_arena.h"
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 #include <cstdlib>
 
 namespace onnxruntime {
@@ -72,8 +73,8 @@ TEST(BFCArenaTest, AllocationsAndDeallocations) {
 
   // Ensure out of memory errors work and do not prevent future allocations from
   // working.
-  void* out_of_memory_ptr = a.Alloc((1 << 30) + 1);
-  EXPECT_EQ(out_of_memory_ptr, nullptr);
+
+  EXPECT_THROW(a.Alloc((1 << 30) + 1), OnnxRuntimeException);
 
   // Allocate a lot of raw pointers
   for (int s = 1; s < 256; s++) {
@@ -152,15 +153,54 @@ TEST(BFCArenaTest, AllocatedVsRequested) {
 }
 
 TEST(BFCArenaTest, TestCustomMemoryLimit) {
-  // Configure a 1MiB byte limit
-  BFCArena a(std::unique_ptr<IDeviceAllocator>(new CPUAllocator()), 1 << 20);
+  {
+    // Configure a 1MiB byte limit
+    BFCArena a(std::unique_ptr<IDeviceAllocator>(new CPUAllocator()), 1 << 20);
 
-  void* first_ptr = a.Alloc(sizeof(float) * (1 << 6));
-  void* second_ptr = a.Alloc(sizeof(float) * (1 << 20));
+    void* first_ptr = a.Alloc(sizeof(float) * (1 << 6));
+    EXPECT_NE(nullptr, first_ptr);
 
-  EXPECT_NE(nullptr, first_ptr);
-  EXPECT_EQ(nullptr, second_ptr);
-  a.Free(first_ptr);
+    // test allocation of more than available memory throws
+    try {
+      a.Alloc(sizeof(float) * (1 << 20));
+      FAIL() << "Allocation should have thrown";
+    } catch (const OnnxRuntimeException& ex) {
+#ifdef GTEST_USES_POSIX_RE
+      EXPECT_THAT(ex.what(),
+                  testing::ContainsRegex("Available memory of [0-9]+ is smaller than requested bytes of [0-9]+"));
+#else
+      EXPECT_THAT(ex.what(),
+                  testing::ContainsRegex("Available memory of \\d+ is smaller than requested bytes of \\d+"));
+#endif
+    } catch (...) {
+      FAIL() << "Allocation should have thrown OnnxRuntimeException";
+    }
+
+    a.Free(first_ptr);
+  }
+
+  {
+    // allow for the maximum amount of memory less 5MiB
+    constexpr size_t available = std::numeric_limits<size_t>::max() - (5 * 1024 * 1024);
+    BFCArena b(std::unique_ptr<IDeviceAllocator>(new CPUAllocator()), available,
+               ArenaExtendStrategy::kSameAsRequested);  // need this strategy. kNextPowerOfTwo would overflow size_t
+
+    void* first_ptr = b.Alloc(sizeof(float) * (1 << 6));
+    EXPECT_NE(nullptr, first_ptr);
+
+    // test allocation that is less than available memory, but more than what could reasonably be expected to exist.
+    // first alloc creates a 1MB block so allow for that not being available.
+    try {
+      b.Alloc(available - (3 * 1024 * 1024));
+      FAIL() << "Allocation should have thrown";
+    } catch (const OnnxRuntimeException& ex) {
+      EXPECT_THAT(ex.what(), testing::HasSubstr("Failed to allocate memory for requested buffer of size"));
+    } catch (...) {
+      FAIL() << "Allocation should have thrown OnnxRuntimeException";
+    }
+
+    b.Free(first_ptr);
+  }
 }
 
 TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {

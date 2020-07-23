@@ -4,21 +4,22 @@
 #pragma once
 
 #include "std.h"
+#include "winrt_headers.h"
 
 enum OutputBindingStrategy { Bound, Unbound, Empty };
 
 namespace WinML::Engine::Test::ModelValidator
 {
     void FnsCandy16(
-        std::string instance,
-        winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind,
+        const std::string& instance,
+        winml::LearningModelDeviceKind deviceKind,
         OutputBindingStrategy outputBindingStrategy,
         bool bindInputsAsIInspectable,
         float dataTolerance = false);
 
     void SqueezeNet(
-        std::string instance,
-        winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind,
+        const std::string& instance,
+        winml::LearningModelDeviceKind deviceKind,
         float dataTolerance,
         bool bindAsImage = false,
         OutputBindingStrategy outputBindingStrategy = OutputBindingStrategy::Bound,

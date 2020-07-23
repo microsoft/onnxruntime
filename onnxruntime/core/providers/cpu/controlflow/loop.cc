@@ -216,7 +216,7 @@ static Status ConcatenateCpuOutput(std::vector<OrtValue>& per_iteration_output,
   return Status::OK();
 }
 
-Loop::Loop(const OpKernelInfo& info) : OpKernel(info) {
+Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -238,7 +238,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Loop::Info>(node, *subgraph_session_state.GetGraphViewer());
+  info_ = onnxruntime::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
@@ -305,7 +305,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
     fetch_locations.push_back(&alloc_info);
   }
 
-  utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
+  utils::FinalizeFeedFetchCopyInfo(*ffm, feed_locations, fetch_locations);
 
   feeds_fetches_manager_ = std::move(ffm);
 
@@ -342,20 +342,6 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
 
   auto cond_tensor = context.Input<Tensor>(1);
   condition_ = cond_tensor ? *cond_tensor->Data<bool>() : true;
-}
-
-template <typename T>
-static OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
-  auto* data_type = DataTypeImpl::GetType<T>();
-  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
-                                                                      is_1d ? TensorShape({1}) : TensorShape({}),
-                                                                      allocator);
-
-  *p_tensor->MutableData<T>() = value;
-
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  return OrtValue{p_tensor.release(), ml_tensor,
-                  ml_tensor->GetDeleteFunc()};
 }
 
 Status LoopImpl::Initialize() {

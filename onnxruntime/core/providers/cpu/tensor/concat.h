@@ -51,7 +51,7 @@ class ConcatBase {
   bool is_sequence_op_;
 };
 
-class Concat final : public OpKernel, public ConcatBase {
+class Concat : public OpKernel, public ConcatBase {
  public:
   Concat(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {}
 

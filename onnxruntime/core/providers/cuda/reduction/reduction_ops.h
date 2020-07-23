@@ -10,6 +10,33 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace ReductionOps {
+
+// Implementation that holds the core logic of reduction op processing
+// `input_shape_override` is the input shape for compute purposes (if provided)
+
+template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
+Tensor ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
+                     const Tensor& input, const std::vector<int64_t>& axes,
+                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                     bool fast_reduction, const TensorShape* input_shape_override = nullptr);
+
+}  // namespace ReductionOps
+
+// Holds some metadata that will be used during actual reduction op compute time
+struct PrepareReduceMetadata {
+  int64_t input_count;
+  int64_t output_count;
+  // This holds the output dims without any reduced dims squeezed (even if keep_dims == 1)
+  std::vector<int64_t> output_dims;
+  // This holds the output dims with with reduced dims squeezed (if keep_dims == 1)
+  std::vector<int64_t> squeezed_output_dims;
+  std::vector<int64_t> input_dims_cudnn;
+  std::vector<int64_t> output_dims_cudnn;
+  int64_t rank;
+  int64_t stride;
+};
+
 template <bool allow_multi_axes>
 class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
@@ -21,7 +48,11 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
         calculate_log_(false),
         calculate_sqt_(false),
         log_sum_exp_(false),
-        fast_reduction_(false) {}
+        fast_reduction_(false) {
+    // We need to cast away the const as PerThreadCudnnHandle() is currently a non-const method
+    // TODO: Clean up the CUDAExecutionProvider interface to avoid this
+    cuda_ep_ = const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()));
+  }
 
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
   // Only Max Min will have indices output, need to set the indices to nullptr for other ops
@@ -39,13 +70,17 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
+  using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;
 
   bool calculate_log_;
   bool calculate_sqt_;
   bool log_sum_exp_;
   // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
-  // Those effecient kernels are defined/implemented in reduction_functions.h/.cu.
+  // Those efficient kernels are defined/implemented in reduction_functions.h/.cu.
   bool fast_reduction_;
+
+  // We need to access to the CUDA EP instance to get the cudnn handle
+  CUDAExecutionProvider* cuda_ep_;
 };
 
 template <typename T>
@@ -132,6 +167,18 @@ template <typename T>
 class ReduceSum final : public ReduceKernel<true> {
  public:
   ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
+
+  Status ComputeInternal(OpKernelContext* ctx) const override {
+    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
+  }
+};
+
+template <typename T>
+class ReduceSumTraining final : public ReduceKernel<true> {
+ public:
+  ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
     fast_reduction_ = true;
   }
 

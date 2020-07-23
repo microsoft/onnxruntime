@@ -20,9 +20,9 @@ namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)
     : out_standings_(0), terminate_flag_(terminate_flag), executor_pool_(session_state.GetInterOpThreadPool()) {
-  auto graph_viewer = session_state.GetGraphViewer();
-  node_refs_.resize(graph_viewer->MaxNodeIndex());
-  for (auto& node : graph_viewer->Nodes()) {
+  const auto& graph_viewer = session_state.GetGraphViewer();
+  node_refs_.resize(graph_viewer.MaxNodeIndex());
+  for (auto& node : graph_viewer.Nodes()) {
     node_refs_[node.Index()] = node.GetInputEdgesCount();
   }
 }
@@ -39,9 +39,9 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   }
 
   root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                 fetch_allocators, session_state);
+                                                         fetch_allocators, session_state);
   //std::cout << "start nodes:" << std::endl;
-  for (auto node_index : session_state.GetGraphViewer()->GetRootNodes()) {
+  for (auto node_index : session_state.GetGraphViewer().GetRootNodes()) {
     auto p_op_kernel = session_state.GetKernel(node_index);
     if (!p_op_kernel)
       continue;
@@ -116,7 +116,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
 
   size_t node_index = p_node_index;
   bool keep_running = true;
-  auto graph_viewer = session_state.GetGraphViewer();
+  const auto& graph_viewer = session_state.GetGraphViewer();
   TimePoint sync_time_begin;
   TimePoint kernel_begin_time;
   const bool f_profiler_enabled = session_state.Profiler().IsEnabled();
@@ -132,7 +132,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
 
     const auto* p_op_kernel = session_state.GetKernel(node_index);
-    const auto& node = *graph_viewer->GetNode(node_index);
+    const auto& node = *graph_viewer.GetNode(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr) {
@@ -237,7 +237,6 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
         }
       }
     }
-
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node.Name() + "_fence_after",
@@ -288,7 +287,7 @@ void ParallelExecutor::EnqueueNode(size_t p_node_index, const SessionState& sess
 
   executor_pool_->Schedule([this, p_node_index, &session_state, &logger]() {
     auto create_exception_message = [p_node_index, &session_state](const std::exception* ex) {
-      const auto* node = session_state.GetGraphViewer()->GetNode(p_node_index);
+      const auto* node = session_state.GetGraphViewer().GetNode(p_node_index);
 
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception running nodes starting at ", node->OpType(),
                              " node '", node->Name(), "'. ",

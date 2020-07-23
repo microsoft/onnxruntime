@@ -10,19 +10,20 @@
 
 #include "ConverterResourceStore.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace WINMLP {
+
 /*static*/ void LearningModelDevice::DllUnload() {
 }
 
-Windows::Graphics::DisplayAdapterId LearningModelDevice::AdapterId() try {
-  Windows::Graphics::DisplayAdapterId id;
+wg::DisplayAdapterId LearningModelDevice::AdapterId() try {
+  wg::DisplayAdapterId id;
   id.LowPart = m_deviceCache->GetDeviceLuid().LowPart;
   id.HighPart = m_deviceCache->GetDeviceLuid().HighPart;
   return id;
 }
 WINML_CATCH_ALL
 
-LearningModelDevice::LearningModelDevice(Windows::AI::MachineLearning::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<D3DDeviceCache>(deviceKind)) {
+LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
   if (m_isCpuDevice) {
@@ -31,14 +32,14 @@ LearningModelDevice::LearningModelDevice(Windows::AI::MachineLearning::LearningM
 }
 WINML_CATCH_ALL
 
-LearningModelDevice::LearningModelDevice(Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice const& device) try : m_deviceCache(std::make_unique<D3DDeviceCache>(device)) {
+LearningModelDevice::LearningModelDevice(wgdx::Direct3D11::IDirect3DDevice const& device) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(device)) {
   m_deviceKind = LearningModelDeviceKind::DirectX;
   m_isCpuDevice = false;
 }
 WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(ID3D12CommandQueue* queue) try : m_deviceKind(LearningModelDeviceKind::DirectX),
-                                                                          m_deviceCache(std::make_unique<D3DDeviceCache>(queue)) {
+                                                                          m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(queue)) {
   m_isCpuDevice = false;
 }
 WINML_CATCH_ALL
@@ -47,22 +48,18 @@ LearningModelDevice::~LearningModelDevice() {
   // needed for shared ptr destruction
 }
 
-Windows::AI::MachineLearning::LearningModelDevice LearningModelDevice::CreateFromDirect3D11Device(Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice const& device) try {
+winml::LearningModelDevice LearningModelDevice::CreateFromDirect3D11Device(wgdx::Direct3D11::IDirect3DDevice const& device) try {
   return make<LearningModelDevice>(device);
 }
 WINML_CATCH_ALL
 
-std::shared_ptr<::Windows::AI::MachineLearning::ConverterResourceStore> LearningModelDevice::TensorizerStore() {
-  if (m_tensorizerStore == nullptr) {
-    m_tensorizerStore = ::Windows::AI::MachineLearning::ConverterResourceStore::Create(5);
-  }
+std::shared_ptr<_winml::ConverterResourceStore> LearningModelDevice::TensorizerStore() {
+  std::call_once(m_tensorizerStoreInitialized, [this]() { m_tensorizerStore = _winml::ConverterResourceStore::Create(5); });
   return m_tensorizerStore;
 }
 
-std::shared_ptr<::Windows::AI::MachineLearning::ConverterResourceStore> LearningModelDevice::DetensorizerStore() {
-  if (m_detensorizerStore == nullptr) {
-    m_detensorizerStore = ::Windows::AI::MachineLearning::ConverterResourceStore::Create(5);
-  }
+std::shared_ptr<_winml::ConverterResourceStore> LearningModelDevice::DetensorizerStore() {
+  std::call_once(m_detensorizerStoreInitialized, [this]() { m_detensorizerStore = _winml::ConverterResourceStore::Create(5); });
   return m_detensorizerStore;
 }
 
@@ -80,7 +77,7 @@ LearningModelDevice::GetDeviceLuid() {
   return m_deviceCache->GetDeviceLuid();
 }
 
-D3DDeviceCache*
+_winml::D3DDeviceCache*
 LearningModelDevice::GetD3DDeviceCache() {
   return m_deviceCache.get();
 }
@@ -115,9 +112,11 @@ STDMETHODIMP_(boolean)
 LearningModelDevice::SharedHandleInitialized() {
   return m_deviceCache->SharedHandleInitialized();
 }
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
 
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+}  // namespace WINMLP 
+
+namespace WINML::factory_implementation {
+
 // copied from cppwinrt magic to create abi wrappers.   Need to do it this way
 // since peeps underneath (like the constructor) will throw
 HRESULT __stdcall LearningModelDevice::CreateFromD3D12CommandQueue(
@@ -133,4 +132,5 @@ HRESULT __stdcall LearningModelDevice::CreateFromD3D12CommandQueue(
   }
   WINML_CATCH_ALL_COM
 }
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation
+
+}  // namespace WINML::factory_implementation

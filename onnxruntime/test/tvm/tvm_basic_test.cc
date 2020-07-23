@@ -310,7 +310,7 @@ TEST(TVMTest, CodeGen_Demo_for_Fuse_Mul) {
 
   so.session_logid = "InferenceSessionTests.NoTimeout";
 
-  InferenceSession session_object{so, &DefaultLoggingManager()};
+  InferenceSession session_object{so, GetEnvironment()};
   CPUExecutionProviderInfo info;
   auto tvm_xp = onnxruntime::make_unique<FuseExecutionProviderX>(info);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(tvm_xp)).IsOK());

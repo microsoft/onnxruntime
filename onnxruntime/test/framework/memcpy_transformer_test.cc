@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include "test_utils.h"
 #include "test/test_environment.h"
+#include "asserts.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -23,8 +24,8 @@ void ExpectSame(const onnxruntime::Node& source, const onnxruntime::Node& target
   EXPECT_EQ(source_output, target_input);
 }
 
-void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
-                const onnxruntime::Node& target, int argnum) {
+void ExpectCopy(const onnxruntime::Node& source, const std::string& copy_op, const onnxruntime::Node& target,
+                int argnum) {
   // Check that source's output is consumed by a copy_op;
   for (auto it = source.OutputNodesBegin(); it != source.OutputNodesEnd(); ++it) {
     auto& copy_node = *it;
@@ -109,7 +110,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                           onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
   KernelRegistryManager test_registry_manager;
-  test_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
@@ -165,7 +166,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                           onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
   KernelRegistryManager test_registry_manager;
-  test_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
@@ -248,8 +249,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
                           &graph.GetOrCreateNodeArg("parent_constant", &tensor_float_type)},
                    ArgMap{&o2_def});
 
-  auto status = subgraph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(subgraph.Resolve());
 
   // main graph continued
   // create the 'If' node
@@ -272,8 +272,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
 
-  status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(graph.Resolve());
 
   KernelRegistryManager kernel_registry_manager;
   ExecutionProviders execution_providers;
@@ -282,13 +281,12 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   execution_providers.Add(onnxruntime::kCpuExecutionProvider,
                           onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo()));
   KernelRegistryManager test_registry_manager;
-  test_registry_manager.RegisterKernels(execution_providers);
+  ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
 
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
   EXPECT_TRUE(modified);
 }
 

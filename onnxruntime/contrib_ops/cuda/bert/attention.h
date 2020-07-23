@@ -5,8 +5,8 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cuda/cudnn_common.h"
-#include "contrib_ops/cpu/bert/attention.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cpu/bert/attention_base.h"
 
 namespace onnxruntime {
 namespace contrib {

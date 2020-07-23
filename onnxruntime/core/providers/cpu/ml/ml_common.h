@@ -185,16 +185,15 @@ static inline float ErfInv(float x) {
 }
 
 //https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
-static inline void multiclass_probability(int64_t classcount, const std::vector<float>& r, std::vector<float>& p) {
+static inline void multiclass_probability(int64_t classcount,
+                                          const gsl::span<const float>& r,
+                                          const gsl::span<float>& p) {
   int64_t sized2 = classcount * classcount;
   std::vector<float> Q;
   std::vector<float> Qp;
-  for (int64_t k = 0; k < sized2; k++) {
-    Q.push_back(0);
-  }
-  for (int64_t k = 0; k < classcount; k++) {
-    Qp.push_back(0);
-  }
+  Q.assign(sized2, 0.f);
+  Qp.assign(classcount, 0.f);
+
   float eps = 0.005f / static_cast<float>(classcount);
   for (int64_t i = 0; i < classcount; i++) {
     p[i] = 1.0f / static_cast<float>(classcount);  // Valid if k = 1
@@ -207,6 +206,7 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
       Q[i * classcount + j] = -r[j * classcount + i] * r[i * classcount + j];
     }
   }
+
   for (int64_t loop = 0; loop < 100; loop++) {
     // stopping condition, recalculate QP,pQP for numerical accuracy
     float pQp = 0;
@@ -217,6 +217,7 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
       }
       pQp += p[i] * Qp[i];
     }
+
     float max_error = 0;
     for (int64_t i = 0; i < classcount; i++) {
       float error = std::fabs(Qp[i] - pQp);
@@ -224,7 +225,9 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
         max_error = error;
       }
     }
-    if (max_error < eps) break;
+
+    if (max_error < eps)
+      break;
 
     for (int64_t i = 0; i < classcount; i++) {
       float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
@@ -387,14 +390,13 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
   write_scores(scores, post_transform, out_p, add_second_class);
 }
 
-// TODO: Starting with just the pieces needed for LinearRegressor from write_scores (see above).
-//       Will see what can be sensibly added to a batched in-place update of the scores for LinearClassifier, the SVM*
-//       and TreeEnsemble* ops when updating those.
+// TODO: Update TreeEnsemble* ops to use this instead of write_scores if possible.
 //       Attempted to parallelize the calculations if the number of scores to process was large, but no clear benefit
 //       was seen from testing with the arbitrary values of 1000 scores per threads.
 template <typename T>
 void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, int64_t batch_size,
-                                   POST_EVAL_TRANSFORM post_transform, int add_second_class,
+                                   POST_EVAL_TRANSFORM post_transform,
+                                   int add_second_class, bool have_space_for_second_class,
                                    concurrency::ThreadPool* threadpool) {
   if (batch_size < 1)
     return;
@@ -403,8 +405,6 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
   SafeInt<int32_t> num_scores = num_batches * batch_size;
   SafeInt<int32_t> expected_num_scores = num_scores * (batch_size == 1 && add_second_class >= 0 ? 2 : 1);
   ORT_ENFORCE(scores.size() == static_cast<size_t>(expected_num_scores));
-
-  ORT_UNUSED_PARAMETER(threadpool);  // TBD whether we need to parallelize code here
 
   // convert from span to pointer for efficiency. we've checked scores.size() matches num_scores so don't need the
   // extra checking/overhead from using operator[] for each access
@@ -425,11 +425,36 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX: {
-        while (s < s_end) {
-          gsl::span<float> scores_for_batch(s, s + batch_size);
-          ComputeSoftmax(scores_for_batch);
-          s += batch_size;
+        bool use_mlas = true;
+        // if there are less than 8 items in each batch it may be slower to use mlas.
+        // currently MlasComputeSoftmax adds threads on 16K blocks of work.
+        // for smaller batches it takes more threads to counter some of the overhead.
+        switch (batch_size) {
+          case 1:
+            use_mlas = false;  // mlas is mildly slower
+            break;
+          case 2:
+            use_mlas = num_scores >= 32 * 1024;
+            break;
+          case 3:
+          case 4:
+            use_mlas = num_scores >= 16 * 1024;
+            break;
+          default:
+            // toss up if num_scores is low (<200), but the more scores to process the larger the win by mlas
+            break;
         }
+
+        if (use_mlas) {
+          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+        } else {
+          while (s < s_end) {
+            gsl::span<float> scores_for_batch(s, s + batch_size);
+            ComputeSoftmax(scores_for_batch);
+            s += batch_size;
+          }
+        }
+
         break;
       }
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
@@ -484,12 +509,22 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
           ORT_THROW("Unexpected value for 'add_second_class' of ", add_second_class);
       }
 
-      const float* cur_in = s_end;
-      float* cur_out = &*scores.end();
-      while (cur_in > s) {
-        --cur_in;
-        cur_out -= 2;
-        update_scores(*cur_in, cur_out);
+      if (have_space_for_second_class) {
+        // forward iteration as there's a gap between each score to write into
+        float* cur_score = scores.data();
+        for (int i = 0; i < num_batches; ++i) {
+          update_scores(*cur_score, cur_score);
+          cur_score += 2;
+        }
+      } else {
+        // reverse iteration as the scores are packed together and each score needs to be expanded to two
+        const float* cur_in = s_end;
+        float* cur_out = &*scores.end();
+        while (cur_in > s) {
+          --cur_in;
+          cur_out -= 2;
+          update_scores(*cur_in, cur_out);
+        }
       }
     }
   }

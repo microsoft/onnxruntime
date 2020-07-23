@@ -41,25 +41,30 @@ struct Exception : std::exception {
 // it transparent to the users of the API.
 template <typename T>
 struct Global {
-  static const OrtApi& api_;
+  static const OrtApi* api_;
 };
 
-#ifdef EXCLUDE_REFERENCE_TO_ORT_DLL
-OrtApi stub_api;
+// If macro ORT_API_MANUAL_INIT is defined, no static initialization will be performed. Instead, user must call InitApi() before using it.
+
 template <typename T>
-const OrtApi& Global<T>::api_ = stub_api;
+#ifdef ORT_API_MANUAL_INIT
+const OrtApi* Global<T>::api_{};
+inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 #else
-template <typename T>
-const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
-inline const OrtApi& GetApi() { return Global<void>::api_; }
+inline const OrtApi& GetApi() { return *Global<void>::api_; }
+
+// This is a C++ wrapper for GetAvailableProviders() C API and returns
+// a vector of strings representing the available execution providers.
+std::vector<std::string> GetAvailableProviders();
 
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void OrtRelease(Ort##NAME* ptr) { Global<void>::api_.Release##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { GetApi().Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
@@ -71,6 +76,7 @@ ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ModelMetadata);
+ORT_DEFINE_RELEASE(ThreadingOptions);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -82,7 +88,7 @@ struct Base {
   ~Base() { OrtRelease(p_); }
 
   operator T*() { return p_; }
-  operator const T *() const { return p_; }
+  operator const T*() const { return p_; }
 
   T* release() {
     T* p = p_;
@@ -123,6 +129,7 @@ struct ModelMetadata;
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
   Env(OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
+  Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel default_logging_level = ORT_LOGGING_LEVEL_WARNING, _In_ const char* logid = "");
   Env(OrtLoggingLevel default_logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param);
   explicit Env(OrtEnv* p) : Base<OrtEnv>{p} {}
 
@@ -183,8 +190,11 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetExecutionMode(ExecutionMode execution_mode);
 
   SessionOptions& SetLogId(const char* logid);
+  SessionOptions& SetLogSeverityLevel(int level);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
+
+  SessionOptions& DisablePerSessionThreads();
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -195,6 +205,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
   char* GetGraphName(OrtAllocator* allocator) const;
   char* GetDomain(OrtAllocator* allocator) const;
   char* GetDescription(OrtAllocator* allocator) const;
+  char** GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const;
   char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
   int64_t GetVersion() const;
 };
@@ -289,7 +300,7 @@ struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
   operator OrtAllocator*() { return p_; }
-  operator const OrtAllocator *() const { return p_; }
+  operator const OrtAllocator*() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);

@@ -130,17 +130,44 @@ MlasQuantizeLinearPackBytes<int8_t>(
 
 #endif
 
-template<typename OutputType, int32_t MinimumValue, int32_t MaximumValue>
-MLAS_FORCEINLINE
+template<typename OutputType>
 void
-MlasQuantizeLinearKernel(
+MLASCALL
+MlasQuantizeLinear(
     const float* Input,
     OutputType* Output,
     size_t N,
     float Scale,
-    int32_t ZeroPoint
+    OutputType ZeroPoint
     )
+/*++
+
+Routine Description:
+
+    This routine quantizes the input buffer using the supplied quantization
+    parameters.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+    Scale - Supplies the quantization scale.
+
+    ZeroPoint - Supplies the quantization zero point value.
+
+Return Value:
+
+    None.
+
+--*/
 {
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
+
     auto ScaleVector = MlasBroadcastFloat32x4(Scale);
     auto MinimumValueVector = MlasBroadcastFloat32x4(float(MinimumValue - ZeroPoint));
     auto MaximumValueVector = MlasBroadcastFloat32x4(float(MaximumValue - ZeroPoint));
@@ -189,17 +216,44 @@ MlasQuantizeLinearKernel(
 // QuantizeLinear implementation using the C++ runtime.
 //
 
-template<typename OutputType, int32_t MinimumValue, int32_t MaximumValue>
-MLAS_FORCEINLINE
+template<typename OutputType>
 void
-MlasQuantizeLinearKernel(
+MLASCALL
+MlasQuantizeLinear(
     const float* Input,
     OutputType* Output,
     size_t N,
     float Scale,
-    int32_t ZeroPoint
+    OutputType ZeroPoint
     )
+/*++
+
+Routine Description:
+
+    This routine quantizes the input buffer using the supplied quantization
+    parameters.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+    Scale - Supplies the quantization scale.
+
+    ZeroPoint - Supplies the quantization zero point value.
+
+Return Value:
+
+    None.
+
+--*/
 {
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
+
     for (size_t n = 0; n < N; n++) {
 
         float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
@@ -211,79 +265,27 @@ MlasQuantizeLinearKernel(
 
 #endif
 
+template
 void
 MLASCALL
-MlasQuantizeLinear(
-    const float* Input,
-    uint8_t* Output,
-    size_t N,
-    float Scale,
-    uint8_t ZeroPoint
-    )
-/*++
-
-Routine Description:
-
-    This routine quantizes the input buffer using the supplied quantization
-    parameters.
-
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    N - Supplies the number of elements to process.
-
-    Scale - Supplies the quantization scale.
-
-    ZeroPoint - Supplies the quantization zero point value.
-
-Return Value:
-
-    None.
-
---*/
-{
-    return MlasQuantizeLinearKernel<uint8_t, 0, 255>(Input, Output, N, Scale, ZeroPoint);
-}
-
-void
-MLASCALL
-MlasQuantizeLinear(
+MlasQuantizeLinear<int8_t>(
     const float* Input,
     int8_t* Output,
     size_t N,
     float Scale,
     int8_t ZeroPoint
-    )
-/*++
+    );
 
-Routine Description:
-
-    This routine quantizes the input buffer using the supplied quantization
-    parameters.
-
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    N - Supplies the number of elements to process.
-
-    Scale - Supplies the quantization scale.
-
-    ZeroPoint - Supplies the quantization zero point value.
-
-Return Value:
-
-    None.
-
---*/
-{
-    return MlasQuantizeLinearKernel<int8_t, -127, 127>(Input, Output, N, Scale, ZeroPoint);
-}
+template
+void
+MLASCALL
+MlasQuantizeLinear<uint8_t>(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    );
 
 #if defined(MLAS_SSE2_INTRINSICS)
 
@@ -420,3 +422,40 @@ Return Value:
 }
 
 #endif
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine finds the minimum and maximum values of the supplied buffer.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Min - Returns the minimum value of the supplied buffer.
+
+    Max - Returns the maximum value of the supplied buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+#if defined(MLAS_TARGET_AMD64)
+    MlasPlatform.ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+#else
+    MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+#endif
+}

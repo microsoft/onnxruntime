@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
+// Copyright (c) 2019-2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -19,12 +19,7 @@
 #include "arm_compute/runtime/MemoryManagerOnDemand.h"
 
 //NEON
-#include "arm_compute/runtime/NEON/functions/NEGEMM.h"
-#include "arm_compute/runtime/NEON/functions/NETranspose.h"
 #include "arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h"
-
-#undef GEMM_ACL
-#define CACHE_TRANSPOSED_DATA
 
 namespace onnxruntime {
 namespace acl {
@@ -53,31 +48,59 @@ class Gemm : public onnxruntime::Gemm<T> {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    const auto X = context->Input<Tensor>(0);
-    const auto W = context->Input<Tensor>(1);
-    const auto B = context->Input<Tensor>(2);
+    const auto A = context->Input<Tensor>(0);
+    const auto B = context->Input<Tensor>(1);
+    const auto C = context->Input<Tensor>(2);
 
-    GemmHelper helper(X->Shape(), trans_A_ != CblasNoTrans, W->Shape(), trans_B_ != CblasNoTrans, B->Shape());
+    GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans, C->Shape());
 
     if (!helper.State().IsOK())
       return helper.State();
 
     int64_t M = helper.M();
     int64_t N = helper.N();
-    auto Y = context->Output(0, TensorShape({M, N}));
+    auto D = context->Output(0, TensorShape({M, N}));
 
-    bool FC = ((alpha_ == 1 && beta_ == 1) || (alpha_ == 1 && beta_ == 0));
+    bool FC = alpha_ == 1 && (beta_ == 1 || beta_ == 0);
+    bool useC = C != nullptr && beta_ != 0;
+
+    if(trans_A_ == CblasTrans){ // transpose input
+      LOGS_DEFAULT(WARNING) << "Transposed input not supported ; defaulting to cpu implementation";
+      return onnxruntime::Gemm<T>::Compute(context);
+    }
+
+    arm_compute::TensorShape cShape = ACLTensorShape(C->Shape());
+    if(useC &&
+      (cShape.num_dimensions() > 2 ||
+      (cShape.num_dimensions() == 2 && cShape[0] > 1 && cShape[1] > 1))) { // Multi-dimensional Bias
+      LOGS_DEFAULT(WARNING) << "Multi-dimensional Bias not supported in this implementation; defaulting to cpu implementation";
+      return onnxruntime::Gemm<T>::Compute(context);
+    }
+
+    if(useC && (cShape.num_dimensions() == 1 && cShape[0] != (long unsigned int) N)) { // Broadcast
+      LOGS_DEFAULT(WARNING) << "Multi-dimensional Bias not supported in this implementation; defaulting to cpu implementation";
+      return onnxruntime::Gemm<T>::Compute(context);
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Gemm ACL:";
+    if(useC && cShape.num_dimensions() == 2){
+      if((cShape[0] == 1 && cShape[1] != (long unsigned int) N) ||
+         (cShape[1] == 1 && cShape[0] != (long unsigned int) N)) {
+        return onnxruntime::Gemm<T>::Compute(context);
+      }
+      cShape = arm_compute::TensorShape(1, N);
+      LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {1," << N << "}";
+    }
 
     int64_t K = helper.K();
-    LOGS_DEFAULT(VERBOSE) << "Gemm ACL:" << std::endl;
-    if (X) LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str() << std::endl;
-    if (W) LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str() << std::endl;
-    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str() << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str() << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_ << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans) << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans) << std::endl;
+    if (A) LOGS_DEFAULT(VERBOSE) << "A " << A->Shape().ToString().c_str();
+    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
+    if (C) LOGS_DEFAULT(VERBOSE) << "C " << C->Shape().ToString().c_str();
+    LOGS_DEFAULT(VERBOSE) << "D " << D->Shape().ToString().c_str();
+    LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K;
+    LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_;
+    LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans);
+    LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans);
     LOGS_DEFAULT(VERBOSE) << std::endl;
 
     ACLNEGEMM* pGEMM;
@@ -89,51 +112,22 @@ class Gemm : public onnxruntime::Gemm<T> {
       tGEMM.c = std::make_shared<arm_compute::Tensor>();
       tGEMM.d = std::make_shared<arm_compute::Tensor>();
 
-      tGEMM.a->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(X->Shape()), arm_compute::Format::F32));
-      tGEMM.c->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(B->Shape()), arm_compute::Format::F32));
+      tGEMM.a->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(A->Shape()), arm_compute::Format::F32));
+      tGEMM.b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(B->Shape()), arm_compute::Format::F32));
+      tGEMM.c->allocator()->init(arm_compute::TensorInfo(cShape, arm_compute::Format::F32));
       // dimensions are stored in the opposite order to ACL's
-      tGEMM.d->allocator()->init(arm_compute::TensorInfo(arm_compute::TensorShape(N, M), tGEMM.a->info()->format()));
-
-      // transpose
-      if (!FC && trans_B_ == CblasTrans) {
-        auto trans_layer = std::make_shared<arm_compute::NETranspose>();
-        tGEMM.b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(W->Shape()), arm_compute::Format::F32));
-
-        arm_compute::Tensor tmp;
-        tmp.allocator()->init(arm_compute::TensorInfo(ACLTensorShape(W->Shape()), arm_compute::Format::F32));
-
-        trans_layer->configure(&tmp, tGEMM.b.get());
-
-        const T* b_data = W->template Data<T>();
-        ACLImportMemory(tmp.allocator(), (void*)b_data, W->Shape().Size() * 4);
-
-        tGEMM.b->allocator()->allocate();
-
-        trans_layer->run();
-      } else {
-        tGEMM.b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(W->Shape()), arm_compute::Format::F32));
-      }
-
+      tGEMM.d->allocator()->init(arm_compute::TensorInfo(arm_compute::TensorShape(N, M), arm_compute::Format::F32));
+      
       tGEMM.mm_layer = ACLCreateMemoryManager();
 
       if(FC) {
         auto layer = std::make_shared<arm_compute::NEFullyConnectedLayer>(tGEMM.mm_layer);
-        layer->configure(tGEMM.a.get(), tGEMM.b.get(), (B != nullptr && beta_ != 0) ? tGEMM.c.get() : nullptr, tGEMM.d.get());
+        arm_compute::FullyConnectedLayerInfo fc_info;
+        fc_info.transpose_weights = trans_B_ == CblasTrans;
+        layer->configure(tGEMM.a.get(), tGEMM.b.get(), useC ? tGEMM.c.get() : nullptr, tGEMM.d.get(), fc_info);
         tGEMM.layer = std::move(layer);
       } else {
-#ifdef GEMM_ACL
-        auto layer = std::make_shared<arm_compute::NEGEMM>(tGEMM.mm_layer);
-        layer->configure(tGEMM.a.get(), tGEMM.b.get(), (B != nullptr && beta_ != 0) ? tGEMM.c.get() : nullptr, tGEMM.d.get(), alpha_, beta_, arm_compute::GEMMInfo());
-        tGEMM.layer = std::move(layer);
-#else
         return onnxruntime::Gemm<T>::Compute(context);
-#endif
-      }
-
-      // non-transpose
-      if (FC || trans_B_ != CblasTrans) {
-        const T* b_data = W->template Data<T>();
-        ACLImportMemory(tGEMM.b->allocator(), (void*)b_data, W->Shape().Size() * 4);
       }
 
       std::pair<GEMMLayersIterator, bool> ret;
@@ -142,41 +136,24 @@ class Gemm : public onnxruntime::Gemm<T> {
     } else {
       //TODO: valildate shapes
       pGEMM = &it->second;
-
-      // transpose
-      if (!FC && trans_B_ == CblasTrans) {
-#ifndef CACHE_TRANSPOSED_DATA
-        auto trans_layer = std::make_shared<arm_compute::NETranspose>();
-        pGEMM->b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(W->Shape()), arm_compute::Format::F32));
-
-        arm_compute::Tensor tmp;
-        tmp.allocator()->init(arm_compute::TensorInfo(ACLTensorShape(W->Shape()), arm_compute::Format::F32));
-
-        trans_layer->configure(&tmp, pGEMM->b.get());
-
-        const T* b_data = W->template Data<T>();
-        ACLImportMemory(tmp.allocator(), (void*)b_data, W->Shape().Size() * 4);
-
-        // allocate memory for b
-        pGEMM->b->allocator()->allocate();
-
-        trans_layer->run();
-#else
-        LOGS_DEFAULT(VERBOSE) << "Reuse transposed data" << std::endl;
-#endif
-      } else {
-        const T* b_data = W->template Data<T>();
-        ACLImportMemory(pGEMM->b->allocator(), (void*)b_data, W->Shape().Size() * 4);
-      }
     }
 
-    const T* a_data = X->template Data<T>();
-    const T* c_data = B->template Data<T>();
-    const T* d_data = Y->template Data<T>();
+    const T* a_data = A->template Data<T>();
+    const T* b_data = B->template Data<T>();
+    T* d_data = D->template MutableData<T>();
 
-    ACLImportMemory(pGEMM->a->allocator(), (void*)a_data, X->Shape().Size() * 4);
-    ACLImportMemory(pGEMM->c->allocator(), (void*)c_data, B->Shape().Size() * 4);
-    ACLImportMemory(pGEMM->d->allocator(), (void*)d_data, Y->Shape().Size() * 4);
+    ACLImportMemory(pGEMM->a->allocator(), (void*)a_data, A->Shape().Size() * 4);
+    ACLImportMemory(pGEMM->b->allocator(), (void*)b_data, B->Shape().Size() * 4);
+    if(useC){
+      const T* c_data = C->template Data<T>();
+      ACLImportMemory(pGEMM->c->allocator(), (void*)c_data, C->Shape().Size() * 4);
+    }
+
+    if(D->Shape().Size() != 0 && pGEMM->d->info()->has_padding() ){
+      pGEMM->d.get()->allocator()->allocate();
+    } else {
+      ACLImportMemory(pGEMM->d->allocator(), (void*)d_data, D->Shape().Size() * 4);
+    }
 
     ACLPrintTensorShape("a", *pGEMM->a);
     ACLPrintTensorShape("b", *pGEMM->b);
@@ -188,13 +165,12 @@ class Gemm : public onnxruntime::Gemm<T> {
     pGEMM->layer->run();
     pGEMM->mm_layer->clear();
 
+    if(D->Shape().Size() != 0 && pGEMM->d->info()->has_padding() ){
+      importDataFromTensor<T>(pGEMM->d.get(), d_data);
+    }
+
     pGEMM->a->allocator()->free();
-#ifdef CACHE_TRANSPOSED_DATA
-    if (trans_B_ != CblasTrans)
-      pGEMM->b->allocator()->free();
-#else
     pGEMM->b->allocator()->free();
-#endif
     pGEMM->c->allocator()->free();
     pGEMM->d->allocator()->free();
 

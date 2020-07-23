@@ -89,15 +89,11 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       std::vector<int64_t> y_dims;
       y_dims.insert(y_dims.begin(), {N, M});
-      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape<true>(x_shape.Slice(2), kernel_shape,
-                                                             strides, dilations, &pads, &y_dims));
+      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(x_shape.Slice(2), kernel_shape,
+                                                       strides, dilations, pads, y_dims, true));
       s_.y_dims = y_dims;
       Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
       y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-
-      // special case when there is a dim value of 0 in the shape.
-      if (Y->Shape().Size() == 0)
-        return Status::OK();
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
       std::vector<int64_t> y_dims_cudnn = y_dims;
@@ -112,11 +108,20 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         strides.push_back(1);
         dilations.push_back(1);
       }
-      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
-      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
       if (w_dims_changed)
         ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+
+      // Special case when there is a dim value of 0 in the shape.
+      // Return only after we have cached the following for subsequent runs :
+      // 1) `w_dims` in the `filter_desc`
+      // 2) `y_dims` in s_.y_dims
+      if (Y->Shape().Size() == 0) {
+        return Status::OK();
+      }
+
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
       ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
@@ -130,8 +135,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         std::vector<int64_t> b_dims(2 + kernel_shape.size());
         b_dims[0] = 1;           // N
         b_dims[1] = b_shape[0];  // C
-        for (auto i = 0; i < kernel_shape.size(); i++)
-          b_dims[2 + i] = 1;
+        for (size_t i = 0; i < kernel_shape.size(); i++) b_dims[2 + i] = 1;
 
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       }
@@ -167,40 +171,40 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       s_.algo = perf.algo;
       s_.workspace_bytes = perf.memory;
     }
-  }
 
-  if (!y_data) {
-    Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
-    // special case when there is a dim value of 0 in the shape.
-    if (Y->Shape().Size() == 0)
-      return Status::OK();
+    if (!y_data) {
+      Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
+      // special case when there is a dim value of 0 in the shape.
+      if (Y->Shape().Size() == 0)
+        return Status::OK();
 
-    y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-  }
+      y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+    }
 
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
+    const auto alpha = Consts<CudaT>::One;
+    const auto beta = Consts<CudaT>::Zero;
 
-  IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
 
-  CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
-                                                &alpha,
-                                                s_.x_tensor,
-                                                x_data,
-                                                s_.filter_desc,
-                                                w_data,
-                                                s_.conv_desc,
-                                                s_.algo,
-                                                workspace.get(),
-                                                s_.workspace_bytes,
-                                                &beta,
-                                                s_.y_tensor,
-                                                y_data));
+    CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(CudnnHandle(),
+                                                  &alpha,
+                                                  s_.x_tensor,
+                                                  x_data,
+                                                  s_.filter_desc,
+                                                  w_data,
+                                                  s_.conv_desc,
+                                                  s_.algo,
+                                                  workspace.get(),
+                                                  s_.workspace_bytes,
+                                                  &beta,
+                                                  s_.y_tensor,
+                                                  y_data));
 
-  if (has_bias) {
-    const Tensor* B = context->Input<Tensor>(2);
-    auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
-    CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+    if (has_bias) {
+      const Tensor* B = context->Input<Tensor>(2);
+      auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+    }
   }
 
   return Status::OK();
@@ -229,7 +233,7 @@ Status CudnnConvolutionDescriptor::Set(
   std::vector<int> pad_dims(rank);
   std::vector<int> stride_dims(rank);
   std::vector<int> dilation_dims(rank);
-  for (auto i = 0; i < rank; i++) {
+  for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);
     dilation_dims[i] = gsl::narrow_cast<int>(dilations[i]);

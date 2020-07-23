@@ -11,7 +11,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     find_package(JNI REQUIRED)
     include_directories(${JNI_INCLUDE_DIRS})
 endif()
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
 set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
@@ -37,21 +36,29 @@ message(STATUS "Using gradle: ${GRADLE_EXECUTABLE}")
 file(GLOB_RECURSE onnxruntime4j_gradle_files "${JAVA_ROOT}/*.gradle")
 file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
 set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
-# this jar is solely used to signalling mechanism for dependency management in CMake
+# this jar is solely used to signaling mechanism for dependency management in CMake
 # if any of the Java sources change, the jar (and generated headers) will be regenerated and the onnxruntime4j_jni target will be rebuilt
-add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
+set(GRADLE_ARGS clean jar)
+if(WIN32)
+  set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+endif()
+if(onnxruntime_USE_CUDA)
+  set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
+endif()
+add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
 add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
 set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 set_property(TARGET onnxruntime4j APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${JAVA_OUTPUT_DIR}")
 
 # Specify the native sources
-file(GLOB onnxruntime4j_native_src 
+file(GLOB onnxruntime4j_native_src
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
 
 # Tell the JNI code about the requested providers
 if (onnxruntime_USE_CUDA)
@@ -69,11 +76,17 @@ endif()
 if (onnxruntime_USE_TENSORRT)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_TENSORRT=1)
 endif()
-if (onnxruntime_USE_NNAPI)
+if (onnxruntime_USE_NNAPI_BUILTIN)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NNAPI=1)
 endif()
 if (onnxruntime_USE_NUPHAR)
   target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NUPHAR=1)
+endif()
+if (onnxruntime_USE_ACL)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_ACL=1)
+endif()
+if (onnxruntime_USE_DML)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_DIRECTML=1)
 endif()
 
 # depend on java sources. if they change, the JNI should recompile
@@ -86,31 +99,73 @@ target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
 set(JAVA_PACKAGE_OUTPUT_DIR ${JAVA_OUTPUT_DIR}/build)
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_OUTPUT_DIR})
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    set(ANDROID_PACKAGE_OUTPUT_DIR ${JAVA_PACKAGE_OUTPUT_DIR}/android)
-    file(MAKE_DIRECTORY ${ANDROID_PACKAGE_OUTPUT_DIR})
+  set(ANDROID_PACKAGE_OUTPUT_DIR ${JAVA_PACKAGE_OUTPUT_DIR}/android)
+  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_OUTPUT_DIR})
 endif()
+
+# Set platform and ach for packaging
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(JNI_ARCH ${ANDROID_ABI})
+elseif (CMAKE_SIZEOF_VOID_P EQUAL "8")
+  set(JNI_ARCH x64)
+else()
+  message(FATAL_ERROR "Java is currently not supported for x86 architecture")
+endif()
+
+if (WIN32)
+  set(JAVA_PLAT "win")
+elseif (APPLE)
+  set(JAVA_PLAT "osx")
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+  set(JAVA_PLAT "linux")
+else()
+  # We don't do distribution for Android
+  # Set for completeness
+  set(JAVA_PLAT "android")
+ endif()
+
+# Similar to Nuget schema
+set(JAVA_OS_ARCH ${JAVA_PLAT}-${JNI_ARCH})
+
 # expose native libraries to the gradle build process
-set(JAVA_PACKAGE_DIR ai/onnxruntime/native/)
+set(JAVA_PACKAGE_DIR ai/onnxruntime/native/${JAVA_OS_ARCH})
 set(JAVA_NATIVE_LIB_DIR ${JAVA_OUTPUT_DIR}/native-lib)
 set(JAVA_NATIVE_JNI_DIR ${JAVA_OUTPUT_DIR}/native-jni)
 set(JAVA_PACKAGE_LIB_DIR ${JAVA_NATIVE_LIB_DIR}/${JAVA_PACKAGE_DIR})
 set(JAVA_PACKAGE_JNI_DIR ${JAVA_NATIVE_JNI_DIR}/${JAVA_PACKAGE_DIR})
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_LIB_DIR})
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_JNI_DIR})
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    set(ANDROID_PACKAGE_JNILIBS_DIR ${JAVA_OUTPUT_DIR}/android)
-    set(ANDROID_PACKAGE_ABI_DIR ${ANDROID_PACKAGE_JNILIBS_DIR}/${ANDROID_ABI})
-    file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
-    file(MAKE_DIRECTORY ${ANDROID_PACKAGE_ABI_DIR})
+  set(ANDROID_PACKAGE_JNILIBS_DIR ${JAVA_OUTPUT_DIR}/android)
+  set(ANDROID_PACKAGE_ABI_DIR ${ANDROID_PACKAGE_JNILIBS_DIR}/${ANDROID_ABI})
+  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
+  file(MAKE_DIRECTORY ${ANDROID_PACKAGE_ABI_DIR})
 endif()
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+
+# On Windows TARGET_LINKER_FILE_NAME is the .lib, TARGET_FILE_NAME is the .dll
+if (WIN32)
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime>)
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_FILE_NAME:onnxruntime4j_jni>)
+else()
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+endif()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
-    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
 endif()
+
 # run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
+if(WIN32)
+  set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+endif()
+if(onnxruntime_USE_CUDA)
+  set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
+endif()
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
 endif()

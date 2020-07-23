@@ -50,7 +50,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   std::vector<int64_t> Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, Y_dims);
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -188,7 +188,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   std::vector<int64_t> Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -207,7 +207,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  if (kernel_rank == 2 || kernel_rank == 3) {
+  if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,

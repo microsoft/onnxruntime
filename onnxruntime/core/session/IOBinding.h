@@ -58,10 +58,18 @@ class IOBinding {
     */
   common::Status SynchronizeInputs();
   common::Status SynchronizeOutputs();
+
   /**
-    * This simply provides the names and optionally allocated output containers.
+    * Bind an output name to a provided pre-allocated OrtValue. 
     */
   common::Status BindOutput(const std::string& name, const OrtValue& ml_value);
+
+  /**
+    * Bind an output name to a device. 
+    * 
+    * @param device Device to allocate the output on. Default is CPU. 
+    */
+  common::Status BindOutput(const std::string& name, OrtDevice device = {});
 
   /**
     * This simply collects the outputs obtained after calling Run() inside the @param outputs.
@@ -79,6 +87,12 @@ class IOBinding {
     */
   AllocatorPtr GetCPUAllocator(int id, onnxruntime::ProviderType provider_type) const;
 
+  /**
+    * clear inputs or outputs. IOBinding is stateful. There are cases we need to reset its state.
+    */
+  void ClearOutputs();
+  void ClearInputs();
+
  private:
   friend InferenceSession;
 
@@ -88,7 +102,14 @@ class IOBinding {
   std::vector<OrtValue> feeds_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> outputs_;
+  std::vector<OrtDevice> outputs_device_info_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IOBinding);
+
+  // device info for all outputs. only used by InferenceSession if the output is not pre-allocated.
+  const std::vector<OrtDevice>& GetOutputsDeviceInfo() const;
+
+  // The implementation for the BindOutput() overloads
+  common::Status BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device);
 };
 }  // namespace onnxruntime

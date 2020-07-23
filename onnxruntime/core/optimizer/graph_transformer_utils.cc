@@ -2,32 +2,36 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/graph_transformer_utils.h"
-#include "core/optimizer/identity_elimination.h"
-#include "core/optimizer/slice_elimination.h"
-#include "core/optimizer/conv_mul_fusion.h"
-#include "core/optimizer/conv_bn_fusion.h"
-#include "core/optimizer/conv_add_fusion.h"
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/conv_activation_fusion.h"
-#include "core/optimizer/gemm_activation_fusion.h"
-#include "core/optimizer/matmul_add_fusion.h"
-#include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/relu_clip_fusion.h"
-#include "core/optimizer/shape_to_initializer.h"
-#include "core/optimizer/nchwc_transformer.h"
-#include "core/optimizer/free_dim_override_transformer.h"
-#include "core/optimizer/bias_gelu_fusion.h"
-#include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gelu_approximation.h"
-#include "core/optimizer/fast_gelu_fusion.h"
-#include "core/optimizer/layer_norm_fusion.h"
-#include "core/optimizer/skip_layer_norm_fusion.h"
-#include "core/optimizer/embed_layer_norm_fusion.h"
-#include "core/optimizer/reshape_fusion.h"
-#include "core/optimizer/attention_fusion.h"
+
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/constant_folding.h"
+#include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/conv_add_fusion.h"
+#include "core/optimizer/conv_bn_fusion.h"
+#include "core/optimizer/conv_mul_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
+#include "core/optimizer/dynamic_quantize_matmul_fusion.h"
+#include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/optimizer/expand_elimination.h"
+#include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/free_dim_override_transformer.h"
+#include "core/optimizer/gelu_approximation.h"
+#include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/relu_clip_fusion.h"
+#include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
+#include "core/optimizer/shape_to_initializer.h"
+#include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/unsqueeze_elimination.h"
 
 namespace onnxruntime {
 
@@ -46,6 +50,8 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(onnxruntime::make_unique<EliminateSlice>());
       rules.push_back(onnxruntime::make_unique<UnsqueezeElimination>());
       rules.push_back(onnxruntime::make_unique<EliminateDropout>());
+      rules.push_back(onnxruntime::make_unique<ExpandElimination>());
+      rules.push_back(onnxruntime::make_unique<CastElimination>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
@@ -122,20 +128,22 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_execution_providers));
+
+      std::unordered_set<std::string> cpu_acl_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider};
+
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_acl_execution_providers));
 
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
-      
-      transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
+
+      transformers.emplace_back(onnxruntime::make_unique<BiasGeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
 #endif
     } break;
 
@@ -161,6 +169,16 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     }
     return transformers;
   }
+
+  // Some transformers have side-effect like result is not exactly same.
+  // These transformers could only be enabled by custom transformer list.
+#ifndef DISABLE_CONTRIB_OPS
+  if (level == TransformerLevel::Level2) {
+    std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+    transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
+  }
+#endif
+
   std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
   // If the rule-based transformer is not empty, it should be included in the custom transformer list below.
   if (rule_transformer != nullptr) {

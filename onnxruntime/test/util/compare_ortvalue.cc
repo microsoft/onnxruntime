@@ -26,20 +26,20 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 4805) /*Unsafe mix of type 'const bool' and type 'int' in operation*/
 #endif
 #include <google/protobuf/message_lite.h>
+#include <Eigen/Core>
+#include <Eigen/src/Core/arch/Default/Half.h>
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #else
 #pragma warning(pop)
 #endif
 
-
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "Eigen/Core"
-#include "Eigen/src/Core/arch/Default/Half.h"
 
 using namespace onnxruntime;
 
@@ -89,7 +89,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
         std::ostringstream oss;
         oss << std::hex << "expected " << expected_output[di] << " (" << expected_int << "), got " << real_value << " ("
             << real_int << ")"
-            << ", diff: " << diff << ", tol=" << tol << ".";
+            << ", diff: " << diff << ", tol=" << tol << std::dec << " idx=" << di << ".";
         res.second = oss.str();
         max_diff = diff;
       }

@@ -26,11 +26,14 @@ TEST(FormalParamTest, Success) {
   OpSchema::FormalParameter p("input", "desc: integer input", "tensor(int32)");
   EXPECT_EQ("input", p.GetName());
   EXPECT_EQ("tensor(int32)", p.GetTypeStr());
+#ifndef __ONNX_NO_DOC_STRINGS
   EXPECT_EQ("desc: integer input", p.GetDescription());
+#endif
   // TODO: change onnx to make formal parameter construction self-contain.
   //EXPECT_EQ(Utils::DataTypeUtils::ToType("tensor(int32)"), *p.GetTypes().begin());
 }
 
+#ifndef DISABLE_ML_OPS
 TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   Model model("traditionalMl", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -82,6 +85,7 @@ TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   delete output_arg1;
   delete output_arg4;
 }
+#endif
 
 TEST(OpRegistrationTest, OpRegTest) {
   OPERATOR_SCHEMA(__TestOpReg)

@@ -38,11 +38,6 @@ namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
 
-AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo& memory_info);
-
-common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
-                              OrtValue& output_mlvalue);
-
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
@@ -60,15 +55,15 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 
 // Finalize the feed and fetch copy info using session_state and the device and location information from the feeds
 // and fetches that will be used in graph execution.
-void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
-                               FeedsFetchesManager& feeds_fetches_manager,
+void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtDevice>& feed_locations,
                                const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
+                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                            bool only_execute_path_to_fetches = false);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.

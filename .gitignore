@@ -45,4 +45,8 @@ java/gradlew
 java/gradlew.bat
 java/gradle
 java/.gradle
-
+java/hs_*.log
+/tools/perf_util/target/classes/com/msft/send_perf_metrics
+/tools/perf_util/send_perf_metrics.iml
+/tools/perf_util/target/classes
+/tools/perf_util/src/main/resources

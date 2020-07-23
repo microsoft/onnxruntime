@@ -2,21 +2,6 @@
 // Licensed under the MIT License.
 
 #include <iostream>
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'identifier' : unreferenced formal parameter
-#pragma warning(disable : 4100)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#ifdef _MSC_VER
-#pragma warning(pop)
-#else
-#pragma GCC diagnostic pop
-#endif
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -246,6 +231,31 @@ TEST_F(GraphTest, SimpleUnique) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
 }
+  
+TEST_F(GraphTest, UnusedValueInfoSerializes) {
+  ModelProto m;
+  m.set_ir_version(4);
+  ImportOpset(m, "", 11);
+  GraphProto& g = *m.mutable_graph();   
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  ValueInfoProto* unused = g.add_value_info();
+  unused->set_name("unused");
+  SetTypeAndShape(unused->mutable_type()->mutable_tensor_type(), 1, {123});
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  model->MainGraph().SetGraphProtoSyncNeeded();
+  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+}
 
 TEST_F(GraphTest, WrongOpset) {
   ModelProto m;
@@ -350,13 +360,14 @@ TEST_F(GraphTest, ReverseDFS) {
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.
+   *
    *                 SouceNode
    *                 /       \
-   *  node_1 (Variable)      node_2 (Variable)
-   *                 \       /
-   *                 node_3 (Add)
-   *                     |
-   *                 node_4 (NoOp)
+   *  node_1 (Variable)      node_2 (Variable)    node_5 (Variable)
+   *                 \       /                        |
+   *                 node_3 (Add)                 node_6 (NoOp)
+   *                     |                            |
+   *                 node_4 (Add)  -------------------  <-- request stop
    *                     |
    *                  SinkNode
   */
@@ -389,12 +400,31 @@ TEST_F(GraphTest, ReverseDFS) {
   outputs.push_back(&output_arg3);
   auto& node_3 = graph.AddNode("node_3", "Add_DFS", "node 3", inputs, outputs);
 
+  // side path
+  inputs.clear();
+  auto& input_arg5 = graph.GetOrCreateNodeArg("node_5_in_1", &tensor_int32);
+  inputs.push_back(&input_arg5);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+  outputs.clear();
+  outputs.push_back(&output_arg5);
+  graph.AddNode("node_5", "Variable_DFS", "node 5", inputs, outputs);
+
+  inputs.clear();
+  inputs.push_back(&output_arg5);
+  auto& output_arg6 = graph.GetOrCreateNodeArg("node_6_out_1", &tensor_int32);
+  outputs.clear();
+  outputs.push_back(&output_arg6);
+  graph.AddNode("node_6", "NoOp_DFS", "node 6", inputs, outputs);
+
+  // merged
   inputs.clear();
   inputs.push_back(&output_arg3);
+  inputs.push_back(&output_arg6);
   auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
   outputs.clear();
   outputs.push_back(&output_arg4);
-  graph.AddNode("node_4", "NoOp_DFS", "node 4", inputs, outputs);
+  graph.AddNode("node_4", "Add_DFS", "node 4", inputs, outputs);
+
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -430,7 +460,11 @@ TEST_F(GraphTest, ReverseDFS) {
         s += n->Name();
         enter_leave_sequence.push_back(s);
       },
-      NodeCompareName());
+      NodeCompareName(),
+      // don't traverse side path
+      [](const Node* from, const Node* to) {
+        return from->Name() == "node_4" && to->Name() == "node_6";
+      });
 
   EXPECT_EQ(enter_leave_sequence.size(), 8u);
   EXPECT_EQ("enter:node_4", enter_leave_sequence.at(0));
@@ -1282,6 +1316,50 @@ TEST_F(GraphTest, AddRemoveInitializerHandling) {
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
+}
+
+TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
+  std::shared_ptr<Model> model;
+  {
+    ModelProto m;
+    m.set_ir_version(4);
+    ImportOpset(m, "", 10);
+    ConstructASimpleAddGraph(*m.mutable_graph(), nullptr);
+    ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+  }
+
+  // starting from:
+  //   x + y = sum
+  // modify to:
+  //   (x + y) + z = sum_with_z
+  // set z as an additional input
+  // set sum_with_z as an additional output
+
+  Graph& graph = model->MainGraph();
+  TypeProto type_proto{};
+  SetTypeAndShape(type_proto.mutable_tensor_type(), 1, {3, 4, 5});
+  auto* sum = graph.GetNodeArg("sum");
+  auto* z = &graph.GetOrCreateNodeArg("z", &type_proto);
+  auto* sum_with_z = &graph.GetOrCreateNodeArg("sum_with_z", &type_proto);
+
+  graph.AddNode("add_z", "Add", "add z to sum", {sum, z}, {sum_with_z});
+
+  auto inputs = graph.GetInputsIncludingInitializers();
+  inputs.push_back(z);
+  graph.SetInputs(inputs);
+
+  auto outputs = graph.GetOutputs();
+  outputs.push_back(sum_with_z);
+  graph.SetOutputs(outputs);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  inputs = graph.GetInputsIncludingInitializers();
+  ASSERT_TRUE(std::find(inputs.begin(), inputs.end(), z) != inputs.end()) << "expected new input z";
+
+  outputs = graph.GetOutputs();
+  ASSERT_TRUE(std::find(outputs.begin(), outputs.end(), sum_with_z) != outputs.end())
+      << "expected new output sum_with_z";
 }
 }  // namespace test
 }  // namespace onnxruntime

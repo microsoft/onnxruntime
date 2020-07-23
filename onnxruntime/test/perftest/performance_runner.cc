@@ -41,6 +41,64 @@ Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
 
 namespace onnxruntime {
 namespace perftest {
+
+void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics) const {
+  bool have_file = !path.empty();
+  std::ofstream outfile;
+
+  if (have_file) {
+    outfile.open(path, std::ofstream::out | std::ofstream::app);
+    if (!outfile.good()) {
+      // at least provide some info on the run
+      std::cerr << "failed to open result file '" << path.c_str() << "'. will dump stats to output.\n";
+      have_file = false;
+      f_include_statistics = true;
+    }
+  }
+
+  if (have_file) {
+    for (size_t runs = 0; runs < time_costs.size(); runs++) {
+      outfile << model_name << "," << time_costs[runs] << "," << peak_workingset_size << ","
+              << average_CPU_usage << "," << runs << std::endl;
+    }
+  } else {
+    // match formatting of the initial output from PerformanceRunner::Run
+    std::cout << "Avg CPU usage:" << average_CPU_usage
+              << "\nPeak working set size:" << peak_workingset_size
+              << "\nRuns:" << time_costs.size() << std::endl;
+  }
+
+  if (!time_costs.empty() && f_include_statistics) {
+    std::vector<double> sorted_time = time_costs;
+
+    size_t total = sorted_time.size();
+    size_t n50 = static_cast<size_t>(total * 0.5);
+    size_t n90 = static_cast<size_t>(total * 0.9);
+    size_t n95 = static_cast<size_t>(total * 0.95);
+    size_t n99 = static_cast<size_t>(total * 0.99);
+    size_t n999 = static_cast<size_t>(total * 0.999);
+
+    std::sort(sorted_time.begin(), sorted_time.end());
+
+    auto output_stats = [&](std::ostream& ostream) {
+      ostream << "Min Latency: " << sorted_time[0] << " s\n";
+      ostream << "Max Latency: " << sorted_time[total - 1] << " s\n";
+      ostream << "P50 Latency: " << sorted_time[n50] << " s\n";
+      ostream << "P90 Latency: " << sorted_time[n90] << " s\n";
+      ostream << "P95 Latency: " << sorted_time[n95] << " s\n";
+      ostream << "P99 Latency: " << sorted_time[n99] << " s\n";
+      ostream << "P999 Latency: " << sorted_time[n999] << " s" << std::endl;
+    };
+
+    if (have_file) {
+      outfile << std::endl;
+      output_stats(outfile);
+    }
+
+    output_stats(std::cout);
+  }
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
@@ -51,7 +109,7 @@ Status PerformanceRunner::Run() {
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
-  performance_result_.start_ = std::chrono::high_resolution_clock::now();
+  performance_result_.start = std::chrono::high_resolution_clock::now();
 
   std::unique_ptr<utils::ICPUUsage> p_ICPUUsage = utils::CreateICPUUsage();
   switch (performance_test_config_.run_config.test_mode) {
@@ -64,7 +122,7 @@ Status PerformanceRunner::Run() {
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
   }
-  performance_result_.end_ = std::chrono::high_resolution_clock::now();
+  performance_result_.end = std::chrono::high_resolution_clock::now();
 
   performance_result_.average_CPU_usage = p_ICPUUsage->GetUsage();
   performance_result_.peak_workingset_size = utils::GetPeakWorkingSetSize();
@@ -72,14 +130,18 @@ Status PerformanceRunner::Run() {
   std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
-  std::chrono::duration<double> inference_duration = performance_result_.end_ - performance_result_.start_;
+  std::chrono::duration<double> inference_duration = performance_result_.end - performance_result_.start;
 
-  std::cout << "Session creation time cost:" << session_create_duration.count() << " s" << std::endl
-            << "Total inference time cost:" << performance_result_.total_time_cost << " s" << std::endl  // sum of time taken by each request
-            << "Total inference requests:" << performance_result_.time_costs.size() << std::endl
-            << "Average inference time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl
+  std::cout << "Session creation time cost: " << session_create_duration.count() << " s\n"
+            << "Total inference time cost: " << performance_result_.total_time_cost << " s\n"  // sum of time taken by each request
+            << "Total inference requests: " << performance_result_.time_costs.size() << "\n"
+            << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
             // Time between start and end of run. Less than Total time cost when running requests in parallel.
-            << "Total inference run time:" << inference_duration.count() << " s" << std::endl;
+            << "Total inference run time: " << inference_duration.count() << " s\n"
+            << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
+            << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
+            << std::endl;
+
   return Status::OK();
 }
 
@@ -104,8 +166,8 @@ Status PerformanceRunner::RunParallelDuration() {
   // TODO: Make each thread enqueue a new worker.
   auto tpool = GetDefaultThreadPool(Env::Default());
   std::atomic<int> counter = {0};
-  std::mutex m;
-  std::condition_variable cv;
+  OrtMutex m;
+  OrtCondVar cv;
 
   auto start = std::chrono::high_resolution_clock::now();
   auto end = start;
@@ -119,7 +181,7 @@ Status PerformanceRunner::RunParallelDuration() {
       tpool->Schedule([this, &counter, &m, &cv]() {
         session_->ThreadSafeRun();
         // Simplified version of Eigen::Barrier
-        std::lock_guard<std::mutex> lg(m);
+        std::lock_guard<OrtMutex> lg(m);
         counter--;
         cv.notify_all();
       });
@@ -129,7 +191,7 @@ Status PerformanceRunner::RunParallelDuration() {
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
   //Join
-  std::unique_lock<std::mutex> lock(m);
+  std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
@@ -141,8 +203,8 @@ Status PerformanceRunner::ForkJoinRepeat() {
   // create a threadpool with one thread per concurrent request
   auto tpool = onnxruntime::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
   std::atomic<int> counter{0}, requests{0};
-  std::mutex m;
-  std::condition_variable cv;
+  OrtMutex m;
+  OrtCondVar cv;
 
   // Fork
   for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
@@ -155,34 +217,37 @@ Status PerformanceRunner::ForkJoinRepeat() {
       }
 
       // Simplified version of Eigen::Barrier
-      std::lock_guard<std::mutex> lg(m);
+      std::lock_guard<OrtMutex> lg(m);
       counter--;
       cv.notify_all();
     });
   }
 
   //Join
-  std::unique_lock<std::mutex> lock(m);
+  std::unique_lock<OrtMutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
 }
 
-static TestModelInfo* CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
+static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
     return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
   }
+
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
     return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
   }
+
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
 
-static TestSession* CreateSession(Ort::Env& env, std::random_device& rd,
-                                  const PerformanceTestConfig& performance_test_config_,
-                                  TestModelInfo* test_model_info) {
+static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd,
+                                                  const PerformanceTestConfig& performance_test_config_,
+                                                  const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info);
+    return std::unique_ptr<TestSession>(
+        new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
@@ -191,11 +256,12 @@ static TestSession* CreateSession(Ort::Env& env, std::random_device& rd,
 #endif
   ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
 }
+
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
-  session_.reset(CreateSession(env, rd, test_config, test_model_info_));
+  session_ = CreateSession(env, rd, test_config, *test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
 }
 
@@ -216,7 +282,13 @@ bool PerformanceRunner::Initialize() {
   std::string narrow_model_name = ToMBString(model_name);
   performance_result_.model_name = narrow_model_name;
 
-  test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
+  // ownership semantics are a little unexpected here as the test case takes ownership of the model info
+  TestModelInfo* test_model_info = test_model_info_.get();
+  test_case_ = CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0);
+
+  if (performance_test_config_.run_config.generate_model_input_binding) {
+    return static_cast<OnnxRuntimeTestSession*>(session_.get())->PopulateGeneratedInputTestData();
+  }
 
   // TODO: Place input tensor on cpu memory if dnnl provider type to avoid CopyTensor logic in CopyInputAcrossDevices
   size_t test_data_count = test_case_->GetDataCount();
@@ -228,19 +300,18 @@ bool PerformanceRunner::Initialize() {
     std::unordered_map<std::string, OrtValue*> feeds;
     test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
     // Discard the names in feeds
-    int input_count = test_model_info_->GetInputCount();
+    int input_count = test_model_info->GetInputCount();
     for (int i = 0; i != input_count; ++i) {
-      auto iter = feeds.find(test_model_info_->GetInputName(i));
+      auto iter = feeds.find(test_model_info->GetInputName(i));
       if (iter == feeds.end()) {
-        std::cout << "there is no test input data for input " << test_model_info_->GetInputName(i) << " and model "
+        std::cout << "there is no test input data for input " << test_model_info->GetInputName(i) << " and model "
                   << test_case_->GetTestCaseName() << std::endl;
         return false;
       }
       session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), iter->second);
     }
   }
-  test_case_.reset(nullptr);
-  test_model_info_ = nullptr;
+
   return true;
 }
 

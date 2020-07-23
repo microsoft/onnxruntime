@@ -44,22 +44,49 @@ __global__ void ExpandKernel2D(
   output_data[id] = input_data[dim0 * input_view_stride0 + dim1 * input_view_stride1];
 }
 
-template <typename T>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void ExpandKernel(
     const int rank,
     const int N,
     const T* input_data,
     T* output_data,
-    const fast_divmod* fdm_output_strides,
-    const int64_t* input_view_strides) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+    const TArray<fast_divmod> output_strides,
+    const TArray<int64_t> input_strides) {
+  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  T value[NumElementsPerThread];
 
-  int dim, r = id, input_index = 0;
-  for (int i = 0; i < rank; ++i) {
-    fdm_output_strides[i].divmod(r, dim, r);
-    input_index += dim * input_view_strides[i];
+  CUDA_LONG id = start;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+      CUDA_LONG index = 0;
+      CUDA_LONG offset = id;
+#pragma unroll
+      for (auto dim = 0; dim < output_strides.Capacity(); dim++) {
+        if (dim >= rank) {
+          break;
+        }
+
+        int q, r;
+        output_strides[dim].divmod(offset, q, r);
+        index += static_cast<int>(input_strides[dim]) * q;
+        offset = r;
+      }
+
+      value[i] = input_data[index];
+      id += NumThreadsPerBlock;
+    }
   }
-  output_data[id] = input_data[input_index];
+
+  id = start;
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output_data[id] = value[i];
+      id += NumThreadsPerBlock;
+    }
+  }
 }
 
 Status ExpandByFill(const size_t element_size, const int N, const void* input_data, void* output_data) {
@@ -114,9 +141,9 @@ Status ExpandImpl(
     const int N_input,
     const void* input_data,
     void* output_data,
-    CudaKernel::CudaAsyncBuffer<fast_divmod>& fdm_output_strides,
-    CudaKernel::CudaAsyncBuffer<int64_t>& input_view_strides) {
-  const int rank = static_cast<int>(fdm_output_strides.count());
+    const TArray<fast_divmod>& output_strides,
+    const TArray<int64_t>& input_strides) {
+  const int rank = static_cast<int>(output_strides.Size());
   if (rank == 1) {
     if (N_input == N_output) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, input_data, N_output * element_size, cudaMemcpyDeviceToDevice));
@@ -125,20 +152,19 @@ Status ExpandImpl(
     }
   } else if (rank == 2) {
     return Expand2D(element_size, N_output, input_data, output_data,
-                    fdm_output_strides.CpuSpan()[0],
-                    static_cast<int>(input_view_strides.CpuSpan()[0]),
-                    static_cast<int>(input_view_strides.CpuSpan()[1]));
+                    output_strides[0],
+                    static_cast<int>(input_strides[0]),
+                    static_cast<int>(input_strides[1]));
   }
 
-  int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(N_output, GridDim::maxThreadsPerBlock));
-  fdm_output_strides.CopyToGpu();
-  input_view_strides.CopyToGpu();
+  int blocksPerGrid = gsl::narrow_cast<int>(CeilDiv(N_output, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
 
-#define EXPAND_ON(TYPE)                                                                                  \
-  case sizeof(TYPE):                                                                                     \
-    ExpandKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                     \
-        rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
-        fdm_output_strides.GpuPtr(), input_view_strides.GpuPtr());                                       \
+#define EXPAND_ON(TYPE)                                                                                      \
+  case sizeof(TYPE):                                                                                         \
+    ExpandKernel<TYPE, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>                           \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(                                                 \
+            rank, N_output, reinterpret_cast<const TYPE*>(input_data), reinterpret_cast<TYPE*>(output_data), \
+            output_strides, input_strides);                                                                  \
     break
 
   switch (element_size) {

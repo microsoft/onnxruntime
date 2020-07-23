@@ -1,11 +1,17 @@
 parameters:
   AgentPool : 'Linux-CPU'
   JobName : 'Linux_CI_Dev'
+  SubmoduleCheckoutMode: ''
   BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_tvm --build_wheel"'
+  DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
   ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
+  # to inject strategy, you need to pass in the whole yaml structure - 
+  # https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema?view=azure-devops&tabs=schema#strategies
+  # see example in orttraining-linux-gpu-ci-pipeline.yml
+  Strategy: ''
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -13,16 +19,44 @@ jobs:
     clean: all
   timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
   pool: ${{ parameters.AgentPool }}
+  ${{ if ne(parameters.Strategy, '') }}:
+    strategy:
+      ${{ parameters.Strategy }}
   steps:
+    - checkout: self
+      ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
+        submodules: ${{ parameters.SubmoduleCheckoutMode }}
     - template: linux-set-variables-and-download.yml
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '12.16.3'
     - script: ${{ parameters.BuildCommand }}
       displayName: 'Command Line Script'
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**/*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
          ${{ parameters.NuPackScript }}
         displayName: 'Create Artifacts'
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
+      - script: |
+         npm pack
+         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+        displayName: 'Create NPM Package'
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'

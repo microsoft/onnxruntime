@@ -5,18 +5,28 @@
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
-                   size_t total_memory)
-    : device_allocator_(std::move(resource_allocator)),
+                   size_t total_memory,
+                   ArenaExtendStrategy arena_extend_strategy)
+    : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+                                    OrtAllocatorType::OrtArenaAllocator,
+                                    resource_allocator->Info().device,
+                                    resource_allocator->Info().id,
+                                    resource_allocator->Info().mem_type)),
+      device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
-      next_allocation_id_(1),
-      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator,
-            device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
+      next_allocation_id_(1) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
+
+  // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable.
+  // But first we need to add a mechanism to allow that sort of low level configuration to be done
+  // without adding separate parameters to SessionOptions for every single one of them.
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
+
+  arena_extend_strategy_ = arena_extend_strategy;
   // Create a bunch of bins of various good sizes.
 
   // We create bins to fit all possible ranges that cover the
@@ -55,7 +65,7 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCArena::Extend(size_t rounded_bytes) {
+Status BFCArena::Extend(size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -63,20 +73,10 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
   if (rounded_bytes > available_bytes) {
-    return false;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes,
+                           " is smaller than requested bytes of ", rounded_bytes);
   }
 
-  // If curr_region_allocation_bytes_ is not enough to satisfy the
-  // allocation, keep multiplying by a power of two until that is
-  // sufficient.
-  bool increased_allocation = false;
-  while (rounded_bytes > curr_region_allocation_bytes_) {
-    curr_region_allocation_bytes_ *= 2;
-    increased_allocation = true;
-  }
-
-  // Try allocating.
-  size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
     try {
@@ -95,32 +95,57 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     return new_mem;
   };
 
+  auto get_extend_bytes = [this, available_bytes](const size_t bytes) -> size_t {
+    size_t extend_bytes = 0;
+    if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
+      // If curr_region_allocation_bytes_ is not enough to satisfy the
+      // allocation, keep multiplying by a power of two until that is
+      // sufficient.
+      bool increased_allocation = false;
+      while (bytes > curr_region_allocation_bytes_) {
+        curr_region_allocation_bytes_ *= 2;
+        increased_allocation = true;
+      }
+
+      extend_bytes = std::min(static_cast<size_t>(curr_region_allocation_bytes_), available_bytes);
+
+      // we allocated the same number of bytes as the current region
+      // the 2x is to double the minimum size of the next amount we'll allocate
+      if (!increased_allocation) {
+        curr_region_allocation_bytes_ *= 2;
+      }
+    } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+      // BFC Arena could cause internal and external fragmentation. But, running training with
+      // big batch size will be very sensitive to fragmentation. So, to avoid fragmentation,
+      // just extend arena with actual requested size.
+      extend_bytes = bytes;
+    } else {
+      ORT_THROW("Incorrect arena extend strategy.", static_cast<int32_t>(arena_extend_strategy_));
+    }
+
+    return extend_bytes;
+  };
+
+  size_t bytes = get_extend_bytes(rounded_bytes);
+  // Try allocating.
   void* mem_addr = safe_alloc(bytes);
 
-  if (mem_addr == nullptr) {
-    static constexpr float kBackpedalFactor = 0.9f;
+  static constexpr float kBackpedalFactor = 0.9f;
+  // Try allocating less memory.
+  while (mem_addr == nullptr) {
+    bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
+    if (bytes < rounded_bytes)
+      break;
 
-    // Try allocating less memory.
-    while (mem_addr == nullptr) {
-      bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-      if (bytes < rounded_bytes)
-        break;
-
-      mem_addr = safe_alloc(bytes);
-    }
+    mem_addr = safe_alloc(bytes);
   }
 
   if (mem_addr == nullptr) {
-    ORT_THROW("Failed to allocate memory for requested buffer of size ", rounded_bytes);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
-  // we allocated the same number of bytes as the current region, so we have 2x that now
-  if (!increased_allocation) {
-    curr_region_allocation_bytes_ *= 2;
-  }
-
-  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
-                     << " bytes.";
+  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
   LOGS_DEFAULT(INFO) << "Total allocated bytes: "
@@ -149,7 +174,7 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
-  return true;
+  return Status::OK();
 }
 
 BFCArena::ChunkHandle BFCArena::AllocateChunk() {
@@ -239,10 +264,15 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
                      << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
 
   // Try to extend
-  if (Extend(rounded_bytes)) {
+  auto status = Extend(rounded_bytes);
+  if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
       return ptr;
+    } else {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to find a free memory block despite calling Extend. rounded_bytes=",
+                               rounded_bytes);
     }
   }
 
@@ -250,13 +280,12 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying "
-                        << "to allocate " << num_bytes
+    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying to allocate " << num_bytes
                         << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
 
-  return nullptr;
+  ORT_THROW(status.ErrorMessage());
 }
 
 void BFCArena::GetStats(AllocatorStats* stats) {
@@ -283,11 +312,10 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
 
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
-        // kMaxInternalFragmentation bytes on padding this alloc.
-        const int64_t kMaxInternalFragmentation = 128 << 20;  // 128mb
+        // kMaxDeadBytesInChunk bytes on padding this alloc.
+        const int64_t kMaxDeadBytesInChunk = 128 << 20;  // 128mb
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxInternalFragmentation) {
+            static_cast<int64_t>(chunk->size) - rounded_bytes >= kMaxDeadBytesInChunk) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

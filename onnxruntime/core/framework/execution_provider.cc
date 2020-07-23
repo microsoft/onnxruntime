@@ -31,7 +31,7 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
-      if (registry->TryFindKernel(node, Type()) != nullptr) {
+      if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
         std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
         result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
@@ -49,6 +49,8 @@ common::Status IExecutionProvider::OnRunStart() { return Status::OK(); }
 
 common::Status IExecutionProvider::OnRunEnd() { return Status::OK(); }
 
+common::Status IExecutionProvider::OnSessionInitializationEnd() { return Status::OK(); }
+
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
   const int key = MakeKey(info.id, info.mem_type);
@@ -57,7 +59,7 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
     ORT_THROW("duplicated allocator");
   }
   allocators_.insert(iter, {key, allocator});
-  allocator_list_.emplace_back(gsl::not_null<IAllocator*>(allocator.get()));
+  allocator_list_.push_back(allocator);
 }
 
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,

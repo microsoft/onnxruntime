@@ -18,7 +18,7 @@ class SplitBase {
     // optional
     if (info.GetAttrs("split", split_sizes_).IsOK()) {
       split_size_sum_ = std::accumulate(split_sizes_.cbegin(), split_sizes_.cend(), 0LL);
-      ORT_ENFORCE(std::all_of(split_sizes_.cbegin(), split_sizes_.cend(), [](int64_t value) { return value > 0; }),
+      ORT_ENFORCE(std::all_of(split_sizes_.cbegin(), split_sizes_.cend(), [](int64_t value) { return value >= 0; }),
                   "Invalid value in 'split' attribute. All values must be > 0");
     }
   }

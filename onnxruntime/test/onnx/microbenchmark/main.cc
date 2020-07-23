@@ -9,12 +9,14 @@
 #include <core/providers/cpu/cpu_execution_provider.h>
 #include "core/session/environment.h"
 #include <core/common/logging/sinks/clog_sink.h>
+#include <core/platform/Barrier.h>
 #include <core/graph/model.h>
 #include <core/graph/graph.h>
 #include <core/framework/kernel_def_builder.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/session/ort_env.h>
+#include <core/util/thread_utils.h>
 
 #include <unordered_map>
 
@@ -31,7 +33,9 @@ static void BM_CPUAllocator(benchmark::State& state) {
     cpu_allocator->Free(p);
   }
 }
-BENCHMARK(BM_CPUAllocator)->Arg(4)->Arg(sizeof(Tensor));
+BENCHMARK(BM_CPUAllocator)
+    ->Arg(4)
+    ->Arg(sizeof(Tensor));
 
 static void BM_ResolveGraph(benchmark::State& state) {
   std::shared_ptr<onnxruntime::Model> model_copy;
@@ -68,14 +72,6 @@ BENCHMARK(BM_ResolveGraph);
       abort();                                               \
     }                                                        \
   } while (0);
-
-static void BM_CreateThreadPool(benchmark::State& state) {
-  concurrency::ThreadPool::ThreadEnvironment env;
-  for (auto _ : state) {
-    onnxruntime::concurrency::ThreadPool tp(48, true, env);
-  }
-}
-BENCHMARK(BM_CreateThreadPool)->UseRealTime()->Unit(benchmark::TimeUnit::kMillisecond);
 
 int main(int argc, char** argv) {
   ::benchmark::Initialize(&argc, argv);

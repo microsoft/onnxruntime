@@ -47,18 +47,6 @@ Status CudnnTensor::Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode) {
   return Status::OK();
 }
 
-template <typename ElemType>
-cudnnDataType_t CudnnTensor::GetDataType() {
-  if (typeid(ElemType) == typeid(float))
-    return CUDNN_DATA_FLOAT;
-  else if (typeid(ElemType) == typeid(double))
-    return CUDNN_DATA_DOUBLE;
-  else if (typeid(ElemType) == typeid(half))
-    return CUDNN_DATA_HALF;
-  else
-    ORT_THROW("cuDNN engine currently supports only single/double/half precision data types.");
-}
-
 CudnnDataTensor::CudnnDataTensor()
     : tensor_(nullptr) {
 }
@@ -124,9 +112,38 @@ Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnn
   return Status::OK();
 }
 
-template cudnnDataType_t CudnnTensor::GetDataType<float>();
-template cudnnDataType_t CudnnTensor::GetDataType<double>();
-template cudnnDataType_t CudnnTensor::GetDataType<half>();
+template <typename ElemType>
+cudnnDataType_t CudnnTensor::GetDataType() {
+  ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types. Got:",
+    typeid(ElemType).name());
+  // Not reachable but GCC complains
+  return 0;
+}
+
+template<>
+cudnnDataType_t CudnnTensor::GetDataType<float>() {
+  return CUDNN_DATA_FLOAT;
+}
+
+template <>
+cudnnDataType_t CudnnTensor::GetDataType<double>() {
+  return CUDNN_DATA_DOUBLE;
+}
+
+template <>
+cudnnDataType_t CudnnTensor::GetDataType<half>() {
+  return CUDNN_DATA_HALF;
+}
+
+template <>
+cudnnDataType_t CudnnTensor::GetDataType<int8_t>() {
+  return CUDNN_DATA_INT8;
+}
+
+template <>
+cudnnDataType_t CudnnTensor::GetDataType<uint8_t>() {
+  return CUDNN_DATA_UINT8;
+}
 
 template <>
 const float Consts<float>::One = 1;
@@ -144,8 +161,17 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
-std::vector<cudaDeviceProp> DeviceProp::s_cachedDeviceProps;
-std::once_flag DeviceProp::s_cachedDevicePropsInitFlag;
+template <>
+const int8_t Consts<int8_t>::Zero = 0;
+
+template <>
+const int8_t Consts<int8_t>::One = 1;
+
+template <>
+const uint8_t Consts<uint8_t>::Zero = 0;
+
+template <>
+const uint8_t Consts<uint8_t>::One = 1;
 
 }  // namespace cuda
 }  // namespace onnxruntime

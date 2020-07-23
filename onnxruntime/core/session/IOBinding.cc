@@ -42,6 +42,11 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   return Status::OK();
 }
 
+void IOBinding::ClearInputs() {
+  feed_names_.clear();
+  feeds_.clear();
+}
+
 static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& node_info_map,
                                     const SessionState& session_state) {
   std::set<std::string> providers;
@@ -74,26 +79,43 @@ common::Status IOBinding::SynchronizeOutputs() {
 }
 
 common::Status IOBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
+  // device value is ignored when ml_value is pre-allocated
+  return BindOutputImpl(name, ml_value, {});
+}
+
+common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) {
+  return BindOutputImpl(name, {}, device);
+}
+
+common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
   auto rc = Contains(output_names_, name);
   if (rc.first) {
     outputs_[rc.second] = ml_value;
-    return Status::OK();
+    outputs_device_info_[rc.second] = device;
+  } else {
+    output_names_.push_back(name);
+    outputs_.push_back(ml_value);
+    outputs_device_info_.push_back(device);
   }
 
-  output_names_.push_back(name);
-  outputs_.push_back(ml_value);
   return Status::OK();
 }
 
-const std::vector<std::string>& IOBinding::GetOutputNames() const {
-  return output_names_;
+void IOBinding::ClearOutputs() {
+  output_names_.clear();
+  outputs_.clear();
+  outputs_device_info_.clear();
 }
+
+const std::vector<std::string>& IOBinding::GetOutputNames() const { return output_names_; }
 
 std::vector<OrtValue>& IOBinding::GetOutputs() { return outputs_; }
 
-const std::vector<std::string>& IOBinding::GetInputNames() const {
-  return feed_names_;
+const std::vector<OrtDevice>& IOBinding::GetOutputsDeviceInfo() const {
+  return outputs_device_info_;
 }
+
+const std::vector<std::string>& IOBinding::GetInputNames() const { return feed_names_; }
 
 const std::vector<OrtValue>& IOBinding::GetInputs() const { return feeds_; }
 

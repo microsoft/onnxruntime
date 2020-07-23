@@ -62,7 +62,7 @@ static Status ComputeImpl(const Tensor& input, int64_t num_batches, int64_t num_
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE) {
     ml::batched_update_scores_inplace(gsl::make_span(output_data, num_batches * num_targets),
-                                      num_batches, num_targets, post_transform, -1, threadpool);
+                                      num_batches, num_targets, post_transform, -1, false, threadpool);
   }
 
   return Status::OK();
@@ -81,7 +81,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
 
   int64_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : input_shape[0];
   int64_t num_features = input_shape.NumDimensions() <= 1 ? input_shape.Size() : input_shape[1];
-  Tensor& Y = *ctx->Output(0, TensorShape({num_batches, num_targets_}));
+  Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
   auto element_type = X.GetElementType();

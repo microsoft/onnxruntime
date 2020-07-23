@@ -24,6 +24,9 @@
 #pragma warning(disable : 4506) /*no definition for inline function 'function'*/
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
+#pragma warning(disable : 6011) /*Dereferencing NULL pointer*/
+#pragma warning(disable : 6387) /*'value' could be '0'*/
+#pragma warning(disable : 26495) /*Variable is uninitialized.*/
 #endif
 #include <google/protobuf/message_lite.h>
 #ifdef __GNUC__
@@ -34,6 +37,7 @@
 #endif
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 
@@ -43,7 +47,8 @@ int main(int argc, char** argv) {
   int status = 0;
   try {
     ::testing::InitGoogleTest(&argc, argv);
-    ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
+    OrtThreadingOptions tpo;
+    ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
     status = RUN_ALL_TESTS();
   } catch (const std::exception& ex) {
     std::cerr << ex.what();

@@ -98,7 +98,6 @@ void MaxPoolWithIndex(
     const T* p_input,
     T* p_output,
     int64_t* p_indices) {
-  size_t input_dim_count = input_shape.NumDimensions();
 
   int64_t batchs = input_shape[0];
   int64_t channels = input_shape[1];
@@ -179,6 +178,8 @@ void MaxPoolWithIndex(
 INSTANTIATEMAXPOOLWITHINDEX(float)
 INSTANTIATEMAXPOOLWITHINDEX(double)
 INSTANTIATEMAXPOOLWITHINDEX(half)
+INSTANTIATEMAXPOOLWITHINDEX(int8_t)
+INSTANTIATEMAXPOOLWITHINDEX(uint8_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime

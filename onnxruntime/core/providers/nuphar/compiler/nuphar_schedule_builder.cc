@@ -50,7 +50,11 @@ static void Traverse(const tvm::Tensor& tensor,
       auto current_node = ctx_codegen.FindNode(t);
       Traverse(t, current_node, ctx_codegen, ctx_schedule);
     } else if (ctx_codegen.CheckLiteral(t->op->name)) {
-      TryInlineSchedule(t, ctx_schedule);
+      if (tensor->op.as<tvm::ExternOpNode>() != nullptr) {
+        InsertRootSchedule(t, ctx_schedule);
+      } else {
+        TryInlineSchedule(t, ctx_schedule);
+      }
     }
   }
 }

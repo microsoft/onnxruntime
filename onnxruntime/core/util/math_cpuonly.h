@@ -46,16 +46,17 @@
 #pragma warning(disable : 4324)
 #pragma warning(disable : 4245)
 #pragma warning(disable : 4127)
+#pragma warning(disable : 6255)
+#pragma warning(disable : 6294)
 #endif
 #include "Eigen/Core"
-
+#include "Eigen/Dense"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #else
 #pragma warning(pop)
 #endif
 
-#include "Eigen/Dense"
 #include "core/framework/tensor.h"
 namespace onnxruntime {
 
@@ -102,27 +103,6 @@ class CPUMathUtil {
  private:
   CPUMathUtil() = default;
 };
-
-template <typename T>
-void FuseActivation(const std::string& activation, T* y_data, size_t size, float leaky_relu_alpha) {
-  if (activation.empty()) {
-    return;
-  }
-
-  EigenVectorArrayMap<T> y_vec(y_data, size);
-
-  if (activation == "Relu") {
-    y_vec = y_vec.cwiseMax(0);
-  } else if (activation == "Sigmoid") {
-    y_vec = (y_vec >= 0).select(1 / (1. + (-y_vec.abs()).exp()), 1 - 1 / (1. + (-y_vec.abs()).exp()));
-  } else if (activation == "Tanh") {
-    y_vec = y_vec.tanh();
-  } else if (activation == "LeakyRelu") {
-    y_vec = (y_vec >= 0).select(y_vec, (T)leaky_relu_alpha * y_vec);
-  } else {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation);
-  }
-}
 
 // cast TA and TB to TC, and do matrix multiply in Eigen
 // note that inputs/outputs is row-major, while Eigen is col-major

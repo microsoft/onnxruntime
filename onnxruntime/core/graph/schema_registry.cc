@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/schema_registry.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 // Add customized domain to min/max version.
@@ -69,7 +70,8 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
             << op_schema.line()
             << ", but it is already registered from file "
             << schema.file() << " line " << schema.line() << std::endl;
-    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
+    LOGS_DEFAULT(WARNING) << ostream.str();
+    return common::Status::OK();  // an op with the same name can be registered for multiple execution providers
   }
 
   auto ver_range_it = domain_version_range_map_.find(op_domain);

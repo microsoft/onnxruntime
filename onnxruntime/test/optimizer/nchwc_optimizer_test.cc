@@ -9,6 +9,7 @@
 #include "test/compare_ortvalue.h"
 #include "gtest/gtest.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -17,7 +18,7 @@ namespace test {
 class NchwcInferenceSession : public InferenceSession {
  public:
   explicit NchwcInferenceSession(const SessionOptions& session_options,
-                                 logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+                                 const Environment& env) : InferenceSession(session_options, env) {
   }
 
   std::unordered_map<std::string, int> CountOpsInGraph() {
@@ -208,7 +209,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     SessionOptions session_options;
     session_options.graph_optimization_level = level;
     session_options.session_logid = "NchwcOptimizerTests";
-    NchwcInferenceSession session{session_options, &DefaultLoggingManager()};
+    NchwcInferenceSession session{session_options, GetEnvironment()};
     ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
     ASSERT_TRUE(session.Initialize().IsOK());
 
@@ -1215,6 +1216,41 @@ TEST(NchwcOptimizerTests, Upsample) {
     test_case(opset_version, 1.f, 1.f);
     test_case(opset_version, 2.f, 2.f);
     test_case(opset_version, 3.f, 5.f);
+  }
+}
+
+TEST(NchwcOptimizerTests, Activation) {
+  auto test_case = [&](const std::string& activation_op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* mul_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      helper.AddNode("Add", {conv1_output_arg, activation_output_arg}, {mul_output_arg});
+      helper.AddConvNode(mul_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+      auto op_to_count = session.CountOpsInGraph();
+      EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_op_type], 1);
+      EXPECT_EQ(op_to_count["Add"], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // Verify that the optimizer doesn't add reorders for these activations that
+  // cannot be fused with a convolution.
+  std::vector<std::string> activation_op_types{"Relu", "Sigmoid", "Tanh"};
+  for (auto& activation_op_type : activation_op_types) {
+    test_case(activation_op_type);
   }
 }
 

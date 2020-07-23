@@ -47,7 +47,7 @@ class NupharKernelState {
 
   // A owner of generated Tensor for weight layout for now
   // TODO: remove it after weight layout refactoring
-  std::unordered_map<std::string, std::unique_ptr<Tensor>> generated_initailizers_;
+  std::unordered_map<std::string, std::unique_ptr<Tensor>> generated_initializers_;
 
   Status codegen_status_;
 
@@ -76,10 +76,9 @@ class NupharKernelState {
   NUPHAR_OP(Abs, 6, DataTypeImpl::AllFixedSizeTensorTypes())                                \
   NUPHAR_OP(Add, 7, DataTypeImpl::AllFixedSizeTensorTypes())                                \
   NUPHAR_VERSIONED_OP(ArgMax, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())               \
-  NUPHAR_OP(ArgMax, 11, DataTypeImpl::AllFixedSizeTensorTypes())                            \
-  NUPHAR_OP(ArgMax, 1, DataTypeImpl::AllFixedSizeTensorTypes())                             \
+  NUPHAR_VERSIONED_OP(ArgMax, 11, 11, DataTypeImpl::AllFixedSizeTensorTypes())              \
   NUPHAR_VERSIONED_OP(ArgMin, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())               \
-  NUPHAR_OP(ArgMin, 11, DataTypeImpl::AllFixedSizeTensorTypes())                            \
+  NUPHAR_VERSIONED_OP(ArgMin, 11, 11, DataTypeImpl::AllFixedSizeTensorTypes())              \
   NUPHAR_VERSIONED_OP(AveragePool, 7, 9, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes()) \
   NUPHAR_OP(AveragePool, 10, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())             \
   NUPHAR_OP(AveragePool, 11, DataTypeImpl::AllIEEEFloatTensorExceptHalfTypes())             \

@@ -10,7 +10,8 @@
 // TensorBase contains one of these to represent the raw memory
 // GetCpuResource() returns it
 //
-namespace Windows::AI::MachineLearning {
+namespace _winml {
+
 template <typename T>
 class Tensor {
  private:
@@ -25,16 +26,16 @@ class Tensor {
 
   Tensor(
       std::vector<int64_t> const& shape,
-      winrt::Windows::Storage::Streams::IBuffer buffer) : shape_(shape),
-                                                          m_buffer(
-                                                              TensorBuffer::Create(
-                                                                  static_cast<uint32_t>(
-                                                                      std::accumulate(
-                                                                          std::begin(shape),
-                                                                          std::end(shape),
-                                                                          static_cast<int64_t>(1),
-                                                                          std::multiplies<int64_t>())),
-                                                                  buffer)) {
+      wss::IBuffer buffer) : shape_(shape),
+                             m_buffer(
+                                 TensorBuffer::Create(
+                                     static_cast<uint32_t>(
+                                         std::accumulate(
+                                             std::begin(shape),
+                                             std::end(shape),
+                                             static_cast<int64_t>(1),
+                                             std::multiplies<int64_t>())),
+                                     buffer)) {
   }
 
   Tensor(
@@ -89,4 +90,4 @@ class Tensor {
     return m_buffer;
   }
 };
-}  // namespace Windows::AI::MachineLearning
+}  // namespace _winml

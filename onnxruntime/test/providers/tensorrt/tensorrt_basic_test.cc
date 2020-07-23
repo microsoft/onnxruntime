@@ -87,7 +87,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
@@ -201,24 +201,20 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
 
-  status = session_object.Load(model_file_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // Now run
-  status = session_object.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
-  std::vector<OrtValue> fetche {fetches.back()};
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+  std::vector<OrtValue> fetche{fetches.back()};
   VerifyOutputs(fetche, expected_dims_mul_n, expected_values_mul_n);
 }
-
 
 TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   onnxruntime::Model model("graph_removecycleTest", false, DefaultLoggingManager().DefaultLogger());
@@ -316,20 +312,17 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
-  InferenceSession session_object{so};
+  InferenceSession session_object{so, GetEnvironment()};
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
 
-  status = session_object.Load(model_file_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // Now run
-  status = session_object.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 

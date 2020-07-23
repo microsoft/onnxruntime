@@ -9,15 +9,32 @@
 
 #include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 class Graph;
 
+// Creates a scalar MLValue based on given value and allocator.
+template <typename T>
+OrtValue MakeScalarMLValue(const AllocatorPtr& allocator, T value, bool is_1d) {
+  auto* data_type = DataTypeImpl::GetType<T>();
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type,
+                                                                      is_1d ? TensorShape({1}) : TensorShape({}),
+                                                                      allocator);
+
+  *p_tensor->MutableData<T>() = value;
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  return OrtValue{p_tensor.release(), ml_tensor,
+                  ml_tensor->GetDeleteFunc()};
+}
+
 namespace controlflow {
 
 /** Interface for control flow kernels    */
-class IControlFlowKernel {
+class IControlFlowKernel : public OpKernel {
  public:
+  explicit IControlFlowKernel(const OpKernelInfo& info) : OpKernel(info) {}
   /** Setup information that is re-used each time to execute the subgraph.
   @param session_state SessionState for graph containing the control flow node
   @param attribute_name Control flow node's attribute name that contained the subgraph 

@@ -172,10 +172,10 @@ __global__ void _ResizeNearestMappingKernel2D(
 template <typename T>
 __global__ void _ResizeNearestMappingKernel(
     const size_t rank,
-    const int64_t* input_shape,
-    const int64_t* output_shape,
-    const float* scales,
-    const float* roi,
+    const TArray<int64_t> input_shape,
+    const TArray<int64_t> output_shape,
+    const TArray<float> scales,
+    const TArray<float> roi,
     const size_t total_dim_sum,
     bool extrapolation_enabled,
     CudaFunctionOriginalCoordinate transform_coordinate,
@@ -230,8 +230,8 @@ __global__ void _ResizeNearestKernel2D(
 template <typename T>
 __global__ void _ResizeNearestKernel(
     const int rank,
-    const int64_t* input_strides,
-    const fast_divmod* output_div_pitches,
+    const TArray<int64_t> input_strides,
+    const TArray<fast_divmod> output_div_pitches,
     const T* input_data,
     T* output_data,
     const size_t N,
@@ -447,12 +447,12 @@ size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
 template <typename T>
 void ResizeNearestImpl(
     const int rank,
-    CudaKernel::CudaAsyncBuffer<int64_t>& input_shape,
-    CudaKernel::CudaAsyncBuffer<int64_t>& output_shape,
-    CudaKernel::CudaAsyncBuffer<int64_t>& input_strides,
-    CudaKernel::CudaAsyncBuffer<fast_divmod>& output_div_pitches,
-    CudaKernel::CudaAsyncBuffer<float>& scales_vals,
-    CudaKernel::CudaAsyncBuffer<float>& roi_vals,
+    TArray<int64_t>& input_shape,
+    TArray<int64_t>& output_shape,
+    TArray<int64_t>& input_strides,
+    TArray<fast_divmod>& output_div_pitches,
+    TArray<float>& scales_vals,
+    TArray<float>& roi_vals,
     const T* input_data,
     T* output_data,
     const size_t N,
@@ -461,40 +461,40 @@ void ResizeNearestImpl(
     float cubic_coeff_a,
     CudaFunctionOriginalCoordinate transform_coordinate,
     CudaFunctionNearestPixel calc_nearest_pixel,
-    int64_t* prefix_dim_sum,
+    int64_t* /* prefix_dim_sum */,
     NearestMappingInfo* dims_mapping) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
   bool could2d = rank >= 2 &&
                  transform_coordinate != GetDeviceOriginalCoordinateFunc(ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE) &&
-                 std::all_of(scales_vals.CpuPtr(), scales_vals.CpuPtr() + (rank - 2), [](float v) { return v == 1.0; });
+                 std::all_of(scales_vals.Data(), scales_vals.Data() + (rank - 2), [](float v) { return v == 1.0; });
   if (could2d) {
-    int64_t output_height = output_shape.CpuPtr()[rank - 2];
-    int64_t output_width = output_shape.CpuPtr()[rank - 1];
-    fast_divmod div_output_image = (rank > 2) ? output_div_pitches.CpuPtr()[rank - 3] : fast_divmod(output_height * output_width);
-    int blocksPerDimsMappingGrid = (int)(ceil((output_height + output_width) / 32.0));
+    int64_t output_height = output_shape[rank - 2];
+    int64_t output_width = output_shape[rank - 1];
+    fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(output_height * output_width);
+    int blocksPerDimsMappingGrid = static_cast<int>(ceil((output_height + output_width) / 32.0));
 
     _ResizeNearestMappingKernel2D<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
-        input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
+        input_shape[rank - 2], input_shape[rank - 1],
         output_height, output_width,
-        scales_vals.CpuPtr()[rank - 2], scales_vals.CpuPtr()[rank - 1],
-        roi_vals.CpuPtr()[rank - 2], roi_vals.CpuPtr()[rank - 2 + rank],
-        roi_vals.CpuPtr()[rank - 1], roi_vals.CpuPtr()[rank - 1 + rank],
+        scales_vals[rank - 2], scales_vals[rank - 1],
+        roi_vals[rank - 2], roi_vals[rank - 2 + rank],
+        roi_vals[rank - 1], roi_vals[rank - 1 + rank],
         extrapolation_enabled, transform_coordinate, calc_nearest_pixel,
         dims_mapping);
     if (extrapolation_enabled) {
       _ResizeNearestKernel2D<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_height, output_width,
-          input_shape.CpuPtr()[rank - 2] * input_shape.CpuPtr()[rank - 1], input_shape.CpuPtr()[rank - 1],
-          div_output_image, output_div_pitches.CpuPtr()[rank - 2],
+          input_shape[rank - 2] * input_shape[rank - 1], input_shape[rank - 1],
+          div_output_image, output_div_pitches[rank - 2],
           input_data, output_data, N,
           extrapolation_value,
           dims_mapping);
     } else {
       _ResizeNearestKernel2D<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           output_height, output_width,
-          input_shape.CpuPtr()[rank - 2] * input_shape.CpuPtr()[rank - 1], input_shape.CpuPtr()[rank - 1],
-          div_output_image, output_div_pitches.CpuPtr()[rank - 2],
+          input_shape[rank - 2] * input_shape[rank - 1], input_shape[rank - 1],
+          div_output_image, output_div_pitches[rank - 2],
           input_data, output_data, N,
           extrapolation_value,
           dims_mapping);
@@ -502,23 +502,17 @@ void ResizeNearestImpl(
     return;
   }
 
-  int64_t total_dim_sum = std::accumulate(output_shape.CpuPtr(), output_shape.CpuPtr() + rank, 0);
+  int64_t total_dim_sum = std::accumulate(output_shape.Data(), output_shape.Data() + rank, 0);
   int blocksPerDimsMappingGrid = (int)(ceil(static_cast<double>(total_dim_sum) / 32));
-  input_shape.CopyToGpu();
-  output_shape.CopyToGpu();
-  roi_vals.CopyToGpu();
-  scales_vals.CopyToGpu();
-  input_strides.CopyToGpu();
-  output_div_pitches.CopyToGpu();
   _ResizeNearestMappingKernel<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
-      rank, input_shape.GpuPtr(), output_shape.GpuPtr(),
-      scales_vals.GpuPtr(), roi_vals.GpuPtr(),
+      rank, input_shape, output_shape,
+      scales_vals, roi_vals,
       total_dim_sum, extrapolation_enabled,
       transform_coordinate, calc_nearest_pixel,
       reinterpret_cast<int64_t*>(dims_mapping),
       reinterpret_cast<NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank));
   _ResizeNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      rank, input_strides.GpuPtr(), output_div_pitches.GpuPtr(),
+      rank, input_strides, output_div_pitches,
       input_data, output_data, N,
       extrapolation_value,
       reinterpret_cast<const int64_t*>(dims_mapping),
@@ -530,12 +524,12 @@ template <typename T>
 void ResizeImpl(
     const UpsampleMode upsample_mode,
     const int rank,
-    CudaKernel::CudaAsyncBuffer<int64_t>& input_shape,
-    CudaKernel::CudaAsyncBuffer<int64_t>& output_shape,
-    CudaKernel::CudaAsyncBuffer<int64_t>& input_strides,
-    CudaKernel::CudaAsyncBuffer<fast_divmod>& output_div_pitches,
-    CudaKernel::CudaAsyncBuffer<float>& scales_vals,
-    CudaKernel::CudaAsyncBuffer<float>& roi_vals,
+    TArray<int64_t>& input_shape,
+    TArray<int64_t>& output_shape,
+    TArray<int64_t>& input_strides,
+    TArray<fast_divmod>& output_div_pitches,
+    TArray<float>& scales_vals,
+    TArray<float>& roi_vals,
     const T* input_data,
     T* output_data,
     const size_t N,
@@ -546,7 +540,7 @@ void ResizeImpl(
     ResizeCoordinateTransformationMode coordinate_transform_mode,
     ResizeNearestMode nearest_mode,
     void* dims_mapping) {
-  bool isSame = std::all_of(scales_vals.CpuPtr(), scales_vals.CpuPtr() + rank, [](float v) { return v == 1.0f; }) &&
+  bool isSame = std::all_of(scales_vals.Data(), scales_vals.Data() + rank, [](float v) { return v == 1.0f; }) &&
                 (coordinate_transform_mode != ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE);
   if (isSame) {
     cudaMemcpyAsync(output_data, input_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
@@ -567,41 +561,41 @@ void ResizeImpl(
   }
 
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  fast_divmod div_output_image = (rank > 2) ? output_div_pitches.CpuPtr()[rank - 3] : fast_divmod(gsl::narrow_cast<int>(N));
-  int64_t output_height = output_shape.CpuPtr()[rank - 2];
-  int64_t output_width = output_shape.CpuPtr()[rank - 1];
+  fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(gsl::narrow_cast<int>(N));
+  int64_t output_height = output_shape[rank - 2];
+  int64_t output_width = output_shape[rank - 1];
   int blocksPerDimsMappingGrid = (int)(ceil((output_height + output_width) / 32.0));
   switch (upsample_mode) {
     case UpsampleMode::LINEAR:
       _ResizeBilinearCoordinateMapping<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
-          input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
+          input_shape[rank - 2], input_shape[rank - 1],
           output_height, output_width,
-          scales_vals.CpuPtr()[rank - 2], scales_vals.CpuPtr()[rank - 1],
-          roi_vals.CpuPtr()[rank - 2], roi_vals.CpuPtr()[rank - 2 + rank],
-          roi_vals.CpuPtr()[rank - 1], roi_vals.CpuPtr()[rank - 1 + rank],
+          scales_vals[rank - 2], scales_vals[rank - 1],
+          roi_vals[rank - 2], roi_vals[rank - 2 + rank],
+          roi_vals[rank - 1], roi_vals[rank - 1 + rank],
           output_height + output_width, extrapolation_enabled, transform_coordinate,
           reinterpret_cast<BilinearMappingInfo*>(dims_mapping));
       _ResizeBilinearKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
+          input_shape[rank - 2], input_shape[rank - 1],
           output_height, output_width,
-          output_div_pitches.CpuPtr()[rank - 2], div_output_image,
+          output_div_pitches[rank - 2], div_output_image,
           input_data, output_data, N, extrapolation_value,
           reinterpret_cast<BilinearMappingInfo*>(dims_mapping));
       return;
     case UpsampleMode::CUBIC:
       _ResizeCubicCoordinateMapping<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
-          input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
+          input_shape[rank - 2], input_shape[rank - 1],
           output_height, output_width,
-          scales_vals.CpuPtr()[rank - 2], scales_vals.CpuPtr()[rank - 1],
-          roi_vals.CpuPtr()[rank - 2], roi_vals.CpuPtr()[rank - 2 + rank],
-          roi_vals.CpuPtr()[rank - 1], roi_vals.CpuPtr()[rank - 1 + rank],
+          scales_vals[rank - 2], scales_vals[rank - 1],
+          roi_vals[rank - 2], roi_vals[rank - 2 + rank],
+          roi_vals[rank - 1], roi_vals[rank - 1 + rank],
           output_height + output_width, extrapolation_enabled,
           cubic_coeff_a, exclude_outside, transform_coordinate,
           reinterpret_cast<CubicMappingInfo*>(dims_mapping));
       _ResizeBiCubicKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
+          input_shape[rank - 2], input_shape[rank - 1],
           output_height, output_width,
-          output_div_pitches.CpuPtr()[rank - 2], div_output_image,
+          output_div_pitches[rank - 2], div_output_image,
           input_data, output_data, N, extrapolation_value,
           reinterpret_cast<CubicMappingInfo*>(dims_mapping));
       return;
@@ -612,12 +606,12 @@ void ResizeImpl(
   template void ResizeImpl<T>(                                      \
       const UpsampleMode upsample_mode,                             \
       const int rank,                                               \
-      CudaKernel::CudaAsyncBuffer<int64_t>& input_shape,            \
-      CudaKernel::CudaAsyncBuffer<int64_t>& output_shape,           \
-      CudaKernel::CudaAsyncBuffer<int64_t>& input_strides,          \
-      CudaKernel::CudaAsyncBuffer<fast_divmod>& output_div_pitches, \
-      CudaKernel::CudaAsyncBuffer<float>& scales_vals,              \
-      CudaKernel::CudaAsyncBuffer<float>& roi_vals,                 \
+      TArray<int64_t>& input_shape,                                 \
+      TArray<int64_t>& output_shape,                                \
+      TArray<int64_t>& input_strides,                               \
+      TArray<fast_divmod>& output_div_pitches,                      \
+      TArray<float>& scales_vals,                                   \
+      TArray<float>& roi_vals,                                      \
       const T* input_data,                                          \
       T* output_data,                                               \
       const size_t N,                                               \

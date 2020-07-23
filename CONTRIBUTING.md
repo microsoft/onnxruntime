@@ -1,11 +1,11 @@
 # Contributing
 
 We're always looking for your help to fix bugs and improve the product. Create a pull request and we'll be happy to take a look.
-Start by reading the [Engineering Design](docs/HighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
+Start by reading the [Engineering Design](./docs/InferenceHighLevelDesign.md). You can find the doxygen generated documentation [here](https://microsoft.github.io/onnxruntime/).
 
 ## Proposing new public APIs
 
- ONNX Runtime has a collection of [public APIs](docs/HighLevelDesign.md).  Some of these APIs make their way back into the Windows OS.  We make compatibility committments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
+ ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility committments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
 
 ## Process details
 
@@ -20,7 +20,7 @@ We'll keep the issue open for community discussion until it has been resolved or
 Note that if an issue isn't a high priority or has many open questions then it might stay open for a long time.
 
 3. **Owner Review**  
-The ONNX Runtime team will review the proposal and either approve or close the issue based on whether it broadly aligns with the [Onnx Runtime Roadmap - High Level Goals section](../docs/Roadmap.md) and contribution guidelines.
+The ONNX Runtime team will review the proposal and either approve or close the issue based on whether it broadly aligns with the [Onnx Runtime Roadmap - High Level Goals section](./docs/Roadmap.md) and contribution guidelines.
 
 4. **API Review**  
 If the feature adds new APIs then we'll start an API review.
@@ -49,6 +49,9 @@ onnxruntime team members will trigger the build for you.
 ## Coding guidelines
 
 Please see [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md)
+
+## Guidelines for creating a good PR (pull request)
+[PR Guidelines](./docs/PR_Guidelines.md)
 
 ## Licensing guidelines
 

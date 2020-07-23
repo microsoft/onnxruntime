@@ -68,7 +68,6 @@ Status ParsePathRoot(
     root = path.substr(0, 2);
     has_root_dir = root_dir_begin != root_dir_end;
     num_parsed_chars = std::distance(path.begin(), root_dir_end);
-
     return Status::OK();
   }
 
@@ -251,6 +250,25 @@ Path& Path::Append(const Path& other) {
   components_.insert(
       components_.end(), other.components_.begin(), other.components_.end());
 
+  return *this;
+}
+
+Path& Path::Concat(const PathString& value) {
+  auto first_separator = std::find_if(value.begin(), value.end(),
+                                      [](PathChar c) {
+                                        return std::find(
+                                                   k_valid_path_separators.begin(),
+                                                   k_valid_path_separators.end(),
+                                                   c) != k_valid_path_separators.end();
+                                      });
+  ORT_ENFORCE(first_separator == value.end(),
+              "Cannot concatenate with a string containing a path separator. String: ", ToMBString(value));
+
+  if (components_.empty()) {
+    components_.push_back(value);
+  } else {
+    components_.back() += value;
+  }
   return *this;
 }
 

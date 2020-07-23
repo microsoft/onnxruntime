@@ -155,11 +155,11 @@ TEST_P(ONNXModelsTest1, LoadFromProtobuf) {
 }
 
 #ifndef DISABLE_CONTRIB_OPS
-INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
+INSTANTIATE_TEST_SUITE_P(ONNXModelsTests,
                         ONNXModelsTest1,
                         ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("tiny_yolov2"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
 #else
-INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
+INSTANTIATE_TEST_SUITE_P(ONNXModelsTests,
                         ONNXModelsTest1,
                         ::testing::Values(ORT_TSTR("bvlc_alexnet"), ORT_TSTR("bvlc_googlenet"), ORT_TSTR("bvlc_reference_caffenet"), ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"), ORT_TSTR("densenet121"), ORT_TSTR("emotion_ferplus"), ORT_TSTR("inception_v1"), ORT_TSTR("inception_v2"), ORT_TSTR("mnist"), ORT_TSTR("resnet50"), ORT_TSTR("shufflenet"), ORT_TSTR("squeezenet"), ORT_TSTR("vgg19"), ORT_TSTR("zfnet512")));
 #endif

@@ -32,18 +32,53 @@ if(NOT onnxruntime_USE_DML)
 endif()
 
 file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
+  "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
 )
 
-add_library(onnxruntime_graph ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
+      )
+  if (NOT onnxruntime_USE_HOROVOD)
+    list(REMOVE_ITEM orttraining_graph_src
+        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.h"
+        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.cc"
+        )
+  endif()
+endif()
+
+set(onnxruntime_graph_lib_src ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
+if (onnxruntime_ENABLE_TRAINING)
+    list(APPEND onnxruntime_graph_lib_src ${orttraining_graph_src})
+endif()
+
+add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
 
+if (onnxruntime_ENABLE_TRAINING)
+  #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
+  target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
+endif()
+
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
+
+if (onnxruntime_ENABLE_TRAINING)
+    target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT})
+
+    if (onnxruntime_USE_HOROVOD)
+        target_include_directories(onnxruntime_graph PRIVATE ${HOROVOD_INCLUDE_DIRS})
+    endif()
+endif()
+
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/graph  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
+if (onnxruntime_ENABLE_TRAINING)
+    source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
+endif()
 
 if (WIN32)
     set(onnxruntime_graph_static_library_flags

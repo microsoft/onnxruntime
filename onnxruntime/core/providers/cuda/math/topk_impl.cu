@@ -32,7 +32,7 @@ struct KV {
 #define LESS(n, m) ((n) <= (m) ? (n) : (m))
 
 template <typename T>
-__global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t aligned_K, int64_t largest, int64_t sorted, int64_t dimension, int64_t aligned_dimension, T type_min, T type_max) {
+__global__ void BitonicTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t aligned_K, int64_t largest, int64_t sorted, int64_t dimension, int64_t aligned_dimension, T type_min, T type_max) {
   auto tid = threadIdx.x;
   auto bid = blockIdx.x;
   extern __shared__ char shared_mem[];
@@ -148,8 +148,17 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
 
 template <typename T>
 __device__ __inline__ bool Equal(const T& t0, const T& t1) {
+    return t0 == t1;
+}
+
+__device__ __inline__ bool Equal(const float& t0, const float& t1) {
   auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
-  return (double)t2 < 1.0e-5;
+  return t2 < std::numeric_limits<float>::epsilon();
+}
+
+__device__ __inline__ bool Equal(const double& t0, const double& t1) {
+  auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
+  return t2 < std::numeric_limits<double>::epsilon();
 }
 
 template<typename T>
@@ -192,7 +201,7 @@ __device__ void SetByte(double* d, int64_t byte) {
 }
 
 template<typename T, int64_t THREADS, int64_t KPT>
-__global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t XPT, T type_min, T type_max) {
+__global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t XPT, T type_min, T type_max) {
   auto tid = threadIdx.x;
   auto bid = blockIdx.x;
   extern __shared__ char shared_mem[];
@@ -220,6 +229,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   }
   __syncthreads();
   positive = BlockReduce(temp_storage.reduce).Sum(positive);
+  __syncthreads();
   negative = BlockReduce(temp_storage.reduce).Sum(negative);
   if (0 == tid) {
     H[0] = positive;
@@ -286,6 +296,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   __syncthreads();
   all_superior = H[0];
   BlockScan(temp_storage.scan).ExclusiveSum(superior, superior);
+  __syncthreads();
   BlockScan(temp_storage.scan).ExclusiveSum(equal, equal);
   __syncthreads();
   auto equal_quota = K - all_superior - equal;
@@ -342,7 +353,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
 }
 
 template <typename T>
-__global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
+__global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t offset, int64_t dimension) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
   auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis];
   auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
@@ -352,7 +363,7 @@ __global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, cons
 }
 
 template <typename T>
-__global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
+__global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v, int64_t* output_i, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t offset, int64_t dimension) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, K);
   auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis] * K / dimension;
   auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
@@ -369,7 +380,7 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 }
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
   if (aligned_dimension <= GridDim::maxThreadsPerBlock) {
@@ -419,9 +430,9 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
                                                  const T* input_x,         \
                                                  T* output_v,              \
                                                  int64_t* output_i,        \
-                                                 const int64_t* elem_nums, \
+                                                 const TArray<int64_t>& elem_nums, \
                                                  size_t size,              \
-                                                 int64_t axis,             \
+                                                 int32_t axis,             \
                                                  int64_t K,                \
                                                  int64_t largest,          \
                                                  int64_t sorted,           \

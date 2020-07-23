@@ -50,17 +50,25 @@ namespace math {
 template <typename T, class Provider>
 void Exp(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
+void Log(int N, const T* x, T* y, Provider* provider);
+template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
 
-template <typename T, class Provider>
-void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
-#define DECLARE_BINARY_OP(name)         \
-  template <typename T, class Provider> \
-  void name(int N, const T* a, const T* b, T* y, Provider* provider);
+#define DECLARE_BINARY_OP(name)                                                     \
+  template <typename T, class Provider>                                             \
+  void name(int N, const T* a, const T* b, T* y, Provider* provider);               \
+  template <typename T, class Provider>                                             \
+  void name##ToRow(int M, int N, const T* a, const T* b, T* y, Provider* provider); \
+  template <typename T, class Provider>                                             \
+  void name##ToRow(int M, int N, const T* x, T* y, Provider* provider);             \
+  template <typename T, class Provider>                                             \
+  void name##ToCol(int M, int N, const T* x, T* y, Provider* provider);
 
 DECLARE_BINARY_OP(Add);
+DECLARE_BINARY_OP(Sub);
 DECLARE_BINARY_OP(Mul);
+DECLARE_BINARY_OP(Div);
 
 #undef DECLARE_BINARY_OP
 
@@ -69,6 +77,26 @@ DECLARE_BINARY_OP(Mul);
 template <typename T, class Provider>
 void RowwiseMax(int N, int D, const T* x, T* y,
                 Provider* provider);
+
+// Compute the row-wise sum of a N*D matrix X, and write it to a N
+// dimensional vector y.
+template <typename T, class Provider>
+void RowwiseSum(int N, int D, const T* x, T* y,
+                Provider* provider);
+
+// Sum of vector x, and writes the result to a single value y.
+template <typename T, class Provider>
+void Sum(int N, const T* x, T* y, Provider* provider,
+         Tensor* scratch_ptr = nullptr);
+
+template <typename T, class Provider>
+void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
+
+// Different from the Scale function above, if alpha is passed in
+// as a pointer, we will assume that it lives on the correct execution provider,
+// for example on GPU.
+template <typename T, class Provider>
+void Scale(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
 template <typename T>
 void MatMul(
@@ -88,10 +116,10 @@ void Gemm(
     int64_t M,
     int64_t N,
     int64_t K,
-    float alpha,
+    T alpha,
     const T* A,
     const T* B,
-    float beta,
+    T beta,
     T* C,
     Provider*);
 
@@ -132,6 +160,9 @@ void Gemv(
 
 template <typename T, class Provider>
 void Set(int64_t N, T alpha, T* X, Provider* provider);
+
+template <typename T, class Provider>
+void Dot(int N, const T* a, const T* b, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
@@ -407,6 +438,8 @@ constexpr T roundUpPow2(T a) {
 }
 
 uint16_t floatToHalf(float f);
+
+uint16_t doubleToHalf(double f);
 
 float halfToFloat(uint16_t h);
 

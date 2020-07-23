@@ -16,6 +16,8 @@ jobs:
     value: '$(Build.BinariesDirectory)'
   - name: SKIPNONPACKAGETESTS
     value: 'ON'
+  - name: runCodesignValidationInjection
+    value: false
 
   steps:
   - task: UsePythonVersion@0
@@ -35,9 +37,6 @@ jobs:
       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda.bat'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
-
-  - template: set-test-data-variables-step.yml  
-  - template: win-download-test-data.yml
 
   - task: BatchScript@1
     displayName: 'Setup VS2019 env vars'
@@ -61,6 +60,11 @@ jobs:
   - template: get-nuget-package-version-as-variable.yml
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
+
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
 
   # TODO: Add .Net Core AnyCPU test task
 

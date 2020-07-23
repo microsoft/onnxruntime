@@ -3,13 +3,11 @@
 
 #pragma once
 #include "dnnl_types.h"
-#include "core/framework/op_kernel.h"
 #include "core/providers/dnnl/dnnl_fwd.h"
-#include "core/providers/cpu/nn/autopad_type.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/subgraph/dnnl_kernel.h"
-#include "core/util/math.h"
 #include <cmath>
+
 namespace onnxruntime {
 namespace ort_dnnl {
 
@@ -17,9 +15,9 @@ template <typename T>
 class DnnlConvBatchNorm : public DnnlKernel {
  public:
   DnnlConvBatchNorm(const DnnlNode& node,
-                      DNNLExecutionProvider* provider,
-                      const NodeAttributes& attributes,
-                      const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
+                    DNNLExecutionProvider* provider,
+                    const Provider_NodeAttributes& attributes,
+                    const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
   }
 
@@ -398,7 +396,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
       if (filter_dst_mem == nullptr) {
         dnnl::memory src = dnnl::memory({{filter_dims_mkl}, DnnnType<T>(), filter_format_}, cpu_engine, (void*)weights_scaled_by_axis.data());
         IAllocatorUniquePtr<void> filter_reorder_buffer =
-            IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
+            Provider_IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
         filter_dst_mem = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_->weights_desc(), cpu_engine, filter_reorder_buffer.get()));
 
@@ -413,7 +411,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
       if (bias_mem == nullptr) {
         auto bias_size = conv_fwd_pd_.get()->bias_desc().get_size();
         IAllocatorUniquePtr<void> bias_buffer =
-            IAllocator::MakeUniquePtr<void>(alloc_, bias_size);
+            Provider_IAllocator::MakeUniquePtr<void>(alloc_, bias_size);
         bias_mem = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_->bias_desc(), cpu_engine, bias_buffer.get()));
         float* bias_buffer_data = static_cast<float*>(bias_buffer.get());
@@ -482,7 +480,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
       }
 
       auto src_size = conv_fwd_pd_.get()->src_desc().get_size();
-      src_reorder_buffer_ = IAllocator::MakeUniquePtr<void>(alloc_, src_size);
+      src_reorder_buffer_ = Provider_IAllocator::MakeUniquePtr<void>(alloc_, src_size);
       src_mem_->set_data_handle(src_reorder_buffer_.get());
     } else {
       if (mklnode_ptr_->parent_nodes.empty()) {
@@ -510,34 +508,34 @@ class DnnlConvBatchNorm : public DnnlKernel {
   }
 
  private:
-  void ReadAttributes(const NodeAttributes& attributes,
+  void ReadAttributes(const Provider_NodeAttributes& attributes,
                       const std::string attributes_prefix = "") override {
     std::string auto_pad;
     auto attr = attributes.find(attributes_prefix + "auto_pad");
     if (attr != attributes.end() &&
-        attr->second.type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
-      auto_pad = attr->second.s();
+        attr->second->type() == ::ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
+      auto_pad = attr->second->s();
     }
     auto_pad_ = (auto_pad != "") ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET;
 
     kernel_shape_specified_ = false;
     attr = attributes.find(attributes_prefix + "kernel_shape");
     if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      auto& proto = *attr->second;
       Status status = GetIntsAttr(proto, kernel_shape_);
       kernel_shape_specified_ = true;
     }
 
     attr = attributes.find(attributes_prefix + "strides");
     if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      auto& proto = *attr->second;
       Status status = GetIntsAttr(proto, strides_);
     }
 
     bool attr_read = false;
     attr = attributes.find(attributes_prefix + "pads");
     if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      auto& proto = *attr->second;
       if (GetIntsAttr(proto, pads_) == Status::OK())
         attr_read = true;
     }
@@ -548,7 +546,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
     attr_read = false;
     attr = attributes.find(attributes_prefix + "dilations");
     if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      auto& proto = *attr->second;
       if (GetIntsAttr(proto, dilations_) == Status::OK())
         attr_read = true;
     }
@@ -559,7 +557,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
     attr_read = false;
     attr = attributes.find(attributes_prefix + "group");
     if (attr != attributes.end()) {
-      ONNX_NAMESPACE::AttributeProto proto = attr->second;
+      auto& proto = *attr->second;
       if (GetIntAttr(proto, group_) == Status::OK())
         attr_read = true;
     }
@@ -569,7 +567,7 @@ class DnnlConvBatchNorm : public DnnlKernel {
 
     attr = attributes.find(attributes_prefix + "epsilon");
     if (attr != attributes.end()) {
-      epsilon_ = attr->second.f();
+      epsilon_ = attr->second->f();
     }
   }
 

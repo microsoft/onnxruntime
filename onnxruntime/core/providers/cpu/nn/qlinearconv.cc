@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/qlinearconv.h"
-
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
@@ -12,6 +12,15 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
+
+class QLinearConv : public OpKernel {
+ public:
+  explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {}
+
+  Status Compute(OpKernelContext* context) const override;
+
+  ConvAttributes conv_attrs_;
+};
 
 ONNX_OPERATOR_KERNEL_EX(
     QLinearConv,
@@ -88,7 +97,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
   std::vector<int64_t> Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
@@ -118,7 +127,6 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   // Pointwise convolutions can use the original input tensor in place,
   // otherwise a temporary buffer is required for the im2col transform.
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
-
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
 
@@ -192,18 +200,19 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       }
 
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
-      QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(output_image_size),
-                    static_cast<int>(kernel_dim),
-                    Wdata + group_id * W_offset,
-                    static_cast<int>(kernel_dim),
-                    W_zero_point_value,
-                    col_buffer_data == nullptr ? Xdata : col_buffer_data,
-                    static_cast<int>(output_image_size),
-                    X_zero_point_value,
-                    gemm_output,
-                    static_cast<int>(output_image_size),
-                    context->GetOperatorThreadPool());
+      QGemm(static_cast<int>(M / conv_attrs_.group),
+            static_cast<int>(output_image_size),
+            static_cast<int>(kernel_dim),
+            Wdata + group_id * W_offset,
+            static_cast<int>(kernel_dim),
+            W_zero_point_value,
+            col_buffer_data == nullptr ? Xdata : col_buffer_data,
+            static_cast<int>(output_image_size),
+            X_zero_point_value,
+            false,
+            gemm_output,
+            static_cast<int>(output_image_size),
+            context->GetOperatorThreadPool());
 
       MlasRequantizeOutput(gemm_output,
                            Ydata,
@@ -213,7 +222,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                            real_multiplier,
                            Y_zero_point_value);
 #else
-      GemmlowpMultiplyu8u8_u8(W->template Data<uint8_t>() + group_id * W_offset,
+      GemmlowpMultiplyu8u8_u8(Wdata + group_id * W_offset,
                               col_buffer_data == nullptr ? Xdata : col_buffer_data,
                               Ydata,
                               W_zero_point_value,

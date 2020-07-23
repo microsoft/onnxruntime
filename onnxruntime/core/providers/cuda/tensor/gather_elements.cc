@@ -32,7 +32,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   const auto* indices_tensor = context->Input<Tensor>(1);
   const auto& indices_shape = indices_tensor->Shape();
   const auto& indices_dims = indices_shape.GetDims();
-  const int64_t indices_rank = static_cast<int64_t>(indices_dims.size());
+  const int32_t indices_rank = static_cast<int32_t>(indices_dims.size());
   const int64_t indices_size = indices_shape.Size();
 
   // Handle negative axis if any
@@ -44,20 +44,20 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     return status;
 
   // create output tensor
-  auto* output_tensor = context->Output(0, TensorShape(indices_shape));
+  auto* output_tensor = context->Output(0, indices_shape);
 
   // if there are no elements in 'indices' - nothing to process
   if (indices_shape.Size() == 0)
     return Status::OK();
 
   TensorPitches input_strides(input_dims);
-  CudaAsyncBuffer<int64_t> gpu_input_strides(this, input_strides);
+  TArray<int64_t> gpu_input_strides(input_strides);
 
-  CudaAsyncBuffer<fast_divmod> fdm_indices_strides(this, indices_rank);
-  ORT_ENFORCE(CalculateFdmStrides(fdm_indices_strides.CpuSpan(), indices_dims));
-
-  ORT_RETURN_IF_ERROR(gpu_input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_indices_strides.CopyToGpu());
+  TArray<fast_divmod> fdm_indices_strides(indices_rank);
+  TensorPitches indices_strides(indices_dims);
+  for (auto i = 0; i < indices_rank; i++) {
+    fdm_indices_strides[i] = fast_divmod(static_cast<int>(indices_strides[i]));
+  }
 
   size_t element_size = input_tensor->DataType()->Size();
 
@@ -67,10 +67,10 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
         input_rank,
         input_tensor->DataRaw(),
         input_dims[axis],
-        gpu_input_strides.GpuPtr(),
+        gpu_input_strides,
         indices_data,
         indices_size,
-        fdm_indices_strides.GpuPtr(),
+        fdm_indices_strides,
         axis,
         output_tensor->MutableDataRaw(),
         element_size);
@@ -81,10 +81,10 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
         input_rank,
         input_tensor->DataRaw(),
         input_dims[axis],
-        gpu_input_strides.GpuPtr(),
+        gpu_input_strides,
         indices_data,
         indices_size,
-        fdm_indices_strides.GpuPtr(),
+        fdm_indices_strides,
         axis,
         output_tensor->MutableDataRaw(),
         element_size);

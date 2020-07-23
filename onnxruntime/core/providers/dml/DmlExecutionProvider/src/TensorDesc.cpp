@@ -277,10 +277,14 @@ DML_TENSOR_DESC TensorDesc::GetDmlDesc()
 // requires coercion by the caller.
 void TensorDesc::ForceUnsignedDataType()
 {
-    static_assert(ApiTraits::EnumValueCount<DML_TENSOR_DATA_TYPE> == 9, "New tensor data type.  Update cases.");
+    static_assert(ApiTraits::EnumValueCount<DML_TENSOR_DATA_TYPE> == 12, "New tensor data type.  Update cases.");
 
     switch (m_bufferTensorDesc.DataType)
     {
+    case DML_TENSOR_DATA_TYPE_INT64:
+        m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT64;
+        break;
+
     case DML_TENSOR_DATA_TYPE_INT32:
         m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT32;
         break;
@@ -293,7 +297,7 @@ void TensorDesc::ForceUnsignedDataType()
         m_bufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_UINT8;
         break;
 
-        // Nothing to do if already unsigned
+    // Nothing to do if already unsigned
     case DML_TENSOR_DATA_TYPE_UINT32:
     case DML_TENSOR_DATA_TYPE_UINT16:
     case DML_TENSOR_DATA_TYPE_UINT8:

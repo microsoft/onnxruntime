@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
+// Copyright (c) 2019-2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
 #ifdef _WIN32
@@ -26,7 +26,8 @@
 
 #ifdef ACL_1902
 #include "arm_compute/core/NEON/kernels/NEDepthwiseConvolutionLayer3x3Kernel.h"
-#else
+#endif
+#if defined(ACL_1905) || defined(ACL_1908)
 #include "arm_compute/runtime/NEON/functions/assembly/NEDepthwiseConvolutionAssemblyDispatch.h"
 #endif
 
@@ -59,7 +60,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   ConvLayersIterator it = Conv::convLayers.find((OpKernel*)this);
   if (it != Conv::convLayers.end()) {
     pConv = &it->second;
-    if(pConv->isDepthwiseCPU == true) {
+    if (pConv->isDepthwiseCPU == true) {
       Status s = onnxruntime::Conv<T>::Compute(context);
       return s;
     }
@@ -72,11 +73,13 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t M = W->Shape()[0];
 
-  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str() << std::endl;
-  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str() << std::endl;
-  if (B != nullptr) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str() << std::endl;
+  LOGS_DEFAULT(VERBOSE) << "Conv ACL:";  
+  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
+  if (B != nullptr) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
 
   if (X->Shape().NumDimensions() != PREF_DIM) {
+    LOGS_DEFAULT(WARNING) << "ACL does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
     Status s = onnxruntime::Conv<T>::Compute(context);
     return s;
   }
@@ -102,27 +105,31 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str() << std::endl;
+  LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str();
 
   arm_compute::ActivationLayerInfo::ActivationFunction acl_activ_func;
   bool acl_activ_enabled = false;
 
-  if (conv_attrs_.activation == "Relu") {
+  if (activation_type == "Relu") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::RELU;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "LeakyRelu") {
+    LOGS_DEFAULT(VERBOSE) << "ACL Conv-Relu fused implementation";
+  } else if (activation_type == "LeakyRelu") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "Tanh") {
+    LOGS_DEFAULT(VERBOSE) << "ACL Conv-LeakyRelu fused implementation";
+  } else if (activation_type == "Tanh") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::TANH;
     acl_activ_enabled = true;
-  } else if (conv_attrs_.activation == "Sigmoid") {
+    LOGS_DEFAULT(VERBOSE) << "ACL Conv-Tanh fused implementation";
+  } else if (activation_type == "Sigmoid") {
     acl_activ_func = arm_compute::ActivationLayerInfo::ActivationFunction::LOGISTIC;
     acl_activ_enabled = true;
-  } else if (!conv_attrs_.activation.empty()) {
-    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", conv_attrs_.activation);
+    LOGS_DEFAULT(VERBOSE) << "ACL Conv-Sigmoid fused implementation";
+  } else if (!activation_type.empty()) {
+    ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_type);
   }
 
   if (it == Conv::convLayers.end()) {
@@ -155,6 +162,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     aclStrides[1] = strides[0];
 
     std::vector<int64_t> aclPads(4);
+    // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
     if (pads.size() == 2) {
       if (strides.size() == 1) {
         aclPads[0] = 0;
@@ -169,8 +177,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       }
     } else {
       aclPads[0] = pads[1];
-      aclPads[1] = pads[0];
-      aclPads[2] = pads[3];
+      aclPads[1] = pads[3];
+      aclPads[2] = pads[0];
       aclPads[3] = pads[2];
     }
 
@@ -178,7 +186,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                          aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
     unsigned int aclDilation0 = (dilations.size() == 2) ? dilations[1] : 1;
 
+    LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
+    LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
+
+
     if (isDepthwise) {
+      LOGS_DEFAULT(VERBOSE) << "Depthwise convolution";
 #ifdef DEPTHWISE_CPU
       Status s = onnxruntime::Conv<T>::Compute(context);
       std::pair<ConvLayersIterator, bool> ret;
@@ -190,27 +203,34 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       // in the configure function for NEDepthwiseConvolutionLayer3x3, there is a separation based on the optimization
 #ifdef ACL_1902
       bool optimizable =
-            arm_compute::NEDepthwiseConvolutionLayer3x3Kernel::is_optimized_execution_possible(tconv.in->info()->tensor_shape(),
-                                                                                               aclPadStride,
-                                                                                               tconv.in->info()->data_type(),
-                                                                                               1 /* depth multiplier */,
-                                                                                               tconv.in->info()->data_layout());
-#else
-      bool optimizable =
-            arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
-                                                                                        tconv.k->info(),
-                                                                                        aclPadStride,
-                                                                                        1 /* depth multiplier */,
-                                                                                        arm_compute::Size2D(aclDilation0, dilations[0]));
+          arm_compute::NEDepthwiseConvolutionLayer3x3Kernel::is_optimized_execution_possible(tconv.in->info()->tensor_shape(),
+                                                                                             aclPadStride,
+                                                                                             tconv.in->info()->data_type(),
+                                                                                             1 /* depth multiplier */,
+                                                                                             tconv.in->info()->data_layout());
 #endif
-      if(optimizable) {
-        //optimized depthwise convolution
+#if defined(ACL_1905) || defined(ACL_1908)
+      bool optimizable =
+          arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
+                                                                                      tconv.k->info(),
+                                                                                      aclPadStride,
+                                                                                      1 /* depth multiplier */,
+                                                                                      arm_compute::Size2D(aclDilation0, dilations[0]));
+#endif
+      if (optimizable) {
+        LOGS_DEFAULT(VERBOSE) << "ACL optimized depthwise convolution";
+#if defined(ACL_1902) || defined(ACL_1905)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
+#endif
+#ifdef ACL_1908
+        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
+#endif
 #ifdef ACL_1902
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#else
+#endif
+#if defined(ACL_1905) || defined(ACL_1908)
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
@@ -219,20 +239,25 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         tconv.layer = std::move(layer);
         tconv.isDepthwiseCPU = false;
       } else {
-        // cpu depthwise convolution
+        LOGS_DEFAULT(VERBOSE) << "CPU depthwise convolution";
         Status s = onnxruntime::Conv<T>::Compute(context);
         std::pair<ConvLayersIterator, bool> ret;
         ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
         return s;
       }
-#endif
+#endif  //DEPTHWISE_CPU
     } else {
       if(tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
-        //pointwise convolution
+        LOGS_DEFAULT(VERBOSE) << "CPU pointwise convolution";
         Status s = onnxruntime::Conv<T>::Compute(context);
         return s;
       } else {
-        //convolution
+        if(tconv.k->info()->tensor_shape()[0] == 9 && tconv.k->info()->tensor_shape()[1] == 9) {
+          LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
+          Status s = onnxruntime::Conv<T>::Compute(context);
+          return s;
+        }
+        LOGS_DEFAULT(VERBOSE) << "ACL 2D convolution";
         auto layer = std::make_shared<arm_compute::NEConvolutionLayer>(mm_layer);
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride,
@@ -282,6 +307,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     pConv->b->allocator()->free();
   pConv->out->allocator()->free();
 
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   return Status::OK();
 }
@@ -294,10 +320,12 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const Tensor* W = context->Input<Tensor>(1);
   const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
 
-  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str() << std::endl;
-  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str() << std::endl;
+  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
   if (B != nullptr)
-    LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str() << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
+
+  LOGS_DEFAULT(VERBOSE) << std::endl;
 
   Status s = onnxruntime::Conv<T>::Compute(context);
   return s;

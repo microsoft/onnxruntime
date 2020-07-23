@@ -27,8 +27,8 @@ Abstract:
         .equ    .LGemmU8X8KernelFrame_SavedRbp, 32
         .equ    .LGemmU8X8KernelFrame_ReturnAddress, 40
         .equ    .LGemmU8X8KernelFrame_ldc, 48
-        .equ    .LGemmU8X8KernelFrame_RowSumVector, 56
-        .equ    .LGemmU8X8KernelFrame_ColumnSumVector, 64
+        .equ    .LGemmU8X8KernelFrame_RowSumBuffer, 56
+        .equ    .LGemmU8X8KernelFrame_ColumnSumBuffer, 64
         .equ    .LGemmU8X8KernelFrame_DepthValue, 72
         .equ    .LGemmU8X8KernelFrame_ZeroMode, 80
 
@@ -55,9 +55,9 @@ Implicit Arguments:
 
     rcx - Supplies the length in bytes of a row from matrix A.
 
-    r12 - Supplies the address of the row sum vector.
+    r12 - Supplies the address of the row sum buffer.
 
-    r13 - Supplies the address of the column sum vector.
+    r13 - Supplies the address of the column sum buffer.
 
 --*/
 
@@ -78,7 +78,7 @@ Implicit Arguments:
         vpaddd  zmm1,zmm3,ZMMWORD PTR [r13]
         vpaddd  zmm0,zmm3,ZMMWORD PTR [r13+64]
 .endif
-        add_immed r13,\ColumnCount\()*4     # advance ColumnSumVector by N columns
+        add_immed r13,\ColumnCount\()*4     # advance ColumnSumBuffer by N columns
 .else
         vpaddd zmm0,zmm3,ZMMWORD PTR [r13]
 .endif
@@ -147,9 +147,9 @@ Implicit Arguments:
 
     r10b - Supplies the zero mode flag.
 
-    r12 - Supplies the address of the row sum vector.
+    r12 - Supplies the address of the row sum buffer.
 
-    r13 - Supplies the address of the column sum vector.
+    r13 - Supplies the address of the column sum buffer.
 
     r14 - Supplies the stride in bytes of between packed blocks of matrix B.
 
@@ -291,8 +291,8 @@ Arguments:
 
     C (rdx) - Supplies the address of matrix C.
 
-    PairedCountK (rcx) - Supplies the number of paired columns from matrix A and
-        the number of paired rows from matrix B to iterate over.
+    PackedCountK (rcx) - Supplies the number of packed columns from matrix A and
+        the number of packed rows from matrix B to iterate over.
 
     CountM (r8) - Supplies the maximum number of rows that can be processed for
         matrix A and matrix C. The actual number of rows handled for this
@@ -303,11 +303,11 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    RowSumVector - Supplies the sum of each row from matrix A multiplied by the
+    RowSumBuffer - Supplies the sum of each row from matrix A multiplied by the
         zero point offset of matrix B. These values are accumulated into every
         row of matrix C.
 
-    ColumnSumVector - Supplies the sum of each column from matrix B multiplied
+    ColumnSumBuffer - Supplies the sum of each column from matrix B multiplied
         by the zero point offset of matrix A. These values are accumulated into
         every column of matrix C.
 
@@ -338,8 +338,8 @@ C_UNDERSCORE(MlasGemm\Type\()Kernel\Isa\()):
         shl     rcx,2                       # convert to row length
         movzx   r10,BYTE PTR .LGemmU8X8KernelFrame_ZeroMode[rsp]
         mov     r11,rdi
-        mov     r12,.LGemmU8X8KernelFrame_RowSumVector[rsp]
-        mov     r13,.LGemmU8X8KernelFrame_ColumnSumVector[rsp]
+        mov     r12,.LGemmU8X8KernelFrame_RowSumBuffer[rsp]
+        mov     r13,.LGemmU8X8KernelFrame_ColumnSumBuffer[rsp]
         mov     ebp,-1
         kmovw   k1,ebp                      # update mask to write all columns
 .ifeqs "\Type\()", "U8S8"

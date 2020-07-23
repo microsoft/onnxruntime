@@ -111,7 +111,6 @@ class Sqrt final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
 class Pow final : public OpKernel {
  public:
   Pow(const OpKernelInfo& info) : OpKernel(info) {
@@ -165,13 +164,19 @@ class Min_6 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
+// Max versions 8 - 12
+// Version 8 added broadcast
+// Version 12 added types support
 class Min_8 final : public OpKernel {
  public:
   Min_8(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  template <typename T>
+  struct ComputeImpl;
 };
 
 template <typename T>
@@ -183,13 +188,20 @@ class Max_6 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
+// Max versions 8 - 12
+// Version 8 added broadcast
+// Version 12 added types support
 class Max_8 final : public OpKernel {
  public:
   Max_8(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+private:
+
+ template<typename T>
+ struct ComputeImpl;
 };
 
 class Not final : public OpKernel {
@@ -325,6 +337,16 @@ struct BroadcastIterator {
         if (++counters_[counterIndex] != counts_[counterIndex])
           break;
         counters_[counterIndex] = 0;
+      }
+    } else if (counters_[0] > counts_[0]) { // Keep original logic above so that in most case it is faster
+      delta = counters_[0] / counts_[0];
+      counters_[0] = counters_[0] % counts_[0];
+      for (size_t counterIndex = 1; counterIndex < counters_.size(); counterIndex++) {
+        index_ += delta * deltas_[counterIndex];
+        counters_[counterIndex] += delta;
+        if (counters_[counterIndex] < counts_[counterIndex]) break;
+        delta = counters_[counterIndex] / counts_[counterIndex];
+        counters_[counterIndex] = counters_[counterIndex] % counts_[counterIndex];
       }
     }
     return index;
@@ -494,6 +516,12 @@ struct TBroadcaster {
         input_tensor1_(input1) {
   }
 
+  void AdvanceBy(size_t offset) {
+    ORT_ENFORCE(offset % span_size_ == 0, "TBroadcaster can only start at span boundary!");
+    broadcaster_.iterator1_.AdvanceBy(offset);
+    broadcaster_.iterator2_.AdvanceBy(offset);
+  }
+
   TensorShape GetOutputShape() const { return TensorShape(broadcaster_.output_shape_); }
   size_t GetSpanSize() const { return span_size_; }
 
@@ -524,10 +552,19 @@ struct TBroadcaster {
 
 template <typename T>
 struct TBroadcastOutput {
-  TBroadcastOutput(size_t span_size, Tensor& tensor)
+  TBroadcastOutput(size_t span_size, Tensor& tensor, int64_t start_offset = 0, int64_t end_offset = 0)
       : span_size_(span_size) {
-    output_ = tensor.template MutableData<T>();
-    output_end_ = output_ + tensor.Shape().Size();
+    int64_t len = tensor.Shape().Size();
+    int64_t real_end = (end_offset <= 0) ? len : end_offset;
+    if (start_offset != 0 || end_offset != 0) { // Keep original semantic
+      ORT_ENFORCE(start_offset >= 0 && real_end >= 0 && start_offset <= real_end && real_end <= len,
+                  "Invalid start/ending offset [", start_offset, ",", real_end, ") for tensor of length:", len);
+      ORT_ENFORCE(start_offset % span_size == 0 && real_end % span_size == 0,
+                  "Broadcast Output range [", start_offset, ", ", real_end,
+                  ") are not at boundary of span with size:", span_size);
+    }
+    output_ = tensor.template MutableData<T>() + start_offset;
+    output_end_ = tensor.template MutableData<T>() + real_end;
   }
 
   operator bool() const {

@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,11 +23,17 @@ final class OnnxRuntime {
 
   // The initial release of the ORT API.
   private static final int ORT_API_VERSION_1 = 1;
+  // Post 1.0 builds of the ORT API.
+  private static final int ORT_API_VERSION_2 = 2;
+  // Post 1.3 builds of the ORT API
+  private static final int ORT_API_VERSION_3 = 3;
 
   /** The short name of the ONNX runtime shared library */
   static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
   /** The short name of the ONNX runtime JNI shared library */
   static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
+
+  private static final String OS_ARCH_STR = initOsArch();
 
   private static boolean loaded = false;
 
@@ -34,6 +41,31 @@ final class OnnxRuntime {
   static long ortApiHandle;
 
   private OnnxRuntime() {}
+
+  /* Computes and initializes OS_ARCH_STR (such as linux-x64) */
+  private static String initOsArch() {
+    String detectedOS = null;
+    String os = System.getProperty("os.name", "generic").toLowerCase(Locale.ENGLISH);
+    if (os.contains("mac") || os.contains("darwin")) {
+      detectedOS = "osx";
+    } else if (os.contains("win")) {
+      detectedOS = "win";
+    } else if (os.contains("nux")) {
+      detectedOS = "linux";
+    } else {
+      detectedOS = "android";
+    }
+    String detectedArch = null;
+    String arch = System.getProperty("os.arch", "generic").toLowerCase(Locale.ENGLISH);
+    if (arch.indexOf("amd64") == 0 || arch.indexOf("x86_64") == 0) {
+      detectedArch = "x64";
+    } else if (arch.indexOf("x86") == 0) {
+      detectedArch = "x86";
+    } else {
+      throw new IllegalStateException("Unsupported arch:" + arch);
+    }
+    return detectedOS + '-' + detectedArch;
+  }
 
   /**
    * Loads the native C library.
@@ -48,7 +80,7 @@ final class OnnxRuntime {
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_3);
       loaded = true;
     } finally {
       if (!isAndroid()) {
@@ -74,7 +106,12 @@ final class OnnxRuntime {
     }
   }
 
-  private static boolean isAndroid() {
+  /**
+   * Check if we're running on Android.
+   *
+   * @return True if the {@code android.app.Activity} class can be loaded, false otherwise.
+   */
+  static boolean isAndroid() {
     try {
       Class.forName("android.app.Activity");
       return true;
@@ -127,7 +164,7 @@ final class OnnxRuntime {
     // generate a platform specific library name
     // replace Mac's jnilib extension to dylib
     String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
-    String resourcePath = "/ai/onnxruntime/native/" + libraryFileName;
+    String resourcePath = "/ai/onnxruntime/native/" + OS_ARCH_STR + '/' + libraryFileName;
     File tempFile = tempDirectory.resolve(libraryFileName).toFile();
     try (InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)) {
       if (is == null) {

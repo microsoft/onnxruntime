@@ -13,6 +13,7 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
+#include "core/graph/onnx_protobuf.h"
 
 struct OrtValue;
 
@@ -36,6 +37,8 @@ using MapInt64ToDouble = std::map<int64_t, double>;
 //vectors/sequences
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
+using VectorString = std::vector<std::string>;
+using VectorInt64 = std::vector<int64_t>;
 
 class DataTypeImpl;
 class TensorTypeBase;
@@ -50,6 +53,52 @@ union MLFloat16 {
 
   explicit MLFloat16(uint16_t x) : val(x) {}
   MLFloat16() : val(0) {}
+
+  // Taken from https://stackoverflow.com/a/60047308/12627730
+  float AsFloat(uint32_t x) const {
+    float out = 0.0f;
+    std::memcpy(&out, &x, sizeof(x));
+    return out;
+  }
+
+  // Taken from https://stackoverflow.com/a/60047308/12627730
+  uint32_t AsUint(float x) const {
+    uint32_t out = 0;
+    std::memcpy(&out, &x, sizeof(x));
+    return out;
+  }
+
+  float HalfToFloat(const uint16_t x) const {
+    uint16_t half = x;
+    if (endian::native == endian::big) {
+      // Taken from https://stackoverflow.com/a/2182184/12627730
+      half = (x >> 8) | (x << 8);
+    }
+
+    // Taken from https://stackoverflow.com/a/60047308/12627730
+    // IEEE-754 16-bit floating-point format (without infinity): 1-5-10, exp-15, +-131008.0, +-6.1035156E-5,
+    // +-5.9604645E-8, 3.311 digits
+    const uint32_t e = (half & 0x7C00) >> 10;  // exponent
+    const uint32_t m = (half & 0x03FF) << 13;  // mantissa
+    // evil log2 bit hack to count leading zeros in denormalized format
+    const uint32_t v = AsUint(static_cast<float>(m)) >> 23;
+    uint32_t full = (half & 0x8000) << 16 | (e != 0) * ((e + 112) << 23 | m) |
+                    ((e == 0) & (m != 0)) * ((v - 37) << 23 | ((m << (150 - v)) & 0x007FE000));  // sign : normalized : denormalized
+
+    if (endian::native == endian::big) {
+      // Taken from https://stackoverflow.com/a/2182184/12627730
+      full = ((full >> 24) & 0xff) |       // move byte 3 to byte 0
+             ((full << 8) & 0xff0000) |    // move byte 1 to byte 2
+             ((full >> 8) & 0xff00) |      // move byte 2 to byte 1
+             ((full << 24) & 0xff000000);  // byte 0 to byte 3
+    }
+
+    return AsFloat(full);
+  }
+
+  operator float() const {
+    return HalfToFloat(val);
+  }
 };
 
 inline bool operator==(const MLFloat16& left, const MLFloat16& right) {
@@ -244,6 +293,66 @@ namespace data_types_internal {
 /// TensorType helpers
 ///
 
+template <typename T>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType();
+
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
+};
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
+
 // There is a specialization only for one
 // type argument.
 template <typename... Types>
@@ -323,8 +432,12 @@ struct SetMapTypes {
     TensorElementTypeSetter<K>::SetMapKeyType(proto);
     MLDataType dt = GetMLDataType<V, IsTensorContainedType<V>::value>::Get();
     const auto* value_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(value_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(value_proto != nullptr, typeid(V).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableMapValue(*value_proto, proto);
   }
 };
@@ -340,8 +453,12 @@ struct SetSequenceType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
     MLDataType dt = GetMLDataType<T, IsTensorContainedType<T>::value>::Get();
     const auto* elem_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ONNX type");
+#else
     ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
                 " expected to be a registered ONNX type");
+#endif
     CopyMutableSeqElement(*elem_proto, proto);
   }
 };
@@ -625,7 +742,7 @@ class MapType : public NonTensorType<CPPType> {
  * \brief SequenceType. Use to register sequence for non-tensor types.
  *
  *  \param T - CPP type that you wish to register as Sequence
- *             runtime type. 
+ *             runtime type.
  *
  * \details Usage: ORT_REGISTER_SEQ(C++Type)
  *          The type is required to have value_type defined

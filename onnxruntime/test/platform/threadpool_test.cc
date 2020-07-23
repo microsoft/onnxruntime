@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/platform/threadpool.h"
+#include "core/platform/EigenNonBlockingThreadPool.h"
+#include "core/platform/ort_mutex.h"
 
 #include <core/common/make_unique.h>
 
@@ -9,16 +11,20 @@
 #include <algorithm>
 #include <memory>
 #include <functional>
-#include <mutex>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 using namespace onnxruntime::concurrency;
 
 namespace {
 
 struct TestData {
-  explicit TestData(int num) : data(num, 0) {}
+  explicit TestData(int num) : data(num, 0) {
+  }
   std::vector<int> data;
-  std::mutex mutex;
+  onnxruntime::OrtMutex mutex;
 };
 
 // This unittest tests ThreadPool function by counting the number of calls to function with each index.
@@ -28,46 +34,79 @@ std::unique_ptr<TestData> CreateTestData(int num) {
   return onnxruntime::make_unique<TestData>(num);
 }
 
-void IncrementElement(TestData& test_data, int i) {
-  std::lock_guard<std::mutex> lock(test_data.mutex);
+void IncrementElement(TestData& test_data, ptrdiff_t i) {
+  std::lock_guard<onnxruntime::OrtMutex> lock(test_data.mutex);
   test_data.data[i]++;
 }
 
 void ValidateTestData(TestData& test_data) {
-  ASSERT_TRUE(std::count_if(test_data.data.cbegin(),
-                            test_data.data.cend(),
-                            [](int i) { return i != 1; }) == 0);
+  ASSERT_TRUE(std::count_if(test_data.data.cbegin(), test_data.data.cend(), [](int i) { return i != 1; }) == 0);
 }
 
-void CreateThreadPoolAndTest(const std::string& name, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
-  auto tp = onnxruntime::make_unique<ThreadPool>(name, num_threads);
+void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
+  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
+                                                 num_threads, true);
   test_body(tp.get());
 }
 
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
   auto test_data = CreateTestData(num_tasks);
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-    tp->ParallelFor(num_tasks, [&](int i) {
-      IncrementElement(*test_data, i);
-    });
+    tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) { IncrementElement(*test_data, i); });
   });
   ValidateTestData(*test_data);
 }
 
 void TestBatchParallelFor(const std::string& name, int num_threads, int num_tasks, int batch_size) {
   auto test_data = CreateTestData(num_tasks);
+
   CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
-    tp->BatchParallelFor(
-        num_tasks, [&](int i) {
-          IncrementElement(*test_data, i);
-        },
-        batch_size);
+    onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
+        tp, num_tasks, [&](ptrdiff_t i) { IncrementElement(*test_data, i); }, batch_size);
   });
   ValidateTestData(*test_data);
 }
 
+void TestMultipleParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks) {
+  // Test running multiple concurrent loops over the same thread pool.  This aims to provoke a
+  // more diverse mix of interleavings than with a single loop running at a time.
+  for (int rep = 0; rep < 5; rep++) {
+    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
+      std::vector<std::unique_ptr<TestData>> td;
+      onnxruntime::Barrier b(num_concurrent - 1);
+
+      // Each concurrent tests runs with its own set of counters
+      for (int c = 0; c < num_concurrent; c++) {
+        td.push_back(CreateTestData(num_tasks));
+      }
+
+      // For a range of scenarios, run some tests via the thread pool, and one directly
+      for (int c = 0; c < num_concurrent - 1; c++) {
+        tp->Schedule([&, c]() {
+          tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+            IncrementElement(*td[c], i);
+          });
+          b.Notify();
+        });
+      }
+
+      tp->SimpleParallelFor(num_tasks, [&](std::ptrdiff_t i) {
+        IncrementElement(*td[num_concurrent - 1], i);
+      });
+
+      // Validate all outputs
+      b.Wait();
+      for (int c = 0; c < num_concurrent; c++) {
+        ValidateTestData(*td[c]);
+      }
+      td.clear();
+    });
+  }
+}
+
 }  // namespace
 
+namespace onnxruntime {
 TEST(ThreadPoolTest, TestParallelFor_2_Thread_NoTask) {
   TestParallelFor("TestParallelFor_2_Thread_NoTask", 2, 0);
 }
@@ -99,3 +138,97 @@ TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_50_Task_100_Batch) {
 TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_81_Task_20_Batch) {
   TestBatchParallelFor("TestBatchParallelFor_2_Thread_81_Task_20_Batch", 2, 81, 20);
 }
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_0Tasks", 1, 1, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_1Tasks", 1, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_8Tasks", 1, 1, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_1Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_1Conc_1MTasks", 1, 1, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_0Tasks", 1, 4, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_1Tasks", 1, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_8Tasks", 1, 4, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_1Thread_4Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_1Thread_4Conc_1MTasks", 1, 4, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_0Tasks", 4, 1, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1Tasks", 4, 1, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_8Tasks", 4, 1, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_1Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 1, 1000000);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_0Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_0Tasks", 4, 4, 0);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1Tasks", 4, 4, 1);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_8Tasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_8Tasks", 4, 4, 8);
+}
+
+TEST(ThreadPoolTest, TestMultipleParallelFor_4Thread_4Conc_1MTasks) {
+  TestMultipleParallelFor("TestMultipleParallelFor_4Thread_4Conc_1MTasks", 4, 4, 1000000);
+}
+#ifdef _WIN32
+TEST(ThreadPoolTest, TestStackSize) {
+  ThreadOptions to;
+  // For ARM, x86 and x64 machines, the default stack size is 1 MB
+  // We change it to a different value to see if the setting works
+  to.stack_size = 8 * 1024 * 1024;
+  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
+  typedef void(WINAPI * FnGetCurrentThreadStackLimits)(_Out_ PULONG_PTR LowLimit, _Out_ PULONG_PTR HighLimit);
+
+  Notification n;
+  ULONG_PTR low_limit, high_limit;
+  bool has_thread_limit_info = false;
+  tp->Schedule([&]() {
+    HMODULE kernel32_module = GetModuleHandle(TEXT("kernel32.dll"));
+    assert(kernel32_module != nullptr);
+    FnGetCurrentThreadStackLimits GetTS =
+        (FnGetCurrentThreadStackLimits)GetProcAddress(kernel32_module, "GetCurrentThreadStackLimits");
+    if (GetTS != nullptr) {
+      GetTS(&low_limit, &high_limit);
+      has_thread_limit_info = true;
+    }
+    n.Notify();
+  });
+  n.Wait();
+  if (has_thread_limit_info)
+    ASSERT_EQ(high_limit - low_limit, to.stack_size);
+}
+#endif
+
+}  // namespace onnxruntime

@@ -17,10 +17,7 @@ def set_preprocess(preprocess_func_name):
         parameter preprocess_func_name: name of the preprocess function 
         return: function pointer 
     '''
-    funcdict = {
-        'preprocess_method1': preprocess_method1,
-        'preprocess_method2': preprocess_method2
-    }
+    funcdict = {'preprocess_method1': preprocess_method1, 'preprocess_method2': preprocess_method2}
     return funcdict[preprocess_func_name]
 
 
@@ -33,7 +30,8 @@ def preprocess_method1(image_filepath, height, width):
         parameter width: image width in pixels
         return: matrix characterizing image
     '''
-    pillow_img = Image.open(image_filepath).resize((width, height))
+    pillow_img = Image.new("RGB", (width, height))
+    pillow_img.paste(Image.open(image_filepath).resize((width, height)))
     input_data = np.float32(pillow_img) / 127.5 - 1.0  # normalization
     input_data -= np.mean(input_data)  # normalization
     nhwc_data = np.expand_dims(input_data, axis=0)
@@ -50,7 +48,8 @@ def preprocess_method2(image_filepath, height, width):
         parameter width: image width in pixels
         return: matrix characterizing image
     '''
-    pillow_img = Image.open(image_filepath).resize((width, height))
+    pillow_img = Image.new("RGB", (width, height))
+    pillow_img.paste(Image.open(image_filepath).resize((width, height)))
     input_data = np.float32(pillow_img) - \
         np.array([123.68, 116.78, 103.94], dtype=np.float32)
     nhwc_data = np.expand_dims(input_data, axis=0)
@@ -58,11 +57,7 @@ def preprocess_method2(image_filepath, height, width):
     return nchw_data
 
 
-def load_batch(images_folder,
-               height,
-               width,
-               preprocess_func_name,
-               size_limit=0):
+def load_batch(images_folder, height, width, preprocess_func_name, size_limit=0):
     '''
     Loads a batch of images
     parameter images_folder: path to folder storing images
@@ -84,7 +79,5 @@ def load_batch(images_folder,
         image_filepath = images_folder + '/' + image_name
         nchw_data = preprocess_func(image_filepath, height, width)
         unconcatenated_batch_data.append(nchw_data)
-    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data,
-                                               axis=0),
-                                axis=0)
+    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
     return batch_data

@@ -114,7 +114,7 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE || add_second_class) {
     ml::batched_update_scores_inplace(scores_output_data, num_batches, num_targets, post_transform,
-                                      add_second_class ? 1 : -1,
+                                      add_second_class ? 1 : -1, false,
                                       threadpool);
   }
 }
@@ -142,7 +142,7 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   int64_t num_batches = input_shape.NumDimensions() == 1 ? 1 : input_shape[0];
   int64_t num_features = input_shape.NumDimensions() == 1 ? input_shape[0] : input_shape[1];
 
-  Tensor* Y = ctx->Output(0, TensorShape({num_batches}));
+  Tensor* Y = ctx->Output(0, {num_batches});
 
   int64_t output_classes = class_count_;
   bool add_second_class = false;
@@ -153,7 +153,7 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
     add_second_class = true;
   }
 
-  Tensor* Z = ctx->Output(1, TensorShape({num_batches, output_classes}));
+  Tensor* Z = ctx->Output(1, {num_batches, output_classes});
 
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 

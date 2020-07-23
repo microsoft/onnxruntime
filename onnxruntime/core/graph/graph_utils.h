@@ -34,39 +34,43 @@ bool IsOutputUsed(const Node& node, int index);
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
-/** returns true if 'name' is an initializer in 'graph', or an ancestor graph if check_outer_scope is true. 
+/** returns true if 'name' is an initializer in 'graph', or an ancestor graph if check_outer_scope is true.
 @param check_outer_scope If true and 'graph' is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope);
 
-/** returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+/** returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
 @param check_outer_scope If true and 'graph' is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
 bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope = true);
 
-/** returns the initializer's TensorProto if 'name' is an initializer, is constant and 
+/** returns the initializer's TensorProto if 'name' is an initializer, is constant and
 cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
 @param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
                                                           bool check_outer_scope = true);
 
-/** Add a new initializer to 'graph'. 
+/** Add a new initializer to 'graph'.
 Checks that new_initializer does not already exist in 'graph' before adding it.
-@returns The NodeArg for the new initializer. 
-@remarks No matching graph input is created, so the initializer will be constant. 
+@returns The NodeArg for the new initializer.
+@remarks No matching graph input is created, so the initializer will be constant.
 */
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 
-/** Checks if the given node has only constant inputs (initializers) and if so returns them in constant_inputs as they
-may come from outer scope. */
-bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs);
+/** Checks if the given node has only constant inputs (initializers) and no input is in excluded_initializers.
+If so returns them in constant_inputs as they may come from outer scope. */
+bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedTensorSet& constant_inputs,
+                              const std::unordered_set<std::string>& excluded_initializers = {});
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);
+
+/** Gets the index of an input arg with the specified input arg name. */
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
 
 /** Gets the name of the outgoing NodeArg with the specified index for the given node. */
 const std::string& GetNodeOutputName(const Node& node, int index);
@@ -88,7 +92,7 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 }
 
 /** Find the first child of the specified op type. */
-const Node* FirstChildByType(Node& node, const std::string& child_type); 
+const Node* FirstChildByType(Node& node, const std::string& child_type);
 /** Find the first parent of the specified op type. */
 const Node* FirstParentByType(Node& node, const std::string& parent_type);
 
@@ -123,7 +127,7 @@ bool RemoveNode(Graph& graph, Node& node);
 
 /** Tests if we can remove a node and replace its output with an initializer.
 Conditions:
- - Only one of the node's outputs is used by downstream operators or as a graph output 
+ - Only one of the node's outputs is used by downstream operators or as a graph output
    - multiple edges for the single used output are allowed
  - If the node produces a graph output the initializer_name must be the same as the node's output name
    - otherwise the required graph output will not be produced
@@ -136,20 +140,20 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
 See CanReplaceNodeWithInitializer for the conditions that must be satisfied in order to remove the node.*/
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement);
 
-/** Removes all output edges from the given Node of the Graph. 
+/** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
 
-/** Replaces the input to nodes that are downstream from 'node', which was being provided by an output of 'node', 
+/** Replaces the input to nodes that are downstream from 'node', which was being provided by an output of 'node',
     with an output from a different node. Moves the output edges from 'node' for 'output_idx' to the replacement node.
 @param replacement The node providing the replacement output.
-@param replacement_output_idx The index of the output from 'replacement' to use. 
+@param replacement_output_idx The index of the output from 'replacement' to use.
 
-e.g. Node A produces outputs A1 and A2. 
-     Node B consumes A2 (edge between A and B for A2) and produces B1. 
+e.g. Node A produces outputs A1 and A2.
+     Node B consumes A2 (edge between A and B for A2) and produces B1.
      Node C consumes B1 (edge between B and C for B1).
-     
-     If Node B was determined to not be needed, you would call ReplaceDownstreamNodeInput(graph, B, 0, A, 1) 
+
+     If Node B was determined to not be needed, you would call ReplaceDownstreamNodeInput(graph, B, 0, A, 1)
      to replace B1 (output index 0 for node B) with A2 (output index 1 for node A) as input to the downstream node C.
      The edge that existed between B and C for B1 will be removed, and replaced with an edge between A and C for A2.
 */
@@ -157,29 +161,29 @@ void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& 
 
 /** Replace the input to a node with a NodeArg.
 @remarks The replacement only updates the node's input definition and does not create any edges,
-         as typically this function is used to replace an input with an initializer or graph input 
+         as typically this function is used to replace an input with an initializer or graph input
          (there is no edge between an initializer or graph input and a Node).
 */
 void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
 /** Add an input to a node with a NodeArg for an initializer or graph input.
-@remarks target_input_idx must be the next input slot. 
-           e.g. if a Node has 2 inputs, AddNodeInput can only add input 3 and not 4. 
-         There is no edge between an initializer or graph input and a Node, so the replacement only updates the 
+@remarks target_input_idx must be the next input slot.
+           e.g. if a Node has 2 inputs, AddNodeInput can only add input 3 and not 4.
+         There is no edge between an initializer or graph input and a Node, so the replacement only updates the
          node's input definition and does not create any new edges.
 */
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
-/** Finalize the fusion of second_node into first_node. 
+/** Finalize the fusion of second_node into first_node.
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
     e.g. Conv + Add fusion fuses the 'Add' into the Conv.
 */
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 
-/** Finalize the fusion of two or more nodes which are being replaced with a single node. 
+/** Finalize the fusion of two or more nodes which are being replaced with a single node.
     The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
 
-    Conceptually multiple nodes are being combined into one, and post-fusion will produce output/s with the same names 
+    Conceptually multiple nodes are being combined into one, and post-fusion will produce output/s with the same names
     as the last node in 'nodes', and be connected to the same downstream nodes.
 
     The input edges to the first node in 'nodes' will be moved to replacement_node. No other input edges are moved.
@@ -197,7 +201,6 @@ const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 @returns nullptr when not found.
 */
 const Node* GetInputNode(const Node& node, int arg_index);
-
 
 /** Expected edge end information for matching input or output edge.
     For input edge, the node in the edge end refers to the source node, otherwise the destination node.
@@ -226,7 +229,7 @@ struct EdgeEndToMatch {
 @param edges_to_match has information of a sequence of adjacent edges in the path to be matched one by one.
 @param result stores edges that are found.
 @returns false when one edge has multiple candidates, or not all edges are found.
-@remarks matching an EdgeEndToMatch might get multiple candidates in output edges. 
+@remarks matching an EdgeEndToMatch might get multiple candidates in output edges.
     When such case is encountered, this function will return false. This is by design to reduce complexity.
     Here is an example graph:
                   Add
@@ -234,7 +237,7 @@ struct EdgeEndToMatch {
                Mul     Mul
                  \    /
                   Sub
-    For example, you want to match path from top to bottom: Add-->Mul-->Sub. 
+    For example, you want to match path from top to bottom: Add-->Mul-->Sub.
     When matching the first edge Add-->Mul, the algorithm found two matches.
     Then it returns false, and output a warning log entry.
 
@@ -243,5 +246,21 @@ struct EdgeEndToMatch {
 */
 bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
+/** Same as FindPath above, but return the references of matched Node
+*/
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
+
+/**
+ * Remove nodes with only one output edge using bottom-up bfs traversal.
+ * @param node: The node to start with.
+ * @returns true if there is one or more node(s) removed by this function. Otherwise return false.
+*/
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
+
+/** Creates a mutable NodeArg owned by the graph with mirrored base_arg's TypeProto and name
+ * @param base_arg The NodeArg the newly created NodeArg is mirrored based off.
+ * @returns NodeArg reference that contains the same TypeProto info as base_arg with generated different names.
+*/
+NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 }  // namespace graph_utils
 }  // namespace onnxruntime

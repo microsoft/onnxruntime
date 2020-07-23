@@ -28,20 +28,27 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
   void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
+  void SetMetacommandsEnabled(bool metacommands_enabled);
+
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
   AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
+  bool metacommands_enabled_ = true;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get());
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
 }
 
 void DMLProviderFactory::SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode) {
   rounding_mode_ = rounding_mode;
+}
+
+void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
+  metacommands_enabled_ = metacommands_enabled;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
@@ -66,9 +73,15 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
 }
 
 void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode) {
-  auto dml_prvider_factory = static_cast<DMLProviderFactory*>(factory);
-  dml_prvider_factory->SetDefaultRoundingMode(rounding_mode);
+  auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
+  dml_provider_factory->SetDefaultRoundingMode(rounding_mode);
 }
+
+void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled) {
+  auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
+  dml_provider_factory->SetMetacommandsEnabled(metacommandsEnabled);
+}
+
 
 bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     DXGI_ADAPTER_DESC1 desc;
@@ -97,7 +110,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3d12_device)));
 
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
-  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+  cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 
   ComPtr<ID3D12CommandQueue> cmd_queue;

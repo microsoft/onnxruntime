@@ -1,45 +1,9 @@
-variables:
-  DisableContribOps: ON
-  TestDataUrlNoContribOps : https://onnxruntimetestdata.blob.core.windows.net/models/20181210.zip
-
 jobs:
-- job: Linux_CI_Dev
-  pool: Linux-CPU
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-
-    - task: CmdLine@2
-      displayName: 'Clean untagged docker images'
-      inputs:
-        script: |
-          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
-          docker container prune -f
-          docker image prune -f
-        workingDirectory: $(Build.BinariesDirectory)
-      continueOnError: true
-      condition: always()
-
-    - task: CmdLine@2
-      displayName: 'Download azcopy'
-      inputs:
-        script: |
-          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
-          tar -zxvf azcopy.tar.gz --strip 1
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - task: PythonScript@0
-      displayName: 'Download test data'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
-        arguments: --test_data_url $(TestDataUrlNoContribOps) --build_dir $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-        workingDirectory: $(Build.BinariesDirectory)
-
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops"'
-      displayName: 'Command Line Script'
-
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'ci_only'
-
-    - template: templates/clean-agent-build-directory-step.yml
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-CPU'
+    JobName: 'Linux_CI_Dev'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops  --disable_ml_ops"'
+    DoNugetPack:  'false'
+    ArtifactName: 'drop-linux'
+    TimeoutInMinutes: 120

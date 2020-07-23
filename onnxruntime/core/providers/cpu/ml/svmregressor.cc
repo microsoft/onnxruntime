@@ -15,7 +15,7 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
 template <typename T>
 SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
     : OpKernel(info),
-      SVMCommon<T>(info),
+      SVMCommon(info),
       vector_count_(info.GetAttrOrDefault<int64_t>("n_supports", 0)),
       support_vectors_(info.GetAttrsOrDefault<float>("support_vectors")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
@@ -40,33 +40,61 @@ template <typename T>
 Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
 
-  int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
-  int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
+  int64_t num_features = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
+  int64_t num_batches = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
+  ORT_ENFORCE(num_features == feature_count_);
 
-  Tensor* Y = ctx->Output(0, TensorShape({N, 1}));  // this op outputs for one target only
-  const auto* x_data = X->template Data<T>();
-  int64_t current_weight_0;
-  float sum;
+  // X: [num_batches, feature_count_] where features could be coefficients or support vectors
+  // coefficients_: [vector_count_]
+  // support_vectors_ : [vector_count_, feature_count_]
 
-  for (int64_t n = 0; n < N; n++) {  //for each example
-    current_weight_0 = n * stride;
-    sum = 0.f;
-    if (mode_ == SVM_TYPE::SVM_SVC) {
-      for (int64_t j = 0; j < vector_count_; j++) {
-        sum += kernel_dot(x_data, current_weight_0, support_vectors_, feature_count_ * j,
-                          feature_count_, get_kernel_type()) * coefficients_[j];
-      }
-      sum += rho_[0];
-    } else if (mode_ == SVM_TYPE::SVM_LINEAR) {  //liblinear
-      sum = kernel_dot(x_data, current_weight_0, coefficients_, 0,
-                       feature_count_, get_kernel_type());
-      sum += rho_[0];
+  // Y: [num_batches, 1]
+  Tensor* Y = ctx->Output(0, {num_batches, 1});  // this op outputs for one target only
+  const auto x_data = X->template DataAsSpan<T>();
+  auto out = Y->MutableDataAsSpan<T>();
+
+  concurrency::ThreadPool* threadpool = ctx->GetOperatorThreadPool();
+
+  if (mode_ == SVM_TYPE::SVM_SVC) {
+    AllocatorPtr allocator;
+    auto status = ctx->GetTempSpaceAllocator(&allocator);
+    ORT_RETURN_IF_ERROR(status);
+
+    auto tmp_data = IAllocator::MakeUniquePtr<T>(allocator, num_batches * vector_count_);
+    auto tmp_data_span = gsl::make_span<T>(tmp_data.get(), num_batches * vector_count_);
+
+    // combine the input data with the support vectors and apply the kernel type
+    // output is {num_batches, vector_count_}
+    batched_kernel_dot<float>(x_data, support_vectors_, num_batches, vector_count_, feature_count_, 0.f, tmp_data_span,
+                              threadpool);
+
+    static const TensorShape rho_shape({1});
+
+    // combine with coefficients and add rho_[0]
+    onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
+                                      num_batches, 1, vector_count_,
+                                      1.f, tmp_data_span.data(), coefficients_.data(), 1.f,
+                                      rho_.data(), &rho_shape,
+                                      out.data(),
+                                      threadpool);
+  } else if (mode_ == SVM_TYPE::SVM_LINEAR) {
+    // combine the coefficients with the input data and apply the kernel type
+    batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out, threadpool);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode:", static_cast<int>(mode_));
+  }
+
+  if (one_class_) {
+    float* y = out.data();
+    float* y_end = y + out.size();
+
+    while (y < y_end) {
+      *y = (*y > 0.f ? 1.f : -1.f);
+      ++y;
     }
-    Y->template MutableData<float>()[n] = one_class_ ? (sum > 0 ? 1.f : -1.f) : sum;
   }
 
   return Status::OK();
 }
-
 }  // namespace ml
 }  // namespace onnxruntime

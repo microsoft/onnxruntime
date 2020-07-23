@@ -122,7 +122,7 @@ bool FuseReluClip::SatisfyCondition(const Graph& graph, const Node& node, const 
   // as Clip will apply the minimum. If the Clip 'min' value is < 0 we need
   // to update it to 0 to apply what the Relu would have done. We do that in Apply.
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11, 12}) ||
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;
   }

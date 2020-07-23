@@ -156,9 +156,10 @@ MlasGemm(
     const uint8_t* A,
     size_t lda,
     uint8_t offa,
-    const int8_t* B,
+    const uint8_t* B,
     size_t ldb,
-    int8_t offb,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
@@ -176,9 +177,71 @@ MlasGemm(
     const uint8_t* B,
     size_t ldb,
     uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
     int32_t* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const void* PackedB,
+    uint8_t offb,
+    bool BIsSigned,
+    float* C,
+    size_t ldc,
+    const float* Scale,
+    const float* Bias,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+//
+// Buffer packing routines.
+//
+
+size_t
+MLASCALL
+MlasGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool BIsSigned
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool BIsSigned,
+    void* PackedB
     );
 
 //
@@ -284,6 +347,22 @@ MlasPool(
 
 void
 MLASCALL
+MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasComputeExp(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+void
+MLASCALL
 MlasComputeLogistic(
     const float* Input,
     float* Output,
@@ -292,15 +371,18 @@ MlasComputeLogistic(
 
 void
 MLASCALL
-MlasComputeTanh(
+MlasComputeSoftmax(
     const float* Input,
     float* Output,
-    size_t N
+    size_t N,
+    size_t D,
+    bool LogSoftmax,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
 MLASCALL
-MlasComputeErf(
+MlasComputeTanh(
     const float* Input,
     float* Output,
     size_t N
@@ -420,24 +502,15 @@ MlasNchwcUpsample(
 // Linear quantization routines.
 //
 
+template<typename OutputType>
 void
 MLASCALL
 MlasQuantizeLinear(
     const float* Input,
-    uint8_t* Output,
+    OutputType* Output,
     size_t N,
     float Scale,
-    uint8_t ZeroPoint
-    );
-
-void
-MLASCALL
-MlasQuantizeLinear(
-    const float* Input,
-    int8_t* Output,
-    size_t N,
-    float Scale,
-    int8_t ZeroPoint
+    OutputType ZeroPoint
     );
 
 void
@@ -450,4 +523,34 @@ MlasRequantizeOutput(
     size_t N,
     float Scale,
     uint8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    );
+
+//
+// InputA is of size N,
+// Input B is of size 1 if IsScalarB == true, otherwise it is of size N
+//
+template<typename DataType>
+void
+MLASCALL
+MlasQLinearAdd(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N,
+    bool IsScalarB
     );

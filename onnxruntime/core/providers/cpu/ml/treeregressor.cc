@@ -54,12 +54,12 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
                   "Input shape needs to be at least a single dimension.");
   }
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
-  Tensor* Y = context->Output(0, TensorShape({N, tree_ensemble_.n_targets_or_classes_}));
+  Tensor* Y = context->Output(0, {N, tree_ensemble_.n_targets_or_classes_});
 
-  tree_ensemble_.compute(X, Y, NULL);
+  tree_ensemble_.compute(context->GetOperatorThreadPool(), X, Y, NULL);
 
   return Status::OK();
 }
 
-}  // namespace onnxruntime
+}  // namespace ml
 }  // namespace onnxruntime

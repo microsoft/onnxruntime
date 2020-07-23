@@ -64,15 +64,21 @@ TEST(OptimizerTest, Basic) {
     nodes.push_back(&node);
   }
 
-  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set);
+  std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, std::move(cpu_execution_provider));
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
   const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
 
   for (auto& node : graph.Nodes()) {
-    auto* kernel = info.GetKernel(node.Index());
+    auto kernel = info.CreateKernel(&node);
 
-    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
+    // kernel can only be a nullptr if a CPU kernel implementation has been removed,
+    // if that is the case, OpKernelContext instance construction will throw in the next step
+    // and fail the test
+
+    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
 
     auto st = kernel->Compute(&op_kernel_context);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();

@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /* Modifications Copyright (c) Microsoft. */
 
 #include "roialign.h"
@@ -21,22 +21,18 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/platform/threadpool.h"
 
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                 \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
-      RoiAlign,                                                          \
-      10,                                                                \
-      data_type,                                                         \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
-      RoiAlign<data_type>);
+#define ADD_TYPED_ROIALIGN_OP(data_type)                                                            \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 10, data_type,                                           \
+                                 KernelDefBuilder()                                                 \
+                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()) \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+                                 RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);
 ADD_TYPED_ROIALIGN_OP(double);
@@ -55,31 +51,19 @@ struct PreCalc {
 };
 
 template <typename T>
-void pre_calc_for_bilinear_interpolate(
-    const int64_t height,
-    const int64_t width,
-    const int64_t pooled_height,
-    const int64_t pooled_width,
-    const int64_t iy_upper,
-    const int64_t ix_upper,
-    T roi_start_h,
-    T roi_start_w,
-    T bin_size_h,
-    T bin_size_w,
-    int64_t roi_bin_grid_h,
-    int64_t roi_bin_grid_w,
-    std::vector<PreCalc<T>>& pre_calc) {
+void pre_calc_for_bilinear_interpolate(const int64_t height, const int64_t width, const int64_t pooled_height,
+                                       const int64_t pooled_width, const int64_t iy_upper, const int64_t ix_upper,
+                                       T roi_start_h, T roi_start_w, T bin_size_h, T bin_size_w, int64_t roi_bin_grid_h,
+                                       int64_t roi_bin_grid_w, std::vector<PreCalc<T>>& pre_calc) {
   int64_t pre_calc_index = 0;
   for (int64_t ph = 0; ph < pooled_height; ph++) {
     for (int64_t pw = 0; pw < pooled_width; pw++) {
       for (int64_t iy = 0; iy < iy_upper; iy++) {
         const T yy = roi_start_h + ph * bin_size_h +
-                     static_cast<T>(iy + .5f) * bin_size_h /
-                         static_cast<T>(roi_bin_grid_h);  // e.g., 0.5, 1.5
+                     static_cast<T>(iy + .5f) * bin_size_h / static_cast<T>(roi_bin_grid_h);  // e.g., 0.5, 1.5
         for (int64_t ix = 0; ix < ix_upper; ix++) {
-          const T xx = roi_start_w + pw * bin_size_w +
-                       static_cast<T>(ix + .5f) * bin_size_w /
-                           static_cast<T>(roi_bin_grid_w);
+          const T xx =
+              roi_start_w + pw * bin_size_w + static_cast<T>(ix + .5f) * bin_size_w / static_cast<T>(roi_bin_grid_w);
 
           T x = xx;
           T y = yy;
@@ -155,120 +139,102 @@ void pre_calc_for_bilinear_interpolate(
 }
 
 template <typename T>
-void RoiAlignForward(const TensorShape& output_shape,
-                     const T* bottom_data,
-                     float spatial_scale,
-                     int64_t height,
-                     int64_t width,
-                     int64_t sampling_ratio,
-                     const T* bottom_rois,
-                     int64_t num_roi_cols,
-                     T* top_data,
-                     RoiAlignMode mode,
-                     const int64_t* batch_indices_ptr,
-                     ThreadPool* ttp) {
+void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, float spatial_scale, int64_t height,
+                     int64_t width, int64_t sampling_ratio, const T* bottom_rois, int64_t num_roi_cols, T* top_data,
+                     RoiAlignMode mode, const int64_t* batch_indices_ptr, ThreadPool* ttp) {
   int64_t n_rois = output_shape[0];
   int64_t channels = output_shape[1];
   int64_t pooled_height = output_shape[2];
   int64_t pooled_width = output_shape[3];
 
-  ThreadPool::TryBatchParallelFor(ttp, static_cast<int32_t>(n_rois), [&](int32_t n) {
-    int64_t index_n = n * channels * pooled_width * pooled_height;
+  //100 is a random chosed value, need be tuned
+  double cost = static_cast<double>(channels * pooled_width * pooled_height * 100);
 
-    const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
-    const auto roi_batch_ind = batch_indices_ptr[n];
+  ThreadPool::TryParallelFor(ttp, static_cast<ptrdiff_t>(n_rois), cost, [&](ptrdiff_t n, ptrdiff_t end) {
+    for (; n != end; ++n) {
+      int64_t index_n = n * channels * pooled_width * pooled_height;
 
-    // Do not using rounding; this implementation detail is critical
-    T roi_start_w = offset_bottom_rois[0] * spatial_scale;
-    T roi_start_h = offset_bottom_rois[1] * spatial_scale;
-    T roi_end_w = offset_bottom_rois[2] * spatial_scale;
-    T roi_end_h = offset_bottom_rois[3] * spatial_scale;
+      const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
+      const auto roi_batch_ind = batch_indices_ptr[n];
 
-    // Force malformed ROIs to be 1x1
-    T roi_width = std::max(roi_end_w - roi_start_w, (T)1.);
-    T roi_height = std::max(roi_end_h - roi_start_h, (T)1.);
-    T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
-    T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
+      // Do not using rounding; this implementation detail is critical
+      T roi_start_w = offset_bottom_rois[0] * spatial_scale;
+      T roi_start_h = offset_bottom_rois[1] * spatial_scale;
+      T roi_end_w = offset_bottom_rois[2] * spatial_scale;
+      T roi_end_h = offset_bottom_rois[3] * spatial_scale;
 
-    // We use roi_bin_grid to sample the grid and mimic integral
-    int64_t roi_bin_grid_h = (sampling_ratio > 0)
-                                 ? sampling_ratio
-                                 : static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
-    int64_t roi_bin_grid_w =
-        (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
+      // Force malformed ROIs to be 1x1
+      T roi_width = std::max(roi_end_w - roi_start_w, (T)1.);
+      T roi_height = std::max(roi_end_h - roi_start_h, (T)1.);
+      T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
+      T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
-    // We do average (integral) pooling inside a bin
-    const int64_t count = roi_bin_grid_h * roi_bin_grid_w;  // e.g. = 4
+      // We use roi_bin_grid to sample the grid and mimic integral
+      int64_t roi_bin_grid_h = (sampling_ratio > 0) ?
+                                   sampling_ratio :
+                                   static_cast<int64_t>(std::ceil(roi_height / pooled_height));  // e.g., = 2
+      int64_t roi_bin_grid_w =
+          (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
 
-    // we want to precalculate indices and weights shared by all channels,
-    // this is the key point of optimization
-    std::vector<PreCalc<T>> pre_calc(
-        roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height);
-    pre_calc_for_bilinear_interpolate(
-        height,
-        width,
-        pooled_height,
-        pooled_width,
-        roi_bin_grid_h,
-        roi_bin_grid_w,
-        roi_start_h,
-        roi_start_w,
-        bin_size_h,
-        bin_size_w,
-        roi_bin_grid_h,
-        roi_bin_grid_w,
-        pre_calc);
+      // We do average (integral) pooling inside a bin
+      const int64_t count = roi_bin_grid_h * roi_bin_grid_w;  // e.g. = 4
 
-    for (int64_t c = 0; c < channels; c++) {
-      int64_t index_n_c = index_n + c * pooled_width * pooled_height;
-      const T* offset_bottom_data =
-          bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
-      int64_t pre_calc_index = 0;
+      // we want to precalculate indices and weights shared by all channels,
+      // this is the key point of optimization
+      std::vector<PreCalc<T>> pre_calc(roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height);
+      pre_calc_for_bilinear_interpolate(height, width, pooled_height, pooled_width, roi_bin_grid_h, roi_bin_grid_w,
+                                        roi_start_h, roi_start_w, bin_size_h, bin_size_w, roi_bin_grid_h,
+                                        roi_bin_grid_w, pre_calc);
 
-      for (int64_t ph = 0; ph < pooled_height; ph++) {
-        for (int64_t pw = 0; pw < pooled_width; pw++) {
-          int64_t index = index_n_c + ph * pooled_width + pw;
+      for (int64_t c = 0; c < channels; c++) {
+        int64_t index_n_c = index_n + c * pooled_width * pooled_height;
+        const T* offset_bottom_data =
+            bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
+        int64_t pre_calc_index = 0;
 
-          T output_val = 0.;
-          if (mode == RoiAlignMode::avg) {  // avg pooling
-            for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
-              for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                PreCalc<T> pc = pre_calc[pre_calc_index];
-                output_val += pc.w1 * offset_bottom_data[pc.pos1] +
-                              pc.w2 * offset_bottom_data[pc.pos2] +
-                              pc.w3 * offset_bottom_data[pc.pos3] +
-                              pc.w4 * offset_bottom_data[pc.pos4];
+        for (int64_t ph = 0; ph < pooled_height; ph++) {
+          for (int64_t pw = 0; pw < pooled_width; pw++) {
+            int64_t index = index_n_c + ph * pooled_width + pw;
 
-                pre_calc_index += 1;
-              }
-            }
-            output_val /= count;
-          } else {  // max pooling
-            bool max_flag = false;
-            for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
-              for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
-                PreCalc<T> pc = pre_calc[pre_calc_index];
-                T val = std::max(std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1],
-                                                   pc.w2 * offset_bottom_data[pc.pos2]),
-                                          pc.w3 * offset_bottom_data[pc.pos3]),
-                                 pc.w4 * offset_bottom_data[pc.pos4]);
-                if (!max_flag) {
-                  output_val = val;
-                  max_flag = true;
-                } else {
-                  output_val = std::max(output_val, val);
+            T output_val = 0.;
+            if (mode == RoiAlignMode::avg) {  // avg pooling
+              for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
+                for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
+                  PreCalc<T> pc = pre_calc[pre_calc_index];
+                  output_val += pc.w1 * offset_bottom_data[pc.pos1] + pc.w2 * offset_bottom_data[pc.pos2] +
+                                pc.w3 * offset_bottom_data[pc.pos3] + pc.w4 * offset_bottom_data[pc.pos4];
+
+                  pre_calc_index += 1;
                 }
+              }
+              output_val /= count;
+            } else {  // max pooling
+              bool max_flag = false;
+              for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
+                for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
+                  PreCalc<T> pc = pre_calc[pre_calc_index];
+                  T val = std::max(
+                      std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1], pc.w2 * offset_bottom_data[pc.pos2]),
+                               pc.w3 * offset_bottom_data[pc.pos3]),
+                      pc.w4 * offset_bottom_data[pc.pos4]);
+                  if (!max_flag) {
+                    output_val = val;
+                    max_flag = true;
+                  } else {
+                    output_val = std::max(output_val, val);
+                  }
 
-                pre_calc_index += 1;
+                  pre_calc_index += 1;
+                }
               }
             }
-          }
 
-          top_data[index] = output_val;
-        }  // for pw
-      }    // for ph
-    }      // for c
-  });      // for n
+            top_data[index] = output_val;
+          }  // for pw
+        }    // for ph
+      }      // for c
+    }        // for n
+  });
 }
 }  // namespace
 
@@ -313,11 +279,8 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
 
 template <typename T>
 Status RoiAlign<T>::Compute(OpKernelContext* context) const {
-  // X
   const auto* X_ptr = context->Input<Tensor>(0);
-  // rois
   const auto* rois_ptr = context->Input<Tensor>(1);
-  // batch indices
   const auto* batch_indices_ptr = context->Input<Tensor>(2);
 
   const auto& x_dims = X_ptr->Shape();
@@ -329,26 +292,19 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   auto num_roi_cols = rois_dims[1];
 
   auto status = CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr);
-  if (status != Status::OK()) {
+  if (!status.IsOK()) {
     return status;
   }
 
-  TensorShape Y_shape = {num_rois, num_channels, this->output_height_, this->output_width_};
-  auto& Y = *context->Output(0, Y_shape);
+  auto& Y = *context->Output(0, {num_rois, num_channels, this->output_height_, this->output_width_});
 
-  RoiAlignForward<T>(Y_shape,
-                     X_ptr->Data<T>(),
-                     this->spatial_scale_,
+  RoiAlignForward<T>(Y.Shape(), X_ptr->Data<T>(), this->spatial_scale_,
                      x_dims[2],  // height
                      x_dims[3],  // width
-                     this->sampling_ratio_,
-                     rois_ptr->Data<T>(),
-                     num_roi_cols,
-                     Y.template MutableData<T>(),
-                     this->mode_,
-                     batch_indices_ptr->Data<int64_t>(),
-                     context->GetOperatorThreadPool());
+                     this->sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(), this->mode_,
+                     batch_indices_ptr->Data<int64_t>(), context->GetOperatorThreadPool());
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

@@ -46,7 +46,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
-  auto dimension_count = input_shape.NumDimensions();
+  int32_t dimension_count = static_cast<int32_t>(input_shape.NumDimensions());
 
   const std::vector<int64_t>* p_pads = &pads_;
   const std::vector<int64_t>* p_slices = &slices_;
@@ -65,7 +65,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
-    ORT_ENFORCE(pads_size == 2 * dimension_count,
+    ORT_ENFORCE(pads_size == 2 * static_cast<size_t>(dimension_count),
                 "Pads tensor size should be equal to twice the input dimension count ");
 
     pads.reserve(2 * dimension_count);
@@ -94,23 +94,20 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     p_slices = &slices;
   }
 
-  CudaAsyncBuffer<int64_t> input_dims(this, input_shape.GetDims());
-  CudaAsyncBuffer<int64_t> input_strides(this, dimension_count);
-  CudaAsyncBuffer<int64_t> lower_pads(this, dimension_count);
-  CudaAsyncBuffer<int64_t> upper_pads(this, dimension_count);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, dimension_count);
+  TensorPitches input_pitches(input_shape.GetDims());
+  TArray<int64_t> input_dims(input_shape.GetDims());
+  TArray<int64_t> input_strides(input_pitches);
 
-  TensorPitches::Calculate(input_strides.CpuSpan(), input_shape.GetDims());
   std::vector<int64_t> output_dims(input_shape.GetDims());
   ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
-  auto lower_pads_span = lower_pads.CpuSpan();
-  auto upper_pads_span = upper_pads.CpuSpan();
-  for (size_t i = 0; i < dimension_count; i++) {
-    lower_pads_span[i] = (*p_pads)[i] + (*p_slices)[i];
-    upper_pads_span[i] = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
-    output_dims[i] += lower_pads_span[i] + upper_pads_span[i];
+  TArray<int64_t> lower_pads(dimension_count);
+  TArray<int64_t> upper_pads(dimension_count);
+  for (auto i = 0; i < dimension_count; i++) {
+    lower_pads[i] = (*p_pads)[i] + (*p_slices)[i];
+    upper_pads[i] = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
+    output_dims[i] += lower_pads[i] + upper_pads[i];
   }
   TensorShape output_shape(output_dims);
 
@@ -130,23 +127,22 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
-  ORT_RETURN_IF_ERROR(input_dims.CopyToGpu());
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(lower_pads.CopyToGpu());
-  ORT_RETURN_IF_ERROR(upper_pads.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  TArray<fast_divmod> fdm_output_strides(dimension_count);
+  TensorPitches output_strides(output_dims);
+  for (auto i = 0; i < dimension_count; i++) {
+    fdm_output_strides[i] = fast_divmod(static_cast<int>(output_strides[i]));
+  }
 
   PadImpl(
       dimension_count,
-      input_dims.GpuPtr(),
-      input_strides.GpuPtr(),
-      lower_pads.GpuPtr(),
-      upper_pads.GpuPtr(),
+      input_dims,
+      input_strides,
+      lower_pads,
+      upper_pads,
       value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
-      fdm_output_strides.GpuPtr(),
+      fdm_output_strides,
       reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.template MutableData<T>()),
       output_tensor.Shape().Size());
 

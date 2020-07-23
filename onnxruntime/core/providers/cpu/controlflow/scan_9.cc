@@ -159,7 +159,7 @@ class ScanImpl {
 };
 
 template <>
-Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
+Scan<9>::Scan(const OpKernelInfo& info) : IControlFlowKernel(info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -191,7 +191,11 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
     output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
   }
 
-  device_helpers_.transpose_func = TransposeBase::DoTranspose;
+  device_helpers_.transpose_func = [](const std::vector<size_t>& permutations, const Tensor& input,
+                                      Tensor& output) -> Status {
+    return TransposeBase::DoTranspose(permutations, input, output);
+  };
+
   device_helpers_.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
     memset(data, 0, size_in_bytes);
     return Status::OK();
@@ -210,7 +214,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Scan<9>::Info>(node, *subgraph_session_state.GetGraphViewer(),
+  info_ = onnxruntime::make_unique<Scan<9>::Info>(node, subgraph_session_state.GetGraphViewer(),
                                                   static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,

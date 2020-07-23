@@ -3,22 +3,15 @@
 
 #pragma once
 
+#include "attention_cpu_base.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-class AttentionBase {
- protected:
-  AttentionBase(const OpKernelInfo& info);
-  Status CheckInputs(const OpKernelContext* context) const;
-
-  int num_heads_;  // number of attention heads
-};
-
 template <typename T>
-class Attention : public OpKernel, public AttentionBase {
+class Attention : public OpKernel, public AttentionCPUBase {
  public:
   explicit Attention(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
