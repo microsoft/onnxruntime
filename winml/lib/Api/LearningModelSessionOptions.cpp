@@ -29,6 +29,6 @@ std::map<winrt::hstring, uint32_t> LearningModelSessionOptions::NamedDimensionOv
 }
 
 void LearningModelSessionOptions::OverrideNamedDimension(winrt::hstring name, uint32_t value) {
-  named_dim_overrides_.insert({name, value});
+  named_dim_overrides_.insert_or_assign(name, value);
 }
 }  // namespace WINMLP

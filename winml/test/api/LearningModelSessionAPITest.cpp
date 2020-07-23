@@ -320,21 +320,19 @@ static void NamedDimensionOverride()
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::Cpu));
 
   LearningModelSessionOptions options;
-  options.OverrideNamedDimension(L"None", 1);
+  options.OverrideNamedDimension(L"None", 5);
+  
+  // Verifies that if a Dim name doesn't exist the named dimension override does nothing
+  options.OverrideNamedDimension(L"DimNameThatDoesntExist", 10);
 
   LearningModelSession session(nullptr);
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+
   ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);
   TensorFeatureDescriptor tensorDescriptor = nullptr;
   descriptor.as(tensorDescriptor);
-  std::vector<int64_t> shape;
-  int64_t size = 1;
-  for (auto&& dim : tensorDescriptor.Shape()) {
-    if (dim == -1) dim = 1;
-    shape.push_back(dim);
-    size *= dim;
-  }
-
+  std::vector<int64_t> shape{5,3,720,720};
+  int64_t size = 5*3*720*720;
   std::vector<float> buffer;
   buffer.resize(static_cast<size_t>(size));
   auto featureValue = TensorFloat::CreateFromIterable(shape, winrt::single_threaded_vector<float>(std::move(buffer)));
