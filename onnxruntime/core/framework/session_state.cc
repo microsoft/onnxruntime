@@ -274,10 +274,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   // TODO(codemzs): Refacor this code.
   MLDataType ml_type{nullptr};
   for (auto ml_value_idx : exe_plan->activation_allocation_order) {
+    
     ORT_ENFORCE(ml_value_idx >= 0);
-    if (static_cast<size_t>(ml_value_idx) >= exe_plan->allocation_plan.size()) {
-      ml_type = nullptr;
-    }
 
     ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())

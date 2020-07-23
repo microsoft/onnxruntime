@@ -712,18 +712,29 @@ common::Status VerifyTensorsAllocatedContiguously(OpKernelContext* context) {
     const Tensor* curr_input = context->Input<Tensor>(i);
     Tensor* curr_output = context->Output(i, curr_input->Shape());
     curr_output->SetByteOffset(curr_input->ByteOffset());
-    size_t input_element_count = prev_input->Shape().Size();
+    
+    ORT_ENFORCE(prev_input->Shape().Size() >= 0);
+    
+    size_t input_element_count = static_cast<size_t>(prev_input->Shape().Size());
     size_t input_element_size = prev_input->DataType()->Size();
     size_t input_aligned_bytes = 0;
+    
     ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(input_element_count, input_element_size, &input_aligned_bytes));
+    
     ORT_RETURN_IF_NOT(curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + input_aligned_bytes ||
                       curr_input->DataRaw() == static_cast<const int8_t*>(prev_input->DataRaw()) + prev_input->SizeInBytes());
-    size_t output_element_count = prev_output->Shape().Size();
+    
+    ORT_ENFORCE(prev_output->Shape().Size() >= 0);
+    
+    size_t output_element_count = static_cast<size_t>(prev_output->Shape().Size());
     size_t output_element_size = prev_output->DataType()->Size();
     size_t output_aligned_bytes = 0;
+    
     ORT_RETURN_IF_NOT(IAllocator::CalcMemSizeForArrayWithAlignment<256>(output_element_count, output_element_size, &output_aligned_bytes));
+    
     ORT_RETURN_IF_NOT(curr_output->DataRaw() == static_cast<const int8_t*>(prev_output->DataRaw()) + output_aligned_bytes ||
                       curr_output->DataRaw() == static_cast<const int8_t*>(prev_output->DataRaw()) + prev_output->SizeInBytes());
+    
     prev_input = curr_input;
     prev_output = curr_output;
   }
