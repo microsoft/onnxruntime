@@ -126,6 +126,8 @@ def main():
     model_class = MODEL_CLASSES[args.model_class][0]
 
     config = AutoConfig.from_pretrained(args.model_name, torchscript=args.torchscript, cache_dir=cache_dir)
+    if hasattr(config, 'return_tuple'):
+        config.return_tuple = True
     model = model_class.from_pretrained(args.model_name, config=config, cache_dir=cache_dir)
 
     # This scirpt does not support float16 for PyTorch.
