@@ -348,7 +348,7 @@ class ONNXQuantizer:
                     new_list += self._quantize_convolution(node, new_list)
                 elif node.op_type == 'MatMul':
                     new_list += self._quantize_matmul(node, new_list)
-                elif node.op_type == 'Gather' and self._is_valid_quantize_value(node.input[0]):
+                elif node.op_type == 'Gather' and self._is_valid_initializer_value(node.input[0]):
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Add' or node.op_type == 'Mul':
                     new_list += self._quantize_binary_math_ops(node, new_list)
@@ -356,6 +356,8 @@ class ONNXQuantizer:
                     new_list += self._handle_activation_ops(node, new_list)
                 elif node.op_type == 'Attention':
                     new_list += self._quantize_attention(node, new_list)
+                elif node.op_type == 'EmbedLayerNormalization':
+                    new_list += self._quantize_embed_layernorm(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -395,6 +397,9 @@ class ONNXQuantizer:
             value_info = self.value_infos[value_name]
             return value_info.type.HasField(
                 'tensor_type') and value_info.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT
+        return self._is_valid_initializer_value(value_name)
+
+    def _is_valid_initializer_value(self, value_name):
         weight = _find_by_name(value_name, self.model.graph.initializer)
         return weight is not None and weight.data_type == onnx_proto.TensorProto.FLOAT
 
@@ -1125,6 +1130,15 @@ class ONNXQuantizer:
         gather_original_output = node.output[0]
         node.output[0] = gather_new_output
         node.input[0] = quantized_input_names[0]
+        nodes.append(node)
+
+        return nodes
+
+    def _quantize_embed_layernorm(self, node, new_nodes_list):
+        assert (node.op_type == "EmbedLayerNormalization")
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [2, 3, 4], new_nodes_list)
+
         nodes.append(node)
 
         return nodes

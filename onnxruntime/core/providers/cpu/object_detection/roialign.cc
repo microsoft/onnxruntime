@@ -21,7 +21,6 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/platform/threadpool.h"
 
 using namespace onnxruntime::concurrency;
@@ -280,11 +279,8 @@ Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, cons
 
 template <typename T>
 Status RoiAlign<T>::Compute(OpKernelContext* context) const {
-  // X
   const auto* X_ptr = context->Input<Tensor>(0);
-  // rois
   const auto* rois_ptr = context->Input<Tensor>(1);
-  // batch indices
   const auto* batch_indices_ptr = context->Input<Tensor>(2);
 
   const auto& x_dims = X_ptr->Shape();
@@ -296,14 +292,13 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   auto num_roi_cols = rois_dims[1];
 
   auto status = CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr);
-  if (status != Status::OK()) {
+  if (!status.IsOK()) {
     return status;
   }
 
-  TensorShape Y_shape = {num_rois, num_channels, this->output_height_, this->output_width_};
-  auto& Y = *context->Output(0, Y_shape);
+  auto& Y = *context->Output(0, {num_rois, num_channels, this->output_height_, this->output_width_});
 
-  RoiAlignForward<T>(Y_shape, X_ptr->Data<T>(), this->spatial_scale_,
+  RoiAlignForward<T>(Y.Shape(), X_ptr->Data<T>(), this->spatial_scale_,
                      x_dims[2],  // height
                      x_dims[3],  // width
                      this->sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(), this->mode_,
@@ -311,4 +306,5 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
 }  // namespace onnxruntime

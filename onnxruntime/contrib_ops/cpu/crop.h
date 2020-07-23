@@ -48,13 +48,10 @@ class CropBase {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input's width (", W, ") needs to be greater than or equal to the leftBorder (", leftBorder, ") + rightBorder (", rightBorder, ")");
     }
 
-    int64_t bottomLimit = H - bottomBorder;
-    int64_t rightLimit = W - rightBorder;
-
     // scale = (height, width)
     if (!scale_.empty()) {
-      bottomLimit = topBorder + scale_[0];
-      rightLimit = leftBorder + scale_[1];
+      int64_t bottomLimit = topBorder + scale_[0];
+      int64_t rightLimit = leftBorder + scale_[1];
 
       if (H < bottomLimit) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

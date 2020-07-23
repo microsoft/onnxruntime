@@ -27,12 +27,15 @@ class ReduceKernelBase {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }
     keepdims_ = (keepdims == 1);
+    int64_t noop_with_empty_axes = info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0);
+    noop_with_empty_axes_ = (noop_with_empty_axes == 1);
     int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
     select_last_index_ = (select_last_index != 0);
   }
 
   std::vector<int64_t> axes_;
   bool keepdims_;
+  bool noop_with_empty_axes_;
   bool select_last_index_;
 };
 
@@ -123,6 +126,21 @@ class ReduceSum final : public ReduceKernel<true> {
   Status Compute(OpKernelContext* context) const override;
 
   // For external calls requiring ReduceSum implementation - will return the reduced output.
+  //`input_shape_override` overrides the shape of `input` for compute purposes.
+  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                     AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
+                     const TensorShape* input_shape_override = nullptr);
+};
+
+template <typename T>
+class ReduceSumTraining final : public ReduceKernel<true> {
+ public:
+  ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+  // For external calls requiring ReduceSumTraining implementation - will return the reduced output.
   //`input_shape_override` overrides the shape of `input` for compute purposes.
   static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                      AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,

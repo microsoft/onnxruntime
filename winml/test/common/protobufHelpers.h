@@ -5,7 +5,10 @@
 
 #include "std.h"
 #include "winrt_headers.h"
-
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#include "onnx/onnx-ml.pb.h"
+#pragma warning(pop)
 namespace ProtobufHelpers
 {
     // LoadTensorFromProtobufFile take a path to a FP32 data file and loads it into a 32bit array or
@@ -18,4 +21,7 @@ namespace ProtobufHelpers
         winml::TensorKind kind,
         const std::vector<int64_t>& shape,
         uint32_t num_elements = 1);
+
+    // Populates TensorProto with tensor from protobuf file
+    bool LoadOnnxTensorFromProtobufFile(onnx::TensorProto& tensor, std::wstring filePath);
 }

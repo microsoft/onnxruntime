@@ -16,6 +16,8 @@ jobs:
     value: '$(Build.BinariesDirectory)'
   - name: SKIPNONPACKAGETESTS
     value: 'ON'
+  - name: runCodesignValidationInjection
+    value: false
 
   steps:
   - task: UsePythonVersion@0
