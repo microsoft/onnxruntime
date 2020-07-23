@@ -96,15 +96,15 @@ function(get_winml_test_api_redist_only_src
   winml_test_src_path
   output_winml_test_api_src
 )
-#  file(GLOB winml_redist_only_api_src CONFIGURE_DEPENDS
-#  "${winml_test_src_path}/api/RawApiHelpers.h"
-#  "${winml_test_src_path}/api/RawApiTests.h"
-#  "${winml_test_src_path}/api/RawApiTestsGpu.h"
-#  "${winml_test_src_path}/api/RawApiHelpers.cpp"
-#  "${winml_test_src_path}/api/RawApiTests.cpp"
-#  "${winml_test_src_path}/api/RawApiTestsGpu.cpp"
-#  "${winml_test_src_path}/api/raw/*.h"
-#  "${winml_test_src_path}/api/raw/*.cpp")
+  file(GLOB winml_redist_only_api_src CONFIGURE_DEPENDS
+  "${winml_test_src_path}/api/RawApiHelpers.h"
+  "${winml_test_src_path}/api/RawApiTests.h"
+  "${winml_test_src_path}/api/RawApiTestsGpu.h"
+  "${winml_test_src_path}/api/RawApiHelpers.cpp"
+  "${winml_test_src_path}/api/RawApiTests.cpp"
+  "${winml_test_src_path}/api/RawApiTestsGpu.cpp"
+  "${winml_test_src_path}/api/raw/*.h"
+  "${winml_test_src_path}/api/raw/*.cpp")
 
   set(${output_winml_test_api_src} ${winml_test_api_src} ${winml_redist_only_api_src} PARENT_SCOPE)
 endfunction()

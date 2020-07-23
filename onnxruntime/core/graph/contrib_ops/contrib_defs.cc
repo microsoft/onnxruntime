@@ -15,25 +15,26 @@
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
 
-template<typename... args>
-struct StaticArray {
-    static constexpr typename std::common_type<args...>::type data[] = {args::make...};
-};
-
-template<typename... T>
-constexpr auto static_array() {
-    return StaticArray<T...>::data;
-}
-
 template<const char* const *... args>
 struct StaticStrings {
     static constexpr const char * const data[] = {*args...};
 };
 
-template<const char * const *... S>
-constexpr auto static_strings() {
-    return StaticStrings<S...>::data;
-}
+constexpr auto TENSOR_INT8 = "tensor(int8)";
+constexpr auto TENSOR_UINT8 = "tensor(uint8)";
+constexpr auto TENSOR_INT16 = "tensor(int16)";
+constexpr auto TENSOR_UINT16 = "tensor(uint16)";
+constexpr auto TENSOR_INT32 = "tensor(int32)";
+constexpr auto TENSOR_UINT32 = "tensor(int32)";
+constexpr auto TENSOR_INT64 = "tensor(int64)";
+constexpr auto TENSOR_UINT64 = "tensor(int64)";
+constexpr auto TENSOR_FLOAT = "tensor(float)";
+constexpr auto TENSOR_FLOAT16 = "tensor(float16)";
+constexpr auto TENSOR_DOUBLE = "tensor(double)";
+constexpr auto TENSOR_STRING = "tensor(string)";
+constexpr auto TENSOR_BOOL = "tensor(bool)";
+constexpr auto TENSOR_COMPLEX64 = "tensor(complex64)";
+constexpr auto TENSOR_COMPLEX128 = "tensor(complex128)";
 
 namespace ONNX_NAMESPACE {
 
@@ -103,7 +104,7 @@ struct Attribute {
             float /*default_value*/)
             : name_(name),
               type_(type) {
-        // TODO default_value
+        // TODO populate default_value
     }
 
     constexpr Attribute(
@@ -113,7 +114,7 @@ struct Attribute {
             int64_t /*default_value*/)
             : name_(name),
               type_(type) {
-        // TODO default_value
+        // TODO populate default_value
     }
 
     const char* name_;
@@ -135,25 +136,9 @@ struct TypeConstraint {
 
     const char* type_param_str;
     span<const char * const> allowed_type_strs;
-
-    constexpr static auto TENSOR_INT8 = "tensor(int8)";
-    constexpr static auto TENSOR_UINT8 = "tensor(uint8)";
-    constexpr static auto TENSOR_INT16 = "tensor(int16)";
-    constexpr static auto TENSOR_UINT16 = "tensor(uint16)";
-    constexpr static auto TENSOR_INT32 = "tensor(int32)";
-    constexpr static auto TENSOR_UINT32 = "tensor(int32)";
-    constexpr static auto TENSOR_INT64 = "tensor(int64)";
-    constexpr static auto TENSOR_UINT64 = "tensor(int64)";
-    constexpr static auto TENSOR_FLOAT = "tensor(float)";
-    constexpr static auto TENSOR_FLOAT16 = "tensor(float16)";
-    constexpr static auto TENSOR_DOUBLE = "tensor(double)";
-    constexpr static auto TENSOR_STRING = "tensor(string)";
-    constexpr static auto TENSOR_BOOL = "tensor(bool)";
-    constexpr static auto TENSOR_COMPLEX64 = "tensor(complex64)";
-    constexpr static auto TENSOR_COMPLEX128 = "tensor(complex128)";
 };
-#define AllTensorTypes StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE, &ONNX_NAMESPACE::TypeConstraint::TENSOR_STRING, &ONNX_NAMESPACE::TypeConstraint::TENSOR_BOOL, &ONNX_NAMESPACE::TypeConstraint::TENSOR_COMPLEX64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_COMPLEX128>::data
-#define NumericTypesForMathReduction StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data
+#define AllTensorTypes StaticStrings<&TENSOR_INT8, &TENSOR_UINT8, &TENSOR_INT16, &TENSOR_UINT16, &TENSOR_INT32, &TENSOR_UINT32, &TENSOR_INT64, &TENSOR_UINT64, &TENSOR_FLOAT, &TENSOR_FLOAT16, &TENSOR_DOUBLE, &TENSOR_STRING, &TENSOR_BOOL, &TENSOR_COMPLEX64, &TENSOR_COMPLEX128>::data
+#define NumericTypesForMathReduction StaticStrings<&TENSOR_INT32, &TENSOR_UINT32, &TENSOR_INT64, &TENSOR_UINT64, &TENSOR_FLOAT, &TENSOR_FLOAT16, &TENSOR_DOUBLE>::data
 
 class CxOpSchema final {
 public:
@@ -197,6 +182,11 @@ public:
         return *this;
     }
 
+    constexpr CxOpSchema& AllowUncheckedAttributes() {
+        allows_unchecked_attributes_ = true;
+        return *this;
+    }
+
     constexpr CxOpSchema& TypeConstraints(span<const TypeConstraint> type_constraints) {
         type_constraints_ = type_constraints;
         return *this;
@@ -209,7 +199,7 @@ public:
     }
 
     constexpr CxOpSchema& Deprecate() {
-        // TODO
+        // TODO populate deprecate
         return *this;
     }
 
@@ -221,13 +211,9 @@ public:
     span<const FormalParameter> outputs_;
     span<const Attribute> attributes_;
     span<const TypeConstraint> type_constraints_;
-    bool allows_unchecked_attributes_ = false;
+    bool allows_unchecked_attributes_{};
     int line_ = 0;
     OpSchema::SupportType support_{};
-    int min_input_ = 0;
-    int max_input_ = 0;
-    int min_output_ = 0;
-    int max_output_ = 0;
     OperatorSetVersion since_version_ = 1;
     InferenceFunctionP inference_function_{};
 };
@@ -523,8 +509,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter AttentionOutputs[] {
         ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint AttentionTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float tensors."),
-        ONNX_NAMESPACE::TypeConstraint("M", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain mask index to integer types")
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16>::data, "Constrain input and output types to float tensors."),
+        ONNX_NAMESPACE::TypeConstraint("M", StaticStrings<&TENSOR_INT32>::data, "Constrain mask index to integer types")
 };
 static void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -585,10 +571,10 @@ constexpr static ONNX_NAMESPACE::FormalParameter QAttentionOutputs[] {
         ONNX_NAMESPACE::FormalParameter("present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)"_docstring, "T3", OpSchema::Optional)
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint QAttentionTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input and output types to int8 tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input and output types to int8 tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T3", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T4", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain mask index to integer types"_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T1", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input and output types to int8 tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T2", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input and output types to int8 tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T3", StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16>::data, "Constrain input and output types to float tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T4", StaticStrings<&TENSOR_INT32>::data, "Constrain mask index to integer types"_docstring)
 };
 static void QAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     // Type inference
@@ -621,8 +607,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter EmbedLayerNormalizationOutputs[
         ONNX_NAMESPACE::FormalParameter("mask_index", "1D mask_index tensor with shape (batch_size)"_docstring, "T1")
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint EmbedLayerNormalizationTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain input and output integer tensors types"_docstring),
-        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output float tensors types."_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T1", StaticStrings<&TENSOR_INT32>::data, "Constrain input and output integer tensors types"_docstring),
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16>::data, "Constrain input and output float tensors types."_docstring)
 };
 static void EmbedLayerNormalizationTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -673,7 +659,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter FastGeluOutputs[] {
         ONNX_NAMESPACE::FormalParameter("Y", "output tensor"_docstring, "T")
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint FastGeluTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float or half tensors."_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16>::data, "Constrain input and output types to float or half tensors."_docstring)
 };
 
 constexpr static ONNX_NAMESPACE::Attribute SkipLayerNormalizationAttributes[] {
@@ -692,8 +678,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter SkipLayerNormalizationOutputs[]
         ONNX_NAMESPACE::FormalParameter("inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional),
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint SkipLayerNormalizationTypeConstraints[] {
-        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16>::data, "Constrain input and output types to float or half tensors."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("U", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain mean and inv_std_var to float tensors."_docstring)
+        ONNX_NAMESPACE::TypeConstraint("T", StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16>::data, "Constrain input and output types to float or half tensors."_docstring),
+        ONNX_NAMESPACE::TypeConstraint("U", StaticStrings<&TENSOR_FLOAT>::data, "Constrain mean and inv_std_var to float tensors."_docstring)
 };
 
 static constexpr ONNX_NAMESPACE::CxOpSchema BertSchemas[] {
@@ -790,7 +776,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter AffineOutputs[] {
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint FloatingPointTTypeConstraints[] {
     {"T",
-        StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data,
+        StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16, &TENSOR_DOUBLE>::data,
         "Constrain input and output types to float tensors."_docstring},
 };
 
@@ -848,7 +834,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter DynamicSliceOutputs[] {
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint DynamicSliceTypeConstraints[] {
         ONNX_NAMESPACE::TypeConstraint("T", AllTensorTypes, "Constrain input and output types to all tensor types."_docstring),
-        ONNX_NAMESPACE::TypeConstraint("Tind", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64>::data, "Constrain indices to integer types"_docstring),
+        ONNX_NAMESPACE::TypeConstraint("Tind", StaticStrings<&TENSOR_INT32, &TENSOR_INT64>::data, "Constrain indices to integer types"_docstring),
 };
 
 constexpr static ONNX_NAMESPACE::Attribute GivenTensorFillAttributes[] {
@@ -1180,7 +1166,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter DynamicSlice10Outputs[] {
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint DynamicSlice10TypeConstraints[] {
     { "T", AllTensorTypes, "Constrain input and output types to all tensor types."_docstring },
-    { "Tind", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64>::data, "Constrain indices to integer types"_docstring },
+    { "Tind", StaticStrings<&TENSOR_INT32, &TENSOR_INT64>::data, "Constrain indices to integer types"_docstring },
 };
 
 constexpr static ONNX_NAMESPACE::Attribute ScaledTanh10Attributes[] {
@@ -1347,7 +1333,7 @@ static void FusedGemmTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
 }
 constexpr static ONNX_NAMESPACE::TypeConstraint FloatingPointIntTTypeConstraints[] {
     { "T",
-        StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64>::data,
+        StaticStrings<&TENSOR_FLOAT, &TENSOR_FLOAT16, &TENSOR_DOUBLE, &TENSOR_UINT32, &TENSOR_INT32, &TENSOR_UINT64, &TENSOR_INT64>::data,
         "Constrain input and output types to float/int tensors."_docstring },
 };
 
@@ -1408,8 +1394,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter QuantizeLinearOutputs[] {
     { "y", "N-D quantized output tensor. It has same shape as input 'x'."_docstring, "T2" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint QuantizeLinearTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain 'x', 'y_scale' to float tensors."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors."_docstring },
+    { "T1", StaticStrings<&TENSOR_FLOAT16, &TENSOR_FLOAT>::data, "Constrain 'x', 'y_scale' to float tensors."_docstring },
+    { "T2", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors."_docstring },
 };
 static void QuantizeLinearTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -1442,8 +1428,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter DequantizeLinearOutputs[] {
     { "y", "N-D full precision output tensor. It has same shape as input 'x'."_docstring, "T2" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint DequantizeLinearTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain 'y', 'x_scale' to float tensors."_docstring },
+    { "T1", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors."_docstring },
+    { "T2", StaticStrings<&TENSOR_FLOAT16, &TENSOR_FLOAT>::data, "Constrain 'y', 'x_scale' to float tensors."_docstring },
 };
 static void DequantizeLinearTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     auto y_type = ctx.getOutputType(0);
@@ -1485,8 +1471,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter TokenizerOutputs[] {
     { "Y", "Tokenized strings"_docstring, "tensor(string)" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint TokenizerTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain 'y', 'x_scale' to float tensors."_docstring },
+    { "T1", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors."_docstring },
+    { "T2", StaticStrings<&TENSOR_FLOAT16, &TENSOR_FLOAT>::data, "Constrain 'y', 'x_scale' to float tensors."_docstring },
 };
 static void TokenizerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1554,9 +1540,9 @@ constexpr static ONNX_NAMESPACE::FormalParameter MatMulInteger16Outputs[] {
     { "Y", "Matrix multiply results from A * B"_docstring, "T3" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint MatMulInteger16TypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT16>::data, "Constrain input A data types as 16-bit integer tensor"_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT16>::data, "Constrain input B data types as 16-bit integer tensor"_docstring },
-    { "T3", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32>::data,
+    { "T1", StaticStrings<&TENSOR_INT16, &TENSOR_UINT16>::data, "Constrain input A data types as 16-bit integer tensor"_docstring },
+    { "T2", StaticStrings<&TENSOR_INT16, &TENSOR_UINT16>::data, "Constrain input B data types as 16-bit integer tensor"_docstring },
+    { "T3", StaticStrings<&TENSOR_INT32, &TENSOR_UINT32>::data,
         "Constrain output Y data types as 32-bit integer tensor."
         "T3 must be tensor(uint32) when both T1 and T2 are tensor(uint16),"
         "or must be tensor(int32) when either T1 or T2 is tensor(int16)."_docstring},
@@ -1589,8 +1575,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter DynamicQuantizeMatMulOutputs[] 
     { "Y", "Matrix multiply results from A * B"_docstring, "T1" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint DynamicQuantizeMatMulTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain input A, b_scale and output Y data type as float tensor."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input B data type to 8-bit integer tensor."_docstring },
+    { "T1", StaticStrings<&TENSOR_FLOAT>::data, "Constrain input A, b_scale and output Y data type as float tensor."_docstring },
+    { "T2", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input B data type to 8-bit integer tensor."_docstring },
 };
 static void DynamicQuantizeMatMulTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1637,9 +1623,9 @@ constexpr static ONNX_NAMESPACE::FormalParameter MatMulIntegerToFloatOutputs[] {
     { "Y", "Matrix multiply results from A * B"_docstring, "T3" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint MatMulIntegerToFloatTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input A data type to 8-bit integer tensor."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input B data type to 8-bit integer tensor."_docstring },
-    { "T3", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain input a_scale, b_scale and output Y data type as float tensor."_docstring },
+    { "T1", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input A data type to 8-bit integer tensor."_docstring },
+    { "T2", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input B data type to 8-bit integer tensor."_docstring },
+    { "T3", StaticStrings<&TENSOR_FLOAT>::data, "Constrain input a_scale, b_scale and output Y data type as float tensor."_docstring },
 };
 static void MatMulIntegerToFloatTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -1777,9 +1763,9 @@ constexpr static ONNX_NAMESPACE::FormalParameter ReduceSumIntegerOutputs[] {
     { "reduced", "Reduced output tensor."_docstring, "T2" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint ReduceSumIntegerOutputsTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input type to 8-bit integer tensor."_docstring },
+    { "T1", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input type to 8-bit integer tensor."_docstring },
     { "T2",
-        StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32>::data,
+        StaticStrings<&TENSOR_INT32, &TENSOR_UINT32>::data,
         "Constrain output data type to 32-bit integer tensor."
         "T2 must be tensor(uint32) when T1 is tensor(uint8),"
         "or must be tensor(int32) when T1 is tensor(int8)."_docstring },
@@ -1800,7 +1786,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter QLinearReduceMeanOutputs[] {
     { "reduced", "Reduced output tensor."_docstring, "T" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint QLinearReduceMeanOutputsTypeConstraints[] {
-    { "T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input type to 8-bit integer tensor."_docstring },
+    { "T", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input type to 8-bit integer tensor."_docstring },
 };
 static void QLinearTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1869,8 +1855,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter MulIntegerOutputs[] {
     { "C", "Constrain output to 32 bit tensor"_docstring, "T1" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint MulIntegerOutputsTypeConstraints[] {
-    { "T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input type to 8-bit integer tensor."_docstring },
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain output types to 32 bit tensors."_docstring },
+    { "T", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input type to 8-bit integer tensor."_docstring },
+    { "T1", StaticStrings<&TENSOR_INT32>::data, "Constrain output types to 32 bit tensors."_docstring },
 };
 static void MulIntegerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     auto c_type = ctx.getOutputType(0);
@@ -1932,7 +1918,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter QLinearAveragePoolOutputs[] {
         "T" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint QLinearAveragePoolOutputsTypeConstraints[] {
-    { "T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input and output types to 8-bit integer tensor."_docstring },
+    { "T", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input and output types to 8-bit integer tensor."_docstring },
 };
 
 constexpr static ONNX_NAMESPACE::Attribute QLinearLeakyReluAttributes[] {
@@ -1949,7 +1935,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter QLinearLeakyReluOutputs[] {
     { "Y", "Output tensor"_docstring, "T" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint QLinearLeakyReluOutputsTypeConstraints[] {
-    { "T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT8, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT8>::data, "Constrain input and output types to 8-bit integer tensor."_docstring },
+    { "T", StaticStrings<&TENSOR_INT8, &TENSOR_UINT8>::data, "Constrain input and output types to 8-bit integer tensor."_docstring },
 };
 static void QLinearAveragePoolTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1975,8 +1961,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter MurmurHash3Outputs[] {
     { "Y", "32-bit hash value."_docstring, "T2" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint MurmurHash3OutputsTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT64, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE, &ONNX_NAMESPACE::TypeConstraint::TENSOR_STRING>::data, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_UINT32>::data, "Constrain output type to unsigned and signed 32-bit integer tensor."_docstring },
+    { "T1", StaticStrings<&TENSOR_INT32, &TENSOR_UINT32, &TENSOR_INT64, &TENSOR_UINT64, &TENSOR_FLOAT, &TENSOR_DOUBLE, &TENSOR_STRING>::data, "Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode."_docstring },
+    { "T2", StaticStrings<&TENSOR_INT32, &TENSOR_UINT32>::data, "Constrain output type to unsigned and signed 32-bit integer tensor."_docstring },
 };
 constexpr static ONNX_NAMESPACE::Attribute MurmurHash3Attributes[] {
     { "seed", "Seed for the hashing algorithm, unsigned 32-bit integer, default to 0."_docstring, AttributeProto::INT, (int64_t)0LL },
@@ -2011,7 +1997,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter GatherNDOutputs[] {
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint GatherNDOutputsTypeConstraints[] {
     { "T", AllTensorTypes, "Constrain input and output types to any tensor type."_docstring },
-    { "Tind", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32, &ONNX_NAMESPACE::TypeConstraint::TENSOR_INT64>::data, "Constrain indice type to int32 or int64"_docstring },
+    { "Tind", StaticStrings<&TENSOR_INT32, &TENSOR_INT64>::data, "Constrain indice type to int32 or int64"_docstring },
 };
 static void GatherNDTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2053,8 +2039,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter WordConvEmbeddingOutputs[] {
     { "Y", "output"_docstring, "T1" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint WordConvEmbeddingOutputsTypeConstraints[] {
-    { "T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain to tensor(int32)."_docstring },
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT>::data, "Constrain to tensor(float)."_docstring },
+    { "T", StaticStrings<&TENSOR_INT32>::data, "Constrain to tensor(int32)."_docstring },
+    { "T1", StaticStrings<&TENSOR_FLOAT>::data, "Constrain to tensor(float)."_docstring },
 };
 constexpr static ONNX_NAMESPACE::Attribute WordConvEmbeddingAttributes[] {
     { "embedding_size", "Integer representing the embedding vector size for each word."
@@ -2216,7 +2202,7 @@ constexpr static ONNX_NAMESPACE::FormalParameter CDistOutputs[] {
     { "C", "A 2D Matrix that represents the distance between each pair of the two collections of inputs."_docstring, "T" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint CDistTypeConstraints[] {
-    { "T", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrains input to only numeric types."_docstring },
+    { "T", StaticStrings<&TENSOR_FLOAT, &TENSOR_DOUBLE>::data, "Constrains input to only numeric types."_docstring },
 };
 
 constexpr static ONNX_NAMESPACE::Attribute CropAndResizeAttributes[] {
@@ -2250,8 +2236,8 @@ constexpr static ONNX_NAMESPACE::FormalParameter CropAndResizeOutputs[] {
             "T1" },
 };
 constexpr static ONNX_NAMESPACE::TypeConstraint CropAndResizeTypeConstraints[] {
-    { "T1", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT16, &ONNX_NAMESPACE::TypeConstraint::TENSOR_FLOAT, &ONNX_NAMESPACE::TypeConstraint::TENSOR_DOUBLE>::data, "Constrain types to float tensors."_docstring },
-    { "T2", StaticStrings<&ONNX_NAMESPACE::TypeConstraint::TENSOR_INT32>::data, "Constrain types to int tensors."_docstring },
+    { "T1", StaticStrings<&TENSOR_FLOAT16, &TENSOR_FLOAT, &TENSOR_DOUBLE>::data, "Constrain types to float tensors."_docstring },
+    { "T2", StaticStrings<&TENSOR_INT32>::data, "Constrain types to int tensors."_docstring },
 };
 static void CropAndResizeTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     if (!hasNInputShapes(ctx, 4)) {
@@ -2330,6 +2316,54 @@ static void InverseTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
         propagateShapeFromInputToOutput(ctx, 0, 0);
     }
 }
+
+constexpr static ONNX_NAMESPACE::Attribute LayerNormalizationAttributes[] {
+        { "axis", "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs)."_docstring, AttributeProto::INT, static_cast<int64_t>(-1) },
+        { "epsilon",  "The epsilon value to use to avoid division by zero."_docstring, AttributeProto::FLOAT, 1e-5f },
+};
+constexpr static ONNX_NAMESPACE::FormalParameter LayerNormalizationInputs[] {
+        { "X", "Input data tensor from the previous layer."_docstring, "T" },
+        { "scale", "Scale tensor."_docstring, "T" },
+        { "B", "Bias tensor."_docstring, "T" },
+};
+constexpr static ONNX_NAMESPACE::FormalParameter LayerNormalizationOutputs[] {
+        { "Y", "Output data tensor."_docstring, "T" },
+        { "mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional },
+        { "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional },
+};
+static void LayerNormalizationTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    propagateShapeAndTypeFromFirstInput(ctx);
+    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    if (!hasNInputShapes(ctx, 1)) {
+        return;
+    }
+    auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+    int64_t input_ndim = input_shape.dim_size();
+    int64_t axis = -1;
+    auto axis_proto = ctx.getAttribute("axis");
+    if (axis_proto) {
+        axis = axis_proto->i();
+    }
+    if (axis < 0) {
+        axis += input_ndim;
+    }
+
+    if (ctx.getNumOutputs() > 1) {
+        auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+        saved_mean_shape->CopyFrom(input_shape);
+        saved_mean_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+    }
+
+    if (ctx.getNumOutputs() > 2) {
+        auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+        saved_inv_std_var_shape->CopyFrom(input_shape);
+        saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+    }
+}
+constexpr static ONNX_NAMESPACE::TypeConstraint LayerNormalizationTypeConstraints[] {
+        { "T", StaticStrings<&TENSOR_FLOAT16, &TENSOR_FLOAT, &TENSOR_DOUBLE>::data, "Constrain input and output types (except mean and inv_std_var) to float tensors."_docstring },
+        { "U", StaticStrings<&TENSOR_FLOAT>::data, "Constrain mean and inv_std_var to be float tensors."_docstring },
+};
 
 static constexpr ONNX_NAMESPACE::CxOpSchema ContribSchemas[]{
     ONNX_NAMESPACE::CxOpSchema("Affine", "", 0)
@@ -2924,6 +2958,17 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         .Outputs(InverseOutputs)
         .TypeConstraints(FloatingPointTTypeConstraints)
         .TypeAndShapeInferenceFunction(InverseTypeAndShapeInference),
+    ONNX_NAMESPACE::CxOpSchema("LayerNormalization", "", 0)
+        .SetDomain(kOnnxDomain)
+        .SinceVersion(1)
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .SetDoc("LayerNormalization")
+        .Attrs(LayerNormalizationAttributes)
+        .AllowUncheckedAttributes()
+        .Inputs(LayerNormalizationInputs)
+        .Outputs(LayerNormalizationOutputs)
+        .TypeConstraints(LayerNormalizationTypeConstraints)
+        .TypeAndShapeInferenceFunction(LayerNormalizationTypeAndShapeInference),
 };
 
 void RegisterContribSchemas() {
@@ -2951,62 +2996,6 @@ void RegisterContribSchemas() {
       .SinceVersion(1)
       .FillUsing(QLinearMathDocGenerator("multiplication",
                                          "C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point"_docstring));
-
-  ONNX_NAMESPACE::OpSchema("LayerNormalization", "", 0)
-    .SetDomain(kOnnxDomain)
-    .SinceVersion(1)
-    .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-    .SetDoc("LayerNormalization")
-    .Attr("axis",
-           "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs)."_docstring,
-           AttributeProto::INT, static_cast<int64_t>(-1))
-    .Attr("epsilon",
-           "The epsilon value to use to avoid division by zero."_docstring,
-           AttributeProto::FLOAT, 1e-5f)
-    .AllowUncheckedAttributes()
-    .Input(0, "X", "Input data tensor from the previous layer."_docstring, "T")
-    .Input(1, "scale", "Scale tensor."_docstring, "T")
-    .Input(2, "B", "Bias tensor."_docstring, "T")
-    .Output(0, "Y", "Output data tensor."_docstring, "T")
-    .Output(1, "mean", "Saved mean used during training to speed up gradient computation"_docstring, "U", OpSchema::Optional)
-    .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation."_docstring, "U", OpSchema::Optional)
-    .TypeConstraint(
-            "T",
-            {"tensor(float16)", "tensor(float)", "tensor(double)"},
-            "Constrain input and output types (except mean and inv_std_var) to float tensors."_docstring)
-    .TypeConstraint(
-            "U",
-            {"tensor(float)"},
-            "Constrain mean and inv_std_var to be float tensors."_docstring)
-    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasNInputShapes(ctx, 1)) {
-            return;
-        }
-        auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
-        int64_t input_ndim = input_shape.dim_size();
-        int64_t axis = -1;
-        auto axis_proto = ctx.getAttribute("axis");
-        if (axis_proto) {
-            axis = axis_proto->i();
-        }
-        if (axis < 0) {
-            axis += input_ndim;
-        }
-
-        if (ctx.getNumOutputs() > 1) {
-            auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
-            saved_mean_shape->CopyFrom(input_shape);
-            saved_mean_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
-        }
-
-        if (ctx.getNumOutputs() > 2) {
-            auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
-            saved_inv_std_var_shape->CopyFrom(input_shape);
-            saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
-        }
-    });
 
     // Register the NCHWc schemas if supported by the platform.
     if (MlasNchwcGetBlockSize() > 1) {
