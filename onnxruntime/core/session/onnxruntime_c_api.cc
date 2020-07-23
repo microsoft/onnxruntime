@@ -1430,7 +1430,7 @@ ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_value
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "invalid location range");
     location[i] = location_values[i];
   }
-  // assume data has row-major order
+  // data has row-major format
   size_t offset = 0;
   for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
     int sum=1;
