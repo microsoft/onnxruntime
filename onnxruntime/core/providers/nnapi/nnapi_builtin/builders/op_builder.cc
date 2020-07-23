@@ -155,7 +155,9 @@ static void AddBinaryOperator(int32_t op_type,
                               const std::string& input2,
                               int32_t fuse_code,
                               const std::string& output,
-                              bool output_is_nhwc) {
+                              bool output_is_nhwc,
+                              float output_scale = 0.0f,
+                              int32_t output_zero_point = 0) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -165,7 +167,7 @@ static void AddBinaryOperator(int32_t op_type,
   input_indices.push_back(operand_indices.at(input2));  // input 2
   input_indices.push_back(model_builder.AddOperandFromScalar(fuse_code));
   shaper.Eltwise(input1, input2, output);
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], output_scale, output_zero_point);
   model_builder.AddOperation(op_type, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
@@ -468,12 +470,15 @@ std::pair<float, int32_t> GetQuantizedInputScaleAndZeroPoint(const ModelBuilder&
                                                              const Node& node,
                                                              const std::string& input_name) {
   const auto& op_type = node.OpType();
-  assert(op_type == "QLinearMatMul" || op_type == "QLinearConv" || op_type == "DequantizeLinear");
+  auto qlinear_op_type = GetQLinearOpType(node);
+  assert(qlinear_op_type != QLinearOpType::Unknown &&
+         qlinear_op_type != QLinearOpType::QuantizeLinear);
+
   size_t scale_idx, zero_point_idx;
-  if (op_type == "DequantizeLinear") {
+  if (qlinear_op_type == QLinearOpType::DequantizeLinear) {
     scale_idx = 1;
     zero_point_idx = 2;
-  } else if (op_type == "QLinearMatMul" || op_type == "QLinearConv") {
+  } else if (IsQLinearBinaryOp(qlinear_op_type)) {
     const auto input_defs(node.InputDefs());
     if (input_name == input_defs[0]->Name()) {
       scale_idx = 1;
@@ -599,13 +604,28 @@ bool BaseOpBuilder::HasExternalInitializer(ModelBuilder& model_builder, const No
 #pragma region op_binary
 
 class BinaryOpBuilder : public BaseOpBuilder {
- private:
-  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) override;
 
  private:
-  bool IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) override;
+  int32_t GetMinSupportedSdkVer(ModelBuilder& model_builder, const Node& node) const override;
+  bool IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) override;
+  bool HasSupportedInputs(const Node& node) override;
   void AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) override;
 };
+
+void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
+  const auto& op = node.OpType();
+  const auto input_defs(node.InputDefs());
+  if (op == "QLinearAdd") {
+    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
+    model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // b_scale
+    model_builder.AddInitializerToSkip(input_defs[5]->Name());  // b_zero_point
+    model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
+    model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
+  }
+}
 
 int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */, const Node& node) const {
   const auto& op(node.OpType());
@@ -616,10 +636,39 @@ int32_t BinaryOpBuilder::GetMinSupportedSdkVer(ModelBuilder& /* model_builder */
   return 27;
 }
 
-bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const Node& node) {
+bool BinaryOpBuilder::HasSupportedInputs(const Node& node) {
+  if (node.OpType() != "QLinearAdd")
+    return BaseOpBuilder::HasSupportedInputs(node);
+
+  // QLinearAdd
+  int32_t a_input_type, b_input_type;
+  if (!GetType(*node.InputDefs()[0], a_input_type))
+    return false;
+  if (!GetType(*node.InputDefs()[3], b_input_type))
+    return false;
+
+  if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || a_input_type != b_input_type) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] A Input type: [" << a_input_type
+                          << "] B Input type: [" << b_input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
+}
+
+bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
+  const auto& op_type(node.OpType());
+  const auto input_defs(node.InputDefs());
+  bool op_is_qlinear_add = op_type == "QLinearAdd";
+  size_t a_idx = 0, b_idx = 1;
+  if (op_is_qlinear_add) {
+    b_idx = 3;
+  }
   Shape input1_shape, input2_shape;
-  if (!GetShape(*node.InputDefs()[0], input1_shape) ||
-      !GetShape(*node.InputDefs()[1], input2_shape))
+  if (!GetShape(*input_defs[a_idx], input1_shape) ||
+      !GetShape(*input_defs[b_idx], input2_shape))
     return false;
 
   const auto input1_size = input1_shape.size();
@@ -631,25 +680,58 @@ bool BinaryOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const
     return false;
   }
 
+  if (op_is_qlinear_add) {
+    // For QLinearAdd, we only support uint8 output now
+    int32_t output_type;
+    if (!GetType(*node.OutputDefs()[0], output_type))
+      return false;
+
+    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      LOGS_DEFAULT(VERBOSE) << "[" << op_type
+                            << "] output type: [" << output_type
+                            << "] is not supported for now";
+      return false;
+    }
+
+    // All scale/zero points are initializer scalars
+    // a/b/y_scale
+    if (!IsQuantizationScaleSupported(model_builder, node, {1, 4, 6}))
+      return false;
+
+    // a/b/y_zero_point
+    if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
+      return false;
+  }
+
   return true;
 }
 
 void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& op(node.OpType());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& op_type(node.OpType());
+  const auto input_defs(node.InputDefs());
+
   int32_t op_code;
-  if (op == "Add")
+  bool op_is_qlinear_add = op_type == "QLinearAdd";
+  if (op_type == "Add" || op_is_qlinear_add)
     op_code = ANEURALNETWORKS_ADD;
-  else if (op == "Sub")
+  else if (op_type == "Sub")
     op_code = ANEURALNETWORKS_SUB;
-  else if (op == "Mul")
+  else if (op_type == "Mul")
     op_code = ANEURALNETWORKS_MUL;
-  else if (op == "Div")
+  else if (op_type == "Div")
     op_code = ANEURALNETWORKS_DIV;
   else {
-    ORT_THROW("UnaryOpBuilder, unknown op: " + op);
+    ORT_THROW("UnaryOpBuilder, unknown op: " + op_type);
   }
-  std::string input1 = node.InputDefs()[0]->Name();
-  std::string input2 = node.InputDefs()[1]->Name();
+
+  size_t a_idx = 0, b_idx = 1;
+  if (op_is_qlinear_add) {
+    b_idx = 3;
+  }
+
+  std::string input1 = input_defs[a_idx]->Name();
+  std::string input2 = input_defs[b_idx]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
 
   bool input1_is_nhwc = model_builder.IsOperandNHWC(input1);
@@ -660,22 +742,52 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     output_is_nhwc = input1_is_nhwc;
   } else if (input1_is_nhwc) {
     // need transpsoe input1 back to nchw
-    const auto& nhwc_input = node.InputDefs()[0]->Name();
+    const auto& nhwc_input = input_defs[a_idx]->Name();
     if (!model_builder.GetNCHWOperand(nhwc_input, input1)) {
       input1 = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
       TransposeNHWCToNCHW(model_builder, nhwc_input, input1);
     }
   } else {  // input2_is_nhwc
     // need transpsoe input2 back to nchw
-    const auto& nhwc_input = node.InputDefs()[1]->Name();
+    const auto& nhwc_input = input_defs[b_idx]->Name();
     if (!model_builder.GetNCHWOperand(nhwc_input, input2)) {
       input2 = model_builder.GetUniqueName(nhwc_input + "_nhwc_to_nchw");
       TransposeNHWCToNCHW(model_builder, nhwc_input, input2);
     }
   }
 
+  float a_scale = 0.0f,
+        b_scale = 0.0f,
+        y_scale = 0.0f;
+  int32_t a_zero_point = 0,
+          b_zero_point = 0,
+          y_zero_point = 0;
+
+  if (op_is_qlinear_add) {
+    a_scale = GetQuantizationScale(model_builder, node, 1);
+    b_scale = GetQuantizationScale(model_builder, node, 4);
+    y_scale = GetQuantizationScale(model_builder, node, 6);
+
+    a_zero_point = GetQuantizationZeroPoint(model_builder, node, 2);
+    b_zero_point = GetQuantizationZeroPoint(model_builder, node, 5);
+    y_zero_point = GetQuantizationZeroPoint(model_builder, node, 7);
+  }
+
+  // Verify if the scale and zero point matchs from onnx input and nnapi input
+  if (op_is_qlinear_add) {
+    const OperandType& a_operand_type = operand_types.at(input1);
+    ORT_ENFORCE(a_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                "input type is " + TypeToStr(a_operand_type.type));
+    VerifyValidInputQuantizedType(input1, a_operand_type, a_scale, a_zero_point);
+
+    const OperandType& b_operand_type = operand_types.at(input2);
+    ORT_ENFORCE(b_operand_type.type == Type::TENSOR_QUANT8_ASYMM,
+                "input type is " + TypeToStr(b_operand_type.type));
+    VerifyValidInputQuantizedType(input2, b_operand_type, b_scale, b_zero_point);
+  }
+
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  AddBinaryOperator(op_code, model_builder, input1, input2, fuse_code, output, output_is_nhwc);
+  AddBinaryOperator(op_code, model_builder, input1, input2, fuse_code, output, output_is_nhwc, y_scale, y_zero_point);
 }
 
 #pragma endregion
@@ -2455,6 +2567,7 @@ CreateOpBuilders() {
     op_map.emplace("Sub", binary_op_builder);
     op_map.emplace("Mul", binary_op_builder);
     op_map.emplace("Div", binary_op_builder);
+    op_map.emplace("QLinearAdd", binary_op_builder);
   }
 
   op_map.emplace("Relu", std::make_shared<ReluOpBuilder>());

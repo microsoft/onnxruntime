@@ -9,6 +9,9 @@
 
 #include "helper.h"
 
+namespace onnxruntime {
+namespace nnapi {
+
 using std::string;
 using std::vector;
 
@@ -38,6 +41,28 @@ std::string GetErrorCause(int error_code) {
     default:
       return "Unknown error code: " + std::to_string(error_code);
   }
+}
+
+QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
+  const auto& op_type = node.OpType();
+  if (op_type == "DequantizeLinear")
+    return QLinearOpType::DequantizeLinear;
+  else if (op_type == "QuantizeLinear")
+    return QLinearOpType::QuantizeLinear;
+  else if (op_type == "QLinearConv")
+    return QLinearOpType::QLinearConv;
+  else if (op_type == "QLinearMatMul")
+    return QLinearOpType::QLinearMatMul;
+  else if (op_type == "QLinearAdd")
+    return QLinearOpType::QLinearAdd;
+
+  return QLinearOpType::Unknown;
+}
+
+bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
+  return qlinear_op_type == QLinearOpType::QLinearConv ||
+         qlinear_op_type == QLinearOpType::QLinearMatMul ||
+         qlinear_op_type == QLinearOpType::QLinearAdd;
 }
 
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
@@ -97,3 +122,6 @@ vector<float> NodeAttrHelper::Get(const std::string& key, const vector<float>& d
 bool NodeAttrHelper::HasAttr(const std::string& key) const {
   return Contains(node_attributes_, key);
 }
+
+}  // namespace nnapi
+}  // namespace onnxruntime
