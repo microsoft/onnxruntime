@@ -311,6 +311,39 @@ static void EvaluateSessionAndCloseModel()
     WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, false));
 }
 
+static void NamedDimensionOverride() 
+{
+  LearningModel model = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fns-candy.onnx", model));
+
+  LearningModelDevice device(nullptr);
+  WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::Cpu));
+
+  LearningModelSessionOptions options;
+  options.OverrideNamedDimension(L"None", 1);
+
+  LearningModelSession session(nullptr);
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+  ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);
+  TensorFeatureDescriptor tensorDescriptor = nullptr;
+  descriptor.as(tensorDescriptor);
+  std::vector<int64_t> shape;
+  int64_t size = 1;
+  for (auto&& dim : tensorDescriptor.Shape()) {
+    if (dim == -1) dim = 1;
+    shape.push_back(dim);
+    size *= dim;
+  }
+
+  std::vector<float> buffer;
+  buffer.resize(static_cast<size_t>(size));
+  auto featureValue = TensorFloat::CreateFromIterable(shape, winrt::single_threaded_vector<float>(std::move(buffer)));
+  LearningModelBinding binding(session);
+  binding.Bind(descriptor.Name(), featureValue);
+
+  WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
+}
+
 static void CloseSession()
 {
     LearningModel learningModel = nullptr;
@@ -402,6 +435,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     CreateSessionWithCastToFloat16InModel,
     CreateSessionWithFloat16InitializersInModel,
     EvaluateSessionAndCloseModel,
+    NamedDimensionOverride,
     CloseSession,
   };
 

@@ -17,6 +17,9 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
+  
+  std::map<winrt::hstring, uint32_t> NamedDimensionOverrides();
+  void OverrideNamedDimension(winrt::hstring name, uint32_t value);
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -41,6 +44,8 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   //
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
+
+  std::map<winrt::hstring, uint32_t> named_dim_overrides_;
 };
 
 }  // namespace WINMLP

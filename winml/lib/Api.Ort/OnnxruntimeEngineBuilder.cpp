@@ -42,6 +42,13 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
                             ort_api);
   }
 
+  if (!named_dimension_overrides_.empty()) {
+    for (const auto& [name, value] : named_dimension_overrides_) {
+      std::string narrow_name = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name.c_str());
+      ort_api->AddFreeDimensionOverrideByName(session_options.get(), narrow_name.c_str(), value);
+    }
+  }
+
   OrtSession* ort_session = nullptr;
   onnxruntime_session_builder->CreateSession(session_options.get(), &ort_session);
   auto session = UniqueOrtSession(ort_session, ort_api->ReleaseSession);
@@ -76,5 +83,10 @@ STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(ID3D12CommandQueue*
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_override) {
   batch_size_override_ = batch_size_override;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(std::map<winrt::hstring, uint32_t> named_dimension_overrides) {
+  named_dimension_overrides_ = named_dimension_overrides;
   return S_OK;
 }

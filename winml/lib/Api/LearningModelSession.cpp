@@ -114,6 +114,10 @@ void LearningModelSession::Initialize() {
   if (session_options_ && session_options_.BatchSizeOverride() != 0) {
     WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
   }
+  com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
+  if (session_options_ && session_options_impl->NamedDimensionOverrides().size() > 0) {
+    WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
+  }
 
   com_ptr<_winml::IEngine> engine;
   WINML_THROW_IF_FAILED(engine_builder->CreateEngine(engine.put()));

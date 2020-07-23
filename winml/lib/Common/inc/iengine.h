@@ -165,6 +165,9 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
 
+  STDMETHOD(SetNamedDimensionOverrides)
+  (std::map<winrt::hstring, uint32_t> named_dimension_overrides) PURE;
+
   STDMETHOD(CreateEngine)
   (IEngine * *out) PURE;
 };

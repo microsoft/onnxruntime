@@ -33,7 +33,7 @@ import "windows.storage.idl";
 
 namespace ROOT_NS.AI.MachineLearning 
 {
-    [contractversion(3)]
+    [contractversion(4)]
     apicontract MachineLearningContract{};
 
     //! Forward declarations
@@ -212,6 +212,15 @@ namespace ROOT_NS.AI.MachineLearning
         //! BatchSizeOverride = 0 indicates that the batch size present in the model should be honored.
         //! BatchSizeOverride > 0 indicates the size of batch that will be used to override the model batch size and optimize evaluations.
         UInt32 BatchSizeOverride { get; set; };
+
+        [contract(MachineLearningContract, 4)]
+        {
+            //! The OverrideNamedDimension method will allow the model compiler to use constant batch size performance optimizations when setting up the LearningModelSession.
+            //! The caller can specify the size of the dimension for a given named dimension.
+            //! dimension = 0 indicates that the dimension present in the model should be honored.
+            //! dimension > 0 indicates the size of the dimension that will be used to override the model "name" dimension and optimize evaluations.
+            void OverrideNamedDimension(String name, UInt32 dimension);
+        }
 
         [contract(MachineLearningContract, 3)]
         {
