@@ -26,7 +26,7 @@ class SplitBase {
   /*
    * \param num_outputs must >=0
    */
-  Status PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
+  virtual Status PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                            int& after_dims_including_split_axis, int& after_dims_excluding_split,
                            std::vector<int64_t>& split_sizes) const;
 
