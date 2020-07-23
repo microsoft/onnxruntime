@@ -507,10 +507,23 @@ def testInstantiateORTTrainer():
         break
 
     assert trainer.get_onnx() is not None
-    model = trainer.get_onnx()
+    onnx_model = trainer.get_onnx()
     import onnx
     #print(onnx.helper.printable_graph(model.graph))
-    print(model.graph.input)
-    print(model.graph.output)
+    print(onnx_model.graph.input)
+    print(onnx_model.graph.output)
+    print(type(onnx_model.graph.input))
+    import inspect
+    sig = inspect.signature(model.forward)
+    print(sig.parameters.keys())
+    sig_loss = inspect.signature(my_loss)
+    print(sig_loss.parameters)
+    print(model_desc['inputs'])
+    print(model_desc['outputs'])
 
+    print(type(str(onnx_model.graph.input)))
+    for tup in model_desc['inputs']:
+        assert str(onnx_model.graph.input).find(tup[0]) >= 0
 
+    for tup in model_desc['outputs']:
+        assert str(onnx_model.graph.output).find(tup[0]) >= 0
