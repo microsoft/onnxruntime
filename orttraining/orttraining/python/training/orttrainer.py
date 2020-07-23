@@ -1,10 +1,10 @@
 import onnx
 import torch
+from inspect import signature
 
 from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
-
 
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
@@ -73,8 +73,8 @@ class ORTTrainer(object):
             Note that only one loss output is supported per model.
         optimizer_config (optim._OptimizerConfig): optimizer config.
             One of :py:class:`.optim.AdamConfig`, :py:class:`.optim.LambConfig` or :py:class:`.optim.SGDConfig`.
-        loss_fn (default is None): a PyTorch loss function.
-            It takes two inputs [prediction, label] and output a loss tensor.
+        loss_fn (callable, default is None): a PyTorch loss function.
+            It takes two inputs [prediction, label] and outputs a scalar loss tensor.
             If provided, :py:attr:`loss_fn` is combined with the PyTorch :py:attr:`model` to form a combined PyTorch model.
             Inputs to the combined PyTorch model are concatenation of the :py:attr:`model`'s input and :py:attr:`loss_fn`'s label input.
             Outputs of the combined PyTorch model are concatenation of :py:attr:`loss_fn`'s loss output and :py:attr:`model`'s outputs.
@@ -85,6 +85,7 @@ class ORTTrainer(object):
         .. code-block:: python
 
             model = ...
+            loss_fn = ...
             model_desc = {
                 "inputs": [
                     ("input_ids", ["batch", "max_seq_len_in_batch"]),
@@ -101,7 +102,7 @@ class ORTTrainer(object):
                                                              { 'params' : ['model_param1' , 'model_param_2'], 'alpha' : 0.0}
                                                            ],
                                             alpha=0.9, beta=0.999)
-            ort_trainer = ORTTrainer(model, model_desc, optim_config)
+            ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
@@ -110,8 +111,8 @@ class ORTTrainer(object):
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\
             "'optim_config' is required and must be any of 'AdamConfig', 'LambConfig' or 'SGDConfig'"
-        assert loss_fn is None or isinstance(loss_fn, torch.nn.Module),\
-            "'loss_fn' must be either 'None' or 'torch.nn.Module'"
+        assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
+            "'loss_fn' must be either 'None' or a callable with two parameters"
         assert options is None or isinstance(options, ORTTrainerOptions),\
             "'loss_fn' must be either 'None' or 'ORTTrainerOptions'"
 
@@ -164,6 +165,7 @@ class ORTTrainer(object):
             path (str): Full path, including filename, to save the model in the filesystem
         """
         pass
+
 
     def train_step(self, *input, **kwargs):
         r"""Train step method
