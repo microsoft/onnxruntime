@@ -18,9 +18,6 @@ struct Prepare {
     int64_t num_elements;
   };
   std::vector<InputInfo> inputs;
-  // Hold the dim values of each concatenated tensor at the 'axes' dim
-  // Used to create the second output of ConcatTraining
-  std::vector<int64_t> per_input_length;
   int64_t output_num_elements;
   int64_t output_axis_pitch;
   Tensor* output_tensor;

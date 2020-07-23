@@ -46,8 +46,6 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
   p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_ ? inputs_0_rank : inputs_0_rank + 1));
 
-  // Add the length of input0 at 'axis' dim to create vector 'per_input_length'
-  p.per_input_length.push_back(inputs_0_dims[p.axis]);
   // Note if input tensor is empty for later use (it's expensive to call Size() on TensorShape)
   std::vector<int64_t> input_tensor_sizes(input_count);
   // Assign the number of values in the first input tensor
@@ -72,11 +70,8 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
       // In 'concat' mode, the axis to be concatenated may be different
       // But in 'stack' mode, all input shapes must be the same and must be validated
-      if (!is_stack_ && axis_index == p.axis) {
-        // Add the length of input_n at 'axis' dim to create vector 'per_input_length'
-        p.per_input_length.push_back(dim_value);
+      if (!is_stack_ && axis_index == p.axis)
         continue;
-      }
 
       ORT_RETURN_IF_NOT(dim_value == inputs_0_dims[axis_index],
                         "Non concat axis dimensions must match: Axis ",
