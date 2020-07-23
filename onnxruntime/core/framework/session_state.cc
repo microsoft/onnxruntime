@@ -270,8 +270,6 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   OrtValuePatternPlanner mem_planner(*exe_plan);
   auto& node_index_info = GetNodeIndexInfo();
 
-  bool keep_looping = true;
-  while(keep_looping);
   // Contigiously allocate activations.
   // TODO(codemzs): Refacor this code.
   MLDataType ml_type{nullptr};
