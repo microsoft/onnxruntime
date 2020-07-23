@@ -61,11 +61,4 @@ class Concat : public OpKernel, public ConcatBase {
   Status Compute(OpKernelContext* context) const override;
 };
 
-class ConcatTraining : public OpKernel, public ConcatBase {
- public:
-  ConcatTraining(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {}
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
 }  // namespace onnxruntime
