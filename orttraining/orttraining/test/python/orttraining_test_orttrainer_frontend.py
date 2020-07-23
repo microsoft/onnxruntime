@@ -446,11 +446,11 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
 
 def my_loss(x, target):
     x = x.view(-1, 28785) #thiagofc: hard-coded for testing
-    return nn.CrossEntropyLoss()(x, target)
+    return torch.nn.CrossEntropyLoss()(x, target)
 
 def transformer_model_description():
     bptt=35
-    ntokens = 2300 #temp
+    ntokens = 28785 #temp
     batch_size = 20
 
     model_desc = {'inputs':  [('input1', [bptt, batch_size]),
@@ -475,16 +475,12 @@ def get_batch(source, i, bptt=35):
     target = source[i+1:i+1+seq_len].view(-1)
     return data, target
 
-def my_loss(x, target):
-    x = x.view(-1, 28785) #thiagofc: hard-coded for testing
-    return nn.CrossEntropyLoss()(x, target)
-
 def testInstantiateORTTrainer():
-    model = TransformerModel(2300, 200, 2, 200, 2, 0.2)
+    model = TransformerModel(28785, 200, 2, 200, 2, 0.2)
     model_desc = transformer_model_description()
     optim_config = optim.LambConfig()
     # make trainer
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=None)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=None)
 
     # prep data
     import torchtext
@@ -506,7 +502,8 @@ def testInstantiateORTTrainer():
     # start training
     for batch, i in enumerate(range(0, train_data.size(0)-1, 35)):
         data, targets = get_batch(train_data, i)
-        trainer.train_step(data, targets) # removed learning rate here and in model desc
+        learning_rate = 0.001
+        trainer.train_step(data, targets, learning_rate) # removed learning rate here and in model desc
         break
 
 
