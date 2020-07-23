@@ -13,19 +13,20 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm(group_type_);
 
+  size_t input_count = 0;
+  const void* input_data = context->Input<Tensor>(0)->DataRaw();
+  void* output_data = context->Output(0, context->Input<Tensor>(0)->Shape())->MutableDataRaw();
+  MLDataType onnx_type = context->Input<Tensor>(0)->DataType();
   for (int i = 0; i < context->InputCount(); i++) {
     const Tensor* input_tensor = context->Input<Tensor>(i);
-    auto onnx_type = input_tensor->DataType();
-    const void* input_data = input_tensor->DataRaw();
-    size_t input_count = input_tensor->Shape().Size();
+    input_count += input_tensor->Shape().Size();
 
     Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-    void* output_data = output_tensor->MutableDataRaw();
-
-    ncclDataType_t dtype = GetNcclDataType(onnx_type);
-    NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
+    output_tensor->MutableDataRaw();
   }
 
+  ncclDataType_t dtype = GetNcclDataType(onnx_type);
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
   return Status::OK();
 }
 

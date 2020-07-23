@@ -49,6 +49,9 @@ class MemPatternPlanner {
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       // This block can be re-used, consider it as a gap.
+      
+      ORT_ENFORCE(!allocs_[*it].reuse_ || (allocs_[*it].program_counter_start_ <= allocs_[*it].program_counter_end_));
+
       if (allocs_[*it].reuse_ && ((allocs_[*it].program_counter_start_ > program_counter_end) || (allocs_[*it].program_counter_end_ < program_counter_start)))
         continue;
 
@@ -142,7 +145,7 @@ class MemPatternPlanner {
     MemoryBlock block_;
     size_t program_counter_start_;
     size_t program_counter_end_;
-    bool reuse_;
+    bool reuse_{false};
     OrtValueAllocationBlock() = default;
     OrtValueAllocationBlock(int index, const MemoryBlock& block) : index_(index), block_(block), reuse_{false} {}
     OrtValueAllocationBlock(int index, size_t program_counter_start, size_t program_counter_end, const MemoryBlock& block) : index_(index), block_(block), program_counter_start_(program_counter_start), program_counter_end_(program_counter_end), reuse_{true} {}

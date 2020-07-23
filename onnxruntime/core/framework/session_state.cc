@@ -270,10 +270,18 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   OrtValuePatternPlanner mem_planner(*exe_plan);
   auto& node_index_info = GetNodeIndexInfo();
 
+  bool keep_looping = true;
+  while(keep_looping);
   // Contigiously allocate activations.
   // TODO(codemzs): Refacor this code.
+  MLDataType ml_type{nullptr};
   for (auto ml_value_idx : exe_plan->activation_allocation_order) {
-    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+    ORT_ENFORCE(ml_value_idx >= 0);
+    if (static_cast<size_t>(ml_value_idx) >= exe_plan->allocation_plan.size()) {
+      ml_type = nullptr;
+    }
+
+    ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
       continue;
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
@@ -310,6 +318,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
       }
 
       ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
+
+      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].program_counter_start <= exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
 
       mem_planner.TraceAllocation(ml_value_idx, exe_plan->allocation_plan[ml_value_idx].program_counter_start,
                                   exe_plan->allocation_plan[ml_value_idx].program_counter_end, size);
