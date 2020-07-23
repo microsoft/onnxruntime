@@ -63,7 +63,7 @@ static Status UnpackInitializerTensor(const onnx::TensorProto& initializer,
     CASE_UNPACK(UINT8, uint8_t, int32_data_size);
     CASE_UNPACK(UINT16, uint16_t, int32_data_size);
     CASE_UNPACK(UINT32, uint32_t, uint64_data_size);
-    CASE_UNPACK(UINT64, uint64_t, int64_data_size);
+    CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
     default:
@@ -1055,6 +1055,9 @@ bool PoolOpBuilder::IsOpSupportedImpl(ModelBuilder& /* model_builder */, const N
       LOGS_DEFAULT(VERBOSE) << "Argmax in maxpooling is not supported";
       return false;
     }
+  } else if (op_type != "GlobalAveragePool" && op_type != "GlobalMaxPool") {
+    LOGS_DEFAULT(VERBOSE) << "PoolOpBuilder, unknown op: " << op_type;
+    return false;
   }
 
   return true;
@@ -1350,6 +1353,12 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
        depthwise_conv_2d = false,
        grouped_conv_2d = false;
 
+  // For ONNX we only have 1 conv ops
+  // For NNAPI we have 3
+  // Input is (N, C, H, W)
+  // group == 1,                                   --> regular conv
+  // group != 1 && weight is (M, 1, kH, kW),       --> depthwise conv
+  // group != 1 && weight is (M, C/group, kH, kW), --> grouped conv
   if (group == 1)
     conv_2d = true;
   else if ((weight_tensor.dims()[1] == 1))
@@ -1475,6 +1484,10 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
   if (model_builder.GetAndroidSdkVer() > 28) {
     input_indices.push_back(model_builder.AddOperandFromScalar(use_nchw));
 
+    // 1. NNAPI Grouped Conv does not support dilations
+    // 2. There is a bug in NNAPI (not sure NNAPI itself or Qualcomm Hexagon driver),
+    //    setting dilation (even it is the default (1,1)) will make the execution fall back to CPU
+    //    so if dilations == (1,1) we simply ignore it
     if (!grouped_conv_2d &&
         (onnx_dilations[1] != 1 || onnx_dilations[0] != 1)) {
       input_indices.push_back(model_builder.AddOperandFromScalar(onnx_dilations[1]));
@@ -1713,11 +1726,11 @@ bool GemmOpBuilder::HasSupportedInputs(const Node& node) {
 }
 
 bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& node) {
-  const auto& op = node.OpType();
+  const auto& op_type = node.OpType();
   const auto input_defs(node.InputDefs());
   const auto& initializers(model_builder.GetInitializerTensors());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
-  bool is_qlinear_matmul = op == "QLinearMatMul";
+  bool is_qlinear_matmul = op_type == "QLinearMatMul";
   if (is_qlinear_matmul) {
     a_idx = 0;
     b_idx = 3;
@@ -1745,7 +1758,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
     }
   }
 
-  if (op == "Gemm") {
+  if (op_type == "Gemm") {
     // Only support
     // 1. A*B'+C
     // 2. A*B+C and B is an initializer
@@ -1780,7 +1793,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
         return false;
       }
     }
-  } else {  // MatMul || QLinearMatMul
+  } else if (op_type == "MatMul" || is_qlinear_matmul) {
     // Only support A*B B is an initializer
     if (!Contains(initializers, input_defs[b_idx]->Name())) {
       LOGS_DEFAULT(VERBOSE) << "B of MatMul must be known";
@@ -1794,7 +1807,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
         return false;
 
       if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        LOGS_DEFAULT(VERBOSE) << "[" << op
+        LOGS_DEFAULT(VERBOSE) << "[" << op_type
                               << "] output type: [" << output_type
                               << "] is not supported for now";
         return false;
@@ -1809,6 +1822,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(ModelBuilder& model_builder, const Node& n
       if (!IsQuantizationZeroPointSupported(model_builder, node, {2, 5, 7}))
         return false;
     }
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder, unknown op: " << op_type;
   }
 
   return true;
