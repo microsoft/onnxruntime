@@ -319,11 +319,14 @@ static void NamedDimensionOverride()
   LearningModelDevice device(nullptr);
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::Cpu));
 
+  // the model input shape. the batch size, n, is overriden to 5
+  int64_t n = 5, c = 3, h = 720, w = 720;
+
   LearningModelSessionOptions options;
-  options.OverrideNamedDimension(L"None", 5);
+  options.OverrideNamedDimension(L"None", n);
   
   // Verifies that if a Dim name doesn't exist the named dimension override does nothing
-  options.OverrideNamedDimension(L"DimNameThatDoesntExist", 10);
+  options.OverrideNamedDimension(L"DimNameThatDoesntExist", n);
 
   LearningModelSession session(nullptr);
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
@@ -331,8 +334,8 @@ static void NamedDimensionOverride()
   ILearningModelFeatureDescriptor descriptor = model.InputFeatures().GetAt(0);
   TensorFeatureDescriptor tensorDescriptor = nullptr;
   descriptor.as(tensorDescriptor);
-  std::vector<int64_t> shape{5,3,720,720};
-  int64_t size = 5*3*720*720;
+  std::vector<int64_t> shape{n,c,h,w};
+  int64_t size = n*c*h*w;
   std::vector<float> buffer;
   buffer.resize(static_cast<size_t>(size));
   auto featureValue = TensorFloat::CreateFromIterable(shape, winrt::single_threaded_vector<float>(std::move(buffer)));
