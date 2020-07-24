@@ -20,7 +20,7 @@ static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   if (0 >= GetSystemDirectoryA(system_path.data(), system_path.size())) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
-  system_path += "onnxruntime.dll";
+  system_path += "\\onnxruntime.dll";
 #else
   system_path = "onnxruntime.dll";
 #endif
