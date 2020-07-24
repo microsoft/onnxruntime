@@ -222,7 +222,7 @@ class ORTTrainerOptions(object):
             fp16_enabled = opts.mixed_precision.enabled
      """
 
-    def __init__(self, options):
+    def __init__(self, options={}):
         # Keep a copy of original input for debug
         self._original_opts = dict(options)
 

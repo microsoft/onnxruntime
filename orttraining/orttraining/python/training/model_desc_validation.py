@@ -1,5 +1,6 @@
 import cerberus
-
+from collections import namedtuple
+import torch
 from ._utils import static_vars
 
 
@@ -24,18 +25,36 @@ class _ORTTrainerModelDesc(object):
         if self._validated is None:
             raise ValueError(f'Invalid model_desc: {validator.errors}')
 
+        # Normalize inputs to a list of namedtuple(name, shape)
+        self._InputDescription = namedtuple('InputDescription', ['name', 'shape'])
+        self._InputDescriptionTyped = namedtuple('InputDescriptionTyped', ['name', 'shape', 'dtype'])
+        for idx, input in enumerate(self._validated['inputs']):
+            self._validated['inputs'][idx] = self._InputDescription(*input)
+
+        # Normalize outputs to a list of namedtuple(name, shape, is_loss)
+        self._OutputDescription = namedtuple('OutputDescription', ['name', 'shape', 'is_loss'])
+        self._OutputDescriptionTyped = namedtuple('OutputDescriptionTyped', ['name', 'shape', 'is_loss', 'dtype'])
+        for idx, output in enumerate(self._validated['outputs']):
+            if len(output) == 2:
+                self._validated['outputs'][idx] = self._OutputDescription(*output, False)
+            else:
+                self._validated['outputs'][idx] = self._OutputDescription(*output)
+
         # Convert dict in object
         for k, v in self._validated.items():
             setattr(self, k, self._wrap(v))
 
         # Keep this in the last line
         # After this point, this class becomes immutable
+        # NOTE: The embedded lists are still muttable
         self._initialized = True
 
     def __repr__(self):
         return '{%s}' % str(', '.join("'%s': %s" % (k, repr(v))
                                       for (k, v) in self.__dict__.items()
-                                      if k not in ['_main_class_name', '_original', '_validated', '_initialized']))
+                                      if k not in ['_main_class_name', '_original', '_validated',
+                                                   '_InputDescription', '_InputDescriptionTyped',
+                                                   '_OutputDescription', '_OutputDescriptionTyped']))
 
     def __setattr__(self, k, v):
         if hasattr(self, '_initialized'):
@@ -43,10 +62,32 @@ class _ORTTrainerModelDesc(object):
         return super().__setattr__(k, v)
 
     def _wrap(self, v):
-        if isinstance(v, (tuple, list, set, frozenset)):
+        if isinstance(v, (list)):
             return type(v)([self._wrap(v) for v in v])
-        else:
+        elif isinstance(v, (self._InputDescription, self._InputDescriptionTyped,
+                            self._OutputDescription, self._OutputDescriptionTyped)):
+            return v
+        elif isinstance(v, (tuple)):
+            return type(v)([self._wrap(v) for v in v])
+        elif isinstance(v, (dict, int, float, bool, str)):
             return _ORTTrainerModelDescInternal(self._main_class_name, v) if isinstance(v, dict) else v
+        else:
+            raise ValueError("Unsupported type for model_desc."
+                             "Only int, float, bool, str, list, tuple and dict are supported")
+
+    def add_type_to_input_description(self, index, dtype):
+        assert isinstance(index, int) and index >= 0,\
+            "input 'index' must be a positive int"
+        assert isinstance(dtype, torch.dtype),\
+            "input 'dtype' must be a torch.dtype type"
+        self.inputs[index] = self._InputDescriptionTyped(*self.inputs[index], dtype)
+
+    def add_type_to_output_description(self, index, dtype):
+        assert isinstance(index, int) and index >= 0,\
+            "output 'index' must be a positive int"
+        assert isinstance(dtype, torch.dtype),\
+            "output 'dtype' must be a torch.dtype type"
+        self.outputs[index] = self._OutputDescriptionTyped(*self.outputs[index], dtype)
 
 
 class _ORTTrainerModelDescInternal(_ORTTrainerModelDesc):
@@ -65,6 +106,7 @@ class _ORTTrainerModelDescInternal(_ORTTrainerModelDesc):
 
         # Keep this in the last line
         # After this point, this class becomes immutable
+        # NOTE: The embedded lists are still muttable
         self._initialized = True
 
 
