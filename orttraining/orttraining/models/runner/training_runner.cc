@@ -164,6 +164,12 @@ Status TrainingRunner::Initialize() {
     config.pipeline_config = pipe;
   }
 
+  // memory swap
+  if (!params_.memory_swap_stop_at.empty()) {
+    TrainingSession::TrainingConfiguration::MemorySwapConfiguration memswap{};
+    memswap.memory_swap_stop_at = params_.memory_swap_stop_at;
+    config.memswap_config = memswap;
+  }
   config.enable_gelu_approximation = params_.enable_gelu_approximation;
 
   TrainingSession::TrainingConfigurationResult config_result{};

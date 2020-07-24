@@ -79,11 +79,20 @@ static Status BuildBackPropGraph(
  * @return TrainingSession for this run.
  */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
-    const SessionOptions& so, const PathString& backprop_model_file) {
+    const SessionOptions& so, const PathString& backprop_model_file, bool use_cuda = false) {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+
+#ifdef USE_CUDA
+  if (use_cuda) {
+    CUDAExecutionProviderInfo xp_info;
+    EXPECT_TRUE(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+  }
+#else
+  ORT_UNUSED_PARAMETER(use_cuda);
+#endif
 
   ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
@@ -206,6 +215,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   SessionOptions so{};
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
+
+#ifdef USE_CUDA
+TEST(GradientGraphBuilderTest, TrainingSession_WithMemSwap) {
+  auto config = MakeBasicTrainingConfig();
+  // config to enable memory swap
+  config.memswap_config = TrainingSession::TrainingConfiguration::MemorySwapConfiguration{};
+  config.memswap_config.value().memory_swap_stop_at = "T3";
+
+  PathString backprop_model_file;
+  ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
+
+  SessionOptions so{};
+  RunTrainingSessionWithChecks(so, backprop_model_file, /*use_cuda*/ true);
+}
+#endif
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   const auto& log_manager = DefaultLoggingManager();
@@ -486,6 +510,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
       {"Add", {{1, 1.0f}, {1, 9.999999960041972e-13f}}},
       {"Mul", {{1, 0.5f}, {1, -10000.0f}}},
       {"Sub", {{0, 1.0f}}}};
+
+  // config to enable memory swap
+  config.memswap_config = TrainingSession::TrainingConfiguration::MemorySwapConfiguration{};
+  config.memswap_config.value().memory_swap_stop_at = "678";
 
   PathString backprop_model_file;
   ASSERT_STATUS_OK(BuildBackPropGraph(model_path, config, backprop_model_file));
@@ -998,15 +1026,15 @@ class PipelineBatchPlanner {
 };
 
 void RetrieveEventOperators(
-  Graph& graph,
-  Node** forward_wait_before_recv,
-  Node** forward_wait_after_recv,
-  Node** forward_record_before_send,
-  Node** forward_record_after_send,
-  Node** backward_wait_before_recv,
-  Node** backward_wait_after_recv,
-  Node** backward_record_before_send,
-  Node** backward_record_after_send) {
+    Graph& graph,
+    Node** forward_wait_before_recv,
+    Node** forward_wait_after_recv,
+    Node** forward_record_before_send,
+    Node** forward_record_after_send,
+    Node** backward_wait_before_recv,
+    Node** backward_wait_after_recv,
+    Node** backward_record_before_send,
+    Node** backward_record_after_send) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
@@ -1065,11 +1093,11 @@ void RetrieveEventOperators(
 }
 
 void RetrieveSendRecvOperators(
-  Graph& graph,
-  Node** forward_recv,
-  Node** forward_send,
-  Node** backward_recv,
-  Node** backward_send) {
+    Graph& graph,
+    Node** forward_recv,
+    Node** forward_send,
+    Node** backward_recv,
+    Node** backward_send) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
@@ -1146,7 +1174,6 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < static_cast<int>(total_partition_count); ++i) {
-
       PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
       auto config = MakeBasicTrainingConfig();
 
@@ -1236,7 +1263,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
-  for(auto is_fp32 : test_with_fp32) {
+  for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
       PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
@@ -1259,7 +1286,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 
       PathString backprop_model_file;
       Status status = BuildBackPropGraph(model_uri, config, backprop_model_file);
-      ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+      ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
 
       // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
       // which takes a const tensor input. Const cast for input in function body won't be saved in the output
@@ -1270,7 +1297,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
         std::shared_ptr<Model> model;
         // Ensure the partitioned model load.
         status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
-        ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
       }
     }
   }
@@ -1331,7 +1358,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
- std::string filename_base = "testdata/test_training_model_";
+  std::string filename_base = "testdata/test_training_model_";
 
   auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
@@ -1363,15 +1390,15 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     // Find event nodes.
     RetrieveEventOperators(
-      graph,
-      &forward_wait_before_recv,
-      &forward_wait_after_recv,
-      &forward_record_before_send,
-      &forward_record_after_send,
-      &backward_wait_before_recv,
-      &backward_wait_after_recv,
-      &backward_record_before_send,
-      &backward_record_after_send);
+        graph,
+        &forward_wait_before_recv,
+        &forward_wait_after_recv,
+        &forward_record_before_send,
+        &forward_record_after_send,
+        &backward_wait_before_recv,
+        &backward_wait_after_recv,
+        &backward_record_before_send,
+        &backward_record_after_send);
 
     // Check event nodes.
     if (stageIdx == 2) {
@@ -1411,11 +1438,11 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     Node* backward_send{nullptr};
 
     RetrieveSendRecvOperators(
-      graph,
-      &forward_recv,
-      &forward_send,
-      &backward_recv,
-      &backward_send);
+        graph,
+        &forward_recv,
+        &forward_send,
+        &backward_recv,
+        &backward_send);
 
     // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
@@ -1480,22 +1507,20 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {},
         {}},
-       {{
-            "MeanSquaredError_reduce_mean_Grad/Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Denominator",
-            "MeanSquaredError_reduce_mean_Grad/Scale_Numerator",
-            "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Numerator",
-            "MeanSquaredError_reduce_mean_Grad/Scale",
-            "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
-            "MeanSquaredError_reduce_mean_Grad/Shaped_X",
-            "MeanSquaredError_diff_square_grad",
-            "MeanSquaredError_diff_grad",
-            "predictions_grad",
-            "B3_grad",
-            "T7_grad",
-            "W3_grad",
-            "T6_grad"
-        },
+       {{"MeanSquaredError_reduce_mean_Grad/Scale_Denominator",
+         "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Denominator",
+         "MeanSquaredError_reduce_mean_Grad/Scale_Numerator",
+         "MeanSquaredError_reduce_mean_Grad/Casted_Scale_Numerator",
+         "MeanSquaredError_reduce_mean_Grad/Scale",
+         "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
+         "MeanSquaredError_reduce_mean_Grad/Shaped_X",
+         "MeanSquaredError_diff_square_grad",
+         "MeanSquaredError_diff_grad",
+         "predictions_grad",
+         "B3_grad",
+         "T7_grad",
+         "W3_grad",
+         "T6_grad"},
         {},
         {"T6_grad"},
         {},

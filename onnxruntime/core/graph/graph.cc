@@ -1361,13 +1361,54 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
       continue;
     }
 
-    if (visited[n.Index()]) continue;
+    // special case for SwapFromHost/SwapToHost
+    // so SwapToHost is traversed immediately after its input node
+    // while SwapFromHost travered immediately before its output node
+
+    if (visited[n.Index()] || n.OpType() == "SwapToHost") continue;
+
+    // SwapFromHost should been handled when traversing its output node
+    ORT_ENFORCE(n.OpType() != "SwapFromHost");
 
     visited[n.Index()] = true;
 
-    if (enter) enter(&n);
+    // check if n has output node of SwapToHost
+    std::set<const Node*> swap_to_host_nodes;
+    for (auto iter = n.OutputNodesBegin(); iter != n.OutputNodesEnd(); ++iter) {
+      if (iter->OpType() == "SwapToHost") {
+        swap_to_host_nodes.insert(&(*iter));
+        visited[iter->Index()] = true;
+      }
+    }
 
-    if (leave) stack.emplace_back(&n, true);
+    // check if n has input node of SwapFromHost
+    std::set<const Node*> swap_from_host_nodes;
+    for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
+      if (iter->OpType() == "SwapFromHost" && !visited[iter->Index()]) {
+        swap_from_host_nodes.insert(&(*iter));
+        visited[iter->Index()] = true;
+      }
+    }
+
+    if (enter) {
+      for (auto swap_to_host_node : swap_to_host_nodes) {
+        enter(swap_to_host_node);
+      }
+      enter(&n);
+      for (auto swap_from_host_node : swap_from_host_nodes) {
+        enter(swap_from_host_node);
+      }
+    }
+
+    if (leave) {
+      for (auto swap_to_host_node : swap_to_host_nodes) {
+        stack.emplace_back(swap_to_host_node, true);
+      }
+      stack.emplace_back(&n, true);
+      for (auto swap_from_host_node : swap_from_host_nodes) {
+        stack.emplace_back(swap_from_host_node, true);
+      }
+    }
 
     if (comp) {
       std::vector<const Node*> sorted_nodes;
@@ -2053,7 +2094,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.op_ = nullptr;
       }
 
-	  InitFunctionBodyForNode(node);
+      InitFunctionBodyForNode(node);
 
       if (!node.op_) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
@@ -3022,7 +3063,7 @@ Status Graph::InlineFunction(Node& node) {
       ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, *tensor));
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
-      std::vector<NodeArg*> inputs, outputs;
+      std::vector<NodeArg *> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
         auto it = remap_input_output.find(input->Name());
         if (it != remap_input_output.end())

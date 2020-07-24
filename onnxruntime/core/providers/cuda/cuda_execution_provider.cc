@@ -54,6 +54,30 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
+// this is similar to MemcpyFromHost/MemcpyToHost
+// but with different OpTypes and CPU memory type for cudaMemcpyAsync
+ONNX_OPERATOR_KERNEL_EX(
+    SwapFromHost,
+    kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType<OrtMemTypeCPU>(0)
+        .ExecQueueId(kCudaStreamCopyIn)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SwapToHost,
+    kOnnxDomain,
+    1,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType<OrtMemTypeCPU>(0)
+        .ExecQueueId(kCudaStreamCopyOut)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Memcpy);
+
 }  // namespace cuda
 
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
@@ -67,7 +91,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
        [](OrtDevice::DeviceId id) {
          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
        },
-       cuda_mem_limit, 
+       cuda_mem_limit,
        arena_extend_strategy});
 
   // CUDA malloc/free is expensive so always use an arena
@@ -105,19 +129,17 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
   UnorderedMapStringToString options;
 
-  options["device_id"] = std::to_string(device_id_); 
-  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_); 
+  options["device_id"] = std::to_string(device_id_);
+  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_);
   std::string strategy;
   if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
     strategy = "kNextPowerOfTwo";
-  }
-  else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+  } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
     strategy = "kSameAsRequested";
+  } else {
+    strategy = "unknown";
   }
-  else {
-    strategy = "unknown"; 
-  }
-  options["arena_extend_strategy"] = strategy; 
+  options["arena_extend_strategy"] = strategy;
 
   IExecutionProvider::SetProviderOptions(options);
 }
@@ -327,6 +349,8 @@ namespace cuda {
 // opset 1 to 9
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapToHost);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 4, 10, Concat);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 8, Flatten);
@@ -813,6 +837,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, SwapToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 10, Unsqueeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 1, 8, Flatten)>,

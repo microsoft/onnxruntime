@@ -137,6 +137,30 @@ Internal copy node
 Internal copy node
 )DOC");
 
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(SwapFromHost)
+        .Input(0, "X", "input", "T")
+        .Output(0, "Y", "output", "T")
+        .TypeConstraint(
+            "T",
+            OpSchema::all_tensor_types(),
+            "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+        .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+        .SetDoc(R"DOC(
+Internal copy node
+)DOC");
+
+    ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(SwapToHost)
+        .Input(0, "X", "input", "T")
+        .Output(0, "Y", "output", "T")
+        .TypeConstraint(
+            "T",
+            OpSchema::all_tensor_types(),
+            "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+        .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+        .SetDoc(R"DOC(
+Internal copy node
+)DOC");
+
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();

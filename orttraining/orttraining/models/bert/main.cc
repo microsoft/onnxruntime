@@ -164,6 +164,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"))
+      ("memory_swap_stop_at", "Specify output node arg to stop memory swap at. empty to disable memory swap",
+        cxxopts::value<std::string>()->default_value(""))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
         cxxopts::value<bool>()->default_value("true"))
       ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
@@ -331,7 +333,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
-
+    params.memory_swap_stop_at = flags["memory_swap_stop_at"].as<std::string>();
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();

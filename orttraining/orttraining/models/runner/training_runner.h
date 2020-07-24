@@ -167,9 +167,11 @@ class TrainingRunner {
     // Enable gradient clipping.
     bool enable_grad_norm_clip = true;
 
+    // output node arg for memory swap to stop at. empty to disable
+    std::string memory_swap_stop_at;
     // Enable GELU approximation
     bool enable_gelu_approximation = false;
-  
+
     // Use invertible layernorm grad
     bool use_invertible_layernorm_grad = false;
   };
@@ -215,7 +217,7 @@ class TrainingRunner {
                         size_t& gradient_accumulation_step_count);
   void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,
-    const MapStringToString& mapped_dimensions);
+                      const MapStringToString& mapped_dimensions);
   Status Evaluate(TrainingSession& session, IDataLoader& data_loader);
 
   Status SaveCheckpoint(const PathString& checkpoint_path);

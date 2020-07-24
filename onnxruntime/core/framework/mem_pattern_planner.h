@@ -22,6 +22,9 @@ limitations under the License.
 #include "core/framework/allocation_planner.h"
 #include "core/platform/ort_mutex.h"
 
+// uncomment this to print mem pattern usage for the plan
+//#define PRINT_MEM_PATTERN
+
 namespace onnxruntime {
 // MemPatternPlanner is used to trace allocation/free steps
 // in a single iteration, record the pattern and cached for
@@ -65,6 +68,11 @@ class MemPatternPlanner {
     buffer_size_ = std::max(buffer_size_, SafeInt<size_t>(best_offset) + size);
     allocs_.emplace_back(ml_value_idx, MemoryBlock(best_offset, size));
     blocks_.insert(best_fit_it, (static_cast<int>(allocs_.size()) - 1));
+#ifdef PRINT_MEM_PATTERN
+    // DEBUG_HELPER: uncomment this to check memory allocation size
+    used_size_ += size;
+    std::cout << "Alloc (" << ml_value_idx << ") : " << size << ", MemPattern buffer_size_:" << (uint64_t)(buffer_size_) << ", wasted " << (uint64_t)buffer_size_ - (uint64_t)used_size_ << std::endl;
+#endif
   }
 
   void TraceFree(int ml_value_index) {
@@ -72,6 +80,11 @@ class MemPatternPlanner {
 
     for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
       if (allocs_[*it].index_ == ml_value_index) {
+#ifdef PRINT_MEM_PATTERN
+        auto size = allocs_[*it].block_.size_;
+        used_size_ -= size;
+        std::cout << "Free (" << ml_value_index << ") : " << size << std::endl;
+#endif
         blocks_.erase(it);
         break;
       }
@@ -103,6 +116,9 @@ class MemPatternPlanner {
   // blocks_ the list of currently allocated memory blocks, sorted in order of their offset
   std::list<int> blocks_;
   SafeInt<size_t> buffer_size_{0};
+#ifdef PRINT_MEM_PATTERN
+  size_t used_size_{0};
+#endif
   mutable OrtMutex lock_;
 };
 
