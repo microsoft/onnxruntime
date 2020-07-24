@@ -332,8 +332,7 @@ const std::vector<std::string>& GetAvailableProviders() {
  * (-1234, 43.21, +43.21 ... are not valid,
  *  1234, +4321, 12 ... are valid) 
  */
-bool IsPositiveInteger(const std::string & s) {
-
+bool IsPositiveInteger(const std::string& s) {
   if (s.length() == 0) {
     return false;
   }
@@ -344,100 +343,91 @@ bool IsPositiveInteger(const std::string & s) {
     }
 
     if (!isdigit(s[i])) {
-      return false; 
-    }      
+      return false;
+    }
   }
 
   return true;
 }
 
 bool IsCudaDeviceIdValid(InferenceSession* sess, int id) {
-    
-    int num_devices = 0;
-    CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+  int num_devices = 0;
+  CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
 
-    if (0 == num_devices)
-    {
-        LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a CUDA capable device.";
-        return false;
-    }
+  if (0 == num_devices) {
+    LOGS(*(sess->GetLogger()), WARNING) << "your system does not have a CUDA capable device.";
+    return false;
+  }
 
-    if (id < 0 || id >= num_devices)
-    {
-        LOGS(*(sess->GetLogger()), WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
-        return false;
-    }
+  if (id < 0 || id >= num_devices) {
+    LOGS(*(sess->GetLogger()), WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
 
-    return true;
+  return true;
 }
 
-
 void UpdateCudaProviderOptions(InferenceSession* sess, onnxruntime::CudaProviderOptions& options, std::unordered_map<std::string, std::string> options_map) {
-    std::unordered_map<std::string, std::string>::iterator it;
+  std::unordered_map<std::string, std::string>::iterator it;
 
-    it = options_map.find("device_id");
-    if (it != options_map.end()) {
-        OrtDevice::DeviceId device_id;
-        try {
-            int id = std::stoi(it->second);
-            device_id = static_cast<int8_t>(id);
-        }
-        catch (...) {
-            throw std::runtime_error("Please provide device id with integer.");
-        }
-
-        if (!IsCudaDeviceIdValid(sess, device_id)) {
-            throw std::runtime_error("Please provide available device id.");
-        }
-        options.device_id = device_id; 
-        LOGS(*(sess->GetLogger()), INFO) << "cuda device id is set to " << device_id;
+  it = options_map.find("device_id");
+  if (it != options_map.end()) {
+    OrtDevice::DeviceId device_id;
+    try {
+      int id = std::stoi(it->second);
+      device_id = static_cast<int8_t>(id);
+    } catch (...) {
+      throw std::runtime_error("Please provide device id with integer.");
     }
 
-    it = options_map.find("cuda_mem_limit");
-    if (it != options_map.end()) {
+    if (!IsCudaDeviceIdValid(sess, device_id)) {
+      throw std::runtime_error("Please provide available device id.");
+    }
+    options.device_id = device_id;
+    LOGS(*(sess->GetLogger()), INFO) << "cuda device id is set to " << device_id;
+  }
 
-        // The reason to check whether the string is positive integer upfront is that
-        // when calling stoull(), if the minus sign was part of the input sequence, 
-        // the numeric value calculated from the sequence of digits is negated.
-        // In other words, it will cause wraparound. 
-        // So, we rule out negative integer string beforehand. 
-        if (!IsPositiveInteger(it->second)) {
-            throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
-        }
+  it = options_map.find("cuda_mem_limit");
+  if (it != options_map.end()) {
+    // The reason to check whether the string is positive integer upfront is that
+    // when calling stoull(), if the minus sign was part of the input sequence,
+    // the numeric value calculated from the sequence of digits is negated.
+    // In other words, it will cause wraparound.
+    // So, we rule out negative integer string beforehand.
+    if (!IsPositiveInteger(it->second)) {
+      throw std::runtime_error("Please provide cuda memory limitation size with positive integer.");
+    }
 
-        size_t size;
-        try {
+    size_t size;
+    try {
 #if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__))
-          size = std::stoull(it->second, nullptr, 0);
+      size = std::stoull(it->second, nullptr, 0);
 #else
-          size = std::stoul(it->second, nullptr, 0);
+      size = std::stoul(it->second, nullptr, 0);
 #endif
-        }
-        catch (...) {
-            throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
-        }
-        
-        options.cuda_mem_limit = size; 
-        LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;
+    } catch (...) {
+      throw std::runtime_error("Please provide cuda memory limitation size with positive integer and within range.");
     }
 
-    it = options_map.find("arena_extend_strategy");
-    if (it != options_map.end()) {
-        onnxruntime::ArenaExtendStrategy strategy;
+    options.cuda_mem_limit = size;
+    LOGS(*(sess->GetLogger()), INFO) << "cuda memory limitation is set to " << size;
+  }
 
-        if (it->second.compare("kNextPowerOfTwo") == 0) {
-            strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
-        }
-        else if (it->second.compare("kSameAsRequested") == 0) {
-            strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
-        } 
-        else {
-            throw std::runtime_error("Please provide proper cuda arena extend strategy.");
-        }
-        
-        options.arena_extend_strategy = strategy; 
-        LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
+  it = options_map.find("arena_extend_strategy");
+  if (it != options_map.end()) {
+    onnxruntime::ArenaExtendStrategy strategy;
+
+    if (it->second.compare("kNextPowerOfTwo") == 0) {
+      strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+    } else if (it->second.compare("kSameAsRequested") == 0) {
+      strategy = onnxruntime::ArenaExtendStrategy::kSameAsRequested;
+    } else {
+      throw std::runtime_error("Please provide proper cuda arena extend strategy.");
     }
+
+    options.arena_extend_strategy = strategy;
+    LOGS(*(sess->GetLogger()), INFO) << "cuda arean extend strategy is set to " << it->second;
+  }
 }
 #endif
 
@@ -494,7 +484,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
   }
 }
 
-
 /*
  * Register execution provider with options.
  *
@@ -520,7 +509,7 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
 
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        UpdateCudaProviderOptions(sess, cuda_provider_options, it->second); 
+        UpdateCudaProviderOptions(sess, cuda_provider_options, it->second);
       }
 
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_provider_options.device_id,
@@ -566,24 +555,21 @@ void RegisterExecutionProvidersWithOptions(InferenceSession* sess, const std::ve
  */
 void GenerateProviderOptionsMap(const std::vector<std::string>& providers,
                                 ProviderOptionsVector& provider_options_vector,
-                                ProviderOptionsMap& provider_options_map)
-{
-
-  if (provider_options_vector.empty() || providers.empty()) { 
+                                ProviderOptionsMap& provider_options_map) {
+  if (provider_options_vector.empty() || providers.empty()) {
     return;
   }
 
-  std::size_t j = 0; // index for provider_options_vector
+  std::size_t j = 0;  // index for provider_options_vector
 
   for (const std::string& type : providers) {
     if (j < provider_options_vector.size() && !provider_options_vector[j].empty()) {
-      provider_options_map[type] = provider_options_vector[j]; 
+      provider_options_map[type] = provider_options_vector[j];
     }
 
     j += 1;
   }
 }
-
 
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   if (provider_types.empty()) {
@@ -598,7 +584,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 void InitializeSession(InferenceSession* sess, const std::vector<std::string>& provider_types, ProviderOptionsVector& provider_options) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
-  
+
   if (provider_types.empty()) {
     // use default registration priority.
     RegisterExecutionProvidersWithOptions(sess, GetAllProviders(), provider_options_map);
@@ -1031,7 +1017,25 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           },
           R"pbdoc(Graph optimization level for this session.)pbdoc")
       .def_readwrite("use_deterministic_compute", &SessionOptions::use_deterministic_compute,
-                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc");
+                     R"pbdoc(Whether to use deterministic compute. Default is false.)pbdoc")
+      .def(
+          "add_free_dimension_override_by_denotation",
+          [](SessionOptions* options, const char* dim_name, int64_t dim_value)
+              -> void { options->free_dimension_overrides.push_back(
+                            onnxruntime::FreeDimensionOverride{
+                                dim_name,
+                                onnxruntime::FreeDimensionOverrideType::Denotation,
+                                dim_value}); },
+          "Rpbdoc(Specify the dimension size for each denotation associated with an input's free dimension.)pbdoc")
+      .def(
+          "add_free_dimension_override_by_name",
+          [](SessionOptions* options, const char* dim_name, int64_t dim_value)
+              -> void { options->free_dimension_overrides.push_back(
+                            onnxruntime::FreeDimensionOverride{
+                                dim_name,
+                                onnxruntime::FreeDimensionOverrideType::Name,
+                                dim_value}); },
+          "Rpbdoc(Specify values of named dimensions within model inputs.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
