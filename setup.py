@@ -65,6 +65,9 @@ elif '--use_acl' in sys.argv:
 elif '--use_armnn' in sys.argv:
     package_name = 'onnxruntime-armnn'
     sys.argv.remove('--use_armnn')
+elif '--use_dml' in sys.argv:
+    package_name = 'onnxruntime-dml'
+    sys.argv.remove('--use_dml')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
