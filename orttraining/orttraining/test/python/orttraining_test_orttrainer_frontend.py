@@ -65,20 +65,51 @@ def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema():
     assert str(e.value) == expected_msg
 
 
-@pytest.mark.parametrize("test_input", [
+@pytest.mark.parametrize("input_dict,input_dtype,output_dtype", [
     ({'inputs': [('in0', [])],
-      'outputs': [('out0', []), ('out1', [])]}),
+      'outputs': [('out0', []), ('out1', [])]},(torch.int,),(torch.float,torch.int32,)),
     ({'inputs': [('in0', ['batch', 2, 3])],
-      'outputs': [('out0', [], True)]}),
+      'outputs': [('out0', [], True)]}, (torch.int8,), (torch.int16,)),
     ({'inputs': [('in0', []), ('in1', [1]), ('in2', [1, 2]), ('in3', [1000, 'dyn_ax1']), ('in4', ['dyn_ax1', 'dyn_ax2', 'dyn_ax3'])],
-      'outputs': [('out0', [], True), ('out1', [1], False), ('out2', [1, 'dyn_ax1', 3])]})
+      'outputs': [('out0', [], True), ('out1', [1], False), ('out2', [1, 'dyn_ax1', 3])]},
+        (torch.float,torch.uint8,torch.bool,torch.double,torch.half,), (torch.float,torch.float,torch.int64))
 ])
-def testORTTrainerModelDescValidSchemas(test_input):
+def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     r''' Test different ways of using default values for incomplete input'''
-    md_val._ORTTrainerModelDesc(test_input)
+
+    # Validating model description from user
+    model_description = md_val._ORTTrainerModelDesc(input_dict)
+    for idx, i_desc in enumerate(model_description.inputs):
+        assert isinstance(i_desc, model_description._InputDescription)
+        assert len(i_desc) == 2
+        assert input_dict['inputs'][idx][0] == i_desc.name
+        assert input_dict['inputs'][idx][1] == i_desc.shape
+    for idx, o_desc in enumerate(model_description.outputs):
+        assert isinstance(o_desc, model_description._OutputDescription)
+        assert len(o_desc) == 3
+        assert input_dict['outputs'][idx][0] == o_desc.name
+        assert input_dict['outputs'][idx][1] == o_desc.shape
+        is_loss = input_dict['outputs'][idx][2] if len(input_dict['outputs'][idx]) == 3 else False
+        assert is_loss == o_desc.is_loss
+
+    # Append type to inputs/outputs tuples
+    for idx, i_desc in enumerate(model_description.inputs):
+        model_description.add_type_to_input_description(idx, input_dtype[idx])
+    for idx, o_desc in enumerate(model_description.outputs):
+        model_description.add_type_to_output_description(idx, output_dtype[idx])
+
+    # Verify inputs/outputs tuples are replaced by the typed counterparts
+    for idx, i_desc in enumerate(model_description.inputs):
+        assert len(i_desc) == 3
+        assert isinstance(i_desc, model_description._InputDescriptionTyped)
+        assert input_dtype[idx] == i_desc.dtype
+    for idx, o_desc in enumerate(model_description.outputs):
+        assert len(o_desc) == 4
+        assert isinstance(o_desc, model_description._OutputDescriptionTyped)
+        assert output_dtype[idx] == o_desc.dtype
 
 
-@pytest.mark.parametrize("test_input,error_msg", [
+@pytest.mark.parametrize("input_dict,error_msg", [
     ({'inputs': [(True, [])],
       'outputs': [(True, [])]},
       "Invalid model_desc: {'inputs': [{0: ['the first element of the tuple (aka name) must be a string']}], "
@@ -97,11 +128,17 @@ def testORTTrainerModelDescValidSchemas(test_input):
     ({'inputs': [('in1', [])],
       'outputs': [('out1', [], True), ('out2', [], True)]},
       "Invalid model_desc: {'outputs': [{1: ['only one is_loss can bet set to True']}]}"),
+    ({'inputz': [('in1', [])],
+      'outputs': [('out1', [], True)]},
+      "Invalid model_desc: {'inputs': ['required field'], 'inputz': ['unknown field']}"),
+    ({'inputs': [('in1', [])],
+      'outputz': [('out1', [], True)]},
+      "Invalid model_desc: {'outputs': ['required field'], 'outputz': ['unknown field']}"),
 ])
-def testORTTrainerModelDescInvalidSchemas(test_input, error_msg):
+def testORTTrainerModelDescInvalidSchemas(input_dict, error_msg):
     r''' Test different ways of using default values for incomplete input'''
     with pytest.raises(ValueError) as e:
-        md_val._ORTTrainerModelDesc(test_input)
+        md_val._ORTTrainerModelDesc(input_dict)
     assert str(e.value) == error_msg
 
 
