@@ -65,7 +65,7 @@ def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema():
     assert str(e.value) == expected_msg
 
 
-@pytest.mark.parametrize("test_data,input_dtype,output_dtype", [
+@pytest.mark.parametrize("input_dict,input_dtype,output_dtype", [
     ({'inputs': [('in0', [])],
       'outputs': [('out0', []), ('out1', [])]},(torch.int,),(torch.float,torch.int32,)),
     ({'inputs': [('in0', ['batch', 2, 3])],
@@ -74,22 +74,22 @@ def testORTTrainerOptionsInvalidMixedPrecisionEnabledSchema():
       'outputs': [('out0', [], True), ('out1', [1], False), ('out2', [1, 'dyn_ax1', 3])]},
         (torch.float,torch.uint8,torch.bool,torch.double,torch.half,), (torch.float,torch.float,torch.int64))
 ])
-def testORTTrainerModelDescValidSchemas(test_data, input_dtype, output_dtype):
+def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     r''' Test different ways of using default values for incomplete input'''
 
     # Validating model description from user
-    model_description = md_val._ORTTrainerModelDesc(test_data)
+    model_description = md_val._ORTTrainerModelDesc(input_dict)
     for idx, i_desc in enumerate(model_description.inputs):
         assert isinstance(i_desc, model_description._InputDescription)
         assert len(i_desc) == 2
-        assert test_data['inputs'][idx][0] == i_desc.name
-        assert test_data['inputs'][idx][1] == i_desc.shape
+        assert input_dict['inputs'][idx][0] == i_desc.name
+        assert input_dict['inputs'][idx][1] == i_desc.shape
     for idx, o_desc in enumerate(model_description.outputs):
         assert isinstance(o_desc, model_description._OutputDescription)
         assert len(o_desc) == 3
-        assert test_data['outputs'][idx][0] == o_desc.name
-        assert test_data['outputs'][idx][1] == o_desc.shape
-        is_loss = test_data['outputs'][idx][2] if len(test_data['outputs'][idx]) == 3 else False
+        assert input_dict['outputs'][idx][0] == o_desc.name
+        assert input_dict['outputs'][idx][1] == o_desc.shape
+        is_loss = input_dict['outputs'][idx][2] if len(input_dict['outputs'][idx]) == 3 else False
         assert is_loss == o_desc.is_loss
 
     # Append type to inputs/outputs tuples
@@ -109,7 +109,7 @@ def testORTTrainerModelDescValidSchemas(test_data, input_dtype, output_dtype):
         assert output_dtype[idx] == o_desc.dtype
 
 
-@pytest.mark.parametrize("test_data,error_msg", [
+@pytest.mark.parametrize("input_dict,error_msg", [
     ({'inputs': [(True, [])],
       'outputs': [(True, [])]},
       "Invalid model_desc: {'inputs': [{0: ['the first element of the tuple (aka name) must be a string']}], "
@@ -135,10 +135,10 @@ def testORTTrainerModelDescValidSchemas(test_data, input_dtype, output_dtype):
       'outputz': [('out1', [], True)]},
       "Invalid model_desc: {'outputs': ['required field'], 'outputz': ['unknown field']}"),
 ])
-def testORTTrainerModelDescInvalidSchemas(test_data, error_msg):
+def testORTTrainerModelDescInvalidSchemas(input_dict, error_msg):
     r''' Test different ways of using default values for incomplete input'''
     with pytest.raises(ValueError) as e:
-        md_val._ORTTrainerModelDesc(test_data)
+        md_val._ORTTrainerModelDesc(input_dict)
     assert str(e.value) == error_msg
 
 
