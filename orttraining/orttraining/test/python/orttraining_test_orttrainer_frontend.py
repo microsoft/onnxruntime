@@ -506,11 +506,14 @@ def testInstantiateORTTrainer():
         trainer.train_step(data, targets, learning_rate) # removed learning rate here and in model desc
         break
 
-    assert trainer.get_onnx() is not None
-    onnx_model = trainer.get_onnx()
+    assert trainer._onnx_model is not None
+    onnx_model = trainer._onnx_model
     import onnx
     #print(onnx.helper.printable_graph(model.graph))
+    print("\n-- ONNX Model Graph --")
+    print("INPUTS")
     print(onnx_model.graph.input)
+    print("OUTPUTS")
     print(onnx_model.graph.output)
     #print(type(onnx_model.graph.input))
     import inspect
@@ -521,11 +524,14 @@ def testInstantiateORTTrainer():
     #print(model_desc['inputs'])
     #print(model_desc['outputs'])
 
-    print(type(str(onnx_model.graph.input)))
+    #print(type(str(onnx_model.graph.input)))
+    print("-- Model Desc --")
+    print("INPUTS")
     for tup in model_desc['inputs']:
         # check that each model desc input is found in the onnx model
         assert str(onnx_model.graph.input).find(tup[0]) >= 0
         print(tup[0], tup[1]) #shape is always second
+    print("OUTPUTS")
     for tup in model_desc['outputs']:
         assert str(onnx_model.graph.output).find(tup[0]) >= 0
         print(tup[0], tup[1]) #shape is always second

@@ -380,11 +380,6 @@ class ORTTrainer(object):
             return
 
 
-    # temp function for testing
-    def get_onnx(self):
-        return self._onnx_model
-
-
     def train_step(self, *input, **kwargs):
         r"""Train step method
 
