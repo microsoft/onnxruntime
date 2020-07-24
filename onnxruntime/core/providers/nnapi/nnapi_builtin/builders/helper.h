@@ -54,8 +54,7 @@ enum class QLinearOpType : uint8_t {
 
 QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
 
-// This qlinear op is not a quantize or dequantize op
-// it is an operator takes 2 input and producce 1 output
+// This qlinear op is an operator takes 2 input and producce 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
 bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
 

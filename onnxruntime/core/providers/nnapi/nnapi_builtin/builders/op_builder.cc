@@ -443,7 +443,7 @@ static float GetQuantizationScale(const ModelBuilder& model_builder, const Node&
   return GetTensorFloatData(scale_tensor)[0];
 }
 
-static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx, int32_t zero_point) {
+static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const Node& node, size_t idx, int32_t& zero_point) {
   std::unique_ptr<uint8_t[]> unpacked_tensor;
   size_t tensor_byte_size;
   const auto& zero_point_tensor = model_builder.GetInitializerTensors().at(node.InputDefs()[idx]->Name());
@@ -456,9 +456,9 @@ static Status GetQuantizationZeroPoint(const ModelBuilder& model_builder, const 
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
 // QLinearConv, QLinearMatmul, QLinearAdd
 // a, b are inputs, and y is output
-static Status GetBinaryOpsQuantizationScaleAndZeroPoint(const ModelBuilder& model_builder, const Node& node,
-                                                        float& a_scale, float& b_scale, float& y_scale,
-                                                        int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
+static Status GetBinaryOpQuantizationScaleAndZeroPoint(const ModelBuilder& model_builder, const Node& node,
+                                                       float& a_scale, float& b_scale, float& y_scale,
+                                                       int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
   a_scale = GetQuantizationScale(model_builder, node, 1);
   b_scale = GetQuantizationScale(model_builder, node, 4);
   y_scale = GetQuantizationScale(model_builder, node, 6);
@@ -495,6 +495,34 @@ static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
   }
 
   return Status::OK();
+}
+
+static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder, const Node& node) {
+  const auto input_defs(node.InputDefs());
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
+  model_builder.AddInitializerToSkip(input_defs[4]->Name());  // b_scale
+  model_builder.AddInitializerToSkip(input_defs[5]->Name());  // b_zero_point
+  model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
+  model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
+}
+
+static bool IsBinaryOpQuantizedInputsSupported(const Node& node) {
+  int32_t a_input_type, b_input_type;
+  if (!GetType(*node.InputDefs()[0], a_input_type))
+    return false;
+  if (!GetType(*node.InputDefs()[3], b_input_type))
+    return false;
+
+  if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || a_input_type != b_input_type) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+                          << "] A Input type: [" << a_input_type
+                          << "] B Input type: [" << b_input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  return true;
 }
 
 Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
@@ -650,14 +678,8 @@ class BinaryOpBuilder : public BaseOpBuilder {
 
 void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) {
   const auto& op = node.OpType();
-  const auto input_defs(node.InputDefs());
   if (op == "QLinearAdd") {
-    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
-    model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
-    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // b_scale
-    model_builder.AddInitializerToSkip(input_defs[5]->Name());  // b_zero_point
-    model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
-    model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
   }
 }
 
@@ -675,19 +697,8 @@ bool BinaryOpBuilder::HasSupportedInputs(const Node& node) {
     return BaseOpBuilder::HasSupportedInputs(node);
 
   // QLinearAdd
-  int32_t a_input_type, b_input_type;
-  if (!GetType(*node.InputDefs()[0], a_input_type))
+  if (!IsBinaryOpQuantizedInputsSupported(node))
     return false;
-  if (!GetType(*node.InputDefs()[3], b_input_type))
-    return false;
-
-  if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || a_input_type != b_input_type) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] A Input type: [" << a_input_type
-                          << "] B Input type: [" << b_input_type
-                          << "] is not supported for now";
-    return false;
-  }
 
   return true;
 }
@@ -797,9 +808,10 @@ void BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           y_zero_point = 0;
 
   if (op_is_qlinear) {
-    GetBinaryOpsQuantizationScaleAndZeroPoint(model_builder, node,
-                                              a_scale, b_scale, y_scale,
-                                              a_zero_point, b_zero_point, y_zero_point);
+    ORT_THROW_IF_ERROR(
+        GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                 a_scale, b_scale, y_scale,
+                                                 a_zero_point, b_zero_point, y_zero_point));
   }
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input
@@ -1315,20 +1327,8 @@ bool ConvOpBuilder::HasSupportedInputs(const Node& node) {
     return BaseOpBuilder::HasSupportedInputs(node);
 
   // QLinearConv only supports input of uint8 for now
-  int32_t x_input_type, w_input_type;
-  if (!GetType(*node.InputDefs()[0], x_input_type))
+  if (!IsBinaryOpQuantizedInputsSupported(node))
     return false;
-
-  if (!GetType(*node.InputDefs()[3], w_input_type))
-    return false;
-
-  if (x_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || x_input_type != w_input_type) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] x Input type: [" << x_input_type
-                          << "] w Input type: [" << w_input_type
-                          << "] is not supported for now";
-    return false;
-  }
 
   return true;
 }
@@ -1339,13 +1339,8 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
   // skip the weight for conv as we need to transpose
   if (op == "QLinearConv") {
-    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
-    model_builder.AddInitializerToSkip(input_defs[2]->Name());  // x_zero_point
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // w
-    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // w_scale
-    model_builder.AddInitializerToSkip(input_defs[5]->Name());  // w_zero_point
-    model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
-    model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
     if (input_defs.size() > 8)
       model_builder.AddInitializerToSkip(input_defs[8]->Name());  // B
   } else {
@@ -1471,9 +1466,10 @@ void ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
           y_zero_point = 0;
 
   if (is_qlinear_conv) {
-    GetBinaryOpsQuantizationScaleAndZeroPoint(model_builder, node,
-                                              x_scale, w_scale, y_scale,
-                                              x_zero_point, w_zero_point, y_zero_point);
+    ORT_THROW_IF_ERROR(
+        GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                 x_scale, w_scale, y_scale,
+                                                 x_zero_point, w_zero_point, y_zero_point));
   }
 
   const auto& weight = input_defs[w_idx]->Name();
@@ -1830,19 +1826,8 @@ bool GemmOpBuilder::HasSupportedInputs(const Node& node) {
     return BaseOpBuilder::HasSupportedInputs(node);
 
   // QLinearMatMul
-  int32_t a_input_type, b_input_type;
-  if (!GetType(*node.InputDefs()[0], a_input_type))
+  if (!IsBinaryOpQuantizedInputsSupported(node))
     return false;
-  if (!GetType(*node.InputDefs()[3], b_input_type))
-    return false;
-
-  if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 || a_input_type != b_input_type) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] A Input type: [" << a_input_type
-                          << "] B Input type: [" << b_input_type
-                          << "] is not supported for now";
-    return false;
-  }
 
   return true;
 }
@@ -1962,13 +1947,8 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     if (transB == 0)
       model_builder.AddInitializerToSkip(input_defs[1]->Name());
   } else if (op == "QLinearMatMul") {
-    model_builder.AddInitializerToSkip(input_defs[1]->Name());  // a_scale
-    model_builder.AddInitializerToSkip(input_defs[2]->Name());  // a_zero_point
+    AddBinaryOpQuantizationScaleAndZeroPointToSkip(model_builder, node);
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // b
-    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // b_scale
-    model_builder.AddInitializerToSkip(input_defs[5]->Name());  // b_zero_point
-    model_builder.AddInitializerToSkip(input_defs[6]->Name());  // y_scale
-    model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
   }
 }
 
@@ -2000,9 +1980,10 @@ void GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Nod
           y_zero_point = 0;
 
   if (is_qlinear_matmul) {
-    GetBinaryOpsQuantizationScaleAndZeroPoint(model_builder, node,
-                                              a_scale, b_scale, y_scale,
-                                              a_zero_point, b_zero_point, y_zero_point);
+    ORT_THROW_IF_ERROR(
+        GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                 a_scale, b_scale, y_scale,
+                                                 a_zero_point, b_zero_point, y_zero_point));
   }
 
   uint32_t input_2_idx;
