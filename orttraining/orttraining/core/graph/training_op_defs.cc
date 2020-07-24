@@ -1107,7 +1107,7 @@ Example 4:
         auto output_shape =
             ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
-        std::vector<int64_t> axes_values = ParseData<int64_t>(axes_proto); 
+        std::vector<int64_t> axes_values = ParseData<int64_t>(axes_proto);
         std::vector<int64_t> axes;
         axes.reserve(axes_values.size());
         for (int64_t axis : axes_values) {
@@ -1128,7 +1128,87 @@ Example 4:
           }
         }
       });
-      
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConcatTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Concatenate a list of tensors into a single tensor")
+      .Attr("axis", "Which axis to concat on", AttributeProto::INT)
+      .Input(0,
+             "inputs",
+             "List of tensors for concatenation",
+             "T",
+             OpSchema::Variadic)
+      .Output(0, "concat_result", "Concatenated tensor", "T")
+      .Output(1, "per_input_length",
+              "Vector of length of each concatenated "
+              "input along the 'axis' dimension",
+              "Tint")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain output types to any tensor type.")
+      .TypeConstraint(
+          "Tint",
+          {"tensor(int64)"},
+          "Constrain output len types to integer type.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto numInputs = ctx.getNumInputs();
+        if (numInputs < 1 ||
+            !hasNInputShapes(ctx, static_cast<int>(numInputs))) {
+          return;
+        }
+
+        auto rank = ctx.getInputType(0)->tensor_type().shape().dim_size();
+
+        auto axisAttr = ctx.getAttribute("axis");
+        if (!axisAttr) {
+          fail_shape_inference("Required attribute axis is missing");
+        }
+        int64_t axis = static_cast<int64_t>(axisAttr->i());
+        axis = HandleNegativeAxis(axis, rank);
+
+        bool all_lengths_known = true;
+        int total_length = 0;
+
+        auto* output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+        for (int64_t i = 0; i < rank; ++i) {
+          output_shape->add_dim();
+        }
+
+        ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
+        per_input_len_shape.add_dim()->set_dim_value(numInputs);
+        updateOutputShape(ctx, 1, per_input_len_shape);
+
+        for (size_t i = 0; i < numInputs; i++) {
+          const auto& shape = ctx.getInputType(i)->tensor_type().shape();
+          if (shape.dim_size() != rank)
+            fail_shape_inference("All inputs to Concat must have same rank");
+          for (int j = 0; j < rank; j++) {
+            if (j == axis) {
+              if (shape.dim(j).has_dim_value()) {
+                total_length += static_cast<int>(shape.dim(j).dim_value());
+              } else {
+                all_lengths_known = false;
+              }
+            } else {
+              auto& output_dim = *output_shape->mutable_dim(j);
+              const auto& input_dim = shape.dim(j);
+              mergeInDimensionInfo(input_dim, output_dim, j);
+            }
+          }
+        }
+
+        if (all_lengths_known) {
+          output_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(total_length);
+        }
+
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
