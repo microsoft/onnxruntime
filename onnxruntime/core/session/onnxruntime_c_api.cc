@@ -532,7 +532,7 @@ struct OrtIoBinding {
 };
 
 ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
-  const OrtIoBinding* binding_ptr) {
+                    const OrtIoBinding* binding_ptr) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   auto status = session->Run(*run_options, *binding_ptr->binding_);
@@ -590,6 +590,52 @@ ORT_API_STATUS_IMPL(OrtApis::BindOutputToDevice, _Inout_ OrtIoBinding* binding_p
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                    _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count) {
+  API_IMPL_BEGIN
+  const auto& output_names = binding_ptr->binding_->GetOutputNames();
+  if (output_names.empty()) {
+    *buffer = nullptr;
+    *lengths = nullptr;
+    *count = 0U;
+    return nullptr;
+  }
+
+  IAllocatorUniquePtr<size_t> lengths_alloc(reinterpret_cast<size_t*>(allocator->Alloc(allocator, output_names.size() * sizeof(size_t))),
+                                            [allocator](size_t* p) { if(p) allocator->Free(allocator, p); });
+
+  if (!lengths_alloc) {
+    return OrtApis::CreateStatus(ORT_FAIL, "lengths allocation failed");
+  }
+
+  size_t total_len = 0;
+  auto* len_ptr = lengths_alloc.get();
+  for (const auto& n : output_names) {
+    auto sz = n.size();
+    total_len += sz;
+    *len_ptr++ = sz;
+  }
+
+  IAllocatorUniquePtr<char> buffer_alloc(reinterpret_cast<char*>(allocator->Alloc(allocator, total_len * sizeof(char))),
+                                         [allocator](char* p) { if(p) allocator->Free(allocator, p); });
+
+  if (!buffer_alloc) {
+    return OrtApis::CreateStatus(ORT_FAIL, "string buffer allocation failed");
+  }
+
+  char* buf_ptr = buffer_alloc.get();
+  for (const auto& n : output_names) {
+    auto sz = n.size();
+    memcpy(buf_ptr, n.data(), sz);
+    buf_ptr += sz;
+  }
+
+  *buffer = buffer_alloc.release();
+  *lengths = lengths_alloc.release();
+  *count = output_names.size();
+  return nullptr;
+  API_IMPL_END
+}
 
 void OrtApis::ClearBoundInputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
   binding_ptr->binding_->ClearInputs();
@@ -1699,13 +1745,13 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::BindInput,
     &OrtApis::BindOutput,
     &OrtApis::BindOutputToDevice,
+    &OrtApis::GetBoundOutputNames,
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
 
     // feel free to add/remove/rearrange here
     &OrtApis::GetAvailableProviders,
-    &OrtApis::ReleaseAvailableProviders
-};
+    &OrtApis::ReleaseAvailableProviders};
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'

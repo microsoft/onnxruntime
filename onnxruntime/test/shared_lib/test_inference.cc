@@ -424,7 +424,7 @@ TEST(CApiTest, get_allocator_cuda) {
 }
 #endif
 
-TEST(CApiTest, io_bnding) {
+TEST(CApiTest, io_binding) {
   Ort::SessionOptions session_options;
   OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1);
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -448,7 +448,13 @@ TEST(CApiTest, io_bnding) {
   binding.BindOutput("Y", bound_y);
 
   session.Run(Ort::RunOptions(), binding);
+  // Check the values against the bound raw memory
   ASSERT_TRUE(std::equal(std::cbegin(y_values), std::cend(y_values), std::cbegin(expected_y)));
+
+  std::vector<std::string> output_names = binding.GetOutputNames();
+  ASSERT_EQ(1U, output_names.size());
+  ASSERT_EQ(output_names[0].compare("Y"), 0);
+
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
 }

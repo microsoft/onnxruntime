@@ -210,6 +210,8 @@ ORT_API(void, ReleaseIoBinding, _Frees_ptr_opt_ OrtIoBinding* allocator);
 ORT_API_STATUS_IMPL(BindInput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
 ORT_API_STATUS_IMPL(BindOutput, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtValue* val_ptr);
 ORT_API_STATUS_IMPL(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
+ORT_API_STATUS_IMPL(GetBoundOutputNames, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                    _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
 
 ORT_API(void, ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
 ORT_API(void, ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);

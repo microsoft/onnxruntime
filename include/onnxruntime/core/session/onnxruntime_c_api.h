@@ -865,9 +865,9 @@ struct OrtApi {
 
   /**
    * The function will bind the OrtValue to a device which specification is contained within OrtMemoryInfo
-   * You can either create an instance ofr OrtMemoryInfo or obtain one from the allocator that you are using.
-   * This is useful when one or more outputs have dynamic shapes and, it is hard to create an output OrtValue with
-   * a Tensor ahead of time.
+   * You can either create an instance of OrtMemoryInfo with a device id or obtain one from the allocator that you are created/using
+   * This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocated and bind a chunk of
+   * memory within OrtValue ahead of time.
    *
    * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
    * \param name - name for the model output
@@ -875,6 +875,25 @@ struct OrtApi {
    * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
    */
   ORT_API2_STATUS(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
+
+  /**
+    * The function returns the names of the output in the order they were bound. This is useful after running the model
+    * with bound outputs because the returned names are in order in which output OrtValues are returned. This API is optional
+    * to use. If you knew the order of outputs you used for binding you would not need to use this API.
+    *
+    * \param  binding_ptr - a ptr to an instance of OrtIoBinding created obtained from CreateIoBinding()
+    * \param  allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+    *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+    * \param buffer - pointer to a continuous buffer of non-zero terminated UTF-8 encoded strings. The number of strings stored is returned count parameter.
+    *                 this buffer will be allocated with the specified allocator and must be freed after it is no longer needed.
+    * \param lengths - a pointer to a continuous buffer of size_t lengths of strings returned in the buffer. The number of items is returned
+    *                  in the count. This buffer is allocated with the specified allocator and must be freed after it is no longer needed.
+    * \para count - is the number of strings returned. If the instance of OrtIoBiding has no bound outputs, zero is returned,
+    *              no memory allocation is performed and buffer and lengths are nullptr on return.
+    */
+  ORT_API2_STATUS(GetBoundOutputNames, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                  _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
+
 
   /** Clears any previously specified bindings for inputs/outputs
    */

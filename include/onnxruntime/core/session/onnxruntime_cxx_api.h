@@ -333,10 +333,15 @@ struct Allocator : public Base<OrtAllocator> {
 };
 
 struct IoBinding : public Base<OrtIoBinding> {
+ private:
+  std::vector<std::string> GetOutputNames(OrtAllocator*) const;
+ public:
   explicit IoBinding(Session& session);
   void BindInput(const char* name, const Value&);
   void BindOutput(const char* name, const Value&);
   void BindOutput(const char* name, const MemoryInfo&);
+  std::vector<std::string> GetOutputNames() const;
+  std::vector<std::string> GetOutputNames(Allocator&) const;
   void ClearBoundInputs();
   void ClearBoundOutputs();
 };
