@@ -556,16 +556,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateMemoryInfo(
                                                             IntPtr /*(const char*) */name,
-                                                            AllocatorType allocatorType,
+                                                            OrtAllocatorType allocatorType,
                                                             int identifier,
-                                                            MemoryType memType,
+                                                            OrtMemType memType,
                                                             out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo    // memory ownership transfered to caller
                                                        );
         public static DOrtCreateMemoryInfo OrtCreateMemoryInfo;
 
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateCpuMemoryInfo(
-                                                            AllocatorType allocatorType,
-                                                            MemoryType memoryType,
+                                                            OrtAllocatorType allocatorType,
+                                                            OrtMemType memoryType,
                                                             out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo
                                                         );
         public static DOrtCreateCpuMemoryInfo OrtCreateCpuMemoryInfo;
@@ -589,12 +589,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtMemoryInfoGetMemType(
                                                 IntPtr /*(const OrtMemoryInfo* ptr)*/ mem_info,
-                                                out MemoryType /*(OrtMemType*)*/ mem_type);
+                                                out OrtMemType /*(OrtMemType*)*/ mem_type);
         public static DOrtMemoryInfoGetMemType OrtMemoryInfoGetMemType;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtMemoryInfoGetType(
                                                 IntPtr /*(const OrtMemoryInfo* ptr)*/ mem_info,
-                                                out AllocatorType /*(OrtAllocatorType*)*/ alloc_type
+                                                out OrtAllocatorType /*(OrtAllocatorType*)*/ alloc_type
                                                 );
         public static DOrtMemoryInfoGetType OrtMemoryInfoGetType;
 

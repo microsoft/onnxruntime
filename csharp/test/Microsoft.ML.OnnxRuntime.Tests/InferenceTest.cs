@@ -1660,22 +1660,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         void TestCPUAllocator(InferenceSession session)
         {
             int device_id = 0;
-            using (var info_cpu = new MemoryInfo(MemoryInfo.CPU_allocator, AllocatorType.ArenaAllocator, device_id, MemoryType.Default))
+            using (var info_cpu = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
             {
                 Assert.NotEqual(info_cpu.Pointer, IntPtr.Zero);
                 Assert.Equal("Cpu", info_cpu.Name);
                 Assert.Equal(device_id, info_cpu.Id);
-                Assert.Equal(AllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
-                Assert.Equal(MemoryType.Default, info_cpu.GetMemoryType());
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cpu.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_cpu.GetMemoryType());
 
-                using (var allocator = new MemoryAllocator(session, info_cpu))
+                using (var allocator = new OrtAllocator(session, info_cpu))
                 {
                     Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
                     Assert.True(info_cpu.CompareMemoryInfo(alloc_info));
 
                     uint size = 1024;
-                    MemoryAllocation chunk = allocator.Allocate(size);
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
                     Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
                     Assert.True(chunk.Info.CompareMemoryInfo(alloc_info));
@@ -1689,22 +1689,22 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         void TestCUDAAllocator(InferenceSession session)
         {
             int device_id = 0;
-            using (var info_cuda = new MemoryInfo(MemoryInfo.CUDA_allocator, AllocatorType.ArenaAllocator, device_id, MemoryType.Default))
+            using (var info_cuda = new OrtMemoryInfo(OrtMemoryInfo.allocatorCUDA, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
             {
                 Assert.NotEqual(info_cuda.Pointer, IntPtr.Zero);
                 Assert.Equal("Cuda", info_cuda.Name);
                 Assert.Equal(device_id, info_cuda.Id);
-                Assert.Equal(AllocatorType.ArenaAllocator, info_cuda.GetAllocatorType());
-                Assert.Equal(MemoryType.Default, info_cuda.GetMemoryType());
+                Assert.Equal(OrtAllocatorType.ArenaAllocator, info_cuda.GetAllocatorType());
+                Assert.Equal(OrtMemType.Default, info_cuda.GetMemoryType());
 
-                using (var allocator = new MemoryAllocator(session, info_cuda))
+                using (var allocator = new OrtAllocator(session, info_cuda))
                 {
                     Assert.NotEqual(allocator.Pointer, IntPtr.Zero);
                     var alloc_info = allocator.Info;
                     Assert.True(info_cuda.CompareMemoryInfo(alloc_info));
 
                     uint size = 1024;
-                    MemoryAllocation chunk = allocator.Allocate(size);
+                    OrtMemoryAllocation chunk = allocator.Allocate(size);
                     Assert.NotEqual(chunk.Pointer, IntPtr.Zero);
                     Assert.Equal(chunk.Size, size);
                     Assert.True(chunk.Info.CompareMemoryInfo(alloc_info));

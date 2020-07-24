@@ -700,6 +700,15 @@ namespace Microsoft.ML.OnnxRuntime
             return new IoBinding(this);
         }
 
+        /// <summary>
+        ///  Make this method return a collection of DisposableNamedOnnxValue as in other interfaces
+        ///  Query names from IoBinding object and pair then with the array of OrtValues returned
+        ///  
+        /// This method will run inference and will return outputs with names for the outputs
+        /// previously bound to ioBinding instance.
+        /// </summary>
+        /// <param name="runOptions">RunOptions</param>
+        /// <param name="ioBinding">IoBinding instance with bindings</param>
         public void Run(RunOptions runOptions, IoBinding ioBinding)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
@@ -711,24 +720,17 @@ namespace Microsoft.ML.OnnxRuntime
         public string EndProfiling()
         {
             IntPtr nameHandle = IntPtr.Zero;
-            string str = null;
-
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
+                                                                   OrtAllocator.DefaultInstance.Pointer,
+                                                                   out nameHandle));
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
-                                                                                   MemoryAllocator.DefaultInstance.Pointer,
-                                                                                   out nameHandle));
-                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+                return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
             }
             finally
             {
-                if (nameHandle != IntPtr.Zero)
-                {
-                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
-                }
+                OrtAllocator.DefaultInstance.FreeMemory(nameHandle);
             }
-
-            return str;
         }
 
         //TODO: kept internal until implemented
@@ -834,7 +836,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputName(
                                                _nativeHandle,
                                                (UIntPtr)index,
-                                               MemoryAllocator.DefaultInstance.Pointer,
+                                               OrtAllocator.DefaultInstance.Pointer,
                                                out nameHandle));
 
                 str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
@@ -843,7 +845,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    OrtAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
 
@@ -860,7 +862,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputName(
                                                _nativeHandle,
                                                (UIntPtr)index,
-                                               MemoryAllocator.DefaultInstance.Pointer,
+                                               OrtAllocator.DefaultInstance.Pointer,
                                                out nameHandle));
 
                 str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
@@ -869,7 +871,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    OrtAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
             return str;
@@ -885,7 +887,7 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerName(
                                                 _nativeHandle,
                                                 (UIntPtr)index,
-                                                MemoryAllocator.DefaultInstance.Pointer,
+                                                OrtAllocator.DefaultInstance.Pointer,
                                                 out nameHandle));
 
                 str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
@@ -894,7 +896,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (nameHandle != IntPtr.Zero)
                 {
-                    MemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                    OrtAllocator.DefaultInstance.FreeMemory(nameHandle);
                 }
             }
             return str;

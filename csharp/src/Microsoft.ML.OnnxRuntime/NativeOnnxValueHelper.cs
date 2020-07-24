@@ -182,7 +182,7 @@ internal static class NativeOnnxValueHelper
                     }
 
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorWithDataAsOrtValue(
-                        MemoryInfo.DefaultInstance.Pointer,
+                        OrtMemoryInfo.DefaultInstance.Pointer,
                         dataBufferPointer,
                         (UIntPtr)(dataBufferLength),
                         longShape,
@@ -218,7 +218,7 @@ internal static class NativeOnnxValueHelper
                 try
                 {
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(
-                                                    MemoryAllocator.DefaultInstance.Pointer,
+                                                    OrtAllocator.DefaultInstance.Pointer,
                                                     longShape,
                                                     (UIntPtr)(longShape.Length),
                                                     TensorElementType.String,
