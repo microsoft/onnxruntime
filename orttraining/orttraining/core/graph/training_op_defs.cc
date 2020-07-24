@@ -1167,13 +1167,8 @@ Example 4:
         if (!axisAttr) {
           fail_shape_inference("Required attribute axis is missing");
         }
-        int axis = static_cast<int>(axisAttr->i());
-        if (rank <= axis) {
-          fail_shape_inference("rank must be greater than axis");
-        }
-        if (axis < 0) {
-          return;  // TODO: check if negative axis must be supported
-        }
+        int64_t axis = static_cast<int64_t>(axisAttr->i());
+        axis = HandleNegativeAxis(axis, rank);
 
         bool all_lengths_known = true;
         int total_length = 0;
