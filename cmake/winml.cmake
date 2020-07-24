@@ -191,7 +191,7 @@ target_compile_definitions(winml_lib_ort PRIVATE WINML_ROOT_NS=${winml_root_ns})
 target_compile_definitions(winml_lib_ort PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_ort PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
-  target_compile_definitions(winml_lib_ort PRIVATE "/DBUILD_INBOX=1")
+  target_compile_definitions(winml_lib_ort PRIVATE "BUILD_INBOX=1")
 endif()
 
 # Specify the usage of a precompiled header
