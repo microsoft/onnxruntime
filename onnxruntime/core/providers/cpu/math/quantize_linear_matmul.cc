@@ -38,6 +38,10 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
   // validate offsets
   const auto* a_offset = ctx->Input<Tensor>(2);
   const auto* b_offset = ctx->Input<Tensor>(5);

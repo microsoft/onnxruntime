@@ -9,6 +9,8 @@
 #include <limits>
 #include <mpi.h>
 
+#include "orttraining/core/framework/mpi_setup.h"
+
 namespace onnxruntime {
 namespace cuda {
 

@@ -178,8 +178,8 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   // support_vectors_ : [vector_count_, feature_count_]
 
   // both outputs are required so can't be nullptr
-  Tensor& Y = *ctx.Output(0, TensorShape({num_batches}));
-  Tensor& Z = *ctx.Output(1, TensorShape({num_batches, final_scores_per_batch}));
+  Tensor& Y = *ctx.Output(0, {num_batches});
+  Tensor& Z = *ctx.Output(1, {num_batches, final_scores_per_batch});
 
   auto final_scores = Z.MutableDataAsSpan<float>();
 
