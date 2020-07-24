@@ -182,8 +182,11 @@ class ORTTrainer(object):
         pass
 
 
-    def wrap_for_input_match(self, model, loss_fn, input_names):
-        import inspect
+    def _combine_torch_model_with_loss(self, model, loss_fn, input_names): #rewrite to grab these from self
+        # don't need to wrap anything
+        if not loss_fn:
+            return model
+
         sig = inspect.signature(model.forward)
         ordered_list_keys = list(sig.parameters.keys())
         if loss_fn:
@@ -193,45 +196,18 @@ class ORTTrainer(object):
 
             # label shall be the second input to loss_fn.
             ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
-
-        class CombineTorchModelLossFn(torch.nn.Module):
-            def __init__(self, model, loss_fn):
-                super(CombineTorchModelLossFn, self).__init__()
-                self.model_ = model
-                self.loss_fn_ = loss_fn
-
-            def forward(self, *inputs):
-                # here we assume input can be unpacked into input and label
-                input, label = inputs[:-1], inputs[-1]
-                preds = self.model_(*input)
-                return self.loss_fn_(preds, label), preds
-
-        # name match is needed only when input_names are a subset
-        # of expected inputs (inputs to model and loss_fn combined).
-        if len(input_names) > len(ordered_list_keys):
-            # this is likely the case where input arguments are packed.
-            # TODO: to unpack the input argument.
-            return CombineTorchModelLossFn(model, loss_fn) if loss_fn else model
-        elif len(input_names) == len(ordered_list_keys):
-            # in this case, we do not require name match.
-            return CombineTorchModelLossFn(model, loss_fn) if loss_fn else model
-
-        if not all(x in ordered_list_keys for x in input_names):
-            # model desc has name(s) not matching the model signature. We cannot do anything in this case.
-            # better to warning the user.
-            return CombineTorchModelLossFn(model, loss_fn) if loss_fn else model
-
-        # if input_names match ordered_list_keys, there is not need for wrapping
+        
         match = True
-        for i, input_name in enumerate(input_names):
-            if input_name != ordered_list_keys[i]:
-                match = False
+        for ordered_list_key, input_name in zip(ordered_list_keys, input_names):
+            if ordered_list_key != input_name:
+                match=False
                 break
 
-        if match:
-            return CombineTorchModelLossFn(model, loss_fn) if loss_fn else model
+        is_list_input = match
+                        or len(input_names) >= len(ordered_list_keys)
+                        or not all (x in ordered_list_kes for x in input_names)
 
-        class CombineTorchModelLossFnInputCorrection(torch.nn.Module):
+        class CombineTorchModelLossFn(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
                 super(WrapModel, self).__init__()
                 self.model_ = model
@@ -241,26 +217,31 @@ class ORTTrainer(object):
             def forward(self, *inputs):
                 # *inputs is given by torch trace. It is in the order of input_names.
                 # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
-                sig = inspect.signature(self.model_.forward)
-                ordered_list_keys = list(sig.parameters.keys())
+                if is_list_input:
+                    input, label = inputs[:-1], inputs[-1]
+                    preds = self.model_(*input)
+                    return self.loss_fn_(preds, label), preds
+                else:
+                    sig = inspect.signature(self.model_.forward)
+                    ordered_list_keys = list(sig.parameters.keys())
 
-                input_dict = {}
-                for key in sig.parameters.keys():
-                    if key in self.input_names_:
-                        input_dict[key] = inputs[self.input_names_.index(key)]
+                    input_dict = {}
+                    for key in sig.parameters.keys():
+                        if key in self.input_names_:
+                            input_dict[key] = inputs[self.input_names_.index(key)]
 
-                model_out = self.model_(**input_dict)
-                if self.loss_fn_ is None:
-                    return model_out
+                    model_out = self.model_(**input_dict)
+                    if self.loss_fn_ is None:
+                        return model_out
 
-                label = inputs[-1]
-                preds = model_out
-                return self.loss_fn_(preds, label), preds
+                    label = inputs[-1]
+                    preds = model_out
+                    return self.loss_fn_(preds, label), preds
 
-        model = CombineTorchModelLossFnInputCorrection(model, loss_fn, input_names)
+        model = CombineTorchModelLossFn(model, loss_fn, input_names)
 
         return model
-    # self._torch_model, self._loss_fn, self.model_desc, 
+    
     def convert_torch_model_loss_fn_to_onnx(self, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
         input_names = [input_elem[0] for input_elem in self.model_desc.inputs]
         output_names = [output_elem[0] for output_elem in self.model_desc.outputs]
@@ -278,7 +259,7 @@ class ORTTrainer(object):
         # pytorch onnx exporter/trace does not try to match argument names.
         # e.g. for models with optional inputs, it requires all inputs be present.
         # this is a problem because the model graph depends on inputs provided.
-        model = self.wrap_for_input_match(self._torch_model, self._loss_fn, input_names)
+        model = self._combine_torch_model_with_loss(self._torch_model, self._loss_fn, input_names)
         
         model.eval()
         with torch.no_grad():
