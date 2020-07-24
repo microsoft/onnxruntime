@@ -200,6 +200,7 @@ jobs:
         }
 
         $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
+        $merged_nuget_as_zip = [System.IO.Path]::ChangeExtension($merged_nuget, '.zip')
 
         $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
         if (!(Test-Path $zip_tool_directory)) {
@@ -210,6 +211,8 @@ jobs:
 
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+        
+        Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - task: PowerShell@2
@@ -270,6 +273,7 @@ jobs:
         }
 
         $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
+        $merged_nuget_as_zip = [System.IO.Path]::ChangeExtension($merged_nuget, '.symbols.zip')
 
         $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
         if (!(Test-Path $zip_tool_directory)) {
@@ -280,6 +284,8 @@ jobs:
 
         Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
         Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+
+        Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
       workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
   - template: ../../templates/esrp_nuget.yml

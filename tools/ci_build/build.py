@@ -258,8 +258,6 @@ def parse_arguments():
                  "MYRIAD_FP16", "VAD-F_FP32"],
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
-        "--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
-    parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
     parser.add_argument(
         "--use_rknpu", action='store_true', help="Build with RKNPU.")
@@ -601,14 +599,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
         "-Donnxruntime_USE_OPENVINO_BINARY=" + (
             "ON" if args.use_openvino else "OFF"),
-        "-Donnxruntime_USE_NNAPI_DNNLIBRARY=" + ("ON" if args.use_dnnlibrary else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
-                args.use_dnnlibrary or args.use_mklml or args.use_ngraph or
+                args.use_nnapi or args.use_mklml or args.use_ngraph or
                 args.android or (args.ios and is_macOS())
-                or args.use_rknpu or args.use_nnapi)
+                or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
@@ -707,12 +704,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                        "-Deigen_SOURCE_PATH=" + args.eigen_path]
 
     if args.android:
-        if args.use_dnnlibrary and args.use_nnapi:
-            raise BuildError(
-                "Only one of --use_dnnlibrary and --use_nnapi " +
-                "can be enabled"
-            )
-
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path +
             "/build/cmake/android.toolchain.cmake",
@@ -1176,7 +1167,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
             adb_shell(
                 'cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-            if args.use_dnnlibrary or args.use_nnapi:
+            if args.use_nnapi:
                 adb_shell(
                     'cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')  # noqa
             else:
