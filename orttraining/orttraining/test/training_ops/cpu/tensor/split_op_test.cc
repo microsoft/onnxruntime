@@ -16,7 +16,7 @@ using ExpectResult = OpTester::ExpectResult;
 
 template <typename T>
 void SplitTrainingOpTester(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAndData<T>& input,
-             const std::vector<ShapeAndData<T>>& outputs, bool is_tensorrt_supported = true, bool is_initializer = true,
+             const std::vector<ShapeAndData<T>>& outputs, bool is_initializer = true,
              bool expect_failure = false, const std::string& err_msg = {}) {
   OpTester test("SplitTraining", 1, onnxruntime::kMSDomain);
 
@@ -33,11 +33,8 @@ void SplitTrainingOpTester(int64_t axis, const std::vector<int64_t> split_sizes,
     oss << "output" << i++;
     test.AddOutput<T>(oss.str().c_str(), shape, data);
   }
-  std::unordered_set<std::string> excluded_providers;
-  if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
-  }
-  test.Run(expect_failure ? ExpectResult::kExpectFailure : ExpectResult::kExpectSuccess, err_msg, excluded_providers);
+
+  test.Run(expect_failure ? ExpectResult::kExpectFailure : ExpectResult::kExpectSuccess, err_msg);
 }
 
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat) {
@@ -59,7 +56,7 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat) {
                      {5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  SplitTrainingOpTester<float>(axis, {}, input, outputs);  
 }
 
 TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
@@ -82,7 +79,7 @@ TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
                       5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, splits, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+  SplitTrainingOpTester<float>(axis, splits, input, outputs);  
 }
 
 
@@ -105,7 +102,7 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_not_initializer) {
                      {5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, {}, input, outputs, false, false);  
+  SplitTrainingOpTester<float>(axis, {}, input, outputs, false);  
 }
 
 TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat_not_initializer) {
@@ -128,7 +125,7 @@ TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat_not_initializer) {
                       5.f, 6.f,
                       7.f, 8.f}});
 
-  SplitTrainingOpTester<float>(axis, splits, input, outputs, false, false);  
+  SplitTrainingOpTester<float>(axis, splits, input, outputs, false);  
 }
 
 }  // namespace test

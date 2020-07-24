@@ -15,15 +15,16 @@ namespace contrib {
 class SplitTraining final : public OpKernel, public SplitBase {
  public:
   SplitTraining(const OpKernelInfo& info) : OpKernel(info), SplitBase(info) {}
-  Status PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
-                           int& after_dims_including_split_axis, int& after_dims_excluding_split,
-                           std::vector<int64_t>& split_sizes) const override;
   Status Compute(OpKernelContext* context) const override;
 
  private:
   template <typename T>
   Status ComputeImpl(OpKernelContext& context, const Tensor& input) const;
 };
+
+Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
+                                 int& after_dims_including_split_axis, int& after_dims_excluding_split,
+                                 std::vector<int64_t>& split_sizes);
 
 }  // namespace contrib
 }  // namespace onnxruntime

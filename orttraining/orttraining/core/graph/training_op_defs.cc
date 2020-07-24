@@ -1188,14 +1188,15 @@ Example 4:
           return;
         }
         int splitDimValue = static_cast<int>(splitDim.dim_value());
-        int chunkSize =
-            splitDimValue / static_cast<int>(ctx.getNumOutputs());
-        int leftOver = splitDimValue -
-                        (chunkSize * static_cast<int>(ctx.getNumOutputs()));
-        for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); i++) {
-          split.push_back(i < leftOver ? chunkSize + 1 : chunkSize);
+        if (split.empty()) {
+          int chunkSize =
+              splitDimValue / static_cast<int>(ctx.getNumOutputs());
+          int leftOver = splitDimValue -
+                         (chunkSize * static_cast<int>(ctx.getNumOutputs()));
+          for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); i++) {
+            split.push_back(i < leftOver ? chunkSize + 1 : chunkSize);
+          }
         }
-
         for (size_t i = 0; i < ctx.getNumOutputs(); i++) {
           *ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape() =
               shape;
