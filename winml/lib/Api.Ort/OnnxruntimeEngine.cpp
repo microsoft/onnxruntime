@@ -13,14 +13,56 @@
 
 using namespace _winml;
 
+static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
+  std::string system_path(MAX_PATH);
+#ifdef BUILD_INBOX
+  if (0 >= GetSystemDirectoryA(system_path.data(), system_path.size()))
+  {
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  system_path += "onnxruntime.dll";
+#else
+  system_path = "onnxruntime.dll";
+#endif
+
+  auto out_module = LoadLibraryA(system_path.data());
+  if (out_module == nullptr)
+  {
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  module = out_module;
+  return S_OK;
+}
+
 static const OrtApi* GetVersionedOrtApi() {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetApiBaseSignature = decltype(OrtGetApiBase);
+  auto ort_get_api_base_fn = static_cast<OrtGetApiBaseSignature>(GetProcAddress(onnxruntime_dll, "OrtGetApiBase"));
+  if (ort_get_api_base_fn == nullptr)
+  {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  const auto ort_api_base = ort_get_api_base_fn();
+
   static const uint32_t ort_version = 2;
-  const auto ort_api_base = OrtGetApiBase();
   return ort_api_base->GetApi(ort_version);
 }
 
 static const WinmlAdapterApi* GetVersionedWinmlAdapterApi() {
-  return OrtGetWinMLAdapter(GetVersionedOrtApi());
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetWinMLAdapterSignature = decltype(OrtGetWinMLAdapter);
+  auto ort_get_winml_adapter_fn = static_cast<OrtGetWinMLAdapterSignature>(GetProcAddress(onnxruntime_dll, "OrtGetWinMLAdapter"));
+  if (ort_get_winml_adapter_fn == nullptr)
+  {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  return ort_get_winml_adapter_fn(GetVersionedOrtApi());
 }
 
 static ONNXTensorElementDataType
@@ -639,7 +681,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   auto unique_dml_allocator_resource =
       DmlAllocatorResource(dml_allocator_resource,
                            [](void* ptr) {
-                             GetVersionedWinmlAdapterApi()->DmlFreeGPUAllocation(ptr);
+                             winml_adapter_api->DmlFreeGPUAllocation(ptr);
                            });
 
   // create the OrtValue as a tensor letting ort know that we own the data buffer
