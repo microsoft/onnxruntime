@@ -697,7 +697,11 @@ const char* DataTypeImpl::ToString(MLDataType type) {
   if (type_proto != nullptr) {
     return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)->c_str();
   }
+#ifdef ORT_NO_RTTI
+  return "(unknown type)";
+#else
   return typeid(*type).name();
+#endif
 }
 
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
@@ -951,7 +955,11 @@ std::ostream& operator<<(std::ostream& out, const DataTypeImpl* data_type) {
   if (data_type == nullptr)
     return out << "(null)";
 
+#ifdef ORT_NO_RTTI
+  return out << "(unknown type)";
+#else
   return out << typeid(*data_type).name();
+#endif
 }
 
 namespace utils {

@@ -6,4 +6,4 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 #requires python3.6 or higher
-python3 $DIR/tools/ci_build/build.py --use_openmp --build_dir $DIR/build/Linux "$@"
+python3 $DIR/tools/ci_build/build.py --build_dir $DIR/build/Linux "$@"

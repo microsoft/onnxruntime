@@ -18,6 +18,7 @@ limitations under the License.
 #include "gradient_checker.h"
 #include "gradient_op_test_utils.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "test/util/include/test_random_seed.h"
 #include <random>
 
@@ -305,10 +306,12 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     }
   }
 
+  training::GradientGraphConfiguration gradient_graph_config;
   training::GradientGraphBuilder grad_graph_builder(&graph,
                                                     dy_values,
                                                     weights_to_train,
                                                     "",
+                                                    gradient_graph_config,
                                                     true);
   Status status = grad_graph_builder.Build();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

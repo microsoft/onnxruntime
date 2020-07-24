@@ -3,7 +3,7 @@ jobs:
   parameters:
     AgentPool : 'Linux-CPU'
     JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_llvm --use_nuphar --use_dnnl --use_tvm --build_wheel --build_java --enable_language_interop_ops --use_featurizers --wheel_name_suffix featurizers"'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--use_mklml --use_llvm --use_nuphar --use_dnnl --use_tvm --build_wheel --build_java --build_nodejs --enable_language_interop_ops --use_featurizers --wheel_name_suffix featurizers"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'
     TimeoutInMinutes: 120

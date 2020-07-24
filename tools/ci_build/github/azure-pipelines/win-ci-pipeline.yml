@@ -26,6 +26,10 @@ jobs:
       addToPath: true 
       architecture: $(buildArch)
 
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '12.x'
+
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
@@ -34,7 +38,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy scipy
+     python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -65,7 +69,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --use_dnnl --use_winml --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --build_java'
+      arguments: '--gen_doc --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --use_dnnl --use_winml --use_openmp --build_shared_lib --enable_onnx_tests --enable_wcos --build_java --build_nodejs'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -125,84 +129,26 @@ jobs:
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --use_dnnl --build_wheel --enable_onnx_tests
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --build_nodejs --test --cmake_generator "Visual Studio 16 2019"  --use_dnnl --build_wheel --enable_onnx_tests
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
  
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
-
-- job: 'static_analysis'
-  pool: 'Win-CPU-2019'
-  variables:
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
-    MsbuildArguments: '-maxcpucount'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env.bat
-    buildArch: x64
-    BuildConfig: 'Debug'
-    setVcvars: true
-  timeoutInMinutes: 60
-  workspace:
-    clean: all
-  steps:
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.7'
-      addToPath: true
-      architecture: $(buildArch)
-
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-
-  - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy scipy flake8
-     mkdir $(Build.SourcesDirectory)\$(BuildConfig)
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
-
-  - powershell: |
-     $Env:USE_MSVC_STATIC_RUNTIME=1
-     $Env:ONNX_ML=1
-     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=$(buildArch)-windows-static"
-     python setup.py bdist_wheel
-     Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
-    workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-    displayName: 'Install ONNX'
-
-  - task: CMake@1
-    inputs:
-      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      cmakeArgs: $(Build.SourcesDirectory)\cmake -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_DEV_MODE=ON -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_FEATURIZERS=OFF -Donnxruntime_CUDA_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_USE_MIMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_JAVA=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=OFF -Donnxruntime_USE_FULL_PROTOBUF=OFF -Donnxruntime_DISABLE_CONTRIB_OPS=OFF -Donnxruntime_MSVC_STATIC_RUNTIME=OFF -Donnxruntime_USE_DML=OFF -Donnxruntime_USE_TELEMETRY=OFF -A x64 -T host=x64 -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=$(BuildConfig) -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -Donnxruntime_PREFER_SYSTEM_LIB=ON -Donnxruntime_ENABLE_STATIC_ANALYSIS=ON
-
-  - task: VSBuild@1
-    displayName: 'Build'
-    inputs:
-      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-      platform: 'x64'
-      configuration: $(BuildConfig)
-      msbuildArgs: $(MsbuildArguments)
-      msbuildArchitecture: $(buildArch)
-      maximumCpuCount: true
-      logProjectEvents: false
-      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-      createLogFile: true
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
 
 - job: 'x86_build'
   pool: 'Win-CPU-2019'
@@ -239,7 +185,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy scipy
+     python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -326,11 +272,21 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
 
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
    
 - job: 'x86_no_contrib_ops'
   pool: 'Win-CPU-2019'
@@ -367,7 +323,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy scipy
+     python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -384,7 +340,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests --x86'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests --x86'
       workingDirectory: '$(Build.BinariesDirectory)'
      
   - task: VSBuild@1
@@ -438,16 +394,26 @@ jobs:
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests --x86
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests --x86
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
 
 - job: 'build_x64_no_contrib_ops'
   pool: 'Win-CPU-2019'
@@ -484,7 +450,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy scipy
+     python -m pip install -q pyopenssl setuptools wheel numpy flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -501,7 +467,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops  --enable_msvc_static_runtime --enable_onnx_tests'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -557,15 +523,24 @@ jobs:
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --enable_msvc_static_runtime --enable_onnx_tests
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
  
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
    

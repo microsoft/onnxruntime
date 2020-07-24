@@ -29,7 +29,9 @@ class TestInferenceSession(unittest.TestCase):
 
     def testGetProviders(self):
         self.assertTrue('CPUExecutionProvider' in onnxrt.get_available_providers())
-        self.assertTrue('CPUExecutionProvider' in onnxrt.get_all_providers())
+        # get_all_providers() returns the default EP order from highest to lowest.
+        # CPUExecutionProvider should always be last.
+        self.assertTrue('CPUExecutionProvider' == onnxrt.get_all_providers()[-1])
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
         self.assertTrue('CPUExecutionProvider' in sess.get_providers())
 
@@ -42,6 +44,154 @@ class TestInferenceSession(unittest.TestCase):
             sess.set_providers(['CPUExecutionProvider'])
             # confirm only CPU Provider is registered now.
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
+
+    def testSetProvidersWithOptions(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            import sys
+            import ctypes
+            CUDA_SUCCESS = 0
+
+            def runBaseTest1():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+
+                option1 = {'device_id': 0}
+                sess.set_providers(['CUDAExecutionProvider'], [option1])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'device_id': -1}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option2])
+                sess.set_providers(['CUDAExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def runBaseTest2():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('CUDAExecutionProvider' in sess.get_providers())
+
+                # test get/set of "cuda_mem_limit" configuration.
+                options = sess.get_provider_options()
+                self.assertTrue('CUDAExecutionProvider' in options)
+                option = options['CUDAExecutionProvider']
+                self.assertTrue('cuda_mem_limit' in option)
+                ori_mem_limit = option['cuda_mem_limit']
+                new_mem_limit = int(ori_mem_limit) // 2
+                option['cuda_mem_limit'] = new_mem_limit
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], str(new_mem_limit))
+
+                option['cuda_mem_limit'] = ori_mem_limit 
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                options = sess.get_provider_options()
+                self.assertEqual(options['CUDAExecutionProvider']['cuda_mem_limit'], ori_mem_limit)
+
+                option['cuda_mem_limit'] = -1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 1024.1024
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                option['cuda_mem_limit'] = 'wrong_value'
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+
+                # test get/set of "arena_extend_strategy" configuration.
+                options = sess.get_provider_options()
+                self.assertTrue('CUDAExecutionProvider' in options)
+                option = options['CUDAExecutionProvider']
+                self.assertTrue('arena_extend_strategy' in option)
+                for strategy in ['kNextPowerOfTwo', 'kSameAsRequested']:
+                    option['arena_extend_strategy'] = strategy
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    options = sess.get_provider_options()
+                    self.assertEqual(options['CUDAExecutionProvider']['arena_extend_strategy'], strategy)
+
+                option['arena_extend_strategy'] = 'wrong_value'
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+            def getCudaDeviceCount():
+                import ctypes
+
+                num_device = ctypes.c_int()
+                result = ctypes.c_int()
+                error_str = ctypes.c_char_p()
+
+                result = cuda.cuInit(0)
+                result = cuda.cuDeviceGetCount(ctypes.byref(num_device))
+                if result != CUDA_SUCCESS:
+                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                    print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+                    return -1
+
+                return num_device.value
+
+            def setDeviceIdTest(i):
+                import ctypes
+                import onnxruntime as onnxrt
+
+                device = ctypes.c_int()
+                result = ctypes.c_int()
+                error_str = ctypes.c_char_p()
+
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                option = {'device_id': i}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                result = cuda.cuCtxGetDevice(ctypes.byref(device))
+                if result != CUDA_SUCCESS:
+                    cuda.cuGetErrorString(result, ctypes.byref(error_str))
+                    print("cuCtxGetDevice failed with error code %d: %s" % (result, error_str.value.decode()))
+
+                self.assertEqual(result, CUDA_SUCCESS)
+                self.assertEqual(i, device.value)
+
+            def runAdvancedTest():
+                num_device = getCudaDeviceCount()
+                if num_device < 0:
+                    return 
+
+                # Configure session to be ready to run on all available cuda devices
+                for i in range(num_device):
+                    setDeviceIdTest(i)
+
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+
+                # configure session with not legit option values and that shloud fail
+                with self.assertRaises(RuntimeError):
+                    option = {'device_id': num_device}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+                    option = {'device_id': 'non_legit_value'}
+                    sess.set_providers(['CUDAExecutionProvider'], [option])
+
+                # configure session with not legit option should cause no effect
+                option = {'device_id': 0}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                option = {'non_legit_option': num_device}
+                sess.set_providers(['CUDAExecutionProvider'], [option])
+                self.assertEqual(['CUDAExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+
+
+            libnames = ('libcuda.so', 'libcuda.dylib', 'cuda.dll')
+            for libname in libnames:
+                try:
+                    cuda = ctypes.CDLL(libname)
+                    runBaseTest1()
+                    runBaseTest2()
+                    runAdvancedTest()
+
+                except OSError:
+                    continue
+                else:
+                    break
+            else:
+                runBaseTest1()
+                runBaseTest2()
+                # raise OSError("could not load any of: " + ' '.join(libnames))
 
     def testInvalidSetProviders(self):
         with self.assertRaises(ValueError) as context:
@@ -313,50 +463,6 @@ class TestInferenceSession(unittest.TestCase):
                         dtype=object)
         np.testing.assert_equal(expr, res[0])
 
-    def testZipMapStringFloat(self):
-        sess = onnxrt.InferenceSession(get_name("zipmap_stringfloat.onnx"))
-        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
-
-        x_name = sess.get_inputs()[0].name
-        self.assertEqual(x_name, "X")
-        x_type = sess.get_inputs()[0].type
-        self.assertEqual(x_type, 'tensor(float)')
-
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Z")
-        output_type = sess.get_outputs()[0].type
-        self.assertEqual(output_type, 'seq(map(string,tensor(float)))')
-
-        output_expected = [{
-            'class2': 0.0,
-            'class1': 1.0,
-            'class3': 3.0
-        }, {
-            'class2': 23.0,
-            'class1': 44.0,
-            'class3': 11.0
-        }]
-        res = sess.run([output_name], {x_name: x})
-        self.assertEqual(output_expected, res[0])
-
-    def testZipMapInt64Float(self):
-        sess = onnxrt.InferenceSession(get_name("zipmap_int64float.onnx"))
-        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
-
-        x_name = sess.get_inputs()[0].name
-        self.assertEqual(x_name, "X")
-        x_type = sess.get_inputs()[0].type
-        self.assertEqual(x_type, 'tensor(float)')
-
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Z")
-        output_type = sess.get_outputs()[0].type
-        self.assertEqual(output_type, 'seq(map(int64,tensor(float)))')
-
-        output_expected = [{10: 1.0, 20: 0.0, 30: 3.0}, {10: 44.0, 20: 23.0, 30: 11.0}]
-        res = sess.run([output_name], {x_name: x})
-        self.assertEqual(output_expected, res[0])
-
     def testRaiseWrongNumInputs(self):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("logicaland.onnx"))
@@ -392,108 +498,6 @@ class TestInferenceSession(unittest.TestCase):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
             self.assertTrue(']' in lines[8])
-
-    def testDictVectorizer(self):
-        sess = onnxrt.InferenceSession(get_name("pipeline_vectorize.onnx"))
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "float_input")
-        input_type = str(sess.get_inputs()[0].type)
-        self.assertEqual(input_type, "map(int64,tensor(float))")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "variable1")
-        output_type = sess.get_outputs()[0].type
-        self.assertEqual(output_type, "tensor(float)")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [1, 1])
-
-        # Python type
-        x = {0: 25.0, 1: 5.13, 2: 0.0, 3: 0.453, 4: 5.966}
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-        xwrong = x.copy()
-        xwrong["a"] = 5.6
-        try:
-            res = sess.run([output_name], {input_name: xwrong})
-        except RuntimeError as e:
-            self.assertIn("Unexpected key type  <class 'str'>, it cannot be linked to C type int64_t", str(e))
-
-        # numpy type
-        x = {np.int64(k): np.float32(v) for k, v in x.items()}
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-        x = {np.int64(k): np.float64(v) for k, v in x.items()}
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-        x = {np.int32(k): np.float64(v) for k, v in x.items()}
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[49.752754]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-    def testLabelEncoder(self):
-        sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"))
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "input")
-        input_type = str(sess.get_inputs()[0].type)
-        self.assertEqual(input_type, "tensor(string)")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [1, 1])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "variable")
-        output_type = sess.get_outputs()[0].type
-        self.assertEqual(output_type, "tensor(int64)")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [1, 1])
-
-        # Array
-        x = np.array([['4']])
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([[3]], dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-        # Python type
-        x = np.array(['4'], ndmin=2)
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([3], ndmin=2, dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-        x = np.array(['4'], ndmin=2, dtype=np.object)
-        res = sess.run([output_name], {input_name: x})
-        output_expected = np.array([3], ndmin=2, dtype=np.int64)
-        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
-
-    def test_run_model_mlnet(self):
-        sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"))
-        names = [_.name for _ in sess.get_outputs()]
-        self.assertEqual(['C00', 'C12'], names)
-        c0 = np.array([5.], dtype=np.float32).reshape(1, 1)
-
-        c1 = np.array([b'A\0A\0', b"B\0B\0", b"C\0C\0"], np.void).reshape(1, 3)
-        res = sess.run(None, {'C0': c0, 'C1': c1})
-        mat = res[1]
-        total = mat.sum()
-        self.assertEqual(total, 2)
-        self.assertEqual(list(mat.ravel()),
-                         list(np.array([[[0., 0., 0., 0.], [1., 0., 0., 0.], [0., 0., 1., 0.]]]).ravel()))
-
-        # In memory, the size of each element is fixed and equal to the
-        # longest element. We cannot use bytes because numpy is trimming
-        # every final 0 for strings and bytes before creating the array
-        # (to save space). It does not have this behaviour for void
-        # but as a result, numpy does not know anymore the size
-        # of each element, they all have the same size.
-        c1 = np.array([b'A\0A\0\0', b"B\0B\0", b"C\0C\0"], np.void).reshape(1, 3)
-        res = sess.run(None, {'C0': c0, 'C1': c1})
-        mat = res[1]
-        total = mat.sum()
-        self.assertEqual(total, 0)
 
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
@@ -608,6 +612,28 @@ class TestInferenceSession(unittest.TestCase):
         finally:
             # Make sure the usage of the feature is disabled after this test
             os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)
+
+    def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
+        so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
+        sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "x")
+        input_shape = sess.get_inputs()[0].shape
+        # Free dims with denotations - "DATA_BATCH" and "DATA_CHANNEL" have values assigned to them.
+        self.assertEqual(input_shape, [3, 5, 5])
+
+    def testSessionOptionsAddFreeDimensionOverrideByName(self):
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_name("Dim1", 4)
+        so.add_free_dimension_override_by_name("Dim2", 6)
+        sess = onnxrt.InferenceSession(get_name("abs_free_dimensions.onnx"), so)
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "x")
+        input_shape = sess.get_inputs()[0].shape
+        # "Dim1" and "Dim2" have values assigned to them.
+        self.assertEqual(input_shape, [4, 6, 5])
 
 
 if __name__ == '__main__':

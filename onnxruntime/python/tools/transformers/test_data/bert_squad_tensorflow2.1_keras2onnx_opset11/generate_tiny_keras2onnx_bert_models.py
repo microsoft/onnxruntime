@@ -29,7 +29,7 @@ import sys
 import argparse
 import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
-from optimizer import OnnxModel
+from onnxruntime_tools.transformers.onnx_model import OnnxModel
 import os
 import onnxruntime
 import random
@@ -42,7 +42,6 @@ SEQ_LEN = 7
 
 
 class TinyBertOnnxModel(OnnxModel):
-
     def __init__(self, model, verbose):
         super(TinyBertOnnxModel, self).__init__(model, verbose)
         self.resize_model()

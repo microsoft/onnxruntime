@@ -23,7 +23,7 @@ tarStream.pipe(zlib.createGzip({level: 9})).pipe(ws);
 // enumerate all files under BIN folder
 const entries = klawSync(BIN_FOLDER, {nodir: true}).map(i => ({
                                                           path: i.path,
-                                                          name: path.relative(ROOT_FOLDER, i.path),
+                                                          name: path.relative(ROOT_FOLDER, i.path).replace(/\\/g, '/'),
                                                           size: i.stats.size,
                                                           mode: i.stats.mode | parseInt('444', 8) | parseInt('222', 8),
                                                           gid: i.stats.gid,

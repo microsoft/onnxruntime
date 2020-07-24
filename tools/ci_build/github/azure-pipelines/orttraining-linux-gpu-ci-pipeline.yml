@@ -17,6 +17,7 @@ jobs:
       --config $(buildConfig)
       --skip_onnx_tests
       --build_wheel
+      --enable_nvtx_profile
       "
     DoNugetPack: 'false'
     ArtifactName: 'drop-linux'

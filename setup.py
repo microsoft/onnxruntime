@@ -32,7 +32,6 @@ if '--nightly_build' in sys.argv:
 for arg in sys.argv[1:]:
     if arg.startswith("--wheel_name_suffix="):
         wheel_name_suffix = arg[len("--wheel_name_suffix="):]
-        nightly_build = True
 
         sys.argv.remove(arg)
 
@@ -40,19 +39,11 @@ for arg in sys.argv[1:]:
 
 # The following arguments are mutually exclusive
 if '--use_tensorrt' in sys.argv:
-    package_name = 'onnxruntime-gpu-tensorrt'
+    package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
     sys.argv.remove('--use_tensorrt')
-    if '--nightly_build' in sys.argv:
-        package_name = 'ort-trt-nightly'
-        nightly_build = True
-        sys.argv.remove('--nightly_build')
 elif '--use_cuda' in sys.argv:
-    package_name = 'onnxruntime-gpu'
+    package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     sys.argv.remove('--use_cuda')
-    if '--nightly_build' in sys.argv:
-        package_name = 'ort-gpu-nightly'
-        nightly_build = True
-        sys.argv.remove('--nightly_build')
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
@@ -68,7 +59,12 @@ elif '--use_nuphar' in sys.argv:
 elif '--use_vitisai' in sys.argv:
     package_name = 'onnxruntime-vitisai'
     sys.argv.remove('--use_vitisai')
-# --use_acl is specified in build.py, but not parsed here
+elif '--use_acl' in sys.argv:
+    package_name = 'onnxruntime-acl'
+    sys.argv.remove('--use_acl')
+elif '--use_armnn' in sys.argv:
+    package_name = 'onnxruntime-armnn'
+    sys.argv.remove('--use_armnn')
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -132,7 +128,7 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so']
+                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -226,6 +222,7 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.quantization',
 ]
 
 package_data = {}
@@ -335,6 +332,8 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: MacOS',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',
         'Programming Language :: Python :: 3.5',

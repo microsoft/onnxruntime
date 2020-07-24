@@ -35,8 +35,9 @@ class RNN : public OpKernel {
     }
 
     ORT_ENFORCE(activations_.size() == static_cast<size_t>(num_directions));
-    for (int direction = 1; direction < num_directions; direction++) {
-      ORT_ENFORCE(allowed_activations.find(activations_[direction]) != allowed_activations.end());
+    for (int direction = 0; direction < num_directions; direction++) {
+      ORT_ENFORCE(allowed_activations.find(activations_[direction]) != allowed_activations.end(),
+                  "RNN op: Invalid activation attribute - ", activations_[direction]);
     }
   }
 

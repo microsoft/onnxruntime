@@ -119,7 +119,7 @@ Return Value:
 
         float Value = *Input++;
 
-        Value = (std::min)(MlasTanhConstants.UpperRange, (std::max)(MlasTanhConstants.LowerRange, Value));
+        Value = std::min(MlasTanhConstants.UpperRange, std::max(MlasTanhConstants.LowerRange, Value));
 
         float ValueSquared = Value * Value;
 

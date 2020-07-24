@@ -10,27 +10,30 @@
 
 import argparse
 import mysql.connector
-import xml.etree.ElementTree as ET
+import json
 import sys
 import os
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="ONNXRuntime test coverge report uploader for dashboard")
-    parser.add_argument("--report_url", help="URL to the Cobertura XML report")
-    parser.add_argument("--report_file", help="Path to the local cobertura XML report")
+    parser = argparse.ArgumentParser(
+        description="ONNXRuntime test coverge report uploader for dashboard")
+    parser.add_argument("--report_url", help="URL to the LLVM json report")
+    parser.add_argument(
+        "--report_file", help="Path to the local cobertura XML report")
     parser.add_argument("--commit_hash", help="Full Git commit hash")
     return parser.parse_args()
 
 
 def parse_xml_report(report_file):
-    tree = ET.parse(report_file)  # may throw exception
-    root = tree.getroot()
     result = {}
+    with open(report_file) as json_file:
+        data = json.load(json_file)
 
-    result['coverage'] = float(root.get('line-rate'))
-    result['lines_covered'] = int(root.get('lines-covered'))
-    result['lines_valid'] = int(root.get('lines-valid'))
+    linestat = data['data'][0]['totals']['lines']
+    result['coverage'] = float(linestat['percent']/100.0)
+    result['lines_covered'] = int(linestat['covered'])
+    result['lines_valid'] = int(linestat['count'])
     return result
 
 

@@ -1,11 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_HOROVOD
+#if defined(USE_NCCL) || defined(USE_HOROVOD)
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/cuda/communication/common.h"
+#include "core/profile/profile.h"
 #include <mpi.h>
+
+#include "orttraining/core/framework/mpi_setup.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -35,6 +38,13 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t* remote_rank = remote_rank_tensor->template Data<int64_t>();
   const int src = static_cast<int>(*remote_rank);
 
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator preRange(
+    "PreRecv-" + std::to_string(src), profile::Color::Green);
+  // Begin of preparation for receiving data.
+  preRange.Begin();
+#endif
+
   // Create buffers
   const int tensor_num = static_cast<int>(element_types_.size());
   // TODO move the following variables to member variables for extending life-time
@@ -58,18 +68,31 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
                                   src,
                                   static_cast<int>(tag_)};
 
-  int mpi_code = 0;
 
   // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
   // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
     info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  mpi_code = MPI_Recv(
+    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+#ifdef ENABLE_NVTX_PROFILE
+  // This range object includes the first MPI_Recv which receives a scalar.
+  // It means we count the MPI's initialization in pre-recv stage.
+  preRange.End();
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator recvRange(
+    "Recv-" + std::to_string(src), profile::Color::Green);
+  // Begin of major communication tasks.
+  // The first MPI_Recv is not included because we don't want to
+  // count waiting time before setting up the actual communication.
+  recvRange.Begin();
+#endif
+
+  MPI_CHECK(MPI_Recv(
     info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
   // Prepare receive shapes and data buffer
   aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[tensor_num - 1]);
@@ -86,14 +109,24 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
   // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
     info_shapes.buffer, info_shapes.size, MPI_CHAR,
-    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  mpi_code = MPI_Recv(
+    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+  MPI_CHECK(MPI_Recv(
     info_data.buffer, info_data.size, MPI_CHAR,
-    info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+    info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+#ifdef ENABLE_NVTX_PROFILE
+  // End of actual communication.
+  recvRange.End();
+#endif
+
+#ifdef ENABLE_NVTX_PROFILE
+  profile::NvtxRangeCreator postRange(
+    "PostRecv-" + std::to_string(src), profile::Color::Green);
+  postRange.Begin();
+#endif
 
   // Create Tensors
   size_t begin = 0;
@@ -118,6 +151,10 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* output_signal_tensor = ctx->Output(0, {});
   bool* output_signal = output_signal_tensor->template MutableData<bool>();
   *output_signal = true;
+
+#ifdef ENABLE_NVTX_PROFILE
+  postRange.End();
+#endif
 
   return Status::OK();
 }

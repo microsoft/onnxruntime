@@ -48,8 +48,8 @@ GemmU8X8KernelFrame STRUCT
         CountM QWORD ?
         CountN QWORD ?
         ldc QWORD ?
-        RowSumVector QWORD ?
-        ColumnSumVector QWORD ?
+        RowSumBuffer QWORD ?
+        ColumnSumBuffer QWORD ?
         DepthValue QWORD ?
         ZeroMode QWORD ?
 
@@ -77,9 +77,9 @@ GemmU8X8KernelFrame ENDS
 ;
 ;   r9 - Supplies the length in bytes of a row from matrix A.
 ;
-;   r12 - Supplies the address of the row sum vector.
+;   r12 - Supplies the address of the row sum buffer.
 ;
-;   r13 - Supplies the address of the column sum vector.
+;   r13 - Supplies the address of the column sum buffer.
 ;
 ;   ymm4-ymm15 - Supplies the block accumulators.
 ;
@@ -95,7 +95,7 @@ ProduceOutputBlock MACRO ColumnCount, RowCount
 IF ColumnCount EQ 16
         vpaddd  ymm0,ymm1,YMMWORD PTR [r13]
         vpaddd  ymm1,ymm1,YMMWORD PTR [r13+32]
-        add     r13,16*4                    ; advance ColumnSumVector by 16 columns
+        add     r13,16*4                    ; advance ColumnSumBuffer by 16 columns
 ELSE
         vpaddd  ymm1,ymm1,YMMWORD PTR [r13]
 ENDIF
@@ -128,8 +128,8 @@ IF RowCount GT 3
 ENDIF
         ComputeBlockLoop ColumnCount, RowCount
 IF RowCount GT 3
-        lea     rbx,[r8+rax*2]              ; compute matrix C plus 3 rows
-        add     rbx,rax
+        lea     rbx,[rax*2+rax]
+        add     rbx,r8                      ; compute matrix C plus 3 rows
 ENDIF
 
         ENDM
@@ -166,9 +166,9 @@ ENDIF
 ;
 ;   r10b - Supplies the zero mode flag.
 ;
-;   r12 - Supplies the address of the row sum vector.
+;   r12 - Supplies the address of the row sum buffer.
 ;
-;   r13 - Supplies the address of the column sum vector.
+;   r13 - Supplies the address of the column sum buffer.
 ;
 
 ProcessCountM MACRO RowCount, Fallthrough

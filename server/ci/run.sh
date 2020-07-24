@@ -7,5 +7,5 @@ make -j$(getconf _NPROCESSORS_ONLN)
 cd /onnxruntime_src/test
 /build/onnxruntime_server_tests
 cd /build
-pip3 install grpcio requests protobuf
+python3 -m pip install grpcio==1.27.2 requests protobuf
 python3 server_test/test_main.py /build/onnxruntime_server /build/models/opset8/test_mnist /onnxruntime_src/test/testdata/server /build /build/server_test

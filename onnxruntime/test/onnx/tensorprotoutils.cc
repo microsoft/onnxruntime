@@ -401,7 +401,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
       if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Size overflow");
       }
-      size_t size_to_allocate;
+      size_t size_to_allocate = 0;
       ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_to_allocate));
 
       if (preallocated && preallocated_size < size_to_allocate)

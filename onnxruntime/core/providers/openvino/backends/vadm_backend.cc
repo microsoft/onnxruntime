@@ -16,6 +16,7 @@
 #include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
+#include <vpu/hddl_plugin_config.hpp>
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -43,32 +44,65 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   ie_cnn_network_ = CreateCNNNetwork(model_proto, subgraph_context_.device_id, subgraph_context_.precision);
 
   SetIODefs(model_proto, ie_cnn_network_);
+  std::map<std::string, std::string> config;
 
+  int i = 0;
   // Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exe_network;
-  try {
-    exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL");
-  } catch (InferenceEngine::details::InferenceEngineException e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
+  //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
+  std::vector<InferenceEngine::ExecutableNetwork> exe_networks;
+  if(global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching){
+    for(int j = 0; j < 8; j++){
+      InferenceEngine::ExecutableNetwork exe_network;
+      config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
+      try {
+        exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
+      } catch (InferenceEngine::details::InferenceEngineException e) {
+        ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
+      } catch (...) {
+        ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
+      }
+      exe_networks.push_back(exe_network);
+    }
+    LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+    for(size_t i = 0; i < num_inf_reqs_; i++) {
+      InferenceEngine::InferRequest::Ptr infRequest;
+      try {
+        infRequest = exe_networks[i].CreateInferRequestPtr();
+      } catch(InferenceEngine::details::InferenceEngineException e) {
+        ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
+      } catch (...) {
+        ORT_THROW(log_tag + "Exception while creating InferRequest object.");
+      }
+      infer_requests_.push_back(infRequest);
+    }
+    LOGS_DEFAULT(INFO) << log_tag << "Infer Requests created: " << num_inf_reqs_ << std::endl;
   }
-  LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-
-  // Create infer request
-  for (size_t i = 0; i < num_inf_reqs_; i++) {
-    InferenceEngine::InferRequest::Ptr infRequest;
+  //If the graph is not fully supported, need to schedule each subgraph on different VPU
+  //If batching is disabled just schedule on the first VPU
+  else {
+    i = GetFirstAvailableDevice(global_context);
+    LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
+    config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
+    InferenceEngine::ExecutableNetwork exe_network;
     try {
-      infRequest = exe_network.CreateInferRequestPtr();
+      exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, "HDDL", config);
     } catch (InferenceEngine::details::InferenceEngineException e) {
+      ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
+    } catch (...) {
+      ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
+    }
+    LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+    InferenceEngine::InferRequest::Ptr infRequest;
+    try{
+      infRequest = exe_network.CreateInferRequestPtr();
+    } catch(InferenceEngine::details::InferenceEngineException e) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
     } catch (...) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object.");
     }
-
     infer_requests_.push_back(infRequest);
+    LOGS_DEFAULT(INFO) << log_tag << "Infer Requests created: 1" << std::endl;
   }
-  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
@@ -222,7 +256,6 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
   }
 
-  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 

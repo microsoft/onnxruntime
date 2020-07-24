@@ -393,6 +393,16 @@ void OpTester::FillFeedsAndOutputNames(
   }
 }
 
+void OpTester::FillFeeds(std::unordered_map<std::string, OrtValue>& feeds) {
+  for (size_t i = 0; i < input_data_.size(); ++i) {
+    if (std::find(initializer_index_.begin(), initializer_index_.end(), i) ==
+            initializer_index_.end() &&
+        input_data_[i].def_.Exists()) {
+      feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
+    }
+  }
+}
+
 void OpTester::SetOutputAbsErr(const char* name, float v) {
   auto it =
       std::find_if(output_data_.begin(), output_data_.end(),
@@ -524,7 +534,7 @@ std::vector<MLValue> OpTester::ExecuteModel(
       // Disable expected_failure_string checks for OpenVINO EP
       if (provider_type != kOpenVINOExecutionProvider) {
         EXPECT_THAT(status.ErrorMessage(),
-                  testing::HasSubstr(expected_failure_string));
+                    testing::HasSubstr(expected_failure_string));
       }
     } else {
       LOGS_DEFAULT(ERROR) << "Initialize failed with status: "
@@ -633,6 +643,7 @@ void OpTester::Run(
     const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   SessionOptions so;
+  so.use_per_session_threads = false;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
@@ -712,6 +723,8 @@ void OpTester::Run(
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
         kAclExecutionProvider,
+        kArmNNExecutionProvider,
+        kNnapiExecutionProvider,
     };
 
     bool has_run = false;
@@ -778,6 +791,8 @@ void OpTester::Run(
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
           execution_provider = DefaultAclExecutionProvider();
+        else if (provider_type == onnxruntime::kArmNNExecutionProvider)
+          execution_provider = DefaultArmNNExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -794,14 +809,15 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider)
+              provider_type == onnxruntime::kNupharExecutionProvider ||
+              provider_type == onnxruntime::kNnapiExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
             valid = false;
             for (auto& custom_session_registry : custom_session_registries_) {
               if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
-                      node, execution_provider->Type())) {
+                                                      node, execution_provider->Type())) {
                 valid = true;
                 break;
               }
@@ -837,6 +853,56 @@ void OpTester::Run(
     std::cerr << ex.what() << "\nProvider:" << cur_provider << "\n";
     // rethrow as some tests for error handling expect this
     throw;
+  }
+}
+
+void OpTester::AddReferenceOutputs(const std::string& model_path) {
+  SessionOptions so;
+  so.session_logid = op_;
+  so.session_log_verbosity_level = 1;
+
+  RunOptions run_options;
+  run_options.run_tag = op_;
+  run_options.run_log_verbosity_level = 1;
+
+  Status status;
+  InferenceSession subgraph_session_object{so, GetEnvironment()};
+  ASSERT_TRUE((status = subgraph_session_object.Load(model_path)).IsOK()) << status;
+  ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
+
+  // Retrieve output names
+  auto model_outputs = subgraph_session_object.GetModelOutputs();
+  ASSERT_TRUE(model_outputs.first.IsOK());
+  std::vector<std::string> output_names;
+  std::transform(model_outputs.second->begin(),
+                 model_outputs.second->end(),
+                 std::back_inserter(output_names),
+                 [](const onnxruntime::NodeArg* node_arg) -> std::string { return node_arg->Name(); });
+
+  NameMLValMap feeds;
+  FillFeeds(feeds);
+
+  std::vector<MLValue> subgraph_fetches;
+  ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;
+
+  for (size_t out_idx = 0; out_idx < subgraph_fetches.size(); out_idx++) {
+    // Retrieve TypeProto
+    ASSERT_TRUE(subgraph_fetches[out_idx].Type()->IsTensorType()) << status;
+    const Tensor& t = subgraph_fetches[out_idx].Get<Tensor>();
+    const TensorTypeBase* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(t.GetElementType());
+
+    // Construct a temp TypeProto with shape information
+    ONNX_NAMESPACE::TypeProto tmp_type_proto(*(tensor_type->GetTypeProto()));
+    auto mutable_shape = tmp_type_proto.mutable_tensor_type()->mutable_shape();
+    for (auto i : t.Shape().GetDims()) {
+      auto* mutable_dim = mutable_shape->add_dim();
+      mutable_dim->set_dim_value(i);
+    }
+
+    output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                std::move(subgraph_fetches[out_idx]),
+                                optional<float>(),
+                                optional<float>()));
   }
 }
 

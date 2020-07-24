@@ -6,6 +6,7 @@ jobs:
 - job: NuGet_Test_Linux
   workspace:
     clean: all
+  timeoutInMinutes:  120
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging

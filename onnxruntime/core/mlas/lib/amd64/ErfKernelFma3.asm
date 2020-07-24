@@ -119,16 +119,16 @@ ErfKernelFrame ENDS
 
         alloc_stack (ErfKernelFrame.ReturnAddress)
 
-        save_xmm128_avx xmm6,ErfKernelFrame.SavedXmm6
-        save_xmm128_avx xmm7,ErfKernelFrame.SavedXmm7
-        save_xmm128_avx xmm8,ErfKernelFrame.SavedXmm8
-        save_xmm128_avx xmm9,ErfKernelFrame.SavedXmm9
-        save_xmm128_avx xmm10,ErfKernelFrame.SavedXmm10
-        save_xmm128_avx xmm11,ErfKernelFrame.SavedXmm11
-        save_xmm128_avx xmm12,ErfKernelFrame.SavedXmm12
-        save_xmm128_avx xmm13,ErfKernelFrame.SavedXmm13
-        save_xmm128_avx xmm14,ErfKernelFrame.SavedXmm14
-        save_xmm128_avx xmm15,ErfKernelFrame.SavedXmm15
+        save_xmm128 xmm6,ErfKernelFrame.SavedXmm6
+        save_xmm128 xmm7,ErfKernelFrame.SavedXmm7
+        save_xmm128 xmm8,ErfKernelFrame.SavedXmm8
+        save_xmm128 xmm9,ErfKernelFrame.SavedXmm9
+        save_xmm128 xmm10,ErfKernelFrame.SavedXmm10
+        save_xmm128 xmm11,ErfKernelFrame.SavedXmm11
+        save_xmm128 xmm12,ErfKernelFrame.SavedXmm12
+        save_xmm128 xmm13,ErfKernelFrame.SavedXmm13
+        save_xmm128 xmm14,ErfKernelFrame.SavedXmm14
+        save_xmm128 xmm15,ErfKernelFrame.SavedXmm15
 
         END_PROLOGUE
 
@@ -548,16 +548,16 @@ LBiggerNumbersRemaining:
 
 LErfBatchExp:
         vzeroupper
-        vmovaps xmm6,ErfKernelFrame.SavedXmm6[rsp]
-        vmovaps xmm7,ErfKernelFrame.SavedXmm7[rsp]
-        vmovaps xmm8,ErfKernelFrame.SavedXmm8[rsp]
-        vmovaps xmm9,ErfKernelFrame.SavedXmm9[rsp]
-        vmovaps xmm10,ErfKernelFrame.SavedXmm10[rsp]
-        vmovaps xmm11,ErfKernelFrame.SavedXmm11[rsp]
-        vmovaps xmm12,ErfKernelFrame.SavedXmm12[rsp]
-        vmovaps xmm13,ErfKernelFrame.SavedXmm13[rsp]
-        vmovaps xmm14,ErfKernelFrame.SavedXmm14[rsp]
-        vmovaps xmm15,ErfKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,ErfKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,ErfKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,ErfKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,ErfKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,ErfKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,ErfKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,ErfKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,ErfKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,ErfKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,ErfKernelFrame.SavedXmm15[rsp]
         add     rsp,(ErfKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

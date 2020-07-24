@@ -8,6 +8,7 @@
 // Include event mechanism shared by CPU and GPU implementations.
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/record.h"
+#include "core/profile/profile.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -25,6 +26,15 @@ ONNX_OPERATOR_KERNEL_EX(
     RecordEvent);
 
 Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
+#ifdef ENABLE_NVTX_PROFILE
+  const Tensor* event_id_tensor = ctx->Input<Tensor>(0);
+  const int64_t event_id = *(event_id_tensor->template Data<int64_t>());
+
+  profile::NvtxRangeCreator range(
+    "Record-" + std::to_string(event_id), profile::Color::Magenta);
+  range.Begin();
+#endif
+
   // Reuse CPU helper to record event because event tensor is a CPU tensor.
   onnxruntime::contrib::record_event_in_tensor(*ctx->Input<Tensor>(0));
 
@@ -35,6 +45,10 @@ Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
     Tensor* Y = ctx->Output(i_out, data_shape);
     CopyTensor(*X, *Y);
   }
+
+#ifdef ENABLE_NVTX_PROFILE
+  range.End();
+#endif
 
   return Status::OK();
 }

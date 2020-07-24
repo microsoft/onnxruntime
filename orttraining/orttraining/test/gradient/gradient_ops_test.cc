@@ -403,7 +403,8 @@ TEST(GradientCheckerTest, GemmGrad) {
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ReduceMean"};
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceMean", kOnnxDomain, 11};
 
   // default
   {
@@ -480,7 +481,8 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
 TEST(GradientCheckerTest, ReduceSumGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"ReduceSum"};
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def{"ReduceSum", kOnnxDomain, 11};
 
   // default
   {
@@ -1368,6 +1370,29 @@ TEST(GradientCheckerTest, FastGeluGrad) {
   UnaryOpGradientTest("FastGelu", kMSDomain, 1);
 }
 
+// used for BiasGelu and FastGelu
+void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int opset_version) {
+  const TensorShape input_shape({2, 3, 4});
+  const TensorShape bias_shape({4});
+
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{op_type, domain, opset_version};
+
+  float max_error;
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+      op_def, {input_shape, bias_shape}, {input_shape}, &max_error));
+
+  EXPECT_IS_TINY(max_error);
+}
+
+TEST(GradientCheckerTest, FastGeluGrad_Bias) {
+  TestBiasGeluGrad("FastGelu", kMSDomain, 1);
+}
+
+TEST(GradientCheckerTest, BiasGeluGrad) {
+  TestBiasGeluGrad("BiasGelu", kMSDomain, 1);
+}
+
 TEST(GradientCheckerTest, GatherGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -1492,7 +1517,11 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
                                                   true, false, true, false});
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
+  } else {
+    test.AddMissingOptionalInput<float>();
   }
+
+  test.AddInput("training_mode", {}, {true});
 
   test.AddOutput<float>("dx", x_shape.GetDims(), dx_data);
 
