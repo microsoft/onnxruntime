@@ -45,6 +45,11 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
 
+  // Map of named input dimensions to concrete values. 
+  // This informs the engine when the developer wants to explictily set a named dimension to a fixed value.
+
+  // 0    : the dimension present in the model should be honored.
+  // 1...n: override the named input dimension to the given value and optimize evaluations.
   std::map<winrt::hstring, uint32_t> named_dim_overrides_;
 };
 
