@@ -14,18 +14,12 @@ using namespace _winml;
 static bool debug_output_ = false;
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
-  std::string system_path;
+  DWORD flags = 0;
 #ifdef BUILD_INBOX
-  system_path.reserve(MAX_PATH);
-  if (0 >= GetSystemDirectoryA(system_path.data(), system_path.size())) {
-    return HRESULT_FROM_WIN32(GetLastError());
-  }
-  system_path += "\\onnxruntime.dll";
-#else
-  system_path = "onnxruntime.dll";
+  flags = LOAD_LIBRARY_SEARCH_SYSTEM32;
 #endif
 
-  auto out_module = LoadLibraryExA(system_path.data());
+  auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
   if (out_module == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
