@@ -512,18 +512,24 @@ def testInstantiateORTTrainer():
     #print(onnx.helper.printable_graph(model.graph))
     print(onnx_model.graph.input)
     print(onnx_model.graph.output)
-    print(type(onnx_model.graph.input))
+    #print(type(onnx_model.graph.input))
     import inspect
     sig = inspect.signature(model.forward)
-    print(sig.parameters.keys())
+    #print(sig.parameters.keys())
     sig_loss = inspect.signature(my_loss)
-    print(sig_loss.parameters)
-    print(model_desc['inputs'])
-    print(model_desc['outputs'])
+    #print(sig_loss.parameters)
+    #print(model_desc['inputs'])
+    #print(model_desc['outputs'])
 
     print(type(str(onnx_model.graph.input)))
     for tup in model_desc['inputs']:
+        # check that each model desc input is found in the onnx model
         assert str(onnx_model.graph.input).find(tup[0]) >= 0
-
+        print(tup[0], tup[1]) #shape is always second
     for tup in model_desc['outputs']:
         assert str(onnx_model.graph.output).find(tup[0]) >= 0
+        print(tup[0], tup[1]) #shape is always second
+
+    # check that the len of the forward method parameters is the same as input len
+
+    # check len of loss return (must be >= model desc output len)

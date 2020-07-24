@@ -187,10 +187,10 @@ class ORTTrainer(object):
         if not loss_fn:
             return model
 
-        sig = inspect.signature(model.forward)
+        sig = signature(model.forward)
         ordered_list_keys = list(sig.parameters.keys())
         if loss_fn:
-            sig_loss = inspect.signature(loss_fn)
+            sig_loss = signature(loss_fn)
             if len(sig_loss.parameters) != 2:
                 raise RuntimeError("loss function should take two arguments - predict and label.")
 
@@ -203,13 +203,13 @@ class ORTTrainer(object):
                 match=False
                 break
 
-        is_list_input = match
+        is_list_input = (match
                         or len(input_names) >= len(ordered_list_keys)
-                        or not all (x in ordered_list_kes for x in input_names)
+                        or not all (x in ordered_list_kes for x in input_names))
 
         class CombineTorchModelLossFn(torch.nn.Module):
             def __init__(self, model, loss_fn, input_names):
-                super(WrapModel, self).__init__()
+                super(CombineTorchModelLossFn, self).__init__()
                 self.model_ = model
                 self.loss_fn_ = loss_fn
                 self.input_names_ = input_names
@@ -222,7 +222,7 @@ class ORTTrainer(object):
                     preds = self.model_(*input)
                     return self.loss_fn_(preds, label), preds
                 else:
-                    sig = inspect.signature(self.model_.forward)
+                    sig = signature(self.model_.forward)
                     ordered_list_keys = list(sig.parameters.keys())
 
                     input_dict = {}
@@ -266,8 +266,13 @@ class ORTTrainer(object):
             sample_outputs = model(*sample_inputs)
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]
-        for sample_output, output_desc in zip(sample_outputs, self.model_desc.outputs):
-            print(sample_output.dtype)#output_desc.dtype_ = sample_output.dtype
+        # apply dtypes for input and output
+        for i, sample_input in enumerate(sample_inputs):
+            if i < len(self.model_desc.inputs):
+                self.model_desc.add_type_to_input_description(i, sample_input.dtype)
+        for i, sample_output in enumerate(sample_outputs):
+            if i < len(self.model_desc.outputs):
+                self.model_desc.add_type_to_output_description(i, sample_output.dtype)
         model.train()
 
         f = io.BytesIO()
