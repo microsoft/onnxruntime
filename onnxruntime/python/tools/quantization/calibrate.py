@@ -102,7 +102,7 @@ class ONNXCalibrater:
         model.graph.output.extend(added_outputs)
         return model
 
-        
+
     #Using augmented outputs to generate inputs for quantization
     def get_intermediate_outputs(self,calib_mode='naive'):
         ''' 
@@ -219,9 +219,9 @@ class ONNXCalibrater:
 
 def calibrate(model_path,
               data_reader:CalibrationDataReader,
-              op_types='Conv,MatMul',
-              black_nodes='',
-              white_nodes='',
+              op_types= ['Conv','MatMul'],
+              black_nodes= [],
+              white_nodes= [],
               augmented_model_path ='augmented_model.onnx'):   
     '''
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
