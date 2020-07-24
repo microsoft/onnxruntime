@@ -1,11 +1,10 @@
+import io
 import onnx
 import torch
-from inspect import signature
-import io
-from inspect import signature
 
 from distutils.version import LooseVersion
-import onnx
+from inspect import signature
+
 import onnxruntime.capi.postprocess as postprocess
 from . import ORTTrainerOptions
 from . import optim
@@ -110,7 +109,6 @@ class ORTTrainer(object):
                                             alpha=0.9, beta=0.999)
             ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
-    DEFAULT_OPSET_VERSION = 12
 
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
         # Basic validation
@@ -138,11 +136,11 @@ class ORTTrainer(object):
             assert loss_fn is None or isinstance(model, torch.nn.Module),\
                 "'loss_fn' must be either 'None' or 'torch.nn.Module'"
             self._torch_model = model
-            self._loss_fn = loss_fn
+            self.loss_fn = loss_fn
         elif isinstance(model, onnx.ModelProto):
             assert loss_fn is None, "'loss_fn' must not be specified when 'model' is an ONNX model"
             self._onnx_model = model
-            self._loss_fn = None
+            self.loss_fn = None
         else:
             raise ValueError("'model' must be either 'torch.nn.Module' or 'onnx.ModelProto'")
 
@@ -153,10 +151,6 @@ class ORTTrainer(object):
             self.options = ORTTrainerOptions(options)
         else:
             self.options = ORTTrainerOptions()
-
-        self._enable_internal_postprocess=True
-        self._extra_postprocess=None
-
 
     def eval_step(self, *input, **kwargs):
         r"""Evaluation step method
@@ -181,205 +175,6 @@ class ORTTrainer(object):
         """
         pass
 
-
-    def _combine_torch_model_with_loss(self, model, loss_fn, input_names): #rewrite to grab these from self
-        # don't need to wrap anything
-        if not loss_fn:
-            return model
-
-        sig = signature(model.forward)
-        ordered_list_keys = list(sig.parameters.keys())
-        if loss_fn:
-            sig_loss = signature(loss_fn)
-            if len(sig_loss.parameters) != 2:
-                raise RuntimeError("loss function should take two arguments - predict and label.")
-
-            # label shall be the second input to loss_fn.
-            ordered_list_keys = [*ordered_list_keys, list(sig_loss.parameters.keys())[1]]
-        
-        match = True
-        for ordered_list_key, input_name in zip(ordered_list_keys, input_names):
-            if ordered_list_key != input_name:
-                match=False
-                break
-
-        is_list_input = (match
-                        or len(input_names) >= len(ordered_list_keys)
-                        or not all (x in ordered_list_kes for x in input_names))
-
-        class CombineTorchModelLossFn(torch.nn.Module):
-            def __init__(self, model, loss_fn, input_names):
-                super(CombineTorchModelLossFn, self).__init__()
-                self.model_ = model
-                self.loss_fn_ = loss_fn
-                self.input_names_ = input_names
-
-            def forward(self, *inputs):
-                # *inputs is given by torch trace. It is in the order of input_names.
-                # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
-                if is_list_input:
-                    input, label = inputs[:-1], inputs[-1]
-                    preds = self.model_(*input)
-                    return self.loss_fn_(preds, label), preds
-                else:
-                    sig = signature(self.model_.forward)
-                    ordered_list_keys = list(sig.parameters.keys())
-
-                    input_dict = {}
-                    for key in sig.parameters.keys():
-                        if key in self.input_names_:
-                            input_dict[key] = inputs[self.input_names_.index(key)]
-
-                    model_out = self.model_(**input_dict)
-                    if self.loss_fn_ is None:
-                        return model_out
-
-                    label = inputs[-1]
-                    preds = model_out
-                    return self.loss_fn_(preds, label), preds
-
-        model = CombineTorchModelLossFn(model, loss_fn, input_names)
-
-        return model
-    
-    def convert_torch_model_loss_fn_to_onnx(self, device, inputs, opset_version=DEFAULT_OPSET_VERSION):
-        input_names = [input_elem[0] for input_elem in self.model_desc.inputs]
-        output_names = [output_elem[0] for output_elem in self.model_desc.outputs]
-        #print(inputs)#print(input_names, output_names)
-
-        if isinstance(inputs, torch.Tensor):
-            inputs = [inputs]
-        if isinstance(inputs, dict):
-            sample_inputs = [inputs[k.name_].to(device=device) for k in self.model_desc.inputs]
-        elif isinstance(inputs, (list, tuple)):
-            sample_inputs = [input.to(device=device) for i, input in enumerate(inputs) if i < len(self.model_desc.inputs)]
-        else:
-            raise RuntimeError("Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
-
-        # pytorch onnx exporter/trace does not try to match argument names.
-        # e.g. for models with optional inputs, it requires all inputs be present.
-        # this is a problem because the model graph depends on inputs provided.
-        model = self._combine_torch_model_with_loss(self._torch_model, self._loss_fn, input_names)
-        
-        model.eval()
-        with torch.no_grad():
-            sample_outputs = model(*sample_inputs)
-        if isinstance(sample_outputs, torch.Tensor):
-            sample_outputs = [sample_outputs]
-        # apply dtypes for input and output
-        for i, sample_input in enumerate(sample_inputs):
-            if i < len(self.model_desc.inputs):
-                self.model_desc.add_type_to_input_description(i, sample_input.dtype)
-        for i, sample_output in enumerate(sample_outputs):
-            if i < len(self.model_desc.outputs):
-                self.model_desc.add_type_to_output_description(i, sample_output.dtype)
-        model.train()
-
-        f = io.BytesIO()
-
-        # Other export options to use(this is for backward compatibility).
-        other_export_options = {}
-        other_export_options['training'] = True
-
-        # This option was added after 1.4 release.
-        if LooseVersion(torch.__version__) > LooseVersion('1.4.0'):
-            other_export_options['enable_onnx_checker'] = False
-        # This option was added after 1.6 release.
-        if LooseVersion(torch.__version__) >= LooseVersion('1.6.0'):
-            other_export_options['training'] = torch.onnx.TrainingMode.TRAINING
-
-        torch.onnx._export(model, tuple(sample_inputs), f,
-                        input_names=input_names,
-                        output_names=output_names,
-                        opset_version=opset_version,
-                        _retain_param_name=True,
-                        example_outputs=tuple(sample_outputs),
-                        do_constant_folding=False,
-                        **other_export_options)
-
-        onnx_model = onnx.load_model_from_string(f.getvalue())
-
-        # Remove 'model_.' prefix introduced by model wrapper for initializers.
-        replace_name_dict = {}
-        for n in onnx_model.graph.initializer:
-            if n.name.startswith('model_.'):
-                replace_name_dict[n.name] = n.name[len('model_.'):]
-                n.name = replace_name_dict[n.name]
-        for n in onnx_model.graph.node:
-            for i, name in enumerate(n.input):
-                if name in replace_name_dict:
-                    n.input[i] = replace_name_dict[name]
-
-        # onnx model initializer may contain non-trainable registered buffers that are not part
-        # of pytorch model named parameteres.
-        named_parameters = model.model_.named_parameters() if hasattr(model, 'model_') else model.named_parameters()
-        assert set([n for n, t in named_parameters]).issubset(
-            set([n.name for n in onnx_model.graph.initializer])), \
-            "Initializer names do not match between PyTorch model and ONNX model, " \
-            "please report a bug to ONNX Runtime."
-
-        return onnx_model
-
-    def _init_onnx_model(self, inputs):
-            if self._onnx_model is not None:
-                return
-
-            if self._torch_model is not None:
-                # NOTE: pt model is moved to cpu to conserve gpu memory.
-                self._torch_model.cpu()
-                # torch buffers created using 'register_buffer' are not meant to be trainable.
-                torch_buffers = list(dict(self._torch_model.named_buffers()).keys())
-                #self.frozen_weights_ = self.frozen_weights_ + torch_buffers
-                self._onnx_model = self.convert_torch_model_loss_fn_to_onnx(torch.device('cpu'), inputs)
-
-            self._init_session()
-
-    def _prepare_input_and_fetches(self, input_desc_with_, internal_learning_rate, internal_loss_scale, *args, **kwargs):
-            fetches = None
-            """
-            if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
-                input = tuple(args[0])
-            else:
-                input = args
-            """
-            input = args #added
-
-            for input_desc in input_desc_with_:
-                if input_desc[0] in kwargs:
-                    input = input + (kwargs[input_desc[0]],)
-            if internal_learning_rate is not None:
-                input = input + (internal_learning_rate,)
-            if internal_loss_scale is not None:
-                input = input + (internal_loss_scale,)
-            """
-            elif self.use_mixed_precision:
-                # loss_scale input name is needed to call train_step, for example:
-                #   kwargs[model.loss_scale_input_name] = loss_scale
-                #   outputs = model.train_step(*args, **kwargs)
-                # However, when first time train_step is called model.loss_scale_input_name is not set.
-                # To workaround this problem, we use the special name 'default_loss_scale_input_name' to indicate
-                # the loss_scale.
-                if 'default_loss_scale_input_name' in kwargs.keys():
-                    input = input + (kwargs['default_loss_scale_input_name'],)
-            """
-            fetches = None
-            if 'fetches' in kwargs:
-                fetches = kwargs['fetches']
-
-            return input, fetches
-
-    def _init_session(self):
-            if self._onnx_model is None:
-                return
-
-            if self._enable_internal_postprocess:
-                self._onnx_model = postprocess.run_postprocess(self._onnx_model)
-
-            if self._extra_postprocess:
-                self._extra_postprocess(self._onnx_model)
-            return
-
-
     def train_step(self, *input, **kwargs):
         r"""Train step method
 
@@ -394,6 +189,186 @@ class ORTTrainer(object):
         Returns:
             ordered :py:obj:`list` with model outputs as described by :py:attr:`ORTTrainer.model_desc`
         """
+
+        # Export model to ONNX
         if self._onnx_model is None:
-            sample_input, _ = self._prepare_input_and_fetches(self.model_desc.inputs, None, None, *input, **kwargs)
+            sample_input = self._prepare_input_and_fetches(
+                self.model_desc.inputs, None, None, *input, **kwargs)
             self._init_onnx_model(sample_input)
+
+    def _combine_torch_model_with_loss(self):
+        # Don't need to wrap model when loss_fn is not set
+        if not self.loss_fn:
+            return self._torch_model
+
+        # Validate loss_fn
+        sig_loss = signature(self.loss_fn)
+        if len(sig_loss.parameters) != 2:
+            raise RuntimeError(
+                "loss function should take two arguments - predict and label.")
+
+        # Basic input names from model
+        input_names = [input[0] for input in self.model_desc.inputs]
+        sig = signature(self._torch_model.forward)
+        ordered_input_list = list(sig.parameters.keys())
+
+        # Label from loss_fn goes after model input
+        ordered_input_list = [*ordered_input_list,
+                              list(sig_loss.parameters.keys())[1]]
+
+        # Check whether input names from model match inputs from ModelDescription
+        match = True
+        for ordered_list_key, input_name in zip(ordered_input_list, input_names):
+            if ordered_list_key != input_name:
+                match = False
+                break
+
+        # Input can be a list or dict
+        is_list_input = (match
+                         or len(input_names) >= len(ordered_input_list)
+                         or not all(x in ordered_list_kes for x in input_names))
+
+        class CombineTorchModelLossFn(torch.nn.Module):
+            def __init__(self, model, loss_fn, input_names):
+                super(CombineTorchModelLossFn, self).__init__()
+                self.model = model
+                self.loss_fn = loss_fn
+                self.input_names = input_names
+
+            def forward(self, *inputs):
+                # *inputs is given by torch trace. It is in the order of input_names.
+                # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
+                if is_list_input:
+                    input, label = inputs[:-1], inputs[-1]
+                    preds = self.model(*input)
+                    # TODO: order this according to self.model_desc.outputs?
+                    return self.loss_fn(preds, label), preds
+                else:
+                    sig = signature(self.model.forward)
+                    ordered_input_list = list(sig.parameters.keys())
+
+                    input_dict = {}
+                    for key in sig.parameters.keys():
+                        if key in self.input_names:
+                            input_dict[key] = inputs[self.input_names.index(key)]
+
+                    model_out = self.model(**input_dict)
+                    if self.loss_fn is None:
+                        return model_out
+
+                    label = inputs[-1]
+                    preds = model_out
+                    return self.loss_fn(preds, label), preds
+
+        return CombineTorchModelLossFn(self._torch_model, self.loss_fn, input_names)
+
+    def _convert_torch_model_loss_fn_to_onnx(self, device, inputs):
+        if isinstance(inputs, torch.Tensor):
+            inputs = [inputs]
+        if isinstance(inputs, dict):
+            sample_inputs = [inputs[k.name_].to(
+                device=device) for k in self.model_desc.inputs]
+        elif isinstance(inputs, (list, tuple)):
+            sample_inputs = [input.to(device=device) for i, input in enumerate(
+                inputs) if i < len(self.model_desc.inputs)]
+        else:
+            raise RuntimeError(
+                "Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
+
+        # pytorch onnx exporter/trace does not try to match argument names.
+        # e.g. for models with optional inputs, it requires all inputs be present.
+        # this is a problem because the model graph depends on inputs provided.
+        model = self._combine_torch_model_with_loss()
+
+        # Do an inference to grab output types
+        model.eval()
+        with torch.no_grad():
+            sample_outputs = model(*sample_inputs)
+        model.train()
+        if isinstance(sample_outputs, torch.Tensor):
+            sample_outputs = [sample_outputs]
+
+        # Append 'dtypes' for model description inputs/outputs
+        for i, sample_input in enumerate(sample_inputs):
+            if i < len(self.model_desc.inputs):
+                self.model_desc.add_type_to_input_description(
+                    i, sample_input.dtype)
+        for i, sample_output in enumerate(sample_outputs):
+            if i < len(self.model_desc.outputs):
+                self.model_desc.add_type_to_output_description(
+                    i, sample_output.dtype)
+
+        # Export the model to ONNX
+        f = io.BytesIO()
+        torch.onnx._export(model, tuple(sample_inputs), f,
+                           input_names=[input[0] for input in self.model_desc.inputs],
+                           output_names=[output[0] for output in self.model_desc.outputs],
+                           opset_version=self.options._internal_use.onnx_opset_version,
+                           _retain_param_name=True,
+                           example_outputs=tuple(sample_outputs),
+                           do_constant_folding=False,
+                           training=torch.onnx.TrainingMode.TRAINING)
+        onnx_model = onnx.load_model_from_string(f.getvalue())
+
+        # Remove 'model.' prefix introduced by model wrapper for initializers.
+        replace_name_dict = {}
+        for n in onnx_model.graph.initializer:
+            if n.name.startswith('model.'):
+                replace_name_dict[n.name] = n.name[len('model.'):]
+                n.name = replace_name_dict[n.name]
+        for n in onnx_model.graph.node:
+            for i, name in enumerate(n.input):
+                if name in replace_name_dict:
+                    n.input[i] = replace_name_dict[name]
+
+        # onnx model initializer may contain non-trainable registered buffers that are not part
+        # of pytorch model named parameteres.
+        named_parameters = model.model.named_parameters() if hasattr(model, 'model') else model.named_parameters()
+        assert set([n for n, t in named_parameters]).issubset(
+            set([n.name for n in onnx_model.graph.initializer])), \
+            "Initializer names do not match between PyTorch model and ONNX model, " \
+            "please report a bug to ONNX Runtime."
+
+        return onnx_model
+
+    def _init_onnx_model(self, inputs):
+        if self._onnx_model is not None:
+            return
+
+        if self._torch_model is not None:
+            # PyTorch model is moved to cpu to save GPU memory
+            self._torch_model.cpu()
+
+            # PyTorch buffers (created using 'register_buffer') shouldn't be trained
+            torch_buffers = list(dict(self._torch_model.named_buffers()).keys())
+            self.options.utils.frozen_weights.extend(torch_buffers)
+
+            # Export to ONNX
+            self._onnx_model = self._convert_torch_model_loss_fn_to_onnx(torch.device('cpu'), inputs)
+
+        self._init_session()
+
+    def _init_session(self):
+        if self._onnx_model is None:
+            return
+
+        if self.options._internal_use.enable_internal_postprocess:
+            self._onnx_model = postprocess.run_postprocess(self._onnx_model)
+
+        if self.options._internal_use.extra_postprocess:
+            self.options._internal_use.extra_postprocess(self._onnx_model)
+        return
+
+    def _prepare_input_and_fetches(self, inputs_desc, lr, loss_scale, *args, **kwargs):
+        # Normalize input to tuple of samples
+        if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
+            input = tuple(args[0])
+        else:
+            input = args
+
+        # Append input from kwargs
+        for input_desc in inputs_desc:
+            if input_desc[0] in kwargs:
+                input = input + (kwargs[input_desc[0]],)
+
+        return input
