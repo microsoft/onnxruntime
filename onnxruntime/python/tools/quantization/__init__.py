@@ -1,2 +1,2 @@
-from onnxruntime.quantization.quantize import quantize
-from onnxruntime.quantization.quantize import QuantizationMode
+from .quantize import quantize
+from .quantize import QuantizationMode
