@@ -720,16 +720,13 @@ namespace Microsoft.ML.OnnxRuntime
         public string EndProfiling()
         {
             IntPtr nameHandle = IntPtr.Zero;
+            var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionEndProfiling(_nativeHandle,
-                                                                   OrtAllocator.DefaultInstance.Pointer,
+                                                                   allocator.Pointer,
                                                                    out nameHandle));
-            try
+            using(var allocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
-            }
-            finally
-            {
-                OrtAllocator.DefaultInstance.FreeMemory(nameHandle);
             }
         }
 

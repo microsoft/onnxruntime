@@ -217,8 +217,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// This an instance with a piece of memory allocated
         /// by onnxruntime OrtAllocator. The same allocator will be used for
-        /// for memory disposal. For memory allocated elsewhere, the instance will not own the memory
-        /// and will not dispose of it.
+        /// for memory disposal.
         /// </summary>
         /// <param name="allocator"></param>
         /// <param name="pointer"></param>

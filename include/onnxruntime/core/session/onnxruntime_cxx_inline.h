@@ -115,6 +115,42 @@ inline void IoBinding::BindOutput(const char* name, const MemoryInfo& mem_info) 
   ThrowOnError(GetApi().BindOutputToDevice(p_, name, mem_info));
 }
 
+inline std::vector<std::string> IoBinding::GetOutputNames(OrtAllocator* allocator) const {
+  std::vector<std::string> result;
+  auto free_fn = [allocator](void* p) { if (p) allocator->Free(allocator, p); };
+  using Ptr = std::unique_ptr<void, decltype(free_fn)>;
+
+  char* buffer = nullptr;
+  size_t* lengths = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetApi().GetBoundOutputNames(p_, allocator, &buffer, &lengths, &count));
+
+  if (count == 0) {
+    return result;
+  }
+
+  Ptr buffer_g(buffer, free_fn);
+  Ptr lengths_g(lengths, free_fn);
+
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    auto sz = *lengths;
+    result.emplace_back(buffer, sz);
+    buffer += sz;
+    ++lengths;
+  }
+  return result;
+}
+
+inline std::vector<std::string> IoBinding::GetOutputNames() const {
+  AllocatorWithDefaultOptions allocator;
+  return GetOutputNames(allocator);
+}
+
+inline std::vector<std::string> IoBinding::GetOutputNames(Allocator& allocator) const {
+  return GetOutputNames(allocator);
+}
+
 inline void IoBinding::ClearBoundInputs() {
   GetApi().ClearBoundInputs(p_);
 }
