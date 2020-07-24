@@ -418,7 +418,7 @@ TEST(CApiTest, fill_string_tensor) {
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  for (size_t i = 0; i < expected_len; i++) {
+  for (int64_t i = 0; i < expected_len; i++) {
     
       tensor.FillStringTensorElement(s[i], i);
   }
@@ -440,14 +440,14 @@ TEST(CApiTest, get_string_tensor_element) {
   tensor.FillStringTensor(s, expected_len);
     
   auto expected_string = s[element_index];
-  size_t expected_string_len = expected_string.size();
+  size_t expected_string_len = strlen(expected_string);
 
   std::string result(expected_string_len, '\0');
   tensor.GetStringTensorElement(expected_string_len, element_index, (void*)result.data());
   ASSERT_STREQ(result.c_str(), expected_string);
 
   auto string_len = tensor.GetStringTensorElementLength(element_index);
-  ASSERT_EQ(expected_strlen, string_len);
+  ASSERT_EQ(expected_string_len, string_len);
 }
 
 TEST(CApiTest, create_tensor_with_data) {
@@ -481,7 +481,7 @@ TEST(CApiTest, override_initializer) {
   // Place a string into Tensor OrtValue and assign to the
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
   const char* const input_char_string[] = {f2_data.c_str()};
- f2_input_tensor.FillStringTensor(input_char_string, 1U));
+  f2_input_tensor.FillStringTensor(input_char_string, 1U);
 
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);

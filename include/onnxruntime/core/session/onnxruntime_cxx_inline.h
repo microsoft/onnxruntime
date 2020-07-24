@@ -481,7 +481,7 @@ inline size_t Value::GetStringTensorDataLength() const {
 
 inline size_t Value::GetStringTensorElementLength(size_t element_index) const {
   size_t out;
-  ThrowOnError(Global<void>::api_.GetStringTensorElementLength(p_, element_index, &out));
+  ThrowOnError(GetApi().GetStringTensorElementLength(p_, element_index, &out));
   return out;
 }
 
@@ -490,15 +490,15 @@ inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, si
 }
 
 inline void Value::GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const {
-  ThrowOnError(Global<void>::api_.GetStringTensorElement(p_, buffer_length, element_index, buffer));
+  ThrowOnError(GetApi().GetStringTensorElement(p_, buffer_length, element_index, buffer));
 }
 
 inline void Value::FillStringTensor(const char* const* s, size_t s_len) {
-  ThrowOnError(Global<void>::api_.FillStringTensor(p_, s, s_len));
+  ThrowOnError(GetApi().FillStringTensor(p_, s, s_len));
 }
 
 inline void Value::FillStringTensorElement(const char* s, size_t index) {
-  ThrowOnError(Global<void>::api_.FillStringTensorElement(p_, s, index));
+  ThrowOnError(GetApi().FillStringTensorElement(p_, s, index));
 }
 
 template <typename T>

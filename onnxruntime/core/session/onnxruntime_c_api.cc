@@ -584,7 +584,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorDataLength, _In_ const OrtValue* val
 ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out) {
   TENSOR_READ_API_BEGIN
   const auto* src = tensor.Data<std::string>();
-  auto len = tensor.Shape().Size();
+  auto len = static_cast<size_t>(tensor.Shape().Size());
   if (index < len) {
     *out = src[index].size();
   } else
