@@ -1433,7 +1433,7 @@ ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_value
   // data has row-major format
   size_t offset = 0;
   for (size_t i = 1; i <= tensor->Shape().NumDimensions(); i++) {
-    int sum=1;
+    int64_t sum = 1;
     for (size_t j = i+1; j <= tensor->Shape().NumDimensions(); j++) sum *= tensor->Shape()[j-1];
     offset += location[i-1] * sum;
   }
