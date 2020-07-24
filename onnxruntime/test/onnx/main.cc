@@ -250,6 +250,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   if (pause) {
     printf("Enter to continue...\n");
+    fflush(stdout);
     getchar();
   }
 
