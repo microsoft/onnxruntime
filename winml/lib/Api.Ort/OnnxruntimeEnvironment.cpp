@@ -7,9 +7,64 @@
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 
+#include <windows.h>
+
 using namespace _winml;
 
 static bool debug_output_ = false;
+
+static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
+  std::string system_path;
+#ifdef BUILD_INBOX
+  system_path.reserve(MAX_PATH);
+  if (0 >= GetSystemDirectoryA(system_path.data(), system_path.size())) {
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  system_path += "onnxruntime.dll";
+#else
+  system_path = "onnxruntime.dll";
+#endif
+
+  auto out_module = LoadLibraryA(system_path.data());
+  if (out_module == nullptr) {
+    return HRESULT_FROM_WIN32(GetLastError());
+  }
+  module = out_module;
+  return S_OK;
+}
+
+const OrtApi* _winml::GetVersionedOrtApi() {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetApiBaseSignature = decltype(OrtGetApiBase);
+  auto ort_get_api_base_fn = reinterpret_cast<OrtGetApiBaseSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetApiBase"));
+  if (ort_get_api_base_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  const auto ort_api_base = ort_get_api_base_fn();
+
+  static const uint32_t ort_version = 2;
+  return ort_api_base->GetApi(ort_version);
+}
+
+static const WinmlAdapterApi* GetVersionedWinmlAdapterApi(const OrtApi* ort_api) {
+  HMODULE onnxruntime_dll;
+  FAIL_FAST_IF_FAILED(GetOnnxruntimeLibrary(onnxruntime_dll));
+
+  using OrtGetWinMLAdapterSignature = decltype(OrtGetWinMLAdapter);
+  auto ort_get_winml_adapter_fn = reinterpret_cast<OrtGetWinMLAdapterSignature*>(GetProcAddress(onnxruntime_dll, "OrtGetWinMLAdapter"));
+  if (ort_get_winml_adapter_fn == nullptr) {
+    FAIL_FAST_HR(HRESULT_FROM_WIN32(GetLastError()));
+  }
+
+  return ort_get_winml_adapter_fn(ort_api);
+}
+
+const WinmlAdapterApi* _winml::GetVersionedWinmlAdapterApi() {
+  return GetVersionedWinmlAdapterApi(GetVersionedOrtApi());
+}
 
 static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
                                     const char* logger_id, const char* code_location, const char* message) noexcept {
@@ -128,7 +183,7 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
   ort_env_ = UniqueOrtEnv(ort_env, ort_api->ReleaseEnv);
 
   // Configure the environment with the winml logger
-  auto winml_adapter_api = OrtGetWinMLAdapter(ort_api);
+  auto winml_adapter_api = GetVersionedWinmlAdapterApi(ort_api);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
                                                                              &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
                                                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
