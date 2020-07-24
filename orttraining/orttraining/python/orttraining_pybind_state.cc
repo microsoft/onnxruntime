@@ -14,7 +14,6 @@
 #include "orttraining/core/framework/mpi_setup.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
-
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
@@ -42,8 +41,11 @@ struct TrainingParameters {
   int local_rank = 0;
   int local_size = 1;
   int gradient_accumulation_steps = 1;
+
   int data_parallel_size = 1;
   int horizontal_parallel_size = 1;
+  int pipeline_parallel_size = 1;
+
   int deepspeed_zero_stage = 0;
   bool enable_grad_norm_clip = true;
   bool set_gradients_as_graph_outputs = false;
@@ -70,6 +72,7 @@ TrainingConfigurationResult ConfigureSessionForTraining(
               << data_group_size << std::endl;
     parameters.data_parallel_size = data_group_size;
   }
+
 #if defined(USE_NCCL) || defined(USE_HOROVOD)
   // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
@@ -177,6 +180,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
+      .def_readwrite("data_parallel_size", &TrainingParameters::data_parallel_size)
+      .def_readwrite("horizontal_parallel_size", &TrainingParameters::horizontal_parallel_size)
+      .def_readwrite("pipeline_parallel_size", &TrainingParameters::pipeline_parallel_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps)
       .def_readwrite("deepspeed_zero_stage", &TrainingParameters::deepspeed_zero_stage)
       .def_readwrite("enable_grad_norm_clip", &TrainingParameters::enable_grad_norm_clip)
@@ -194,9 +200,9 @@ void addObjectMethodsForTraining(py::module& m) {
 
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init([](const SessionOptions& so) {
-      Environment& env = get_env();
-      return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
-      }))
+                    Environment& env = get_env();
+                    return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(so, env);
+                  }))
       .def(py::init([]() {
         Environment& env = get_env();
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
@@ -274,7 +280,6 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("is_output_fp32_node", [](onnxruntime::training::TrainingSession* sess, const std::string& output_name) {
         return sess->IsGraphOutputFp32Node(output_name);
       });
-
 }
 }  // namespace python
 }  // namespace onnxruntime

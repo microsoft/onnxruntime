@@ -33,5 +33,10 @@ class SimpleTensorAllocator : public ITensorAllocator {
   }
   common::Status GetPreallocatedBuffer(int ort_value_index, const char* name, std::unique_ptr<MemBuffer>& out) override;
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override;
+  void TraceAllocation(int /*ml_value_idx*/, size_t /*size*/) override{};
+  void TraceFree(int /*ml_value_index*/) override{};
+  const ExecutionPlanBase& SeqPlan() {
+    return seq_plan_;
+  };
 };
 }  // namespace onnxruntime

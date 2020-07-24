@@ -41,10 +41,13 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         // Arena has a specific way to store static memory.
         // Arena does not reuse static memory allocated by Reserve.
         buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(peak_size);
-      }
-      else {
+      } else {
         buffer = alloc->Alloc(peak_size);
       }
+
+      // comment out following line to see the size of initalizer
+      //printf("Allocated memory for initalizer, size: %zu\n", mem_patterns_.patterns[i].PeakSize());
+
       weights_buffers_.push_back(BufferUniquePtr(buffer, alloc));
       auto kvp = buffers_.insert(std::make_pair(location, buffer));
       if (!kvp.second) {
@@ -65,6 +68,11 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
 
   common::Status FinalizePlan() override {
     ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(&mem_patterns_));
+    for (size_t i = 0; i < mem_patterns_.locations.size(); i++) {
+      std::cout << mem_patterns_.locations[i].ToString() << "Allocated memory for initializers, size: "
+                << mem_patterns_.patterns[i].PeakSize() << std::endl;
+    }
+
     ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize());
     is_sealed_ = true;
     return Status::OK();
@@ -110,6 +118,18 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<alignment>(*value, &len));
     ORT_RETURN_IF_ERROR(planner_.TraceAllocation(id, len));
     return Status::OK();
+  }
+
+  void TraceAllocation(int ml_value_idx, size_t size) override {
+    planner_.TraceAllocation(ml_value_idx, size);
+  }
+
+  void TraceFree(int ml_value_index) override {
+    planner_.TraceFree(ml_value_index);
+  }
+
+  const ExecutionPlanBase& SeqPlan() {
+    return seq_plan_;
   }
 };
 }  // namespace onnxruntime

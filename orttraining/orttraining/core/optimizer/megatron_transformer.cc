@@ -327,6 +327,7 @@ Status MegatronTransformer::TransformMLP(Graph& graph, bool& modified, int graph
                                      "MLP MegatronF",
                                      mlp_f_input_defs,
                                      {&mlp_f_out_arg}, {}, kMSDomain);
+    LOGS_DEFAULT(WARNING) << "MLP " << node.Name() << " is Partitioned ";
     mlp_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
     const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
     if (nullptr == edge) {  // handle input/initializer
@@ -565,6 +566,7 @@ Status MegatronTransformer::TransformSelfAttention(Graph& graph, bool& modified,
                                     "SelfAttention MegatronF",
                                     sa_f_input_defs,
                                     {&sa_f_out_arg}, {}, kMSDomain);
+    LOGS_DEFAULT(WARNING) << "SelfAttention " << node.Name() << " Partitioned ";
     sa_f_node.SetExecutionProviderType(node.GetExecutionProviderType());
     const Node::EdgeEnd* edge = graph_utils::GetInputEdge(node, 0);
     if (nullptr == edge) {  // handle input/initializer

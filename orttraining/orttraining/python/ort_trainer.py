@@ -12,6 +12,8 @@ import onnxruntime as ort
 import onnxruntime.capi.postprocess as postprocess
 from distutils.version import LooseVersion
 import warnings
+import shutil
+import tempfile
 
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
@@ -323,7 +325,9 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
         output_desc.dtype_ = sample_output.dtype
     model.train()
 
-    f = io.BytesIO()
+    tmp_dir = tempfile.mkdtemp()
+    f = os.path.join(tmp_dir, "t5.onnx")
+    #f = "exported_large_model/t5.onnx" #io.BytesIO()
 
     # Other export options to use(this is for backward compatibility).
     other_export_options = {}
@@ -344,9 +348,11 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        _retain_param_name=True,
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
+                       use_external_data_format=True,
                        **other_export_options)
 
-    onnx_model = onnx.load_model_from_string(f.getvalue())
+    #onnx_model = onnx.load_model_from_string(f.getvalue())
+    onnx_model = onnx.load(f)
 
     # Remove 'model_.' prefix introduced by model wrapper for initializers.
     replace_name_dict = {}
@@ -380,7 +386,10 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
                                                enable_grad_norm_clip=True,
                                                frozen_weights=[], opset_version=DEFAULT_OPSET_VERSION,
                                                use_deterministic_compute=False,
-                                               use_invertible_layernorm_grad=False):
+                                               use_invertible_layernorm_grad=False,
+                                               data_parallel_size=1,
+                                               horizontal_parallel_size=1,
+                                               pipeline_parallel_size=1):
     output_name = model.graph.output[0].name
     ort_parameters = ort.TrainingParameters()
     ort_parameters.loss_output_name = output_name
@@ -389,10 +398,27 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
     ort_parameters.world_size = world_size
     ort_parameters.gradient_accumulation_steps = gradient_accumulation_steps
     ort_parameters.allreduce_post_accumulation = allreduce_post_accumulation
+    ort_parameters.data_parallel_size = data_parallel_size
+    ort_parameters.horizontal_parallel_size = horizontal_parallel_size
+    ort_parameters.pipeline_parallel_size = pipeline_parallel_size
     ort_parameters.deepspeed_zero_stage = deepspeed_zero_stage
     ort_parameters.enable_grad_norm_clip = enable_grad_norm_clip
     ort_parameters.set_gradients_as_graph_outputs = False
     ort_parameters.use_invertible_layernorm_grad = use_invertible_layernorm_grad
+
+    if ort_parameters.data_parallel_size > world_size or ort_parameters.horizontal_parallel_size > world_size:
+        raise ValueError("data_parallel_size or horizontal_parallel_size large than world size")
+
+    if world_size % ort_parameters.data_parallel_size != 0 or world_size % ort_parameters.horizontal_parallel_size != 0:
+        raise ValueError("Cannot split data/horizontal parallel group because world size is not divisible")
+
+    data_group_size = world_size // (ort_parameters.horizontal_parallel_size * ort_parameters.pipeline_parallel_size)
+    if data_group_size <= 0:
+        raise ValueError("Insufficient processes lead to zero-way data parallelism, which should be at least one-way.")
+
+    if data_group_size != ort_parameters.data_parallel_size:
+        print("WARNING: data_parallel_size is not correct, tuned automatically to ", str(data_group_size))
+        ort_parameters.data_parallel_size = data_group_size
 
     output_types = {}
     for output in model.graph.output:
@@ -446,7 +472,14 @@ def create_ort_training_session_with_optimizer(model, device, training_optimizer
 
     sessionOptions = ort.SessionOptions()
     sessionOptions.use_deterministic_compute = use_deterministic_compute
-    session = ort.TrainingSession(model.SerializeToString(), ort_parameters, sessionOptions)
+    #sessionOptions.log_severity_level = 0
+
+    tmp_dir = tempfile.mkdtemp()
+    f = os.path.join(tmp_dir, "model_to_train.onnx")
+    print(f"model_to_train file for ort is saved in {f}")
+    onnx.save_model(model, f)
+    session = ort.TrainingSession(f, ort_parameters, sessionOptions)
+    shutil.rmtree(tmp_dir)
     train_io_binding = session.io_binding()
     eval_io_binding = session.io_binding()
 
@@ -535,7 +568,8 @@ class ORTTrainer():
                  global_step=0, get_lr_this_step=None, loss_scaler=None, deepspeed_zero_stage=0,
                  enable_grad_norm_clip=True, frozen_weights=[], _opset_version=DEFAULT_OPSET_VERSION,
                  _enable_internal_postprocess=True, _extra_postprocess=None, _use_deterministic_compute=False,
-                 use_invertible_layernorm_grad=False):
+                 use_invertible_layernorm_grad=False, data_parallel_size=1, horizontal_parallel_size=1,
+                 pipeline_parallel_size=1):
         super(ORTTrainer, self).__init__()
         """
         Initialize ORTTrainer.
@@ -660,6 +694,10 @@ class ORTTrainer():
         self._use_deterministic_compute = _use_deterministic_compute
         self.use_invertible_layernorm_grad = use_invertible_layernorm_grad
 
+        self.data_parallel_size=data_parallel_size
+        self.horizontal_parallel_size=horizontal_parallel_size
+        self.pipeline_parallel_size=pipeline_parallel_size
+
         # use this special string to workaround a corner case that external loss_scale is passed into train_step as kwargs.
         # see prepare_input_and_fetches for more details.
         self.loss_scale_input_name = 'default_loss_scale_input_name'
@@ -688,7 +726,10 @@ class ORTTrainer():
                 enable_grad_norm_clip=self.enable_grad_norm_clip_,
                 frozen_weights=self.frozen_weights_, opset_version=self.opset_version_,
                 use_deterministic_compute=self._use_deterministic_compute,
-                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad)
+                use_invertible_layernorm_grad=self.use_invertible_layernorm_grad,
+                data_parallel_size=self.data_parallel_size,
+                horizontal_parallel_size=self.horizontal_parallel_size,
+                pipeline_parallel_size=self.pipeline_parallel_size)
 
         self.loss_scale_input_name = self.session.loss_scale_input_name
 
@@ -811,9 +852,9 @@ class ORTTrainer():
             return
         state_tensors = self.session.get_state()
         self._update_onnx_model_initializers(state_tensors)
-
-        with open(path, "wb") as f:
-            f.write(self.onnx_model_.SerializeToString())
+        onnx.save_model(self.onnx_model_, "saved_onnx_model.onnx")
+        #with open(path, "wb") as f:
+        #    f.write(self.onnx_model_.SerializeToString())
 
     def _prepare_input_and_fetches(self, input_desc_with_, internal_learning_rate, internal_loss_scale, *args, **kwargs):
         fetches = None

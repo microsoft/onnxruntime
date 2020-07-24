@@ -45,6 +45,12 @@ class ITensorAllocator {
    */
   virtual common::Status Trace(int ort_value_index, const ONNX_NAMESPACE::TensorProto* value) = 0;
 
+  virtual void TraceAllocation(int ml_value_idx, size_t size) = 0;
+
+  virtual void TraceFree(int ml_value_index) = 0;
+
+  virtual const ExecutionPlanBase& SeqPlan() = 0;
+
   virtual ~ITensorAllocator() = default;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ITensorAllocator);

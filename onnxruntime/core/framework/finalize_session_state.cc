@@ -34,7 +34,8 @@ static common::Status SaveInitializedTensors(const Env& env, const std::basic_st
                                              const OrtValueNameIdxMap& ort_value_name_idx_map,
                                              ITensorAllocator& planner, const T& save_tensor_func,
                                              const logging::Logger& logger,
-                                             const DataTransferManager& data_transfer_mgr);
+                                             const DataTransferManager& data_transfer_mgr,
+                                             const SequentialExecutionPlan& exec_plan);
 
 static common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
                                                         const KernelRegistryManager& custom_registry_manager,
@@ -74,7 +75,7 @@ Status FinalizeSessionState(SessionState& session_state,
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, graph_viewer, valid_outer_scope_node_args,
                                                     session_state.GetExecutionProviders(), kernel_registry_manager,
                                                     ort_value_name_idx_map, context, exec_plan));
-
+  std::cout << "11111 exec_plan.execution_plan" << exec_plan->execution_plan.size() << std::endl;
   const auto* exec_plan_ptr = exec_plan.get();
   session_state.SetExecutionPlan(std::move(exec_plan));
 
@@ -91,7 +92,8 @@ Status FinalizeSessionState(SessionState& session_state,
       [&session_state](int idx, const OrtValue& value, const OrtCallback& d, bool constant) -> Status {
         return session_state.AddInitializedTensor(idx, value, &d, constant);
       },
-      logger, session_state.GetDataTransferMgr()));
+      logger, session_state.GetDataTransferMgr(),
+      *(session_state.GetExecutionPlan())));
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was
   // preallocated with the some other tensors in a single 'allocate' call, which is very common.
@@ -169,7 +171,8 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
                                       const GraphViewer& graph, const OrtMemoryInfo& default_cpu_memory_info,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map, ITensorAllocator& planner,
                                       const T& save_tensor_func, const logging::Logger& logger,
-                                      const DataTransferManager& data_transfer_mgr) {
+                                      const DataTransferManager& data_transfer_mgr,
+                                      const SequentialExecutionPlan& exec_plan) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
@@ -184,6 +187,73 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
 
   for (const auto& entry : id_to_initialized_tensor) {
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
+  }
+
+  // plan the activation
+  {
+    OrtValuePatternPlanner activation_mem_planner(exec_plan);
+    MemoryPatternGroup activation_memory_pattern_output;
+    for (const SequentialExecutionPlan::NodeExecutionPlan& node_plan : exec_plan.execution_plan) {
+      auto node = graph.GetNode(node_plan.node_index);
+      for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
+        int ml_value_idx;
+        if (!node->OutputDefs()[i]->Exists()) {
+          continue;
+        }
+
+        ort_value_name_idx_map.GetIdx(node->OutputDefs()[i]->Name(), ml_value_idx);
+        if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
+          continue;
+        const auto* ml_type = exec_plan.allocation_plan[ml_value_idx].value_type;
+        if (!ml_type->IsTensorType())
+          continue;
+        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+        if (exec_plan.allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+            ml_data_type != DataTypeImpl::GetType<std::string>()) {
+          //calculate size
+          auto* arg = node->OutputDefs()[i];
+          if (!arg->Shape())
+            continue;
+          size_t size = 0;
+          SafeInt<size_t> len = 1;
+          for (auto& dim : arg->Shape()->dim()) {
+            if (dim.has_dim_param()) {
+              return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute");
+            } else if (dim.has_dim_value()) {
+              len *= dim.dim_value();
+            } else {
+              // tensor shape is unknown
+              len = 0;
+            }
+          }
+          // Skip planning for this tensor if shape is unknown
+          if (len == 0) {
+            continue;
+          }
+
+          if (!IAllocator::CalcMemSizeForArrayWithAlignment<64>(len, ml_data_type->Size(), &size)) {
+            return Status(ONNXRUNTIME, FAIL, "Size overflow");
+          }
+          activation_mem_planner.TraceAllocation(ml_value_idx, size);
+        }
+      }
+      //release nodes
+      for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
+        auto ml_value_idx = exec_plan.to_be_freed[index];
+        const auto* ml_type = exec_plan.allocation_plan[ml_value_idx].value_type;
+        if (!ml_type->IsTensorType())
+          continue;
+        const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+        if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+          activation_mem_planner.TraceFree(ml_value_idx);
+        }
+      }
+    }
+    activation_mem_planner.GeneratePatterns(&activation_memory_pattern_output);
+    for (size_t i = 0; i < activation_memory_pattern_output.locations.size(); i++) {
+      std::cout << activation_memory_pattern_output.locations[i].ToString() << "Activation Peak: Allocated memory for activations, size: "
+                << activation_memory_pattern_output.patterns[i].PeakSize() << std::endl;
+    }
   }
 
   //2. allocate weight buffer on different locations
