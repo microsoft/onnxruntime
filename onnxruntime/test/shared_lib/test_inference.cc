@@ -443,7 +443,7 @@ TEST(CApiTest, get_string_tensor_element) {
   size_t expected_string_len = expected_string.size();
 
   std::string result(expected_string_len, '\0');
-  tensor.GetStringTensorElement((void*)result.data(), expected_string_len, element_index);
+  tensor.GetStringTensorElement(expected_string_len, element_index, (void*)result.data());
   ASSERT_STREQ(result.c_str(), expected_string);
 
   auto string_len = tensor.GetStringTensorElementLength(element_index);

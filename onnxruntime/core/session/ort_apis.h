@@ -120,11 +120,10 @@ ORT_API_STATUS_IMPL(GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void
 ORT_API_STATUS_IMPL(FillStringTensor, _Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len);
 ORT_API_STATUS_IMPL(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 ORT_API_STATUS_IMPL(GetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* len);
-ORT_API_STATUS_IMPL(GetStringTensorElementLength, _In_ const OrtValue* value, _Out_ size_t* out, size_t index);
+ORT_API_STATUS_IMPL(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(GetStringTensorContent, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
                     size_t s_len, _Out_writes_all_(offsets_len) size_t* offsets, size_t offsets_len);
-ORT_API_STATUS_IMPL(GetStringTensorElement, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
-                    size_t s_len, size_t index);
+ORT_API_STATUS_IMPL(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
 ORT_API_STATUS_IMPL(CastTypeInfoToTensorInfo, _In_ const OrtTypeInfo*,
                     _Outptr_result_maybenull_ const OrtTensorTypeAndShapeInfo** out);
 ORT_API_STATUS_IMPL(GetOnnxTypeFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ enum ONNXType* out);

@@ -581,7 +581,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorDataLength, _In_ const OrtValue* val
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* value, _Out_ size_t* out, size_t index) {
+ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out) {
   TENSOR_READ_API_BEGIN
   const auto* src = tensor.Data<std::string>();
   auto len = tensor.Shape().Size();
@@ -598,8 +598,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
   TENSOR_READ_API_BEGIN
   const auto* input = tensor.Data<std::string>();
   auto len = static_cast<size_t>(tensor.Shape().Size());
-  if (offsets_len < len) {
-    return OrtApis::CreateStatus(ORT_FAIL, "offsets buffer is too small");
+  if (offsets_len != len) {
+    return OrtApis::CreateStatus(ORT_FAIL, "offsets buffer is not equal to tensor size");
   }
   {
     size_t ret = 0;
@@ -622,8 +622,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
-                    size_t s_len, size_t index) {
+ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s) {
   TENSOR_READ_API_BEGIN
   const auto* input = tensor.Data<std::string>();
   auto len = static_cast<size_t>(tensor.Shape().Size());
