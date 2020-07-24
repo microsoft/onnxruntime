@@ -47,6 +47,11 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, S, B, M, V));
 
+  LOGS_DEFAULT(VERBOSE) << "BatchNorm ACL:";  
+  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << "params " << S->Shape().ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << std::endl;
+
   const T* x_data = X->template Data<T>();
 
   Tensor* Y = context->Output(0, X->Shape());

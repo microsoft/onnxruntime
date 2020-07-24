@@ -65,7 +65,7 @@ ONNX_OPERATOR_SET_SCHEMA(
         .TypeConstraint(
             "T",
             OpSchema::all_tensor_types(),
-            "Input can be of any tensor type.")    
+            "Input can be of any tensor type.")
 */
 ONNX_CPU_OPERATOR_KERNEL(
     Unique,
@@ -136,10 +136,10 @@ static void CreateFlattenedOutput(OpKernelContext& context,
                                   const std::vector<int64_t>& inverse_index,         // unsorted
                                   bool sorted) {
   int64_t num_unique = static_cast<int64_t>(indices.size());
-  Tensor& Y = *context.Output(0, TensorShape({num_unique}));
-  Tensor* indices_out = context.Output(1, TensorShape({num_unique}));
-  Tensor* inverse_indices = context.Output(2, TensorShape({static_cast<int64_t>(inverse_index.size())}));
-  Tensor* counts = context.Output(3, TensorShape({num_unique}));
+  Tensor& Y = *context.Output(0, {num_unique});
+  Tensor* indices_out = context.Output(1, {num_unique});
+  Tensor* inverse_indices = context.Output(2, {static_cast<int64_t>(inverse_index.size())});
+  Tensor* counts = context.Output(3, {num_unique});
 
   auto Y_data = Y.MutableDataAsSpan<T>();
   gsl::span<int64_t> indices_data = indices_out != nullptr ? indices_out->MutableDataAsSpan<int64_t>()
@@ -213,9 +213,9 @@ static void CreateOutput(OpKernelContext& context,
   }
 
   Tensor& Y = *context.Output(0, TensorShape(std::move(Y_dims)));
-  Tensor* indices_out = context.Output(1, TensorShape({num_unique}));
-  Tensor* inverse_indices = context.Output(2, TensorShape({static_cast<int64_t>(inverse_index.size())}));
-  Tensor* counts = context.Output(3, TensorShape({num_unique}));
+  Tensor* indices_out = context.Output(1, {num_unique});
+  Tensor* inverse_indices = context.Output(2, {static_cast<int64_t>(inverse_index.size())});
+  Tensor* counts = context.Output(3, {num_unique});
 
   auto Y_data = Y.MutableDataAsSpan<T>();
   gsl::span<int64_t> indices_data = indices_out != nullptr ? indices_out->MutableDataAsSpan<int64_t>()

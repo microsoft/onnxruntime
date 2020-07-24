@@ -296,6 +296,9 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
             case Type::TENSOR_INT32:
               output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
               break;
+            case Type::TENSOR_QUANT8_ASYMM:
+              output_buffer = ort.GetTensorMutableData<uint8_t>(output_tensor);
+              break;
             default:
               return Status(common::ONNXRUNTIME, common::FAIL,
                             "Unsupported output type: " + TypeToStr(model_output_type.type));

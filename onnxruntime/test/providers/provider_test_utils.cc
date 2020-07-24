@@ -643,6 +643,7 @@ void OpTester::Run(
     const CustomOutputVerifierFn& custom_output_verifier,
     const Graph::ResolveOptions& options) {
   SessionOptions so;
+  so.use_per_session_threads = false;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;

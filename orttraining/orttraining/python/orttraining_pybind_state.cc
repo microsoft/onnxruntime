@@ -12,6 +12,7 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/training_ops/cuda/collective/nccl_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 
@@ -70,21 +71,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
               << data_group_size << std::endl;
     parameters.data_parallel_size = data_group_size;
   }
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
-  // this condition block is temporary.
-  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-  bool use_nccl = parameters.allreduce_post_accumulation;
-  if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = training::setup_mpi();
-    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
-    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
-    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
-    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
-    parameters.local_size = mpi_context.local_size;
-    parameters.local_rank = mpi_context.local_rank;
-  }
-#endif
 
   training::TrainingSession::TrainingConfiguration config{};
   config.weight_names_to_train = parameters.weights_to_train;
@@ -183,6 +169,34 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("set_gradients_as_graph_outputs", &TrainingParameters::set_gradients_as_graph_outputs)
       .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
+#if defined(USE_NCCL)
+  // USE_NCCL is set by default. It is unset if MPI is not found.
+  static onnxruntime::training::MPIContext mpi_context = training::setup_mpi();
+  std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
+  std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
+  std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
+  std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+
+  m.def("get_mpi_context_local_rank", []() -> int { return mpi_context.local_rank; });
+  m.def("get_mpi_context_local_size", []() -> int { return mpi_context.local_size; });
+  m.def("get_mpi_context_world_rank", []() -> int { return mpi_context.world_rank; });
+  m.def("get_mpi_context_world_size", []() -> int { return mpi_context.world_size; });
+  
+  // TODO: consider remove mip rank, size from TrainingParameters
+  parameters.local_rank = mpi_context.local_rank;
+  parameters.local_size = mpi_context.local_size;
+  if (parameters.world_rank != 0 && parameters.world_rank != mpi_context.world_rank) {
+    std::cout << "WARNING: TrainingParameters world_rank is not correct, tuned automatically to "
+            << mpi_context.world_rank << std::endl;
+    parameters.world_rank = mpi_context.world_rank;
+  }
+  if (parameters.world_size != 0 && parameters.world_size != mpi_context.world_size) {
+    std::cout << "WARNING: TrainingParameters world_size is not correct, tuned automatically to "
+            << mpi_context.world_size << std::endl;
+    parameters.world_size = mpi_context.world_size;
+  }
+#endif
+
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
       .def_property_readonly("loss_scale_input_name", [](const TrainingConfigurationResult& result) -> py::object {
@@ -202,7 +216,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return onnxruntime::make_unique<onnxruntime::training::TrainingSession>(GetDefaultCPUSessionOptions(), env);
       }))
       .def("finalize", [](py::object) {
-#if defined(USE_NCCL) || defined(USE_HOROVOD)
+#if defined(USE_NCCL)
         training::shutdown_mpi();
 #endif
       })
