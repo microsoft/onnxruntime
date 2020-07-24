@@ -91,7 +91,7 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
     auto node = graph.GetNode(step.node_index);
     ORT_ENFORCE(nullptr != node);
     out << "[" << i << "] ";
-    out << node->OpType() << " (" << node->Name() << ")" << std::endl;
+    out << node->OpType() << " (" << node->Name() << ") -> " << node->OutputDefs()[0]->Name() << std::endl;
     if (step.free_from_index <= step.free_to_index) {
       out << "Free ml-values: ";
       std::string sep;
@@ -147,6 +147,9 @@ class PlannerImpl {
 
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
+
+  // lookup of node that generates output node arg
+  std::unordered_map<const NodeArg*, const Node*> node_arg_from_;
 
   // FreeBufferInfo is used to track information about ml-values whose buffers are
   // free to be reused.
@@ -343,6 +346,12 @@ class PlannerImpl {
         // TODO this should be an error case, needs more investigation
         continue;
       }
+
+      // Don't reuse between forward and backward, as it may hold in GPU for too long
+      // Besides, reusing across FW/BW might lead to wasted memory swap
+      if (node_arg_from_[p_node_arg]->Description() != node_arg_from_[&output_arg]->Description())
+        continue;
+
       auto& available_memory_info = AllocPlan(p_node_arg->Name()).location;
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
@@ -640,13 +649,10 @@ class PlannerImpl {
             AllocPlan(reused).grouped_async_buffers = nullptr;
             AllocPlan(reused).alloc_kind = AllocKind::kAllocate;
           }
-        }
-        /* // disable reuse as it may hold on to the buffer for too long
-        else if (!context_.IsParallelExecutionEnabled() && FindReusableTensor(*node_output, &reused)) {
+        } else if (!context_.IsParallelExecutionEnabled() && FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
-        } */
-        else if (!context_.IsParallelExecutionEnabled() && AllocPlan(current).create_fence) {
+        } else if (!context_.IsParallelExecutionEnabled() && AllocPlan(current).create_fence) {
           // Reuse an async buffer by setting up its group, this is only for sequential execution.
           // actual reuse of async buffer happens at runtime in ExecutionFrame
           auto& grouped_buffers = AllocPlan(current).grouped_async_buffers;
@@ -795,6 +801,13 @@ Status PlannerImpl::CreatePlan() {
   // explore more efficient orderings (from a memory usage perspective).
   for (auto n : p_graph_nodes) {
     plan_.execution_plan.emplace_back(n);
+    const Node* node = graph_viewer_.GetNode(n);
+    node->ForEachWithIndex(
+        node->OutputDefs(),
+        [this, node](const NodeArg& arg, size_t) {
+          node_arg_from_.insert(std::make_pair(&arg, node));
+          return Status::OK();
+        });
   }
 
   // compute use counts for all ml-values

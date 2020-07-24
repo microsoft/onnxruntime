@@ -1362,8 +1362,10 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     }
 
     // special case for SwapFromHost/SwapToHost
-    // so SwapToHost is traversed immediately after its input node
-    // while SwapFromHost travered immediately before its output node
+    // if graph contains no such nodes there's no change in traverse order
+    // note the traverse order is reverseDFS, so output is before input
+    // the goal is to have SwapToHost traversed immediately before its input node
+    // while SwapFromHost travered immediately after its output node
 
     if (visited[n.Index()] || n.OpType() == "SwapToHost") continue;
 
@@ -1391,12 +1393,12 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     }
 
     if (enter) {
-      for (auto swap_to_host_node : swap_to_host_nodes) {
-        enter(swap_to_host_node);
-      }
-      enter(&n);
       for (auto swap_from_host_node : swap_from_host_nodes) {
         enter(swap_from_host_node);
+      }
+      enter(&n);
+      for (auto swap_to_host_node : swap_to_host_nodes) {
+        enter(swap_to_host_node);
       }
     }
 

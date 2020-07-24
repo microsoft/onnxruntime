@@ -86,7 +86,7 @@ Status FinalizeSessionState(SessionState& session_state,
   session_state.SetExecutionPlan(std::move(exec_plan));
 
 #ifdef PRINT_EXECUTION_PLAN
-  std::cout << std::make_pair(exec_plan_ptr, &session_state_) << std::endl;
+  std::cout << std::make_pair(exec_plan_ptr, &session_state) << std::endl;
 #endif
 
   std::unique_ptr<ITensorAllocator> tensor_allocator_(
