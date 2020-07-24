@@ -59,6 +59,10 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
   Status ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const;
 
+  // Used by ReduceSumTraining which will have axes as input
+  template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
+  Status ComputeImplEx(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const;
+
   template <typename T, typename OutT, cudnnReduceTensorIndices_t ReduceTensorIndices>
   Status ReduceKernelShared(
       const T* X,
@@ -176,18 +180,6 @@ class ReduceSum final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceSumTraining final : public ReduceKernel<true> {
- public:
-  ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    fast_reduction_ = true;
-  }
-
-  Status ComputeInternal(OpKernelContext* ctx) const override {
-    return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
-  }
-};
-
-template <typename T>
 class ReduceLogSum final : public ReduceKernel<true> {
  public:
   ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
@@ -221,6 +213,58 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);
   }
+};
+
+Status PrepareForReduce(const Tensor* X,
+                        bool keepdims,
+                        const std::vector<int64_t>& axes,
+                        PrepareReduceMetadata& prepare_reduce_metadata,
+                        const TensorShape* input_shape_override = nullptr);
+
+template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
+Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+                         /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
+                         const std::vector<int64_t>& axes,
+                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         const TensorShape* input_shape_override = nullptr);
+
+// CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
+// it's safer to wrap it with automatically memory deleter as CudnnReduceDescriptor.
+// An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t
+// is implemented below, so CUDA can seamlessly work.
+class CudnnReduceDescriptor final {
+ public:
+  CudnnReduceDescriptor() : desc_(nullptr) {
+  }
+
+  ~CudnnReduceDescriptor() {
+    if (desc_ != nullptr) {
+      cudnnDestroyReduceTensorDescriptor(desc_);
+      desc_ = nullptr;
+    }
+  }
+
+  CudnnReduceDescriptor(const CudnnReduceDescriptor&) = delete;
+  CudnnReduceDescriptor& operator=(const CudnnReduceDescriptor&) = delete;
+
+  Status Set(cudnnReduceTensorOp_t op, cudnnDataType_t type, cudnnReduceTensorIndices_t indices) {
+    if (!desc_)
+      CUDNN_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
+
+    CUDNN_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
+        desc_,
+        op,
+        type,
+        CUDNN_PROPAGATE_NAN,
+        indices,
+        CUDNN_32BIT_INDICES));  // currently only the 32-bit (unsigned int) type is supported.
+    return Status::OK();
+  }
+
+  operator cudnnReduceTensorDescriptor_t() const { return desc_; }
+
+ private:
+  cudnnReduceTensorDescriptor_t desc_;
 };
 
 }  // namespace cuda
