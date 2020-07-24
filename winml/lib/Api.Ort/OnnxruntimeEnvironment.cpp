@@ -25,7 +25,7 @@ static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
   system_path = "onnxruntime.dll";
 #endif
 
-  auto out_module = LoadLibraryA(system_path.data());
+  auto out_module = LoadLibraryExA(system_path.data());
   if (out_module == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
