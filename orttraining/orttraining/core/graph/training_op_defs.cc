@@ -1204,7 +1204,7 @@ Example 4:
         }
 
         if (all_lengths_known) {
-          output_shape->mutable_dim(axis)->set_dim_value(total_length);
+          output_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(total_length);
         }
 
       });
