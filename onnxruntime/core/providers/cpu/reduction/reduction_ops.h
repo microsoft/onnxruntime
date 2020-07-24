@@ -7,8 +7,27 @@
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/containers.h"
+#include "core/util/math_cpuonly.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
+
+template <typename T>
+bool PrepareForReduce(const Tensor* input_tensor_ptr,
+                      FastAllocVector<T>& transposed_input_data,
+                      int64_t& block_size,
+                      int64_t& blocks,
+                      const std::vector<int64_t>& axes_,
+                      bool keepdims_,
+                      /*out*/ std::vector<int64_t>& reduced_dims,
+                      bool check_no_transpose = false,
+                      const TensorShape* input_shape_override = nullptr);
+
+template <typename T>
+void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
+                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
+                   concurrency::ThreadPool* tp);
 
 template <bool allow_multi_axes>
 class ReduceKernelBase {
@@ -126,21 +145,6 @@ class ReduceSum final : public ReduceKernel<true> {
   Status Compute(OpKernelContext* context) const override;
 
   // For external calls requiring ReduceSum implementation - will return the reduced output.
-  //`input_shape_override` overrides the shape of `input` for compute purposes.
-  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                     AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                     const TensorShape* input_shape_override = nullptr);
-};
-
-template <typename T>
-class ReduceSumTraining final : public ReduceKernel<true> {
- public:
-  ReduceSumTraining(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
-  // For external calls requiring ReduceSumTraining implementation - will return the reduced output.
   //`input_shape_override` overrides the shape of `input` for compute purposes.
   static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
                      AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
