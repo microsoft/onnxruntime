@@ -6,6 +6,7 @@ from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
 
+
 class TrainStepInfo(object):
     r"""Private class used to store runtime information from current train step.
 
@@ -141,7 +142,10 @@ class ORTTrainer(object):
 
         self.model_desc = _ORTTrainerModelDesc(model_desc)
         self.optim_config = optim_config
-        self.options = ORTTrainerOptions(options)
+        if options:
+            self.options = ORTTrainerOptions(options)
+        else:
+            self.options = ORTTrainerOptions()
 
     def eval_step(self, *input, **kwargs):
         r"""Evaluation step method
