@@ -7,38 +7,48 @@ namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// Represents a disposable OrtValue
-    /// If necessary maybe made public and more
-    /// functionality added. Right now it is disposable
     /// </summary>
-    internal class OrtValue : IDisposable
+    public class OrtValue : IDisposable
     {
-        private IntPtr _handle;
-
         /// <summary>
-        /// Used by factory methods to instantiate
+        /// Use factory methods to instantiate
         /// </summary>
         /// <param name="handle"></param>
         internal OrtValue(IntPtr handle)
         {
-            _handle = handle;
+            Handle = handle;
+        }
+
+        internal IntPtr Handle { get; private set; }
+
+        /// <summary>
+        /// This internal interface is used to transfer ownership to
+        /// DisposableNamdOnnxValue class.
+        /// </summary>
+        /// <returns></returns>
+        internal IntPtr TakeOwnership()
+        {
+            var handle = Handle;
+            Handle = IntPtr.Zero;
+            return handle;
         }
 
         /// <summary>
         /// Factory method to construct an OrtValue of Tensor type on top of pre-allocated memory.
-        /// This can be a piece of native memory allocated by MemoryAllocator (possibly on a device)
+        /// This can be a piece of native memory allocated by OrtAllocator (possibly on a device)
         /// or a piece of pinned managed memory.
         /// 
         /// The resulting OrtValue does not own the underlying memory buffer and will not attempt to
         /// deallocated it.
         /// </summary>
         /// <param name="memInfo">Memory Info. For managed memory it is a default cpu.
-        ///                       For Native memory must be obtained from the allocator or MemoryAllocation instance</param>
+        ///                       For Native memory must be obtained from the allocator or OrtMemoryAllocation instance</param>
         /// <param name="elementType">DataType for the Tensor</param>
         /// <param name="shape">Tensor shape</param>
         /// <param name="dataBuffer">Pointer to a raw memory buffer</param>
         /// <param name="bufferLength">Buffer length in bytes</param>
         /// <returns>A disposable instance of OrtValue</returns>
-        public static OrtValue CreateTensorValueWithData(MemoryInfo memInfo, TensorElementType elementType,
+        public static OrtValue CreateTensorValueWithData(OrtMemoryInfo memInfo, TensorElementType elementType,
                                                          long[] shape,
                                                          IntPtr dataBuffer,
                                                          uint bufferLength)
@@ -62,21 +72,18 @@ namespace Microsoft.ML.OnnxRuntime
             return new OrtValue(ortValueHandle);
         }
 
-        internal IntPtr Handle
-        {
-            get
-            {
-                return _handle; 
-            }
-        }
-
         #region Disposable Support
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
             {
-                NativeMethods.OrtReleaseValue(_handle);
-                _handle = IntPtr.Zero;
+                // We have to surrender ownership to some legacy classes
+                if (Handle != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseValue(Handle);
+                    // Prevent use after disposal
+                    Handle = IntPtr.Zero;
+                }
             }
         }
         public void Dispose()

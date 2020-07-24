@@ -10,7 +10,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// See documentation for OrtAllocatorType in C API
     /// </summary>
-    public enum AllocatorType
+    public enum OrtAllocatorType
     {
         DeviceAllocator = 0,
         ArenaAllocator = 1
@@ -19,7 +19,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// See documentation for OrtMemType in C API
     /// </summary>
-    public enum MemoryType
+    public enum OrtMemType
     {
         CpuInput = -2,                      // Any CPU memory used by non-CPU execution provider
         CpuOutput = -1,                     // CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
@@ -29,29 +29,29 @@ namespace Microsoft.ML.OnnxRuntime
 
     /// <summary>
     /// This class encapsulates and most of the time owns the underlying native OrtMemoryInfo instance.
-    /// Instance returned from MemoryAllocator will not own OrtMemoryInfo, the class must be disposed
+    /// Instance returned from OrtAllocator will not own OrtMemoryInfo, the class must be disposed
     /// regardless.
     /// 
-    /// Use this class to query and create MemoryAllocator instances so you can pre-allocate memory for model
+    /// Use this class to query and create OrtAllocator instances so you can pre-allocate memory for model
     /// inputs/outputs and use it for binding. Instances of the class can also used to created OrtValues bound
-    /// to pre-allocated memory. In that case, the instance of MemoryInfo contains the information about the allocator
+    /// to pre-allocated memory. In that case, the instance of OrtMemoryInfo contains the information about the allocator
     /// used to allocate the underlying memory.
     /// </summary>
-    public class MemoryInfo : IDisposable
+    public class OrtMemoryInfo : IDisposable
     {
-        private static readonly Lazy<MemoryInfo> _defaultCpuAllocInfo = new Lazy<MemoryInfo>(CreateCpuMemoryInfo);
+        private static readonly Lazy<OrtMemoryInfo> _defaultCpuAllocInfo = new Lazy<OrtMemoryInfo>(CreateCpuMemoryInfo);
         private IntPtr _pointer;
         private readonly bool _owned; // false if we are exposing OrtMemoryInfo from an allocator which owns it
 
-        private static MemoryInfo CreateCpuMemoryInfo()
+        private static OrtMemoryInfo CreateCpuMemoryInfo()
         {
-            IntPtr allocInfo = IntPtr.Zero;
+            IntPtr memoryInfo = IntPtr.Zero;
             // Returns OrtMemoryInfo instance that needs to be disposed
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCpuMemoryInfo(AllocatorType.DeviceAllocator, MemoryType.Cpu, out allocInfo));
-            return new MemoryInfo(allocInfo, true);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCpuMemoryInfo(OrtAllocatorType.DeviceAllocator, OrtMemType.Cpu, out memoryInfo));
+            return new OrtMemoryInfo(memoryInfo, true);
         }
 
-        public static MemoryInfo DefaultInstance
+        public static OrtMemoryInfo DefaultInstance
         {
             get
             {
@@ -69,55 +69,55 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// This allocator takes an native pointer to already existing
-        /// instance of MemoryInfo. That instance may either be owned or not
+        /// instance of OrtMemoryInfo. That instance may either be owned or not
         /// owned. In the latter case, this class serves to expose native properties
         /// of the instance.
         /// </summary>
         /// <param name="allocInfo"></param>
-        internal MemoryInfo(IntPtr allocInfo, bool owned)
+        internal OrtMemoryInfo(IntPtr allocInfo, bool owned)
         {
             _pointer = allocInfo;
             _owned = owned;
         }
 
         // Predefined utf8 encoded allocator names. Use them to construct an instance of
-        // MemoryInfo
-        public static readonly byte[] CPU_allocator = Encoding.UTF8.GetBytes("Cpu" + '\0');
-        public static readonly byte[] CUDA_allocator = Encoding.UTF8.GetBytes("Cuda" + '\0');
-        public static readonly byte[] CUDA_PINNED_allocator = Encoding.UTF8.GetBytes("CudaPinned" + '\0');
+        // OrtMemoryInfo
+        public static readonly byte[] allocatorCPU = Encoding.UTF8.GetBytes("Cpu" + '\0');
+        public static readonly byte[] allocatorCUDA = Encoding.UTF8.GetBytes("Cuda" + '\0');
+        public static readonly byte[] allocatorCUDA_PINNED = Encoding.UTF8.GetBytes("CudaPinned" + '\0');
         /// <summary>
-        /// Create an instance of MemoryInfo according to the specification
+        /// Create an instance of OrtMemoryInfo according to the specification
         /// Memory info instances are usually used to get a handle of a native allocator
         /// that is present within the current inference session object. That, in turn, depends
         /// of what execution providers are available within the binary that you are using and are
         /// registered with Add methods.
         /// </summary>
-        /// <param name="utf8_allocator_name">Allocator name. Use of the predefined above.</param>
-        /// <param name="alloc_type">Allocator type</param>
-        /// <param name="device_id">Device id</param>
-        /// <param name="mem_type">Memory type</param>
-        public MemoryInfo(byte[] utf8_allocator_name, AllocatorType alloc_type, int device_id, MemoryType mem_type)
+        /// <param name="utf8AllocatorName">Allocator name. Use of the predefined above.</param>
+        /// <param name="allocatorType">Allocator type</param>
+        /// <param name="deviceId">Device id</param>
+        /// <param name="memoryType">Memory type</param>
+        public OrtMemoryInfo(byte[] utf8AllocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
         {
-            using (var pinned_handle = new PinnedGCHandle(GCHandle.Alloc(utf8_allocator_name, GCHandleType.Pinned)))
+            using (var pinnedName = new PinnedGCHandle(GCHandle.Alloc(utf8AllocatorName, GCHandleType.Pinned)))
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(pinned_handle.Pointer,
-                                                                                alloc_type,
-                                                                                device_id,
-                                                                                mem_type,
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateMemoryInfo(pinnedName.Pointer,
+                                                                                allocatorType,
+                                                                                deviceId,
+                                                                                memoryType,
                                                                                 out _pointer));
             }
             _owned = true;
         }
 
         /// <summary>
-        /// Create an instance of MemoryInfo according to the specification.
+        /// Create an instance of OrtMemoryInfo according to the specification.
         /// </summary>
-        /// <param name="allocator_name">Allocator name</param>
-        /// <param name="alloc_type">Allocator type</param>
-        /// <param name="device_id">Device id</param>
-        /// <param name="mem_type">Memory type</param>
-        public MemoryInfo(string allocator_name, AllocatorType alloc_type, int device_id, MemoryType mem_type)
-            : this(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(allocator_name), alloc_type, device_id, mem_type)
+        /// <param name="allocatorName">Allocator name</param>
+        /// <param name="allocatorType">Allocator type</param>
+        /// <param name="deviceId">Device id</param>
+        /// <param name="memoryType">Memory type</param>
+        public OrtMemoryInfo(string allocatorName, OrtAllocatorType allocatorType, int deviceId, OrtMemType memoryType)
+            : this(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(allocatorName), allocatorType, deviceId, memoryType)
         {
         }
 
@@ -125,9 +125,9 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr utf8_name = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(_pointer, out utf8_name));
-                return NativeOnnxValueHelper.StringFromNativeUtf8(utf8_name);
+                IntPtr utf8Name = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetName(_pointer, out utf8Name));
+                return NativeOnnxValueHelper.StringFromNativeUtf8(utf8Name);
             }
         }
 
@@ -147,21 +147,21 @@ namespace Microsoft.ML.OnnxRuntime
         ///  calls behind them so exposing them as Get() would be appropriate.
         /// </summary>
         /// <returns></returns>
-        public MemoryType GetMemoryType()
+        public OrtMemType GetMemoryType()
         {
-            MemoryType mem_type = MemoryType.Default;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetMemType(_pointer, out mem_type));
-            return mem_type;
+            OrtMemType memoryType = OrtMemType.Default;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetMemType(_pointer, out memoryType));
+            return memoryType;
         }
 
-        public AllocatorType GetAllocatorType()
+        public OrtAllocatorType GetAllocatorType()
         {
-            AllocatorType alloc_type = AllocatorType.ArenaAllocator;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetType(_pointer, out alloc_type));
-            return alloc_type;
+            OrtAllocatorType allocatorType = OrtAllocatorType.ArenaAllocator;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetType(_pointer, out allocatorType));
+            return allocatorType;
         }
 
-        public bool CompareMemoryInfo(MemoryInfo other)
+        public bool CompareMemoryInfo(OrtMemoryInfo other)
         {
             int result = -1;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(_pointer, other._pointer, out result));
@@ -191,15 +191,15 @@ namespace Microsoft.ML.OnnxRuntime
 
     /// <summary>
     /// This class represents memory allocation made by a specific onnxruntime
-    /// allocator. Use MemoryAllocator.Allocate() to obtain an instance of this class.
+    /// allocator. Use OrtAllocator.Allocate() to obtain an instance of this class.
     /// It implements IDisposable and makes use of the original allocator
     /// used to allocate the memory. The lifespan of the allocator instance must eclipse the
-    /// lifespan of the allocation. Or, if you prefer, all MemoryAllocation instances must be
+    /// lifespan of the allocation. Or, if you prefer, all OrtMemoryAllocation instances must be
     /// disposed of before the corresponding allocator instances are disposed of.
     /// </summary>
-    public class MemoryAllocation : IDisposable
+    public class OrtMemoryAllocation : IDisposable
     {
-        private MemoryAllocator _allocator;
+        private OrtAllocator _allocator;
 
         /// <summary>
         /// Bind an arbitrary piece of native memory to the instance
@@ -207,7 +207,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="pointer"></param>
         /// <param name="size"></param>
-        public MemoryAllocation(IntPtr pointer, uint size)
+        public OrtMemoryAllocation(IntPtr pointer, uint size)
         {
             _allocator = null;
             Pointer = pointer;
@@ -216,14 +216,14 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// This an instance with a piece of memory allocated
-        /// by onnxruntime MemoryAllocator. The same allocator will be used for
+        /// by onnxruntime OrtAllocator. The same allocator will be used for
         /// for memory disposal. For memory allocated elsewhere, the instance will not own the memory
         /// and will not dispose of it.
         /// </summary>
         /// <param name="allocator"></param>
         /// <param name="pointer"></param>
         /// <param name="size"></param>
-        internal MemoryAllocation(MemoryAllocator allocator, IntPtr pointer, uint size)
+        internal OrtMemoryAllocation(OrtAllocator allocator, IntPtr pointer, uint size)
         {
             _allocator = allocator;
             Pointer = pointer;
@@ -240,7 +240,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public uint Size { get; private set; }
 
-        public MemoryInfo Info
+        public OrtMemoryInfo Info
         {
             get
             {
@@ -268,22 +268,22 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion
     }
 
-    public class MemoryAllocator : IDisposable
+    public class OrtAllocator : IDisposable
     {
-        private static readonly Lazy<MemoryAllocator> _defaultInstance = new Lazy<MemoryAllocator>(GetDefaultCpuAllocator);
+        private static readonly Lazy<OrtAllocator> _defaultInstance = new Lazy<OrtAllocator>(GetDefaultCpuAllocator);
         private IntPtr _pointer;
         private readonly bool _owned;
 
-        private static MemoryAllocator GetDefaultCpuAllocator()
+        private static OrtAllocator GetDefaultCpuAllocator()
         {
             IntPtr allocator = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAllocatorWithDefaultOptions(out allocator));
             // Instance of default cpu allocator is a native singleton
             // Do not dispose of
-            return new MemoryAllocator(allocator, false);
+            return new OrtAllocator(allocator, false);
         }
 
-        public static MemoryAllocator DefaultInstance // May throw exception in every access, if the constructor have thrown an exception
+        public static OrtAllocator DefaultInstance // May throw exception in every access, if the constructor have thrown an exception
         {
             get
             {
@@ -304,26 +304,26 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="allocator"></param>
         /// <param name="owned"></param>
-        internal MemoryAllocator(IntPtr allocator, bool owned)
+        internal OrtAllocator(IntPtr allocator, bool owned)
         {
             this._pointer = allocator;
             this._owned = owned;
         }
 
-        public MemoryAllocator(InferenceSession session, MemoryInfo memInfo)
+        public OrtAllocator(InferenceSession session, OrtMemoryInfo memInfo)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateAllocator(session.Handle, memInfo.Pointer, out _pointer));
             _owned = true;
         }
 
-        public MemoryInfo Info
+        public OrtMemoryInfo Info
         {
             get
             {
-                IntPtr mem_info = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorGetInfo(_pointer, out mem_info));
+                IntPtr memoryInfo = IntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorGetInfo(_pointer, out memoryInfo));
                 // This serves as an exposure of memory_info owned by the allocator
-                return new MemoryInfo(mem_info, false);
+                return new OrtMemoryInfo(memoryInfo, false);
             }
         }
 
@@ -332,11 +332,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="size"></param>
         /// <returns></returns>
-        public MemoryAllocation Allocate(uint size)
+        public OrtMemoryAllocation Allocate(uint size)
         {
             IntPtr allocation = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorAlloc(_pointer, (UIntPtr)size, out allocation));
-            return new MemoryAllocation(this, allocation, size);
+            return new OrtMemoryAllocation(this, allocation, size);
         }
 
         /// <summary>

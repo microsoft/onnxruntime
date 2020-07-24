@@ -17,6 +17,10 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private IntPtr _handle;
 
+        /// <summary>
+        /// Use InferenceSession.CreateIOBinding()
+        /// </summary>
+        /// <param name="session"></param>
         internal IoBinding(InferenceSession session)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateIoBinding(session.Handle, out _handle));
@@ -30,7 +34,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public void BindInput(string name, Tensors.TensorElementType elementType, long[] shape, MemoryAllocation allocation)
+        public void BindInput(string name, Tensors.TensorElementType elementType, long[] shape, OrtMemoryAllocation allocation)
         {
             using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
                                                                     elementType,
@@ -48,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime
             BindIntputOrOutput(name, fixedValue.Value, true);
         }
 
-        public void BindOutput(string name, Tensors.TensorElementType elementType, long[] shape, MemoryAllocation allocation)
+        public void BindOutput(string name, Tensors.TensorElementType elementType, long[] shape, OrtMemoryAllocation allocation)
         {
             using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
                                                                     elementType,
@@ -68,8 +72,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         private void BindIntputOrOutput(string name, IntPtr ortValue, bool isInput)
         {
-            var utf8_str_pinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
-            using (var pinnedName = new PinnedGCHandle(utf8_str_pinned))
+            var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
+            using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
             {
                 if (isInput)
                 {
