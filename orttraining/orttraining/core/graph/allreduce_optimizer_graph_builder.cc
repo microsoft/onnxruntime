@@ -180,7 +180,8 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations =
-      opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
+      //opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
+      opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
   const float scale = 1.0f / total_num_accumulations;
   const bool fuse_scaling_outputs = !overlap_compute_allreduce;

@@ -22,10 +22,12 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
                                            const unordered_set<string>& y_node_arg_names,
                                            const unordered_set<string>& x_node_arg_names,
                                            string loss_node_arg_name,
-                                           const bool set_gradient_as_graph_output)
+                                           const bool set_gradient_as_graph_output,
+                                           int64_t gradient_acc_steps)
     : graph_(graph),
       loss_node_arg_name_(loss_node_arg_name),
-      set_gradient_as_graph_output_(set_gradient_as_graph_output) {
+      set_gradient_as_graph_output_(set_gradient_as_graph_output) ,
+      gradient_acc_steps_(gradient_acc_steps){
   auto rule_based_graph_transformer =
       onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
@@ -131,7 +133,7 @@ Status GradientGraphBuilder::Build() {
   if (loss_node_arg_name_ != "") {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    tensor_proto.add_float_data(1.f);
+    tensor_proto.add_float_data((1.f / (float)gradient_acc_steps_));
     tensor_proto.set_name(GradientBuilderBase::GradientName(loss_node_arg_name_));
 
     gradient_graph_defs.AddInitializers({tensor_proto});

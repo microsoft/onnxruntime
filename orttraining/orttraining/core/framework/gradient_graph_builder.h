@@ -57,7 +57,8 @@ class GradientGraphBuilder {
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
                        std::string loss_node_arg_name,
-                       const bool set_gradient_as_graph_output = false);
+                       const bool set_gradient_as_graph_output = false,
+                       int64_t gradient_acc_steps = 1);
 
   Status Build();
 
@@ -71,6 +72,7 @@ class GradientGraphBuilder {
   Graph* graph_;
 
   std::string loss_node_arg_name_;
+
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_{5};
 
@@ -102,6 +104,7 @@ class GradientGraphBuilder {
 
   // if it is true, set gradient of trainable weight as graph output
   const bool set_gradient_as_graph_output_;
+  int64_t gradient_acc_steps_;
 };
 
 }  // namespace training

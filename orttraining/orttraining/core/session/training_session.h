@@ -302,7 +302,8 @@ class TrainingSession : public InferenceSession {
   */
   common::Status BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
                                     const std::string& loss_function_output_name,
-                                    const bool set_gradient_as_graph_output = false);
+                                    const bool set_gradient_as_graph_output = false,
+                                    int64_t gradient_acc_steps = 1);
 
   common::Status BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train);
 

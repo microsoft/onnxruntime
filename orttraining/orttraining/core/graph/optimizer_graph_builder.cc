@@ -396,7 +396,8 @@ Status OptimizerGraphBuilder::BuildInternal(
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   if (is_gradient_accumulation_enabled) {
-    const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
+    const float scale = 1.0f;
+    //const float scale = 1.0f / opt_graph_config_.gradient_accumulation_steps;
     ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                                 opt_graph_config_.allreduce_in_fp16, false));
   }

@@ -41,20 +41,20 @@ __global__ void _GatherGradImpl(
         const int grad_row = (itr * numel + ((int)indices[idx])) * stride;      //the offset of the gradient
 
         T gradient[SZ];
-        T weight[SZ];
+        float weight[SZ];
 
 #pragma unroll
         for (int ii = 0; ii < SZ; ii++) {
           int feature_dim = start_feature + ii * GPU_WARP_SIZE;
           if (feature_dim < stride) {
             gradient[ii] = static_cast<T>(grad_output[grad_row + feature_dim]);
-            weight[ii] = static_cast<T>(grad_weight[weight_row + feature_dim]);
+            weight[ii] = static_cast<float>(grad_weight[weight_row + feature_dim]);
           }
         }
 
 #pragma unroll
         for (int ii = 0; ii < SZ; ii++) {
-          weight[ii] += gradient[ii];
+          weight[ii] += (float)gradient[ii];
         }
 
 #pragma unroll
