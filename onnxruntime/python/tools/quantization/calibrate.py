@@ -66,30 +66,24 @@ class ONNXCalibrater:
         added_nodes = []
         added_outputs = []
 
-        to_be_calibrate_nodes = []
         to_be_calibrate_tensor = set()
       
         for node in model.graph.node:
-            should_be_calibrate = ((node.name != '') and (node.op_type in self.calibrate_op_types) and
-                                (node.name not in self.black_nodes)) or ((node.name!='') and (node.name in self.white_nodes))
+            should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
+                                (node.name not in self.black_nodes)) or ((node.name in self.white_nodes))
             if should_be_calibrate:
-                to_be_calibrate_nodes.append(node)
                 to_be_calibrate_tensor.add(node.input[0])
                 to_be_calibrate_tensor.add(node.output[0])
             
         for tensor in to_be_calibrate_tensor:
             # Adding ReduceMin nodes
-            reduce_min_name = ''
             reduce_min_name = tensor + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'],
-                                                        reduce_min_name,
-                                                        keepdims=0)
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'],reduce_min_name,keepdims=0)
        
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
-            reduce_max_name = ''
             reduce_max_name = tensor + '_ReduceMax'
             reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'],
                                                         reduce_max_name,
