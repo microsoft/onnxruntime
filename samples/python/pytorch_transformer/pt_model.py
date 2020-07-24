@@ -1,7 +1,11 @@
+'''
+    From https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+'''
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class TransformerModel(nn.Module):
 
@@ -41,6 +45,7 @@ class TransformerModel(nn.Module):
         output = self.transformer_encoder(input1, self.input1_mask)
         output = self.decoder(output)
         return output
+
 
 class PositionalEncoding(nn.Module):
 

@@ -1,10 +1,14 @@
+import inspect
+import onnx
+import os
 import pytest
 import torch
+
 from numpy.testing import assert_allclose
 
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
-from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo
+from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils
 from pt_model import TransformerModel
 
 
@@ -444,71 +448,43 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
         assert_allclose(lr_list[0],
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
 
-def my_loss(x, target):
-    x = x.view(-1, 28785) #thiagofc: hard-coded for testing
-    return torch.nn.CrossEntropyLoss()(x, target)
-
-def transformer_model_description():
-    bptt=35
-    ntokens = 28785 #temp
-    batch_size = 20
-
-    model_desc = {'inputs':  [('input1', [bptt, batch_size]),
-                              ('label', [bptt, batch_size, ntokens],)],
-                  'outputs': [('loss', [], True)]}
-    return model_desc
-
-def batchify(data, bsz, TEXT, device):
-    data = TEXT.numericalize([data.examples[0].text])
-    # Divide the dataset into bsz parts.
-    nbatch = data.size(0) // bsz
-    # Trim off any extra elements that wouldn't cleanly fit (remainders).
-    data = data.narrow(0, 0, nbatch * bsz)
-    # Evenly divide the data across the bsz batches.
-    data = data.view(bsz, -1).t().contiguous()
-    return data.to(device)
-
-def get_batch(source, i, bptt=35):
-    # import pdb; pdb.set_trace()
-    seq_len = min(bptt, len(source) - 1 - i)
-    data = source[i:i+seq_len]
-    target = source[i+1:i+1+seq_len].view(-1)
-    return data, target
 
 def testInstantiateORTTrainer():
-    model = TransformerModel(28785, 200, 2, 200, 2, 0.2)
-    model_desc = transformer_model_description()
+
+    # Loading external samples for testing
+    pytorch_transformer_path = os.path.join('..','..','..','samples','python','pytorch_transformer')
+    pt_model_path = os.path.join(pytorch_transformer_path,'pt_model.py')
+    pt_model_name = 'pt_model'
+    pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
+    ort_utils_path = os.path.join(pytorch_transformer_path,'ort_utils.py')
+    ort_utils_name = 'ort_utils'
+    ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
+    utils_path = os.path.join(pytorch_transformer_path,'utils.py')
+    utils_name = 'utils'
+    utils = _utils.import_module_from_file(utils_path, utils_name)
+
+    # Modeling
+    model = pt_model.TransformerModel(28785, 200, 2, 200, 2, 0.2)
+    my_loss = ort_utils.my_loss
+    model_desc = ort_utils.transformer_model_description()
     optim_config = optim.LambConfig()
-    # make trainer
+
+    # Create ORTTrainer
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=None)
 
-    # prep data
-    import torchtext
-    from torchtext.data.utils import get_tokenizer
-    TEXT = torchtext.data.Field(tokenize=get_tokenizer("basic_english"),
-                            init_token='<sos>',
-                            eos_token='<eos>',
-                            lower=True)
-    train_txt, val_txt, test_txt = torchtext.datasets.WikiText2.splits(TEXT)
-    TEXT.build_vocab(train_txt)
-    device = torch.device("cpu") #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Prep data
+    train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
 
-    batch_size = 20
-    eval_batch_size = 20 # thiagofc: original was 10
-    train_data = batchify(train_txt, batch_size, TEXT, device)
-    val_data = batchify(val_txt, eval_batch_size, TEXT, device)
-    test_data = batchify(test_txt, eval_batch_size, TEXT, device)
-
-    # start training
+    # Train
     for batch, i in enumerate(range(0, train_data.size(0)-1, 35)):
-        data, targets = get_batch(train_data, i)
+        data, targets = utils.get_batch(train_data, i)
         learning_rate = 0.001
         trainer.train_step(data, targets, learning_rate) # removed learning rate here and in model desc
         break
 
     assert trainer._onnx_model is not None
     onnx_model = trainer._onnx_model
-    import onnx
+
     #print(onnx.helper.printable_graph(model.graph))
     print("\n-- ONNX Model Graph --")
     print("INPUTS")
@@ -516,7 +492,7 @@ def testInstantiateORTTrainer():
     print("OUTPUTS")
     print(onnx_model.graph.output)
     #print(type(onnx_model.graph.input))
-    import inspect
+
     sig = inspect.signature(model.forward)
     #print(sig.parameters.keys())
     sig_loss = inspect.signature(my_loss)
