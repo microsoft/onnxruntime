@@ -69,7 +69,7 @@ class ONNXCalibrater:
       
         for node in model.graph.node:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
-                                (node.name not in self.black_nodes)) or ((node.name in self.white_nodes))
+                                (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
             if should_be_calibrate:
                 to_be_calibrate_tensor.add(node.input[0])
                 to_be_calibrate_tensor.add(node.output[0])
