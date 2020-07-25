@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/tensor/slice.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -33,6 +34,27 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+static Status SliceOutUnwantedOutputSection(const void* input_data,
+                                            const std::vector<int64_t>& input_dims,
+                                            void* output_data,
+                                            const std::vector<int64_t>& output_dims,
+                                            std::vector<int64_t> starts,
+                                            const std::vector<int64_t>& ends,
+                                            const std::vector<int64_t>& axes,
+                                            size_t element_size) {
+  ORT_ENFORCE(ends.size() == axes.size());
+  ORT_ENFORCE(starts.size() == axes.size());
+
+  SliceOp::PrepareForComputeMetadata prepare_for_slice_compute(input_dims);
+
+  SliceBase::PrepareForCompute(starts, ends, axes, input_dims, prepare_for_slice_compute);
+
+  // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
+  ORT_ENFORCE(prepare_for_slice_compute.output_dims == output_dims);
+
+  return SliceCuda::Impl(input_data, input_dims, output_data, prepare_for_slice_compute, element_size);
+}
+
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -51,6 +73,13 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   bool has_bias = (num_inputs == 3);
 
   CudaT* y_data = nullptr;
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  size_t element_size = X->DataType()->Size();
+
+  Tensor* Y = nullptr;
 
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
@@ -88,15 +117,33 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       std::vector<int64_t> y_dims;
+      y_dims.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
       y_dims.insert(y_dims.begin(), {N, M});
-      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(x_shape.Slice(2), kernel_shape,
-                                                       strides, dilations, pads, y_dims, true));
+
+      std::vector<int64_t> y_dims_with_adjusted_pads;
+      y_dims_with_adjusted_pads.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
+      y_dims_with_adjusted_pads.insert(y_dims_with_adjusted_pads.begin(), {N, M});
+
+      bool post_slicing_required = false;
+
+      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape2(x_shape.Slice(2), kernel_shape,
+                                                        strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
+                                                        post_slicing_required));
+      s_.post_slicing_required = post_slicing_required;
       s_.y_dims = y_dims;
-      Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
-      y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+      s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
+      Y = context->Output(0, TensorShape(s_.y_dims));
+      if (!post_slicing_required) {
+        // No post slicing needed. Fill the output tensor's buffer directly.
+        y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+      } else {
+        // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
+        y_data = reinterpret_cast<CudaT*>(s_.AllocAndCache(allocator,
+                                                           TensorShape(y_dims_with_adjusted_pads).Size() * element_size));
+      }
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
-      std::vector<int64_t> y_dims_cudnn = y_dims;
+      std::vector<int64_t> y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
       if (rank < 2) {
         // cudnn only takes 4D or 5D input, so pad dimensions if needed
         x_dims_cudnn.push_back(1);
@@ -173,12 +220,12 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
     }
 
     if (!y_data) {
-      Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
+      Y = context->Output(0, TensorShape(s_.y_dims));
       // special case when there is a dim value of 0 in the shape.
       if (Y->Shape().Size() == 0)
         return Status::OK();
 
-      y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+      y_data = !s_.post_slicing_required ? reinterpret_cast<CudaT*>(Y->template MutableData<T>()) : reinterpret_cast<CudaT*>(s_.cached_memory);
     }
 
     const auto alpha = Consts<CudaT>::One;
@@ -199,6 +246,31 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                   &beta,
                                                   s_.y_tensor,
                                                   y_data));
+
+    // To deal with asymmetric padding, we may have over-padded on one or both sides of a spatial dimension
+    // This may have lead to extra results that are unnecessary and hence we slice that off here
+    if (s_.post_slicing_required) {
+      auto spatial_rank = s_.y_dims.size() - 2;
+
+      std::vector<int64_t> starts;
+      starts.reserve(spatial_rank);
+
+      std::vector<int64_t> ends;
+      ends.reserve(spatial_rank);
+
+      std::vector<int64_t> axes;
+      axes.reserve(spatial_rank);
+
+      for (size_t i = 2; i < (spatial_rank + 2); ++i) {
+        if (s_.y_dims[i] != s_.y_dims_with_adjusted_pads[i]) {
+          starts.push_back(0);
+          ends.push_back(s_.y_dims[i] - s_.y_dims_with_adjusted_pads[i]);
+          axes.push_back(i);
+        }
+      }
+      SliceOutUnwantedOutputSection(y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),
+                                    s_.y_dims, starts, ends, axes, element_size);
+    }
 
     if (has_bias) {
       const Tensor* B = context->Input<Tensor>(2);

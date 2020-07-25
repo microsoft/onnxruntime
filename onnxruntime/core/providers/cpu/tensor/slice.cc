@@ -90,15 +90,12 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& input_dimensions,
-                                    std::vector<int64_t>& starts,
-                                    std::vector<int64_t>& steps,
-                                    std::vector<int64_t>& output_dims,
-                                    std::vector<int64_t>*& flattened_output_dims) const {
+                                    SliceOp::PrepareForComputeMetadata& prepare_metadata) {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
   if (axes.empty()) {
     //axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(starts.size());
+    axes.resize(prepare_metadata.starts.size());
     std::iota(axes.begin(), axes.end(), 0);
   }
 
@@ -117,7 +114,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     auto start = raw_starts[axis_index];
     if (start < 0)
       start += input_dimensions[axis];
-    starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
+    prepare_metadata.starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
     // process end
     auto end = raw_ends[axis_index];
@@ -125,14 +122,15 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
       end += input_dimensions[axis];
 
     // find output dim value for this axis
-    auto temp = clamp(end, int64_t{0}, input_dimensions[axis]) - starts[axis];
+    auto temp = clamp(end, int64_t{0}, input_dimensions[axis]) - prepare_metadata.starts[axis];
     if (temp < 0)
-      output_dims[axis] = 0;
+      prepare_metadata.output_dims[axis] = 0;
     else
-      output_dims[axis] = temp;
+      prepare_metadata.output_dims[axis] = temp;
   }
 
-  FlattenOutputDims(input_dimensions, output_dims, starts, steps, flattened_output_dims);
+  FlattenOutputDims(input_dimensions, prepare_metadata.output_dims, prepare_metadata.starts,
+                    prepare_metadata.steps, prepare_metadata.p_flattened_output_dims);
 
   return Status::OK();
 }
@@ -143,16 +141,13 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& raw_steps,
                                     const std::vector<int64_t>& input_dimensions,
-                                    std::vector<int64_t>& starts,
-                                    std::vector<int64_t>& steps,
-                                    std::vector<int64_t>& output_dims,
-                                    std::vector<int64_t>*& flattened_output_dims) const {
+                                    SliceOp::PrepareForComputeMetadata& prepare_metadata) {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
 
   if (axes.empty()) {
     // axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(starts.size());
+    axes.resize(prepare_metadata.starts.size());
     std::iota(axes.begin(), axes.end(), 0);
   }
 
@@ -171,16 +166,16 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
     if (step == 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
-    steps[axis] = step;
+    prepare_metadata.steps[axis] = step;
 
     // process start
     auto start = raw_starts[axis_index];
     if (start < 0)
       start += input_dimensions[axis];
     if (step < 0)
-      starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis] - 1);
+      prepare_metadata.starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis] - 1);
     else
-      starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
+      prepare_metadata.starts[axis] = clamp(start, int64_t{0}, input_dimensions[axis]);
 
     // process end
     auto end = raw_ends[axis_index];
@@ -202,14 +197,15 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
     }
 
     // find output dim value for this axis
-    auto temp = static_cast<int64_t>(ceil(1.0 * (end - starts[axis]) / step));
+    auto temp = static_cast<int64_t>(ceil(1.0 * (end - prepare_metadata.starts[axis]) / step));
     if (temp < 0)
-      output_dims[axis] = 0;
+      prepare_metadata.output_dims[axis] = 0;
     else
-      output_dims[axis] = temp;
+      prepare_metadata.output_dims[axis] = temp;
   }
 
-  FlattenOutputDims(input_dimensions, output_dims, starts, steps, flattened_output_dims);
+  FlattenOutputDims(input_dimensions, prepare_metadata.output_dims, prepare_metadata.starts,
+                    prepare_metadata.steps, prepare_metadata.p_flattened_output_dims);
 
   return Status::OK();
 }
@@ -222,7 +218,7 @@ void SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                                      std::vector<int64_t>& input_starts,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
-                                     std::vector<int64_t>& input_steps) const {
+                                     std::vector<int64_t>& input_steps) {
   ORT_ENFORCE(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
   ORT_ENFORCE(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
   ORT_ENFORCE(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
@@ -267,11 +263,8 @@ void SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
 template <typename T>
 static Status SliceImpl(OpKernelContext* ctx,
                         const Tensor& input_tensor,
-                        std::vector<int64_t>& output_dims,
-                        std::vector<int64_t>* flattened_output_dims,
-                        const std::vector<int64_t>& starts,
-                        const std::vector<int64_t>& steps) {
-  TensorShape output_shape(output_dims);
+                        SliceOp::PrepareForComputeMetadata& prepare_metadata) {
+  TensorShape output_shape(prepare_metadata.output_dims);
   auto& output_tensor = *ctx->Output(0, output_shape);
 
   // output tensor's size is 0, nothing to fill - return
@@ -296,18 +289,18 @@ static Status SliceImpl(OpKernelContext* ctx,
     ORT_ENFORCE(output == output_end);
   };
 
-  if (flattened_output_dims) {
+  if (prepare_metadata.p_flattened_output_dims) {
     // if we have flattened output dims we need to also flatten the input dims.
     // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
     std::vector<int64_t> flattened_input_dims(input_tensor.Shape().GetDims());
-    flattened_input_dims.resize(flattened_output_dims->size());
-    flattened_input_dims.back() = flattened_output_dims->back();
+    flattened_input_dims.resize(prepare_metadata.p_flattened_output_dims->size());
+    flattened_input_dims.back() = prepare_metadata.p_flattened_output_dims->back();
     TensorShape input_shape(std::move(flattened_input_dims));
 
-    auto input_iterator = SliceIterator<T>(input_tensor, input_shape, starts, *flattened_output_dims, steps);
+    auto input_iterator = SliceIterator<T>(input_tensor, input_shape, prepare_metadata.starts, *prepare_metadata.p_flattened_output_dims, prepare_metadata.steps);
     create_output(input_iterator);
   } else {
-    auto input_iterator = SliceIterator<T>(input_tensor, starts, output_dims, steps);
+    auto input_iterator = SliceIterator<T>(input_tensor, prepare_metadata.starts, prepare_metadata.output_dims, prepare_metadata.steps);
     create_output(input_iterator);
   }
 
@@ -320,13 +313,7 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
   const auto& input_tensor = *input_tensor_ptr;
   const auto& input_dimensions = input_tensor.Shape().GetDims();
   if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
-
-  // Initialize the starts & ends to the actual tensor shape
-  std::vector<int64_t> starts(input_dimensions.size(), 0);
-  std::vector<int64_t> steps(input_dimensions.size(), 1);
-  std::vector<int64_t> output_dims(input_dimensions);
-  std::vector<int64_t> flattened_output_dims;
-  std::vector<int64_t>* p_flattened_output_dims = &flattened_output_dims;
+  SliceOp::PrepareForComputeMetadata prepare_metadata(input_dimensions);
 
   // Slice V10 & DynamicSlice
   if (dynamic_) {
@@ -338,35 +325,33 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
                          ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
 
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
-                                          input_dimensions, starts, steps, output_dims,
-                                          p_flattened_output_dims));
+                                          input_dimensions, prepare_metadata));
   }
   // Slice V1-9
   else {
     ORT_RETURN_IF_ERROR(PrepareForCompute(attr_starts_, attr_ends_, attr_axes_,
-                                          input_dimensions, starts, steps, output_dims,
-                                          p_flattened_output_dims));
+                                          input_dimensions, prepare_metadata));
   }
 
   Status status = Status::OK();
 
   if (input_tensor.IsDataTypeString()) {
-    status = SliceImpl<std::string>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+    status = SliceImpl<std::string>(ctx, input_tensor, prepare_metadata);
   } else {
     const auto element_size = input_tensor.DataType()->Size();
 
     switch (element_size) {
       case sizeof(uint32_t):
-        status = SliceImpl<uint32_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        status = SliceImpl<uint32_t>(ctx, input_tensor, prepare_metadata);
         break;
       case sizeof(uint64_t):
-        status = SliceImpl<uint64_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        status = SliceImpl<uint64_t>(ctx, input_tensor, prepare_metadata);
         break;
       case sizeof(uint16_t):
-        status = SliceImpl<uint16_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        status = SliceImpl<uint16_t>(ctx, input_tensor, prepare_metadata);
         break;
       case sizeof(uint8_t):
-        status = SliceImpl<uint8_t>(ctx, input_tensor, output_dims, p_flattened_output_dims, starts, steps);
+        status = SliceImpl<uint8_t>(ctx, input_tensor, prepare_metadata);
         break;
       default:
         ORT_THROW("Unsupported input data type of ", input_tensor.DataType());

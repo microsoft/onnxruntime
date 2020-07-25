@@ -136,6 +136,59 @@ struct ConvAttributes {
     return Status::OK();
   }
 
+  // TODO: Placeholder name
+  Status InferOutputShape2(const TensorShape& input_shape,
+                           const std::vector<int64_t>& kernel_shape,
+                           const std::vector<int64_t>& strides_p,
+                           const std::vector<int64_t>& dilations_p,
+                           std::vector<int64_t>& pads_p,
+                           std::vector<int64_t>& output_shape,
+                           std::vector<int64_t>& output_shape_with_revised_pads,
+                           bool& post_slicing_needed) const {
+    size_t rank = input_shape.NumDimensions();
+    for (size_t dim = 0; dim < rank; ++dim) {
+      if (dim >= strides_p.size() || dim >= kernel_shape.size() ||
+          dim >= dilations_p.size() || dim >= pads_p.size() ||
+          rank + dim >= pads_p.size()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Out of bound access to array");
+      }
+      int64_t dim_size = 0;
+      ORT_RETURN_IF_ERROR(ComputePadAndOutputShape(input_shape[dim],
+                                                   strides_p[dim],
+                                                   kernel_shape[dim],
+                                                   dilations_p[dim],
+                                                   auto_pad,
+                                                   pads_p[dim],
+                                                   pads_p[rank + dim],
+                                                   dim_size));
+      if (dim_size <= 0) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Invalid input shape: " + input_shape.ToString());
+      }
+      output_shape.push_back(dim_size);
+
+      if (pads_p[dim] == pads_p[rank + dim]) {
+        output_shape_with_revised_pads.push_back(dim_size);
+      } else {
+        if (pads_p[dim] < pads_p[rank + dim]) {
+          ORT_THROW(ONNXRUNTIME, RUNTIME_EXCEPTION, "Not supported yet");
+        } else {
+          pads_p[rank + dim] = pads_p[dim];
+          auto revised_dim_size = ComputeOutputShape(input_shape[dim], strides_p[dim],
+                                                     kernel_shape[dim], dilations_p[dim],
+                                                     pads_p[dim], pads_p[rank + dim]);
+          output_shape_with_revised_pads.push_back(revised_dim_size);
+
+          // Additional pads need not result in additional output
+          // Ensure that the size has changed
+          if (revised_dim_size != dim_size) {
+            post_slicing_needed = true;
+          }
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   bool HasStridesOneAndNoPadding() const {
     if (std::all_of(strides.begin(), strides.end(), [](int64_t v) { return v == 1; })) {
       if (std::all_of(pads.begin(), pads.end(), [](int64_t v) { return v == 0; })) {

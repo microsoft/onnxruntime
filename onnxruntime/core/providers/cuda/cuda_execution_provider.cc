@@ -67,7 +67,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
        [](OrtDevice::DeviceId id) {
          return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
        },
-       cuda_mem_limit, 
+       cuda_mem_limit,
        arena_extend_strategy});
 
   // CUDA malloc/free is expensive so always use an arena
@@ -105,19 +105,17 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
   UnorderedMapStringToString options;
 
-  options["device_id"] = std::to_string(device_id_); 
-  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_); 
+  options["device_id"] = std::to_string(device_id_);
+  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_);
   std::string strategy;
   if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
     strategy = "kNextPowerOfTwo";
-  }
-  else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+  } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
     strategy = "kSameAsRequested";
+  } else {
+    strategy = "unknown";
   }
-  else {
-    strategy = "unknown"; 
-  }
-  options["arena_extend_strategy"] = strategy; 
+  options["arena_extend_strategy"] = strategy;
 
   IExecutionProvider::SetProviderOptions(options);
 }
@@ -1396,7 +1394,7 @@ static bool ConvNeedFallbackToCPU(const onnxruntime::Node& node) {
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
-        if (pads.Get(i) != pads.Get(i + rank)) {
+        if (pads.Get(i) < pads.Get(i + rank)) {
           return true;
         }
       }
