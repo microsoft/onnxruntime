@@ -34,6 +34,7 @@ from Alexnet import *
 from Caffenet import *
 from RcnnIlsvrc13 import *
 from TinyYolov2 import *
+from TinyYolov3 import *
 from YoloV3 import *
 from YoloV4 import *
 from Vgg import *
@@ -49,36 +50,43 @@ from GPT2 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    "bert-squad": (BERTSquad, "bert-squad"),
-    "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    # "bert-squad": (BERTSquad, "bert-squad"),
+    # "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
     "ssd": (SSD, "ssd"),
-    "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
-    "resnet152": (Resnet152, "resnet152"),
-    "inception-v2": (InceptionV2, "inception-v2"),
-    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    "zfnet512": (Zfnet512, "zfnet512"),
-    "vgg19-bn": (Vgg, "vgg19-bn"),
-    "resnet50": (Resnet50, "resnet50"),
-    "resnet101": (Resnet101, "resnet101"),
-    "inception-v1": (InceptionV1, "inception-v1"),
-    "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
-    "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
-    "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
-    "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
-    "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
-    "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
-    "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    "retinanet": (Retinanet, "retinanet"),
-    ##### "yolov3": (YoloV3, "yolov3"), # TRT runtime error
-    ##### "yolov4": (YoloV4, "yolov4"),
-    "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    "Arc-Face": (ArcFace, "arc-face"),
-    #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
-    "Fast-Neural": (FastNeural, "Fast-Neural"),
-    "BiDAF": (BiDAF, "BiDAF"),
-    ### "GPT2": (GPT2, "GPT2"), # OOM
+    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
+    # "resnet152": (Resnet152, "resnet152"),
+    # "inception-v2": (InceptionV2, "inception-v2"),
+    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    # "zfnet512": (Zfnet512, "zfnet512"),
+    # "vgg19-bn": (Vgg, "vgg19-bn"),
+    # "resnet50": (Resnet50, "resnet50"),
+    # "resnet101": (Resnet101, "resnet101"),
+    # "inception-v1": (InceptionV1, "inception-v1"),
+    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
+    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    # "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
+    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    # "retinanet": (Retinanet, "retinanet"),
+    # ##### "yolov3": (YoloV3, "yolov3"), # TRT runtime error
+    # "yolov4": (YoloV4, "yolov4"),
+    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    # "Arc-Face": (ArcFace, "arc-face"),
+    # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    # "Fast-Neural": (FastNeural, "Fast-Neural"),
+    # "BiDAF": (BiDAF, "BiDAF"),
+    # ### "GPT2": (GPT2, "GPT2"), # OOM
+}
+
+p_list = {
+    "CUDAExecutionProvider": ["CUDAExecutionProvider"],
+    "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+    "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
 }
 
 def get_latency_result(runtimes, batch_size):
@@ -441,11 +449,14 @@ def run_onnxruntime(args, models=MODELS):
         trt_fall_back = False
 
         if args.fp16:
-            provider_list = ["TensorrtExecutionProvider","TensorrtExecutionProvider_fp16", "CUDAExecutionProvider"]
+            provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
         else:
-            provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+            provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
 
-        provider_list = ["CUDAExecutionProvider"]
+        # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+        # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+        # provider_list = ["CUDAExecutionProvider"]
+        # provider_list = ["TensorrtExecutionProvider"]
 
 
         # iterate ep 
@@ -455,6 +466,7 @@ def run_onnxruntime(args, models=MODELS):
             fp16 = False 
             ep = provider_list[i]
             ep_ = ep
+            model = None
 
             if "fp16" in ep:
                 # No need to run TRT FP16 again if TRT already failed on previous run
@@ -470,10 +482,10 @@ def run_onnxruntime(args, models=MODELS):
                 continue
                 
             # create onnxruntime inference session
-            logger.info("\nInitializing {} with {}...".format(name, provider_list[i:]))
+            logger.info("\nInitializing {} with {}...".format(name, p_list[ep]))
 
-            proper_povider_list = generate_proper_ep_list(provider_list[i:])
-            model = model_class(providers=proper_povider_list)
+            # proper_povider_list = generate_proper_ep_list(provider_list[i:])
+            model = model_class(providers=p_list[ep])
             model_name = model.get_model_name()
 
             # read input/output of test data
@@ -533,12 +545,15 @@ def run_onnxruntime(args, models=MODELS):
                     update_fail_model(model_name, ep, ep_model_fail_map)
                     continue
 
-
             # make sure profiling file will be generated by runing one inference
-            inference_ort(model, inputs, {}, 1, batch_size)
-            sess.end_profiling()
+            inference_ort(model, inputs, {}, 2, batch_size)
 
-            for io_binding in [True, False]:
+
+            sess.end_profiling()
+            logger.info(sess.get_providers())
+
+            # for io_binding in [True, False]:
+            for io_binding in [False]:
                 result_template = {
                     "engine": "onnxruntime",
                     "version": onnxruntime.__version__,
@@ -563,6 +578,7 @@ def run_onnxruntime(args, models=MODELS):
                         latency_result[ep + "_io_binding"] = result["average_latency_ms"]
                 else:
                     result = inference_ort(model, inputs, result_template, args.test_times, batch_size)
+                    print(result)
                     latency_result[ep] = result["average_latency_ms"]
 
 
@@ -693,7 +709,7 @@ def parse_arguments():
     parser.add_argument("-t",
                         "--test_times",
                         required=False,
-                        default=20,
+                        default=8,
                         type=int,
                         help="Number of repeat times to get average inference latency.")
 
@@ -766,4 +782,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # analyze_profiling_file('BiDAF')
