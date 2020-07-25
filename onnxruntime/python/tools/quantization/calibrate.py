@@ -61,33 +61,33 @@ class ONNXCalibrater:
         :return: augmented ONNX model
         '''
 
+        model = onnx.load(self.model_path)
+        
         added_nodes = []
         added_outputs = []
-        model = onnx.load(self.model_path)
+        to_be_calibrate_tensor = set()
+      
         for node in model.graph.node:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
-                                (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
+                                (node.name not in self.black_nodes)) or ((node.name in self.white_nodes))
             if should_be_calibrate:
-                input_name = node.output[0]
-                # Adding ReduceMin nodes
-                reduce_min_name = ''
-                if node.name != '':
-                    reduce_min_name = node.name + '_ReduceMin'
-                reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name], [input_name + '_ReduceMin'],
-                                                        reduce_min_name,
-                                                        keepdims=0)
-                added_nodes.append(reduce_min_node)
-                added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+                to_be_calibrate_tensor.add(node.input[0])
+                to_be_calibrate_tensor.add(node.output[0])
+            
+        for tensor in to_be_calibrate_tensor:
+            # Adding ReduceMin nodes
+            reduce_min_name = tensor + '_ReduceMin'
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name, keepdims=0)
+       
+            added_nodes.append(reduce_min_node)
+            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
-                # Adding ReduceMax nodes
-                reduce_max_name = ''
-                if node.name != '':
-                    reduce_max_name = node.name + '_ReduceMax'
-                reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name], [input_name + '_ReduceMax'],
-                                                        reduce_max_name,
-                                                        keepdims=0)
-                added_nodes.append(reduce_max_node)
-                added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
+            # Adding ReduceMax nodes
+            reduce_max_name = tensor + '_ReduceMax'
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name, keepdims=0)
+       
+            added_nodes.append(reduce_max_node)
+            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
