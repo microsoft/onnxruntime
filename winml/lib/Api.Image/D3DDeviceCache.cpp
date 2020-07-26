@@ -160,6 +160,7 @@ wgdx::Direct3D11::IDirect3DDevice D3DDeviceCache::GetWinrtDevice() {
 void D3DDeviceCache::InitializeCommandQueue(ID3D12Device1* device) {
   D3D12_COMMAND_QUEUE_DESC queueDesc = {};
   queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
   WINML_THROW_IF_FAILED(device->CreateCommandQueue(&queueDesc, winrt::guid_of<ID3D12CommandQueue>(), command_queue_.put_void()));
 
   // If possible get the sharing context. If not leave nullptr;

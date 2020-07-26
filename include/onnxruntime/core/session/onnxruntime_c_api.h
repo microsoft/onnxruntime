@@ -838,18 +838,25 @@ struct OrtApi {
                   _In_ int providers_length);
 
   /**
-   * Provides element-level access into a tensor.
-   * \param location_values a pointer to an array of index values that specify an element's location in the tensor data blob
-   * \param location_values_count length of location_values
-   * \param out a pointer to the element specified by location_values
-   * e.g.
-   * Given a tensor with overall shape [3,224,224], an element at
-   * location [2,150,128] can be accessed directly.
-   * 
-   * This function only works for numeric tensors.
-   * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
-   */
-  ORT_API2_STATUS(At, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count, _Outptr_ void** out);
+     * \param value A tensor created from OrtCreateTensor... function.
+     * \param index index of string tensor element, length of element at index will be returned.
+     */
+  ORT_API2_STATUS(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
+
+  /**
+     * \param s string element contents. The string is NOT null-terminated.
+     * \param value A tensor created from OrtCreateTensor... function.
+     * \param s_len element length, get it from OrtGetStringTensorElementLength.
+     * \param index offset of element of tensor to return.
+     */
+  ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
+
+  /**
+     * \param value A tensor created from OrtCreateTensor... function.
+     * \param s A null terminated string.
+     * \param index index of string tensor element to fill 
+     */
+  ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 };
 
 /*

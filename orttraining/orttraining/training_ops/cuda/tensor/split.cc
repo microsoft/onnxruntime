@@ -1,29 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/tensor/split.h"
+#include "orttraining/training_ops/cuda/tensor/split.h"
 #include "core/providers/cuda/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
-                                  kOnnxDomain,
-                                  2, 10,
-                                  kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                                  Split);
-
-// explicitly supports negative axis
-ONNX_OPERATOR_KERNEL_EX(Split,
-                        kOnnxDomain,
-                        11,
+ONNX_OPERATOR_KERNEL_EX(SplitTraining,
+                        kMSDomain,
+                        1,
                         kCudaExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        Split);
+                        KernelDefBuilder()
+                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        SplitTraining);
 
-Status Split::ComputeInternal(OpKernelContext* ctx) const {
+Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
   auto& input_shape = input_tensor->Shape();
@@ -32,15 +26,21 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   int before_dims = 0;
   int block_size_including_axis_dim = 0;
   int block_size_inside_axis_dim = 0;
-  std::vector<int64_t> split_sizes;
 
-  ORT_RETURN_IF_ERROR(PrepareForCompute(input_shape,
-                                        num_outputs,
-                                        axis,
-                                        before_dims,
-                                        block_size_including_axis_dim,
-                                        block_size_inside_axis_dim,
-                                        split_sizes));
+  //override the attribute value with the input value for split_split
+  const Tensor* split_tensor = ctx->Input<Tensor>(1);
+  ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
+  auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
+  const auto* data = split_tensor->template Data<int64_t>();
+  std::vector<int64_t> split_sizes(data, data + nDims);
+
+  ORT_RETURN_IF_ERROR(onnxruntime::contrib::PrepareForTrainingCompute(input_shape,
+                                                                      num_outputs,
+                                                                      axis,
+                                                                      before_dims,
+                                                                      block_size_including_axis_dim,
+                                                                      block_size_inside_axis_dim,
+                                                                      split_sizes));
 
   auto input_data = input_tensor->DataRaw();
 

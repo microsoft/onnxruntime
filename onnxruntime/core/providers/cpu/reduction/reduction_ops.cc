@@ -3,9 +3,6 @@
 
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/cpu/containers.h"
-#include "core/platform/threadpool.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -151,24 +148,6 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 11, 11);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 12);
 
-namespace contrib {
-#define REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(T)                \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      ReduceSumTraining,                                          \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ReduceSumTraining<T>);
-
-REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(float)
-REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(double)
-REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(int32_t)
-REGISTER_REDUCESUMTRAINING_KERNEL_TYPED(int64_t)
-}  // namespace contrib
-
 // When all reduce axes are located at the tail of the dims, quite general cases, transpose and extra
 // copy could be skipped to improve performance. If required by check_no_transpose = true, then
 // the calling code will check if the data was transposed and act accordingly.
@@ -184,8 +163,8 @@ bool PrepareForReduce(const Tensor* input_tensor_ptr,
                       const std::vector<int64_t>& axes_,
                       bool keepdims_,
                       /*out*/ std::vector<int64_t>& reduced_dims,
-                      bool check_no_transpose = false,
-                      const TensorShape* input_shape_override = nullptr) {
+                      bool check_no_transpose,
+                      const TensorShape* input_shape_override) {
   ORT_ENFORCE(input_tensor_ptr != nullptr, "Input to be reduced is null");
 
   if (input_shape_override) {
@@ -614,12 +593,11 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-static void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
-                          int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
-                          concurrency::ThreadPool* tp) {
+void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
+                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
+                   concurrency::ThreadPool* tp) {
   if (no_transpose) {
     auto lambda = [input_data, blocks, output_data](ptrdiff_t i) {
-
       // The ConstEigenMatrixMap type is expanded to work around a MS compiler issue
       output_data[i] = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(input_data + (i * blocks), blocks).sum();
     };
@@ -659,43 +637,6 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
 
   bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes_, keepdims_, reduced_dims, true);
-
-  auto* output = ctx->Output(0, reduced_dims);
-
-  ReduceSumCore(input->template Data<T>(), output->template MutableData<T>(),
-                no_transpose, blocks, block_size, transposed_input_data, ctx->GetOperatorThreadPool());
-
-  return Status::OK();
-}
-
-template <typename T>
-Status ReduceSumTraining<T>::Compute(OpKernelContext* ctx) const {
-  FastAllocVector<T> transposed_input_data(GetAllocator<T>(*ctx));
-  int64_t block_size;
-  int64_t blocks;
-  std::vector<int64_t> reduced_dims;
-  const Tensor* input = ctx->Input<Tensor>(0);
-
-  //override the attribute value with the input value for reduction_axes
-  const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-  ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-  ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-              "An axes tensor must be a vector tensor.");
-  auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-  const auto* data = axes_tensor->template Data<int64_t>();
-  std::vector<int64_t> axes(data, data + nDims);
-  if (axes.size() > 0) {
-    ORT_ENFORCE(noop_with_empty_axes_ == false, "Noop when axes is not empty is not allowed.");
-  }
-
-  // empty axes and no-op
-  if (axes.empty() && noop_with_empty_axes_) {
-    auto* output = ctx->Output(0, input->Shape());
-    memcpy(output->template MutableData<T>(), input->template Data<T>(), input->SizeInBytes() * sizeof(T));
-    return Status::OK();
-  }
-
-  bool no_transpose = PrepareForReduce<T>(input, transposed_input_data, block_size, blocks, axes, keepdims_, reduced_dims, true);
 
   auto* output = ctx->Output(0, reduced_dims);
 
@@ -869,5 +810,15 @@ template class ReduceSum<float>;
 template class ReduceSum<int32_t>;
 template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
+
+#define REGISTER_REDUCESUMCORE_TYPED(T)                                                                         \
+  template void ReduceSumCore<T>(const T* input_data, T* output_data, bool no_transpose,                        \
+                                 int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data, \
+                                 concurrency::ThreadPool* tp);
+
+REGISTER_REDUCESUMCORE_TYPED(float)
+REGISTER_REDUCESUMCORE_TYPED(double)
+REGISTER_REDUCESUMCORE_TYPED(int32_t)
+REGISTER_REDUCESUMCORE_TYPED(int64_t)
 
 }  // namespace onnxruntime
