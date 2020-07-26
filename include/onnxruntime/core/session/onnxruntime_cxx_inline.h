@@ -512,7 +512,7 @@ template <typename T>
 inline T Value::At(const std::initializer_list<size_t>& location) {
   T* out;
   std::vector<size_t> location_ = location;
-  ThrowOnError(GetApi().At(p_, location_.data(), location_.size(), (void**)&out));
+  ThrowOnError(GetApi().TensorAt(p_, location_.data(), location_.size(), (void**)&out));
   return *out;
 }
 

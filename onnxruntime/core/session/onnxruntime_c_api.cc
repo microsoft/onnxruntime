@@ -1464,7 +1464,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
   return NULL;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::At, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
+ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, size_t* location_values, size_t location_values_count,
                    _Outptr_ void** out) {
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
@@ -1688,7 +1688,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetStringTensorElementLength,
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
-    &OrtApis::At,
+    &OrtApis::TensorAt,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
