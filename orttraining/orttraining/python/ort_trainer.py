@@ -828,6 +828,22 @@ class ORTTrainer():
         elif self.current_step % self.gradient_accumulation_steps == 0:
             # optimization has done, increase self.global_step_
             self.global_step_ = self.global_step_ + 1
+        
+        if self.current_step % self.gradient_accumulation_steps == 0:
+            # print grad norms
+            loss_scale_to_print = args[0][-1]
+            if  self.global_step_ % 1000 == 0 and self.world_rank == 0 and loss_scale_to_print:
+                states = self.session.get_state()
+                for name in states:
+                    tensor = states[name]
+                    if name.startswith('model_') and name.endswith('grad_accumulate_buffer') and 'fp16' not in name:
+                        p_name = name[7:-23]
+                        #self.writer.add_scalar('train/summary/scalar/'+p_name+'_grad', torch.norm(tensor), self.total_steps)
+                        print('train/summary/scalar/'+ p_name+'_grad', torch.norm(torch.from_numpy(tensor))/loss_scale_to_print, self.global_step_)
+                    if name.startswith('model_') and ('weight' in name or 'bias' in name) and 'fp16' not in name:
+                        p_name = name[7:]
+                        #self.writer.add_scalar('train/summary/scalar/'+p_name+'_grad', torch.norm(tensor), self.total_steps)
+                        print('train/summary/scalar/'+ p_name , torch.norm(torch.from_numpy(tensor))/loss_scale_to_print, self.global_step_)   
 
         if fetches is not None:
             results = [session_run_results[fetch] for fetch in fetches]
@@ -909,11 +925,11 @@ class LossScaler():
         super(LossScaler, self).__init__()
         self.loss_scale_input_name_ = loss_scale_input_name
         self.is_dynamic_scale_ = is_dynamic_scale
-        self.initial_loss_scale_ = loss_scale
+        self.initial_loss_scale_ = 1024 #loss_scale
         self.up_scale_window_ = up_scale_window
         self.min_loss_scale_ = min_loss_scale
-        self.max_loss_scale_ = max_loss_scale
-        self.loss_scale_ = loss_scale
+        self.max_loss_scale_ = 4096 #max_loss_scale
+        self.loss_scale_ = 1024 #loss_scale
         self.stable_steps_ = 0
 
     def update_loss_scale(self, is_all_finite):
