@@ -925,11 +925,11 @@ class LossScaler():
         super(LossScaler, self).__init__()
         self.loss_scale_input_name_ = loss_scale_input_name
         self.is_dynamic_scale_ = is_dynamic_scale
-        self.initial_loss_scale_ = 1024 #loss_scale
+        self.initial_loss_scale_ = 1024.0 #loss_scale
         self.up_scale_window_ = up_scale_window
         self.min_loss_scale_ = min_loss_scale
-        self.max_loss_scale_ = 4096 #max_loss_scale
-        self.loss_scale_ = 1024 #loss_scale
+        self.max_loss_scale_ = 4096.0 #max_loss_scale
+        self.loss_scale_ = 1024.0 #loss_scale
         self.stable_steps_ = 0
 
     def update_loss_scale(self, is_all_finite):
