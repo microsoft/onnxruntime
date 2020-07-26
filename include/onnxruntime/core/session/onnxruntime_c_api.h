@@ -858,7 +858,6 @@ struct OrtApi {
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 
-
   /**
    * Provides element-level access into a tensor.
    * \param location_values a pointer to an array of index values that specify an element's location in the tensor data blob
