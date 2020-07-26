@@ -880,8 +880,8 @@ class ORTTrainer():
             # Otherwise next run with only_execute_path_to_fetches will lead to gradient all reduce
             # because all_fp32_gradients_finite is still in the feed.
             self.train_io_binding.clear_binding_outputs()
-
-            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[-4].name_]
+            index = -4 if self.use_adasum else -2
+            all_finite = session_run_results[self.output_desc_with_all_fp_16_or_fp32_gradients_finite[index].name_]
             if self.loss_scaler_ is not None:
                 self.loss_scaler_.update_loss_scale(all_finite)
             if all_finite:
