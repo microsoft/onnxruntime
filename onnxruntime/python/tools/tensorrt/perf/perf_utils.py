@@ -5,7 +5,7 @@ import logging
 import coloredlogs
 # import os
 
-debug = False 
+debug = True 
 debug_verbose = False 
 
 def parse_single_file(f):
@@ -208,6 +208,10 @@ def analyze_profiling_file(path):
         if cuda_number > 0:
             cuda_op_map = list_of_cuda_op_map[0]
             results.append(calculate_metrics(trt_op_map, cuda_op_map))
+    elif cuda_number == 1:
+        cuda_op_map = list_of_cuda_op_map[0]
+        calculate_metrics({}, cuda_op_map)
+
 
 
     '''

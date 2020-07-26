@@ -53,7 +53,7 @@ MODELS = {
     # "bert-squad": (BERTSquad, "bert-squad"),
     # "fast-rcnn": (FastRCNN, "fast-rcnn"),
     # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    "ssd": (SSD, "ssd"),
+    # "ssd": (SSD, "ssd"),
     # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
     # "resnet152": (Resnet152, "resnet152"),
@@ -83,11 +83,6 @@ MODELS = {
     # ### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
-p_list = {
-    "CUDAExecutionProvider": ["CUDAExecutionProvider"],
-    "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
-    "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
-}
 
 def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
@@ -402,17 +397,6 @@ def get_system_info(info):
             infos.append(row)
     info["memory"] = infos 
 
-def generate_proper_ep_list(ep_list):
-    p_list = []  
-
-    for ep in ep_list:
-        ep = ep.split("_")[0]
-        if ep not in p_list:
-            p_list.append(ep)
-
-    return p_list
-
-
 def run_onnxruntime(args, models=MODELS):
     import onnxruntime
     devnull = open(os.devnull, 'w')
@@ -425,6 +409,12 @@ def run_onnxruntime(args, models=MODELS):
 
     sys_info = {} 
     get_system_info(sys_info)
+
+    ep_to_provider_list = {
+        "CUDAExecutionProvider": ["CUDAExecutionProvider"],
+        "TensorrtExecutionProvider": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+        "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
+    }
 
     # iterate models
     for name in models.keys():
@@ -442,11 +432,9 @@ def run_onnxruntime(args, models=MODELS):
         # cleanup files before running a new inference
         remove_profiling_files(path)
 
-        model = None
         inputs = []
         ref_outputs = []
         ep_fail_set = set()
-        trt_fall_back = False
 
         if args.fp16:
             provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
@@ -465,7 +453,6 @@ def run_onnxruntime(args, models=MODELS):
             os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
             fp16 = False 
             ep = provider_list[i]
-            ep_ = ep
             model = None
 
             if "fp16" in ep:
@@ -475,17 +462,16 @@ def run_onnxruntime(args, models=MODELS):
 
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
                 fp16 = True 
-                ep_ = "TensorrtExecutionProvider"
 
+            ep_ = ep_to_provider_list[ep][0]
             if (ep_ not in onnxruntime.get_available_providers()):
                 logger.error("No {} support".format(ep_))
                 continue
                 
             # create onnxruntime inference session
-            logger.info("\nInitializing {} with {}...".format(name, p_list[ep]))
+            logger.info("\nInitializing {} with {}...".format(name, ep_to_provider_list[ep]))
 
-            # proper_povider_list = generate_proper_ep_list(provider_list[i:])
-            model = model_class(providers=p_list[ep])
+            model = model_class(providers=ep_to_provider_list[ep])
             model_name = model.get_model_name()
 
             # read input/output of test data
