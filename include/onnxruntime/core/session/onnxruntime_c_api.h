@@ -894,6 +894,9 @@ struct OrtApi {
   ORT_API2_STATUS(GetBoundOutputNames, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
                   _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
 
+  //ORT_API2_STATUS(GetBoundOutputValues, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+  //                __Out_ OrtValue** output, _Out_ size_t* count);
+
 
   /** Clears any previously specified bindings for inputs/outputs
    */
@@ -920,13 +923,14 @@ struct OrtApi {
                   _In_ int providers_length);
 
   /**
-     * \param value A tensor created from OrtCreateTensor... function.
-     * \param index index of string tensor element, length of element at index will be returned.
+     * \param value - A tensor created from OrtCreateTensor... function.
+     * \param index - index of string tensor element, length of element at index will be returned.
+     * \param out - number of UTF-8 bytes that the string contains
      */
   ORT_API2_STATUS(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
 
   /**
-     * \param s string element contents. The string is NOT null-terminated.
+     * \param s string element contents in UTF-8 encoding. The string is NOT null-terminated.
      * \param value A tensor created from OrtCreateTensor... function.
      * \param s_len element length, get it from OrtGetStringTensorElementLength.
      * \param index offset of element of tensor to return.
@@ -934,9 +938,9 @@ struct OrtApi {
   ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
 
   /**
-     * \param value A tensor created from OrtCreateTensor... function.
-     * \param s A null terminated string.
-     * \param index index of string tensor element to fill 
+     * \param value - A tensor created from OrtCreateTensor... function.
+     * \param s - A null terminated UTF-8 encoded string.
+     * \param index - index of string tensor element to fill 
      */
   ORT_API2_STATUS(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
 };
