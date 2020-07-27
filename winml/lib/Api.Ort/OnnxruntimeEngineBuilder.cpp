@@ -85,6 +85,6 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(std::map<winrt::hstring, uint32_t> named_dimension_overrides) {
-  named_dimension_overrides_ = named_dimension_overrides;
+  named_dimension_overrides_ = std::move(named_dimension_overrides);
   return S_OK;
 }
