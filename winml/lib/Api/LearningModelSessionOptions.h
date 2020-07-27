@@ -4,7 +4,7 @@
 #pragma once
 
 #include "LearningModelSessionOptions.g.h"
-
+#include <thread>
 namespace WINMLP {
 
 struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions> {
@@ -41,11 +41,18 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   //
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
+
+  // The default value here is the maximum number of logical cores.
+  uint32_t intra_op_num_threads = std::thread::hardware_concurrency();
 };
 
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions, ILearningModelSessionOptionsNative> {
+  STDMETHOD(SetIntraOpNumThreads)
+  (
+      int intraOpNumThreads
+  );
 };
 }  // namespace WINML::factory_implementation

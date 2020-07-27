@@ -24,3 +24,9 @@ void LearningModelSessionOptions::CloseModelOnSessionCreation(bool value) {
   close_model_on_session_creation_ = value;
 }
 }  // namespace WINMLP
+
+namespace WINML::factory_implementation {
+STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreads(int intraOpNumThreads) noexcept {
+  return S_OK;
+}
+}  // namespace WINML::factory_implementation
