@@ -23,10 +23,13 @@ bool LearningModelSessionOptions::CloseModelOnSessionCreation() {
 void LearningModelSessionOptions::CloseModelOnSessionCreation(bool value) {
   close_model_on_session_creation_ = value;
 }
-}  // namespace WINMLP
 
-namespace WINML::factory_implementation {
-STDMETHODIMP LearningModelSessionOptions::SetIntraOpNumThreads(int intraOpNumThreads) noexcept {
+uint32_t LearningModelSessionOptions::IntraOpNumThreads() {
+  return intra_op_num_threads_override_;
+}
+
+STDMETHODIMP LearningModelSessionOptions::OverrideIntraOpNumThreads(uint32_t intraOpNumThreads) noexcept {
+  intra_op_num_threads_override_ = intraOpNumThreads;
   return S_OK;
 }
-}  // namespace WINML::factory_implementation
+}  // namespace WINMLP

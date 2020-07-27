@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
-
 #include "LearningModelSession.h"
 
 #include "ImageFeatureDescriptor.h"
@@ -111,8 +110,13 @@ void LearningModelSession::Initialize() {
   }
 
   // Make onnxruntime apply the batch size override, if any
-  if (session_options_ && session_options_.BatchSizeOverride() != 0) {
-    WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
+  if (session_options_) {
+    if (session_options_.BatchSizeOverride() != 0) {
+      WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
+    }
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(
+        session_options_.as<WINMLP::LearningModelSessionOptions>()->IntraOpNumThreads())
+    );
   }
 
   com_ptr<_winml::IEngine> engine;

@@ -7,7 +7,7 @@
 #include <thread>
 namespace WINMLP {
 
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions> {
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative> {
   LearningModelSessionOptions() = default;
 
   LearningModelSessionOptions(const LearningModelSessionOptions& options);
@@ -17,6 +17,10 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
+
+  uint32_t IntraOpNumThreads();
+  STDMETHOD(OverrideIntraOpNumThreads)
+  (uint32_t intraOpNumThreads);
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -43,16 +47,12 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   bool close_model_on_session_creation_ = false;
 
   // The default value here is the maximum number of logical cores.
-  uint32_t intra_op_num_threads = std::thread::hardware_concurrency();
+  uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
 };
 
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions, ILearningModelSessionOptionsNative> {
-  STDMETHOD(SetIntraOpNumThreads)
-  (
-      int intraOpNumThreads
-  );
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {
 };
 }  // namespace WINML::factory_implementation

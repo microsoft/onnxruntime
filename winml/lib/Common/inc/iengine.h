@@ -165,6 +165,9 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override) PURE;
 
+  STDMETHOD(SetIntraOpNumThreadsOverride)
+  (uint32_t intra_op_num_threads) PURE;
+
   STDMETHOD(CreateEngine)
   (IEngine * *out) PURE;
 };
