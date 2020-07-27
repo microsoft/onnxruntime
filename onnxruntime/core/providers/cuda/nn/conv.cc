@@ -125,13 +125,25 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       y_dims_with_adjusted_pads.insert(y_dims_with_adjusted_pads.begin(), {N, M});
 
       bool post_slicing_required = false;
+      std::vector<int64_t> slice_starts;
+      slice_starts.reserve(rank);
+
+      std::vector<int64_t> slice_ends;
+      slice_ends.reserve(rank);
+
+      std::vector<int64_t> slice_axes;
+      slice_axes.reserve(rank);
 
       ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape2(x_shape.Slice(2), kernel_shape,
                                                         strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                        post_slicing_required));
-      s_.post_slicing_required = post_slicing_required;
+                                                        post_slicing_required, slice_starts, slice_ends, slice_axes));
       s_.y_dims = y_dims;
       s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
+      s_.post_slicing_required = post_slicing_required;
+      s_.slice_starts = slice_starts;
+      s_.slice_ends = slice_ends;
+      s_.slice_axes = slice_axes;
+
       Y = context->Output(0, TensorShape(s_.y_dims));
       if (!post_slicing_required) {
         // No post slicing needed. Fill the output tensor's buffer directly.
@@ -249,33 +261,17 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
     // To deal with asymmetric padding, we may have over-padded on one or both sides of a spatial dimension
     // This may have lead to extra results that are unnecessary and hence we slice that off here
+    // NOTE: We slice unwanted portions of the result first so as to avoid unnecessary bias addition operations
     if (s_.post_slicing_required) {
-      auto spatial_rank = s_.y_dims.size() - 2;
-
-      std::vector<int64_t> starts;
-      starts.reserve(spatial_rank);
-
-      std::vector<int64_t> ends;
-      ends.reserve(spatial_rank);
-
-      std::vector<int64_t> axes;
-      axes.reserve(spatial_rank);
-
-      for (size_t i = 2; i < (spatial_rank + 2); ++i) {
-        if (s_.y_dims[i] != s_.y_dims_with_adjusted_pads[i]) {
-          starts.push_back(0);
-          ends.push_back(s_.y_dims[i] - s_.y_dims_with_adjusted_pads[i]);
-          axes.push_back(i);
-        }
-      }
       SliceOutUnwantedOutputSection(y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),
-                                    s_.y_dims, starts, ends, axes, element_size);
+                                    s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, element_size);
     }
 
     if (has_bias) {
       const Tensor* B = context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
-      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor, y_data));
+      CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor,
+                                           reinterpret_cast<CudaT*>(Y->MutableDataRaw())));
     }
   }
 

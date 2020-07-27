@@ -153,6 +153,12 @@ struct CudnnConvState {
 
   // Some properties needed to support asymmetric padded Conv nodes
   bool post_slicing_required;
+  std::vector<int64_t> slice_starts;
+  std::vector<int64_t> slice_ends;
+  std::vector<int64_t> slice_axes;
+
+  // Some temporary buffer to write CuDNN Conv outputs to before
+  // the slicing operation to remove extraneous results
   void* cached_memory = nullptr;
   AllocatorPtr cached_allocator;
 
@@ -177,10 +183,6 @@ class Conv : public CudaKernel {
   Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
     auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
-    auto rank = pads_size / 2;
-    for (size_t i = 0; i < rank; i++) {
-      ORT_ENFORCE(conv_attrs_.pads[i] >= conv_attrs_.pads[i + rank], "placeholder - will be removed");
-    }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
