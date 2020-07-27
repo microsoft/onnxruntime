@@ -254,6 +254,10 @@ endif()
 
 add_library(winml_adapter ${winml_adapter_files})
 
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows") 
+  target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1") 
+endif()
+
 # wil requires C++17
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD_REQUIRED ON)
