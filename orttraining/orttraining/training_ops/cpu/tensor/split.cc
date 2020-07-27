@@ -57,7 +57,7 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
                              " Num entries in 'split' (must equal number of outputs) was ", split_sizes_values.size(),
                              " Sum of sizes in 'split' (must equal size of selected axis) was ", split_size_sum);
 
-      split_sizes = split_sizes_values;
+    split_sizes = split_sizes_values;
   }
 
   return Status::OK();
