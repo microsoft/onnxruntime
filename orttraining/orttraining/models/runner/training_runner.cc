@@ -69,6 +69,9 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
   if (params.deepspeed_zero.stage != 0)
     ORT_ENFORCE(params.use_nccl,
                 "DeepSpeed ZeRO partitioning is only supported with NCCL distributed training.");
+  if(params.deepspeed_zero.stage > 1)
+    ORT_ENFORCE(params.gradient_accumulation_steps == 1,
+                "DeepSpeed ZeRO stage 2 is only supported with accumulation step == 1.");
   ORT_ENFORCE(params.num_train_steps % params.gradient_accumulation_steps == 0,
               "Number of training steps must be a multiple of number of gradient accumulation step.");
 }

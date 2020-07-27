@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "onnx/defs/attr_proto_util.h"
 
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 
 namespace onnxruntime {
@@ -17,6 +19,68 @@ static bool IsNcclAvailable() {
 #else
   return false;
 #endif
+}
+
+static int NumberOfWorkers(std::vector<int>& size_arr, int max_len, std::vector<int>& partitions) {
+  int total = 0;
+  int num_workers = 1;
+  int idx = 0;
+  partitions.clear();
+  for (auto i : size_arr) {
+    total += i;
+    if (total > max_len) {
+      total = i;
+      partitions.push_back(idx - 1);
+      num_workers += 1;
+    }
+    idx += 1;
+  }
+  //The last index
+  partitions.push_back(idx - 1);
+  return num_workers;
+}
+
+static int WorkersPartition(std::vector<int>& size_arr, int dp_group, int max_size, int total_size, std::vector<int>& partitions) {
+  int lo = max_size;
+  int hi = total_size;
+  int mid = lo + (hi - lo) / 2;
+
+  while (lo < hi) {
+    mid = lo + (hi - lo) / 2;
+  }
+  int num_workers = NumberOfWorkers(size_arr, mid, partitions);
+  // find better optimum in lower half. Here mid is included because we may not get anything better
+  if (num_workers <= dp_group) {
+    hi = mid;
+  } else {
+    //find better optimum in upper half. Here mid is excluded because it gives required workers > dp_group, which is invalid
+    lo = mid + 1;
+  }
+  return lo;
+}
+
+static Status AddNcclReduceForGradients(
+    std::vector<ArgDef>& gradient_argdefs,
+    std::vector<int>& partitions,
+    GraphAugmenter::GraphDefs& graph_defs) {
+  for (size_t i = 0; i < partitions.size(); ++i) {
+    int ub = partitions[i];
+    int lb = i == 0 ? 0 : partitions[i - 1];
+    std::vector<ArgDef> reduce_outputs;
+    std::vector<ArgDef> reduce_inputs;
+    for (int j = lb; j <= ub; ++j) {
+      reduce_inputs.push_back(gradient_argdefs[j]);
+      auto reduce_output = ArgDef(gradient_argdefs[j].name + "_Reduce_Out", gradient_argdefs[j].type_proto);
+      reduce_outputs.push_back(reduce_output);
+      gradient_argdefs[j] = reduce_output;
+    }
+    graph_defs.AddNodeDefs({NodeDef(OpDef{"NcclReduce", kMSDomain, 1},
+                                    reduce_inputs,
+                                    reduce_outputs,
+                                    {onnx::MakeAttribute("root_rank", int64_t(i))},
+                                    "NcclReduce")});
+  }
+  return Status::OK();
 }
 
 static Status AddNcclReduceScatterForGradients(
@@ -167,6 +231,34 @@ static Status AddViewForParameters(
   return Status::OK();
 }
 
+static Status ModifyParametersForOptimizerPartitioningByBoundary(
+    const OptimizerGraphConfig& opt_graph_config,
+    std::vector<ArgDef>& gradient_argdefs,
+    std::vector<int>& partitions) {
+  std::vector<int> size_arr;
+  int max_size = 0;
+  int total_size = 0;
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    ArgDef gradient_argdef = gradient_argdefs[i];
+    ORT_ENFORCE(gradient_argdef.type_proto != nullptr);
+    const auto& gradient_shape_proto = gradient_argdef.type_proto->tensor_type().shape();
+    const TensorShape& gradient_shape = utils::GetTensorShapeFromTensorShapeProto(gradient_shape_proto);
+
+    total_size += gradient_shape.Size();
+    if (max_size < gradient_shape.Size()) max_size = gradient_shape.Size();
+    size_arr.push_back(gradient_shape.Size());
+  }
+
+  //Reverse traverse the gradients, bucketing them on boundary
+  const int dp_group = opt_graph_config.data_parallel_group_size;
+  WorkersPartition(size_arr, dp_group, max_size, total_size, partitions);
+  const size_t data_parallel_group_size = opt_graph_config.data_parallel_group_size;
+  //The partitions have to be the same (smaller ?) as the data parallel group size
+  ORT_ENFORCE(partitions.size() == data_parallel_group_size);
+
+  return Status::OK();
+}
+
 static Status ModifyParametersForOptimizerPartitioning(
     Graph& graph,
     GraphAugmenter::GraphDefs& graph_defs,
@@ -284,6 +376,31 @@ static std::vector<ArgDef> GetGradientNormInputs(
   return inputs;
 }
 
+static Status GetGradientArgsInTopoOrder(
+    Graph& graph,
+    std::vector<ArgDef>& gradient_argdefs,
+    std::vector<ArgDef>& gradient_argdefs_in_topo_order) {
+  GraphViewer gv(graph);
+  const auto& node_indices = gv.GetNodesInTopologicalOrder();
+  std::vector<std::string> gradient_names;
+  for(auto& g_argdef : gradient_argdefs){
+    gradient_names.push_back(g_argdef.name);
+  }
+
+  for (auto& n_idx : node_indices) {
+    auto n_output_defs = gv.GetNode(n_idx)->OutputDefs();
+    for (const auto* output_def : n_output_defs) {
+      auto itr = std::find(gradient_names.begin(), gradient_names.end(), output_def->Name());
+      if (itr != gradient_names.end()) {
+        gradient_argdefs_in_topo_order.push_back(gradient_argdefs.at(std::distance(gradient_names.begin(), itr)));
+        break;
+      }
+    }
+  }
+  ORT_ENFORCE(gradient_argdefs_in_topo_order.size() == gradient_argdefs.size());
+  return Status::OK();
+}
+
 ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const OptimizerGraphConfig& opt_graph_config,
@@ -294,6 +411,7 @@ ZeROOptimizerGraphBuilder::ZeROOptimizerGraphBuilder(
   ORT_ENFORCE(opt_graph_config.data_parallel_group_size > 1, "ZeRO optimizer graph builder can only be used for distributed training.");
   ORT_ENFORCE(opt_graph_config.use_nccl, "Distributed training with ZeRO is only supported with NCCL.");
   ORT_ENFORCE(IsNcclAvailable(), "Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
+  stage_ = opt_graph_config.deepspeed_zero.stage;
 }
 
 Status ZeROOptimizerGraphBuilder::BuildInternal(
@@ -306,12 +424,26 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
   };
+  ORT_ENFORCE(stage_ == 1 || stage_ == 2);
+  if (stage_ == 2) {
+    ORT_ENFORCE(opt_graph_config_.gradient_accumulation_steps == 1);
+  }
+
+  //Get the gradients in topological order
+  std::vector<ArgDef> gradient_argdefs_in_topo_order;
+  std::vector<int> partitions;
+  if (stage_ == 2) {
+    ORT_RETURN_IF_ERROR(GetGradientArgsInTopoOrder(graph, gradient_argdefs, gradient_argdefs_in_topo_order));
+  }
 
   // handle optimizer partitioning
-  ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
-      graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs));
+  if (stage_ == 1) {
+    ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioning(
+        graph, graph_defs, opt_graph_config_, opt_configs_, weight_argdefs, gradient_argdefs));
+  } else {
+    ORT_RETURN_IF_ERROR(ModifyParametersForOptimizerPartitioningByBoundary(opt_graph_config_, gradient_argdefs_in_topo_order, partitions));
+  }
 
-  // add gradient scaling
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
   ORT_RETURN_IF_NOT(total_num_accumulations > 0);
@@ -319,8 +451,13 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.allreduce_in_fp16, false));
 
-  // add Reducescatter for gradients
-  ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+  if (stage_ == 1) {
+    // add Reducescatter for gradients
+    ORT_RETURN_IF_ERROR(AddNcclReduceScatterForGradients(gradient_argdefs, graph_defs));
+  } else if (stage_ == 2) {
+    //add Reduce for gradients
+    ORT_RETURN_IF_ERROR(AddNcclReduceForGradients(gradient_argdefs_in_topo_order, partitions, graph_defs));
+  }
 
   // check if all gradients are finite
   ArgDef global_grad_norm_argdef;

@@ -916,6 +916,21 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduce)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("group_type", "0 - data parallel group, 1 - horizontal parallel group",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("root_rank", "the rank the reduce output is written to",
+            AttributeProto::INT)
+      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
+      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
