@@ -111,7 +111,10 @@ def main():
         assert not args.use_gpu, "quantization only supports CPU"
 
     model_class = MODEL_CLASSES[args.model_class][0]
-    model = model_class.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
+    config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
+    if hasattr(config, 'return_tuple'):
+        config.return_tuple = True
+    model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
@@ -141,7 +144,8 @@ def main():
                                device,
                                args.precision == Precision.FLOAT16,
                                rtol=args.tolerance,
-                               atol=args.tolerance)
+                               atol=args.tolerance,
+                               model_class=args.model_class)
 
     logger.info(f"Done. Output model: {output_path}")
 

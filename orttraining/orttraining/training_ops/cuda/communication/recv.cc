@@ -8,6 +8,8 @@
 #include "core/profile/profile.h"
 #include <mpi.h>
 
+#include "orttraining/core/framework/mpi_setup.h"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -67,17 +69,14 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
                                   static_cast<int>(tag_)};
 
 
-  int mpi_code = 0;
-
   // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
   // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
     info_shape_sizes.buffer, info_shape_sizes.size, MPI_CHAR,
-    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+    info_shape_sizes.rank, info_shape_sizes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
 #ifdef ENABLE_NVTX_PROFILE
-  // This range object includes the first MPI_Recv which receives a scalar.  
+  // This range object includes the first MPI_Recv which receives a scalar.
   // It means we count the MPI's initialization in pre-recv stage.
   preRange.End();
 #endif
@@ -91,10 +90,9 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
   recvRange.Begin();
 #endif
 
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
     info_aggregated_size.buffer, info_aggregated_size.size, MPI_CHAR,
-    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+    info_aggregated_size.rank, info_aggregated_size.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
   // Prepare receive shapes and data buffer
   aggregated_tensor_shapes.resize(prefix_tensor_shape_sizes[tensor_num - 1]);
@@ -111,14 +109,13 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
 
   // Directly use CPU to wait MPI_Recv. We cannot use GPU callback because
   // MPI_Recv may block the entire GPU until it returns.
-  mpi_code = MPI_Recv(
+  MPI_CHECK(MPI_Recv(
     info_shapes.buffer, info_shapes.size, MPI_CHAR,
-    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
-  mpi_code = MPI_Recv(
+    info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+
+  MPI_CHECK(MPI_Recv(
     info_data.buffer, info_data.size, MPI_CHAR,
-    info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  ORT_ENFORCE(mpi_code == MPI_SUCCESS, "MPI Recv fails.");
+    info_data.rank, info_data.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 
 #ifdef ENABLE_NVTX_PROFILE
   // End of actual communication.
