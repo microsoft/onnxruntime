@@ -877,9 +877,9 @@ struct OrtApi {
   ORT_API2_STATUS(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
 
   /**
-    * The function returns the names of the output in the order they were bound. This is useful after running the model
+    * The function returns the names of the outputs in the order they were bound. This is useful after running the model
     * with bound outputs because the returned names are in order in which output OrtValues are returned. This API is optional
-    * to use. If you knew the order of outputs you used for binding you would not need to use this API.
+    * to use. If you knew the order of outputs and its names you used for binding you would not need to use this API.
     *
     * \param  binding_ptr - a ptr to an instance of OrtIoBinding created obtained from CreateIoBinding()
     * \param  allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
@@ -891,12 +891,24 @@ struct OrtApi {
     * \para count - is the number of strings returned. If the instance of OrtIoBiding has no bound outputs, zero is returned,
     *              no memory allocation is performed and buffer and lengths are nullptr on return.
     */
-  ORT_API2_STATUS(GetBoundOutputNames, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+  ORT_API2_STATUS(GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
                   _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
 
-  //ORT_API2_STATUS(GetBoundOutputValues, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
-  //                __Out_ OrtValue** output, _Out_ size_t* count);
-
+  /**
+    * The function returns an array of pointers to individually allocated OrtValues that contain results of a model execution with RunWithBinding()
+    * The array contains the same number of OrtValues and they are in the same order as they were bound with BindOutput()
+    * or BindOutputToDevice(). 
+    * The returned OrtValues must be individually released after they are no longer needed.
+    * The array is allocated using the specified instance of the allocator and must be freed using the same allocator after
+    * all the OrtValues contained therein are individually released.
+    *
+    * \param binding_ptr - instance of OrtIoBidning
+    * \param allocator - instance of allocator to allocate output array
+    * \param output - pointer to the allocated buffer. Returns nullptr if no outputs.
+    * \param output_count - pointer to the number of OrtValues returned. Zero if no outputs.
+    */
+  ORT_API2_STATUS(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                  _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count);
 
   /** Clears any previously specified bindings for inputs/outputs
    */

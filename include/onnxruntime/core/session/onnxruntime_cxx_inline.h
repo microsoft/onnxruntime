@@ -80,7 +80,7 @@ inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, O
 
 inline Allocator::Allocator(const Session& sess, const MemoryInfo& mem_info) {
   ThrowOnError(GetApi().CreateAllocator(sess.operator const OrtSession*(),
-                                                  mem_info.operator const OrtMemoryInfo*(), &p_));
+                                        mem_info.operator const OrtMemoryInfo*(), &p_));
 }
 
 inline void* Allocator::Alloc(size_t size) const {
@@ -149,6 +149,48 @@ inline std::vector<std::string> IoBinding::GetOutputNames() const {
 
 inline std::vector<std::string> IoBinding::GetOutputNames(Allocator& allocator) const {
   return GetOutputNames(allocator);
+}
+
+inline std::vector<Value> Ort::IoBinding::GetOutputValues(OrtAllocator* allocator) const {
+  std::vector<Value> result;
+  size_t owned = 0;
+  size_t output_count = 0;
+  // Lambda to release the buffer when no longer needed and
+  // make sure that we destroy all instances on exception
+  auto free_fn = [&owned, &output_count, allocator](OrtValue** buffer) {
+    if (buffer) {
+      while (owned < output_count) {
+        auto* p = buffer + owned++;
+        GetApi().ReleaseValue(*p);
+      }
+      allocator->Free(allocator, buffer);
+    }
+  };
+  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)> ;
+
+  OrtValue** output_buffer = nullptr;
+  ThrowOnError(GetApi().GetBoundOutputValues(p_, allocator, &output_buffer, &output_count));
+  if (output_count == 0) {
+    return result;
+  }
+
+  Ptr buffer_g(output_buffer, free_fn);
+
+  result.reserve(output_count);
+  for (size_t i = 0; i < output_count; ++i) {
+    result.emplace_back(output_buffer[i]);
+    ++owned;
+  }
+  return result;
+}
+
+inline std::vector<Value> Ort::IoBinding::GetOutputValues(Allocator& allocator) const {
+  return GetOutputValues(allocator);
+}
+
+inline std::vector<Value> Ort::IoBinding::GetOutputValues() const {
+  AllocatorWithDefaultOptions allocator;
+  return GetOutputValues(allocator);
 }
 
 inline void IoBinding::ClearBoundInputs() {
@@ -588,6 +630,13 @@ inline void Value::FillStringTensorElement(const char* s, size_t index) {
 
 template <typename T>
 T* Value::GetTensorMutableData() {
+  T* out;
+  ThrowOnError(GetApi().GetTensorMutableData(p_, (void**)&out));
+  return out;
+}
+
+template <typename T>
+const T* Value::GetTensorData() const {
   T* out;
   ThrowOnError(GetApi().GetTensorMutableData(p_, (void**)&out));
   return out;

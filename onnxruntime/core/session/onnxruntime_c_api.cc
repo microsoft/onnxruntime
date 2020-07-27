@@ -590,7 +590,7 @@ ORT_API_STATUS_IMPL(OrtApis::BindOutputToDevice, _Inout_ OrtIoBinding* binding_p
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _Inout_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
                     _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count) {
   API_IMPL_BEGIN
   const auto& output_names = binding_ptr->binding_->GetOutputNames();
@@ -636,6 +636,48 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputNames, _Inout_ const OrtIoBinding* bi
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
+                   _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count) {
+  API_IMPL_BEGIN
+  const auto& outputs = binding_ptr->binding_->GetOutputs();
+  if (outputs.empty()) {
+    *output = nullptr;
+    *output_count = 0U;
+    return nullptr;
+  }
+
+  // Used to destroy and de-allocate on exception
+  size_t created = 0;
+  IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
+                                                [&created, allocator](OrtValue** buffer) { 
+                                                 if (buffer) {
+                                                    while (created > 0) {
+                                                     auto p = buffer + --created;
+                                                      delete (*p);
+                                                    }
+                                                    allocator->Free(allocator, buffer);
+                                                  }
+                                                });
+
+  if (!ortvalues_alloc) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Output buffer allocation failed");
+  }
+
+  OrtValue** out_ptr = ortvalues_alloc.get();
+  for (const auto& out_value : outputs) {
+    *out_ptr = new OrtValue(out_value);
+    ++created;
+  }
+
+  assert(created == outputs.size());
+
+  *output = ortvalues_alloc.release();
+  *output_count = created;
+  return nullptr;
+  API_IMPL_END
+}
+
 
 void OrtApis::ClearBoundInputs(_Inout_ OrtIoBinding* binding_ptr) NO_EXCEPTION {
   binding_ptr->binding_->ClearInputs();
@@ -1792,6 +1834,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::BindOutput,
     &OrtApis::BindOutputToDevice,
     &OrtApis::GetBoundOutputNames,
+    &OrtApis::GetBoundOutputValues,
     &OrtApis::ClearBoundInputs,
     &OrtApis::ClearBoundOutputs,
 
