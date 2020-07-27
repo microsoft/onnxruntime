@@ -62,19 +62,33 @@ class ONNXCalibrater:
         '''
 
         model = onnx.load(self.model_path)
+        model = onnx.shape_inference.infer_shapes(model)
+        value_infos = {vi.name: vi for vi in model.graph.value_info} 
         
         added_nodes = []
         added_outputs = []
-        to_be_calibrate_tensor = set()
-      
+        tensors_to_calibrate = set()
+
         for node in model.graph.node:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
                                 (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
             if should_be_calibrate:
-                to_be_calibrate_tensor.add(node.input[0])
-                to_be_calibrate_tensor.add(node.output[0])
+                for input_tensor_name in node.input:
+                    if input_tensor_name in value_infos.keys(): 
+                        vi = value_infos[input_tensor_name]
+                        if vi.type.HasField(
+                            'tensor_type') and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT and (
+                                input_tensor_name not in model.graph.initializer):
+                            tensors_to_calibrate.add(input_tensor_name)
+
+                for output_tensor_name in node.output:
+                    if output_tensor_name in value_infos.keys(): 
+                        vi = value_infos[output_tensor_name]
+                        if vi.type.HasField(
+                            'tensor_type') and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                            tensors_to_calibrate.add(output_tensor_name)
             
-        for tensor in to_be_calibrate_tensor:
+        for tensor in tensors_to_calibrate:
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name, keepdims=0)
