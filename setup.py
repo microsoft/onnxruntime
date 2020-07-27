@@ -183,7 +183,7 @@ else:
   libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
   # dnnl EP is built as dll
   libs.extend(['onnxruntime_providers_dnnl.dll'])
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
+  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll', 'directml.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:

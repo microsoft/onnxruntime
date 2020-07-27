@@ -321,7 +321,7 @@ const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
                                                    kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
-                                                   kAclExecutionProvider, kCpuExecutionProvider};
+                                                   kAclExecutionProvider, kDmlExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
 
