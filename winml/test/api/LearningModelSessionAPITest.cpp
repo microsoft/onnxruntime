@@ -399,7 +399,7 @@ static void SetIntraOpNumThreads() {
    WINML_EXPECT_EQUAL(nativeOptions->GetIntraOpNumThreads(), std::thread::hardware_concurrency());
 
    // Set the number of intra op threads to half of logical cores.
-   nativeOptions->OverrideIntraOpNumThreads(std::thread::hardware_concurrency() / 2);
+   WINML_EXPECT_NO_THROW(nativeOptions->OverrideIntraOpNumThreads(std::thread::hardware_concurrency() / 2));
 
    // Interrogate session options for the number of threads set
    WINML_EXPECT_EQUAL(nativeOptions->GetIntraOpNumThreads(), std::thread::hardware_concurrency() / 2);

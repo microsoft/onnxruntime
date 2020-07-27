@@ -47,8 +47,9 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
 
-  // The default value here is the maximum number of logical cores to ensure that
-  // the default behavior of WinML always runs the fastest.
+  // The intra operator num threads proprty is used to control the number of threads used in the threadpool for intra operator calculations.
+  // The default value here is the maximum number of logical cores to ensure that the default behavior of WinML always runs the fastest.
+  // WARNING: Setting a number higher than the maximum number of logical cores may result in an inefficient threadpool
   uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
 };
 
