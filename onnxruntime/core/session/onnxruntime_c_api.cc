@@ -1787,7 +1787,7 @@ static constexpr OrtApi ort_api_1_to_4 = {
     &OrtApis::GetStringTensorElement,
     &OrtApis::FillStringTensorElement,
 
-    // Allocator and Binding APIs are exposed via C# API , do not move
+    // Allocator extension and Binding APIs are exposed via C# API, do not move
     &OrtApis::CreateAllocator,
     &OrtApis::ReleaseAllocator,
     &OrtApis::RunWithBinding,
