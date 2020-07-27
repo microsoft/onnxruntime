@@ -13,5 +13,6 @@ def transformer_model_description():
 
     model_desc = {'inputs':  [('input1', [bptt, batch_size]),
                               ('label', [bptt, batch_size, ntokens],)],
-                  'outputs': [('loss', [], True)]}
+                  'outputs': [('loss', [], True),
+                              ('predictions', [bptt, batch_size, ntokens])]}
     return model_desc

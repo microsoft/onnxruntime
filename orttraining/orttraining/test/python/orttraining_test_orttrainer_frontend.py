@@ -9,7 +9,7 @@ from numpy.testing import assert_allclose
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
 from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils
-from pt_model import TransformerModel
+#from pt_model import TransformerModel
 
 
 @pytest.mark.parametrize("test_input", [
@@ -485,33 +485,56 @@ def testInstantiateORTTrainer():
     assert trainer._onnx_model is not None
     onnx_model = trainer._onnx_model
 
-    #print(onnx.helper.printable_graph(model.graph))
-    print("\n-- ONNX Model Graph --")
-    print("INPUTS")
-    print(onnx_model.graph.input)
-    print("OUTPUTS")
-    print(onnx_model.graph.output)
-    #print(type(onnx_model.graph.input))
-
     sig = inspect.signature(model.forward)
-    #print(sig.parameters.keys())
     sig_loss = inspect.signature(my_loss)
-    #print(sig_loss.parameters)
-    #print(model_desc['inputs'])
-    #print(model_desc['outputs'])
+    
+    # element 4 should be uint16, but this is not in pytorch
+    # element 8 should be string
+    int_to_type = [None, torch.float32, torch.uint8, torch.int8, torch.int16, torch.int16, torch.int32, torch.int64, type("test"), torch.bool]
 
-    #print(type(str(onnx_model.graph.input)))
-    print("-- Model Desc --")
-    print("INPUTS")
-    for tup in model_desc['inputs']:
-        # check that each model desc input is found in the onnx model
-        assert str(onnx_model.graph.input).find(tup[0]) >= 0
-        print(tup[0], tup[1]) #shape is always second
-    print("OUTPUTS")
-    for tup in model_desc['outputs']:
-        assert str(onnx_model.graph.output).find(tup[0]) >= 0
-        print(tup[0], tup[1]) #shape is always second
+    # check that the first len(forward.parameters) inputs have the same name, dimensions and dtype
+    in_str = str(onnx_model.graph.input)
+    for i in range(len(sig.parameters.keys())):
+        input_name = model_desc['inputs'][i][0]
+        input_dim = model_desc['inputs'][i][1]
+        input_type = trainer.model_desc.inputs[i][2]
+        
+        assert in_str.find(input_name) >= 0
+        start_index = in_str.index(input_name)
+        end_index = in_str.index("name", start_index+1) if i+1 < in_str.find("name", start_index+1)>0 else in_str.index(']')
+        sub = in_str[in_str.index(input_name):end_index]
+        dims = []
+        elem_type = 0
+        for item in sub.split("\n"):
+            if item.find("dim_value:")>0:
+                temp = item.replace(" ", "").replace("dim_value:", "")
+                dims.append(int(temp))
+            if item.find("elem_type:")>0:
+                temp = item.replace(" ", "").replace("elem_type:", "")
+                elem_type = int(temp)
+        assert int_to_type[elem_type] == input_type
+        assert dims == input_dim
 
-    # check that the len of the forward method parameters is the same as input len
-
-    # check len of loss return (must be >= model desc output len)
+    # check that all the outputs of model desc match the name, dimensions and dtype of the ort graph
+    out_str = str(onnx_model.graph.output)
+    for i in range(len(model_desc['outputs'])):
+        output_name = model_desc['outputs'][i][0]
+        output_dim = model_desc['outputs'][i][1]
+        output_type = trainer.model_desc.outputs[i][3]
+        
+        assert out_str.find(output_name) >= 0
+        start_index = out_str.index(output_name)
+        end_index = out_str.index("name", start_index+1) if i+1 < out_str.find("name", start_index+1)>0 else out_str.index(']')
+        sub = out_str[out_str.index(output_name):end_index]
+        dims = []
+        elem_type = 0
+        for item in sub.split("\n"):
+            if item.find("dim_value:")>0:
+                temp = item.replace(" ", "").replace("dim_value:", "")
+                dims.append(int(temp))
+            if item.find("elem_type:")>0:
+                temp = item.replace(" ", "").replace("elem_type:", "")
+                elem_type = int(temp)
+        assert int_to_type[elem_type] == output_type
+        assert dims == output_dim
+         
