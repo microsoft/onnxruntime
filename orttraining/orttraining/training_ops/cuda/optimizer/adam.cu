@@ -54,9 +54,6 @@ __global__ void _AdamOptimizer_mode0(
 
   const T4 delta = -T4(*eta) * update;
 
-  if (T_GRAD(delta) != T_GRAD(0.0f)) {
-    printf("#####delta not finite,: %f\n", static_cast<float>(delta));
-  }
   if (grads_out) {
     grads_out[id] = T_GRAD(delta * T4(65536.0f));
   }  

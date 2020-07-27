@@ -191,7 +191,8 @@ Status AdasumOptimizerGraphBuilder::BuildInternal(
   // add Allreduce for gradients
   ArgDef reduced_fused_gradient_argdef;
   if (opt_graph_config_.adasum_reduction_type == AdasumReductionType::GpuHierarchical) {
-   ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef, (int64_t)2/*node local*/));
+   ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs,
+                                                    reduced_fused_gradient_argdef, (int64_t)2/*node local*/));
   }
 
   // check if all gradients are finite
