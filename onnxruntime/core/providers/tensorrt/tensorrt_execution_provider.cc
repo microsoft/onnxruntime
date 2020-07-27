@@ -9,7 +9,7 @@
 //#include "core/graph/onnx_protobuf.h"
 
 #include "tensorrt_execution_provider.h"
-//#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_allocator.h"
 //#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 //#include "core/session/onnxruntime_cxx_api.h"
 //#include "core/framework/execution_provider.h"
@@ -31,7 +31,6 @@
 //#include "core/graph/model.h"
 //#include "core/providers/cuda/gpu_data_transfer.h"
 
-
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
                           ? common::Status::OK() \
@@ -48,8 +47,27 @@ struct KernelRegistryAndStatus {
 
 namespace onnxruntime {
 
-constexpr const char* TRT = "Tensorrt";
-constexpr const char* TRT_PINNED = "TensorrtPinned";
+//constexpr const char* TRT = "Tensorrt";
+//constexpr const char* TRT_PINNED = "TensorrtPinned";
+
+struct Provider_IDeviceAllocator_Impl : Provider_IDeviceAllocator {
+  Provider_IDeviceAllocator_Impl(std::unique_ptr<IDeviceAllocator> p) : p_{std::move(p)} {}
+
+  void* Alloc(size_t size) override { return p_->Alloc(size); }
+  void Free(void* p) override { return p_->Free(p); }
+
+  bool AllowsArena() const override { return p_->AllowsArena(); }
+
+  std::unique_ptr<IDeviceAllocator> p_;
+};
+
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAAllocator(int16_t device_id, const char* name) {
+  return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAAllocator>(device_id, name));
+}
+
+std::unique_ptr<Provider_IDeviceAllocator> Provider_CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
+  return onnxruntime::make_unique<Provider_IDeviceAllocator_Impl>(onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, name));
+}
 
 class Memcpy final : public Provider_OpKernel {
  public:
@@ -129,12 +147,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   Provider_DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return onnxruntime::CreateCUDAAllocator(id, TRT); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault, [](int id) { return Provider_CreateCUDAAllocator(id, TRT); }, std::numeric_limits<size_t>::max()});
   allocator_ = CreateAllocator(default_memory_info, device_id_);
   Provider_InsertAllocator(allocator_);
 
   Provider_DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::CreateCUDAPinnedAllocator(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput, [](int) { return Provider_CreateCUDAPinnedAllocator(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
   Provider_InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
   // Get environment variables
@@ -181,28 +199,28 @@ std::unique_ptr<onnxruntime::Provider_IDataTransfer> TensorrtExecutionProvider::
 // Convert GraphViewer graph to GraphProto
 void ToGraphProtoInternal(const onnxruntime::Provider_GraphViewer& graph, Provider_GraphProto& graph_proto) {
   for (const auto* input_arg : graph.GetInputs()) {
-    *(graph_proto.mutable_input().Add()) = input_arg->ToProto();
+    *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
 
   // Add all graph's initializers to the subgraph
   const auto& init_tensors = graph.GetAllInitializedTensors();
   for (const auto& tensor : init_tensors) {
-    *(graph_proto.mutable_initializer().Add()) = *(tensor.second);
+    *(graph_proto.mutable_initializer()->Add()) = *(tensor.second);
   }
 
   for (const auto* output_arg : graph.GetOutputs()) {
-    *(graph_proto.mutable_output().Add()) = output_arg->ToProto();
+    *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
   for (const auto* value_info : graph.GetValueInfo()) {
-    *(graph_proto.mutable_value_info().Add()) = value_info->ToProto();
+    *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
-    Provider_NodeProto& node_proto{graph_proto.add_node()};
+    const gsl::not_null<Provider_NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Provider_Node*> p_node{graph.GetNode(node_idx)};
-    p_node->ToProto(node_proto);
+    p_node->ToProto(*node_proto);
   }
 }
 
@@ -384,7 +402,7 @@ std::unique_ptr<Provider_IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph
   }
 
   meta_def->since_version = 1;
-  sub_graph->SetMetaDef(meta_def);
+  sub_graph->SetMetaDef(std::move(meta_def));
 
   return sub_graph;
 }
@@ -418,9 +436,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
                                        std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         onnxruntime::Graph& graph_build = model_build.MainGraph();
 #endif
-
-        auto model_build = graph.CreateModel();
-        auto &graph_build = model_build->MainGraph();
+        auto model_build = graph.CreateModel(*GetLogger());
+        auto& graph_build = model_build->MainGraph();
 
         // Add node and node args
         // If node output is also parent graph output, the  output will be added to the
@@ -494,8 +511,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         model_proto.SerializeToString(&string_buf);
 #endif
         auto graph_viewer = graph_build.CreateGraphViewer();
-        auto model = graph_viewer->CreateModel();
-        auto model_proto = model->CreateModelProto();
+        auto model = graph_viewer->CreateModel(*GetLogger());
+        auto model_proto = model->ToProto();
+        ToGraphProtoInternal(*graph_viewer, *model_proto->mutable_graph());
+        model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
         model_proto->SerializeToString(string_buf);
@@ -643,7 +662,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
 std::vector<std::unique_ptr<Provider_ComputeCapability>>
 TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_GraphViewer& graph,
-                                                 const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
+                                                  const std::vector<const Provider_KernelRegistry*>& /*kernel_registries*/) const {
   // Remove nodes with empty shape
   SubGraphCollection_t parser_nodes_vector = RemoveEmptyShapeNodes(graph);
 
@@ -672,7 +691,7 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       std::unique_ptr<Provider_IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-      result.push_back(onnxruntime::make_unique<Provider_ComputeCapability>(std::move(sub_graph)));
+      result.push_back(Provider_ComputeCapability::Create(std::move(sub_graph)));
     }
   }
 
@@ -680,7 +699,7 @@ TensorrtExecutionProvider::Provider_GetCapability(const onnxruntime::Provider_Gr
 }
 
 common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onnxruntime::Provider_Node*>& fused_nodes,
-                                                          std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     std::vector<int> input_indexes;
     std::vector<int> output_indexes;
@@ -710,16 +729,16 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Provider_Graph& graph_body = func_body->Body();
-    #if 0
+#if 0
     onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
                              IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    #endif
-    auto model = graph_body.CreateGraphViewer()->CreateModel(); // TODO: Add separate way to create a model from a graph?
-    auto model_proto = model->CreateModelProto();
+#endif
+    auto model = graph_body.CreateGraphViewer()->CreateModel(*GetLogger());  // TODO: Add separate way to create a model from a graph?
+    auto model_proto = model->ToProto();
 
-    model_proto->mutable_graph() = *graph_body.CreateGraphProto();
+    *model_proto->mutable_graph() = *graph_body.ToGraphProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string string_buf;
     model_proto->SerializeToString(string_buf);
@@ -1063,7 +1082,7 @@ common::Status TensorrtExecutionProvider::Provider_Compile(const std::vector<onn
       if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
       }
-      
+
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
       for (int i = 0, end = num_binding_outputs; i < end; ++i) {
         if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {

@@ -200,6 +200,8 @@ constexpr const char* SEVERITY_PREFIX = "VIWEF";
 class Logger {
  public:
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept;
+
+  Logger() = delete;
 };
 
 class LoggingManager {
@@ -211,9 +213,23 @@ class Capture {
  public:
   Capture(const Logger& logger, logging::Severity severity, const char* category,
           logging::DataType dataType, const CodeLocation& location);
+  ~Capture();
 
   std::ostream& Stream() noexcept;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Capture);
+
+  // TODO: Remove this before shipping provider since this was needed because the reserved stack size was wrong without this definition matching the real one.. (as the real code exists while the libraries are still together)
+  const Logger* logger_;
+  const logging::Severity severity_;
+  const char* category_;
+  const logging::DataType data_type_;
+  const CodeLocation location_;
+
+  std::ostringstream stream_;
 };
+
 }  // namespace logging
 
 enum class AutoPadType {

@@ -48,7 +48,7 @@ struct Tensorrt_Provider : Provider {
 
 extern "C" {
 
-ORT_API(onnxruntime::Provider*, GetProvider) {
+ORT_API(onnxruntime::Provider*, GetProvider_Tensorrt) {
   return &onnxruntime::g_provider;
 }
 }
