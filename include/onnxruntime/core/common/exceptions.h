@@ -68,15 +68,4 @@ class OnnxRuntimeException : public std::exception {
   std::string what_;
 };
 
-class OnnxRuntimeShapeException : public OnnxRuntimeException {
- public:
-  OnnxRuntimeShapeException(const CodeLocation& location, const std::string& msg) noexcept
-      : OnnxRuntimeException(location, nullptr, msg) {
-  }
-
-  OnnxRuntimeShapeException(const CodeLocation& location, const char* failed_condition, const std::string& msg)
-      : OnnxRuntimeException(location, failed_condition, msg) {
-  }
-};
-
 }  // namespace onnxruntime

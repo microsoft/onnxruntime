@@ -85,26 +85,25 @@ void ComputeBroadcastBackwardAxes(
   }
 }
 
-std::vector<Dimension> GetShape(const ArgDef& arg_def) {
+Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
   //Throw OnnxruntimeShapeException type, so that it can specifically be caught in the gradient builder
   // to build shape-independent gradient graph
-  ORT_SHAPE_ENFORCE(arg_def.type_proto && arg_def.type_proto->has_tensor_type() && arg_def.type_proto->tensor_type().has_shape(),
+  ORT_RETURN_IF_NOT(arg_def.type_proto && arg_def.type_proto->has_tensor_type() && arg_def.type_proto->tensor_type().has_shape(),
                     "During GetShape, ", arg_def.name, "'s shape is null.");
-  std::vector<Dimension> shape;
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
   for (auto dim = dims.begin(); dim < dims.end(); dim++) {
     shape.push_back(*dim);
   }
-  return shape;
+  return Status::OK();
 }
 
-void GradientBuilderBase::ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
-                                                              const ArgDef& b,
-                                                              const ArgDef& a_axes,
-                                                              const ArgDef& b_axes,
-                                                              std::vector<NodeDef>& output) const {
-  ArgDef a_shape = IA("Shape_" + a.name);
-  ArgDef b_shape = IA("Shape_" + b.name);
+void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
+                                         const ArgDef& b,
+                                         const ArgDef* a_axes,
+                                         const ArgDef* b_axes,
+                                         std::vector<NodeDef>& output) {
+  ArgDef a_shape = ArgDef("Shape_" + a.name);
+  ArgDef b_shape = ArgDef("Shape_" + b.name);
   output.push_back(
       NodeDef("Shape",
               {a},
@@ -115,10 +114,15 @@ void GradientBuilderBase::ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
               {b},
               {b_shape}));
 
+  ArgDef a_op = ArgDef(""), b_op = ArgDef("");
+  if (a_axes)
+    a_op = *a_axes;
+  if (b_axes)
+    b_op = *b_axes;
   output.push_back(
       NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
               {a_shape, b_shape},
-              {a_axes, b_axes}));
+              {a_op, b_op}));
 }
 
 void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
@@ -127,9 +131,9 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
                                              const std::vector<int64_t>& reduce_axes,
                                              std::vector<NodeDef>& output) const {
   std::unordered_set<size_t> reduce_axes_set(reduce_axes.begin(), reduce_axes.end());
-  std::vector<Dimension> reduced_shape;
-  auto input_grad_shape = GetShape(input_grad);
-  auto target_shape = GetShape(target);
+  std::vector<Dimension> reduced_shape, input_grad_shape, target_shape;
+  ORT_ENFORCE(GetShape(input_grad, input_grad_shape).IsOK());
+  ORT_ENFORCE(GetShape(target, target_shape).IsOK());
 
   bool keep_dims = (input_grad_shape.size() == target_shape.size());
 
@@ -202,12 +206,8 @@ void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
               {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
                {"noop_with_empty_axes", ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}}));
 
-  ArgDef target_shape_arg = IA(target.name + "_shape");
-  output.push_back(
-      NodeDef("Shape",
-              {target},
-              {target_shape_arg}));
-
+  //reuse shape node from BroadcastGradientArgs input
+  ArgDef target_shape_arg = ArgDef("Shape_" + target.name);
   output.push_back(
       NodeDef("Reshape",
               {reduce_grad_arg, target_shape_arg},

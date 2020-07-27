@@ -21,7 +21,13 @@ void ComputeBroadcastBackwardAxes(
     std::vector<int64_t>* A_axes,
     std::vector<int64_t>* B_axes);
 
-std::vector<Dimension> GetShape(const ArgDef& arg_def);
+void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
+                                         const ArgDef& b,
+                                         const ArgDef* a_axes,
+                                         const ArgDef* b_axes,
+                                         std::vector<NodeDef>& output);
+
+Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape);
 
 typedef std::vector<NodeDef> GradientDef;
 
@@ -168,12 +174,6 @@ class GradientBuilderBase {
   static NodeDef OneConstantNode() {
     return ConstantValueNode(1.0f, "OneConstant");
   }
-
-  void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
-                                           const ArgDef& b,
-                                           const ArgDef& a_axes,
-                                           const ArgDef& b_axes,
-                                           std::vector<NodeDef>& output) const;
 
   void HandleBroadcasting(const ArgDef& input_grad,
                           const ArgDef& target,

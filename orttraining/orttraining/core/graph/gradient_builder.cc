@@ -62,11 +62,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
   std::vector<NodeDef> result;
 
   ArgDef A = I(0), B = I(1), Y = O(0);
-  try {
-    std::vector<Dimension> A_shape = GetShape(A);
-    std::vector<Dimension> B_shape = GetShape(B);
-    std::vector<Dimension> Y_shape = GetShape(Y);
-
+  std::vector<Dimension> A_shape, B_shape, Y_shape;
+  if (GetShape(A, A_shape).IsOK() && GetShape(B, B_shape).IsOK() && GetShape(Y, Y_shape).IsOK()) {
     std::vector<AttributeProto> shared_attributes;
     shared_attributes.push_back(MakeAttribute("beta", float(0)));
     AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
@@ -248,9 +245,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
         }
       }
     }
-  } catch (onnxruntime::OnnxRuntimeShapeException e) {
+  } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes_arg, b_axes_arg;
+    ArgDef a_axes, b_axes;
 
     if (IsGradientRequiredForSrcNodeInput(0)) {
       result.push_back(
@@ -259,10 +256,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                   {IA("PreReduceGrad0")},
                   {{"transB", MakeAttribute("transB", int64_t(1))}}));
 
-      a_axes_arg = IA("ReduceAxes_" + A.name + "_for_" + A.name);
-      b_axes_arg = IA("ReduceAxes_" + B.name + "_for_" + A.name);
-      ComputeBroadcastBackwardAxesDynamic(A, IA("PreReduceGrad0"), a_axes_arg, b_axes_arg, result);
-      HandleBroadcastingDynamic(IA("PreReduceGrad0"), A, GI(0), a_axes_arg, result);
+      a_axes = IA("ReduceAxes_" + A.name + "_for_" + A.name);
+      ComputeBroadcastBackwardAxesDynamic(A, IA("PreReduceGrad0"), &a_axes, nullptr, result);
+      HandleBroadcastingDynamic(IA("PreReduceGrad0"), A, GI(0), a_axes, result);
     }
     if (IsGradientRequiredForSrcNodeInput(1)) {
       result.push_back(
@@ -271,10 +267,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetMatMulGradient) {
                   {IA("PreReduceGrad1")},
                   {{"transA", MakeAttribute("transA", int64_t(1))}}));
 
-      a_axes_arg = IA("ReduceAxes_" + A.name + "_for_" + B.name);
-      b_axes_arg = IA("ReduceAxes_" + B.name + "_for_" + B.name);
-      ComputeBroadcastBackwardAxesDynamic(IA("PreReduceGrad1"), B, a_axes_arg, b_axes_arg, result);
-      HandleBroadcastingDynamic(IA("PreReduceGrad1"), B, GI(1), b_axes_arg, result);
+      b_axes = IA("ReduceAxes_" + B.name + "_for_" + B.name);
+      ComputeBroadcastBackwardAxesDynamic(IA("PreReduceGrad1"), B, nullptr, &b_axes, result);
+      HandleBroadcastingDynamic(IA("PreReduceGrad1"), B, GI(1), b_axes, result);
     }
   }
 
@@ -374,11 +369,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
     bool has_beta = attributes.at("beta").has_f();
     float beta = attributes.at("beta").f();
     ORT_ENFORCE(beta != 0.0f);
-
-    try {
-      std::vector<Dimension> C_shape = GetShape(C);
-      std::vector<Dimension> dY_shape = GetShape(dY);
-
+    std::vector<Dimension> C_shape, dY_shape;
+    if (GetShape(C, C_shape).IsOK() && GetShape(dY, dY_shape).IsOK()) {
       std::vector<int64_t> C_axes, dY_axes;
       ComputeBroadcastBackwardAxes(C_shape, dY_shape, &C_axes, &dY_axes);
 
@@ -413,13 +405,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
                       {dC}));
         }
       }
-    } catch (onnxruntime::OnnxRuntimeShapeException e) {
+    } else {
       //GetShape failed, build shape-independent gradient graph
-      ArgDef c_axes_arg = IA("ReduceAxes_" + C.name);
-      ArgDef dy_axes_arg = IA("ReduceAxes_" + dY.name);
-      ComputeBroadcastBackwardAxesDynamic(C, dY, c_axes_arg, dy_axes_arg, result);
+      ArgDef c_axes = IA("ReduceAxes_" + C.name);
 
-      HandleBroadcastingDynamic(dY, C, IA("dC_reduced"), c_axes_arg, result);
+      ComputeBroadcastBackwardAxesDynamic(C, dY, &c_axes, nullptr, result);
+
+      HandleBroadcastingDynamic(dY, C, IA("dC_reduced"), c_axes, result);
 
       if (has_beta && beta != 1.0f) {
         NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
@@ -469,7 +461,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
   std::vector<int64_t> split_attribute(GetSrcNodeInputSize());
   std::vector<ArgDef> outputs;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
-    std::vector<Dimension> data_shape = GetShape(I(i));
+    std::vector<Dimension> data_shape;
+    ORT_ENFORCE(GetShape(I(i), data_shape).IsOK());
     int64_t axis_index = axis < 0 ? static_cast<int64_t>(data_shape.size()) + axis : axis;
     if (axis_index >= 0 && axis_index < static_cast<int64_t>(data_shape.size()) && data_shape[axis_index].has_dim_value()) {
       split_attribute[i] = data_shape[axis_index].dim_value();
@@ -518,9 +511,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetTransposeGradient) {
   if (attributes.empty()) {
     const TensorShapeProto& input_shape = I(0).type_proto->tensor_type().shape();
     if (input_shape.dim_size() > 0) {  //input_shape is available
-      for (int i = input_shape.dim_size() - 1; i >= 0; --i) {
-        bw_perm.push_back(i);
-      }
+      int n = input_shape.dim_size() - 1;
+      bw_perm.resize(n + 1);
+      std::generate(bw_perm.begin(), bw_perm.end(), [&n] { return n--; });
       new_attributes.push_back(MakeAttribute("perm", bw_perm));
     }
   } else {
@@ -680,12 +673,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   const ArgDef a = I(0), b = I(1);
   std::vector<NodeDef> output;
-
-  try {
-    std::vector<Dimension> a_shape, b_shape;
-    a_shape = GetShape(a);
-    b_shape = GetShape(b);
-
+  std::vector<Dimension> a_shape, b_shape;
+  if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
     ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
     if (IsGradientRequiredForSrcNodeInput(0)) {
@@ -724,19 +713,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
         }
       }
     }
-  } catch (onnxruntime::OnnxRuntimeShapeException e) {
+  } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
-    ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
-    ComputeBroadcastBackwardAxesDynamic(a, b, a_axes_arg, b_axes_arg, output);
+    ArgDef a_axes = IA("ReduceAxes_" + a.name);
+    ArgDef b_axes = IA("ReduceAxes_" + b.name);
+    ComputeBroadcastBackwardAxesDynamic(a, b, &a_axes, &b_axes, output);
 
     if (IsGradientRequiredForSrcNodeInput(0)) {
-      HandleBroadcastingDynamic(GO(0), a, GI(0), a_axes_arg, output);
+      HandleBroadcastingDynamic(GO(0), a, GI(0), a_axes, output);
     }
 
     if (IsGradientRequiredForSrcNodeInput(1)) {
       ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
-      HandleBroadcastingDynamic(GO(0), b, reshape_output, b_axes_arg, output);
+      HandleBroadcastingDynamic(GO(0), b, reshape_output, b_axes, output);
 
       if (is_sub) {
         output.push_back(
@@ -753,12 +742,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
   const ArgDef a = I(0), b = I(1);
 
   std::vector<NodeDef> output;
-
-  try {
-    std::vector<Dimension> a_shape, b_shape;
-    a_shape = GetShape(a);
-    b_shape = GetShape(b);
-
+  std::vector<Dimension> a_shape, b_shape;
+  if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
     ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
 
@@ -793,11 +778,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                     {GI(1)}));
       }
     }
-  } catch (onnxruntime::OnnxRuntimeShapeException e) {
+  } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
-    ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
-    ComputeBroadcastBackwardAxesDynamic(a, b, a_axes_arg, b_axes_arg, output);
+    ArgDef a_axes = IA("ReduceAxes_" + a.name);
+    ArgDef b_axes = IA("ReduceAxes_" + b.name);
+    ComputeBroadcastBackwardAxesDynamic(a, b, &a_axes, &b_axes, output);
 
     if (IsGradientRequiredForSrcNodeInput(0)) {
       output.push_back(
@@ -805,7 +790,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                   {GO(0), I(1)},
                   {IA("PreReduceGrad0", OType(0))}));
 
-      HandleBroadcastingDynamic(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes_arg, output);
+      HandleBroadcastingDynamic(IA("PreReduceGrad0", OType(0)), a, GI(0), a_axes, output);
     }
 
     if (IsGradientRequiredForSrcNodeInput(1)) {
@@ -814,7 +799,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
                   {GO(0), I(0)},
                   {IA("PreReduceGrad1", OType(0))}));
 
-      HandleBroadcastingDynamic(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes_arg, output);
+      HandleBroadcastingDynamic(IA("PreReduceGrad1", OType(0)), b, GI(1), b_axes, output);
     }
   }
 
@@ -831,9 +816,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     // Y = A / B, dA = dY / B
     const ArgDef a = I(0), b = I(1);
     std::vector<NodeDef> output;
-    try {
+    std::vector<Dimension> a_shape, b_shape;
+    if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
       std::vector<int64_t> a_axes, b_axes;
-      ComputeBroadcastBackwardAxes(GetShape(a), GetShape(b), &a_axes, &b_axes);
+      ComputeBroadcastBackwardAxes(a_shape, b_shape, &a_axes, &b_axes);
 
       ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
       output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
@@ -842,15 +828,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
       } else {
         output.push_back(NodeDef("Identity", {tmp_grad}, {GI(0)}));
       }
-    } catch (onnxruntime::OnnxRuntimeShapeException e) {
+    } else {
       //GetShape failed, build shape-independent gradient graph
-      ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
-      ArgDef b_axes_arg = IA("ReduceAxes_" + b.name);
-      ComputeBroadcastBackwardAxesDynamic(a, b, a_axes_arg, b_axes_arg, output);
+      ArgDef a_axes = IA("ReduceAxes_" + a.name);
+
+      ComputeBroadcastBackwardAxesDynamic(a, b, &a_axes, nullptr, output);
 
       ArgDef tmp_grad = IA("PreReduceGrad0", OType(0));
       output.push_back(NodeDef("Div", {GO(0), I(1)}, {tmp_grad}));
-      HandleBroadcastingDynamic(tmp_grad, a, GI(0), a_axes_arg, output);
+      HandleBroadcastingDynamic(tmp_grad, a, GI(0), a_axes, output);
     }
 
     return output;
@@ -1026,48 +1012,48 @@ std::vector<NodeDef> GetBiasGeluGradNodes(
     bool use_approximation,
     const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
     const ArgDef& dX, const ArgDef& dB) {                // outputs
-  const auto B_shape = GetShape(B);
-  ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
+  std::vector<Dimension> B_shape, X_shape;
+  if (GetShape(B, B_shape).IsOK() && GetShape(X, X_shape).IsOK()) {
+    ORT_ENFORCE(B_shape.size() == 1, "B must have exactly one dimension.");
 
-  const std::vector<int64_t> B_axes = [&B_shape, &X]() {
-    std::vector<int64_t> result{};
-    ComputeBroadcastBackwardAxes(B_shape, GetShape(X), &result, nullptr);
+    const std::vector<int64_t> B_axes = [&B_shape, &X_shape]() {
+      std::vector<int64_t> result{};
+      ComputeBroadcastBackwardAxes(B_shape, X_shape, &result, nullptr);
+      return result;
+    }();
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
+                {dY, X, B},
+                {dX}),
+        NodeDef("ReduceSum",
+                {dX},
+                {dB},
+                {{"keepdims", MakeAttribute("keepdims", int64_t{0})},
+                 {"axes", MakeAttribute("axes", B_axes)}})};
+  } else {
+    std::vector<NodeDef> result;
+    ArgDef b_axes = ArgDef("ReduceAxes_" + B.name, nullptr);
+
+    ComputeBroadcastBackwardAxesDynamic(B, X, &b_axes, nullptr, result);
+    result.push_back(
+        NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
+                {dY, X, B},
+                {dX}));
+    result.push_back(
+        NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+                {dX,
+                 b_axes},
+                {dB},
+                {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
     return result;
-  }();
-  return std::vector<NodeDef>{
-      NodeDef(OpDef{use_approximation ? "BiasFastGeluGrad_dX" : "BiasGeluGrad_dX", kMSDomain, 1},
-              {dY, X, B},
-              {dX}),
-      NodeDef("ReduceSum",
-              {dX},
-              {dB},
-              {{"keepdims", MakeAttribute("keepdims", int64_t{0})},
-               {"axes", MakeAttribute("axes", B_axes)}})};
+  }
 }
 }  // namespace
 
 IMPLEMENT_GRADIENT_BUILDER(GetBiasGeluGradient) {
   const auto dY = GO(0), X = I(0), B = I(1),
              dX = GI(0), dB = GI(1);
-  try {
-    return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
-  } catch (onnxruntime::OnnxRuntimeShapeException e) {
-    std::vector<NodeDef> result;
-    ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
-    ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
-    ComputeBroadcastBackwardAxesDynamic(B, X, b_axes_arg, x_axes_arg, result);
-    result.push_back(
-        NodeDef(OpDef{"BiasGeluGrad_dX", kMSDomain, 1},
-                {dY, X, B},
-                {dX}));
-    result.push_back(
-        NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
-                {dX,
-                 b_axes_arg},
-                {dB},
-                {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
-    return result;
-  }
+  return GetBiasGeluGradNodes(false, dY, X, B, dX, dB);
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
@@ -1078,25 +1064,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
     // FastGeluGrad doesn't support bias - it needs to be composed with other ops
     const auto B = I(1),
                dB = GI(1);
-    try {
-      return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
-    } catch (onnxruntime::OnnxRuntimeShapeException e) {
-      std::vector<NodeDef> result;
-      ArgDef b_axes_arg = IA("ReduceAxes_" + B.name);
-      ArgDef x_axes_arg = IA("ReduceAxes_" + X.name);
-      ComputeBroadcastBackwardAxesDynamic(B, X, b_axes_arg, x_axes_arg, result);
-      result.push_back(
-          NodeDef(OpDef{"BiasFastGeluGrad_dX", kMSDomain, 1},
-                  {dY, X, B},
-                  {dX}));
-      result.push_back(
-          NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
-                  {dX,
-                   b_axes_arg},
-                  {dB},
-                  {{"keepdims", MakeAttribute("keepdims", int64_t{0})}}));
-      return result;
-    }
+    return GetBiasGeluGradNodes(true, dY, X, B, dX, dB);
   }
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
@@ -1224,11 +1192,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
   ArgDef a = I(0), y = O(0);
   std::vector<NodeDef> output;
 
-  try {
+  std::vector<Dimension> a_shape, y_shape;
+  if (GetShape(a, a_shape).IsOK() && GetShape(y, y_shape).IsOK()) {
     std::vector<int64_t> a_axes;
-
-    std::vector<Dimension> a_shape = GetShape(a);
-    std::vector<Dimension> y_shape = GetShape(y);
     ComputeBroadcastBackwardAxes(a_shape, y_shape, &a_axes, nullptr);
 
     if (a_axes.size() > 0) {
@@ -1239,13 +1205,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpandGradient) {
                   {GO(0)},
                   {GI(0)}));
     }
-  } catch (onnxruntime::OnnxRuntimeShapeException e) {
+  } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes_arg = IA("ReduceAxes_" + a.name);
-    ArgDef y_axes_arg = IA("ReduceAxes_" + y.name);
-    ComputeBroadcastBackwardAxesDynamic(a, y, a_axes_arg, y_axes_arg, output);
+    ArgDef a_axes = IA("ReduceAxes_" + a.name);
 
-    HandleBroadcastingDynamic(GO(0), a, GI(0), a_axes_arg, output);
+    ComputeBroadcastBackwardAxesDynamic(a, y, &a_axes, nullptr, output);
+
+    HandleBroadcastingDynamic(GO(0), a, GI(0), a_axes, output);
   }
 
   return output;
