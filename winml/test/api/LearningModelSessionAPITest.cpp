@@ -270,7 +270,6 @@ static void EvaluateSessionAndCloseModelHelper(
 
     auto device = LearningModelDevice(kind);
     auto options = LearningModelSessionOptions();
-    auto optionsNative = options.try_as<ILearningModelSessionOptionsNative>();
 
     // close the model on session creation
     options.CloseModelOnSessionCreation(close_model_on_session_creation);

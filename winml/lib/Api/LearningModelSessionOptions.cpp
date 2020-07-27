@@ -24,7 +24,7 @@ void LearningModelSessionOptions::CloseModelOnSessionCreation(bool value) {
   close_model_on_session_creation_ = value;
 }
 
-uint32_t LearningModelSessionOptions::IntraOpNumThreads() {
+uint32_t LearningModelSessionOptions::GetIntraOpNumThreads() {
   return intra_op_num_threads_override_;
 }
 

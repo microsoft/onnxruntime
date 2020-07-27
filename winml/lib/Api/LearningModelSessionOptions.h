@@ -18,9 +18,10 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
 
-  uint32_t IntraOpNumThreads();
   STDMETHOD(OverrideIntraOpNumThreads)
   (uint32_t intraOpNumThreads);
+
+  uint32_t STDMETHODCALLTYPE GetIntraOpNumThreads();
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -46,7 +47,8 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
 
-  // The default value here is the maximum number of logical cores.
+  // The default value here is the maximum number of logical cores to ensure that
+  // the default behavior of WinML always runs the fastest.
   uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
 };
 

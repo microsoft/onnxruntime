@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
+
 #include "LearningModelSession.h"
 
 #include "ImageFeatureDescriptor.h"
@@ -114,8 +115,9 @@ void LearningModelSession::Initialize() {
     if (session_options_.BatchSizeOverride() != 0) {
       WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
     }
+    // Make Onnxruntime apply the number of intra op threads
     WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(
-        session_options_.as<WINMLP::LearningModelSessionOptions>()->IntraOpNumThreads())
+        session_options_.as<WINMLP::LearningModelSessionOptions>()->GetIntraOpNumThreads())
     );
   }
 
