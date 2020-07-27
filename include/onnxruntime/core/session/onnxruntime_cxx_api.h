@@ -296,6 +296,9 @@ struct Value : Base<OrtValue> {
   template <typename T>
   T* GetTensorMutableData();
 
+  template<typename T>
+  const T* GetTensorData() const;
+
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 
@@ -341,6 +344,7 @@ struct Allocator : public Base<OrtAllocator> {
 struct IoBinding : public Base<OrtIoBinding> {
  private:
   std::vector<std::string> GetOutputNames(OrtAllocator*) const;
+  std::vector<Value> GetOutputValues(OrtAllocator*) const;
  public:
   explicit IoBinding(Session& session);
   void BindInput(const char* name, const Value&);
@@ -348,6 +352,8 @@ struct IoBinding : public Base<OrtIoBinding> {
   void BindOutput(const char* name, const MemoryInfo&);
   std::vector<std::string> GetOutputNames() const;
   std::vector<std::string> GetOutputNames(Allocator&) const;
+  std::vector<Value> GetOutputValues() const;
+  std::vector<Value> GetOutputValues(Allocator&) const;
   void ClearBoundInputs();
   void ClearBoundOutputs();
 };
