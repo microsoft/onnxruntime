@@ -12,7 +12,7 @@
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
 #include "Psapi.h"
-
+#include <thread>
 using namespace winrt;
 using namespace winml;
 using namespace wfc;
@@ -385,6 +385,38 @@ static void CloseSession()
     });
  }
 
+static void SetIntraOpNumThreads() {
+   auto shape = std::vector<int64_t>{1, 1000};
+
+   auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
+
+   auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
+
+   auto options = LearningModelSessionOptions();
+   auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
+
+   // The default number of intra op threads is equal to the maximum number of logical cores
+   WINML_EXPECT_EQUAL(nativeOptions->GetIntraOpNumThreads(), std::thread::hardware_concurrency());
+
+   // Set the number of intra op threads to half of logical cores.
+   nativeOptions->OverrideIntraOpNumThreads(std::thread::hardware_concurrency() / 2);
+
+   // Interrogate session options for the number of threads set
+   WINML_EXPECT_EQUAL(nativeOptions->GetIntraOpNumThreads(), std::thread::hardware_concurrency() / 2);
+
+   LearningModelSession session = nullptr;
+   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+
+   std::vector<float> input(1000);
+   std::iota(std::begin(input), std::end(input), 0.0f);
+   auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
+   auto binding = LearningModelBinding(session);
+   binding.Bind(L"input", tensor_input);
+
+   LearningModelEvaluationResult result(nullptr);
+   WINML_EXPECT_NO_THROW(result = session.Evaluate(binding, L""));
+ }
+
 const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
   {
@@ -403,6 +435,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     CreateSessionWithFloat16InitializersInModel,
     EvaluateSessionAndCloseModel,
     CloseSession,
+    SetIntraOpNumThreads
   };
 
   if (SkipGpuTests()) {
