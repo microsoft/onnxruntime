@@ -9,6 +9,59 @@ in *ONNX Runtime*.
 .. contents::
     :local:
 
+IOBinding
+=========
+
+By default, *ONNX Runtime* always places input(s) and output(s) on CPU, which 
+is not optimal if the input or output is consumed and produced on a device
+other than CPU because it introduces data copy between CPU and the device. 
+*ONNX Runtime* provides a feature, *IO Binding*, which addresses this issue by
+enabling users to specify which device to place input(s) and output(s) on. 
+Here are scenarios to use this feature. 
+
+(In the following code snippets, *model.onnx* is the model to execute, 
+*X* is the input data to feed, and *Y* is the output data.)
+
+Scenario 1:
+
+A graph is executed on a deivce other than CPU, for instance CUDA. Users can 
+use IOBinding to put input on CUDA as the follows.
+
+.. code-block:: python
+
+	#X is numpy array on cpu 
+	session = onnxruntime.InferenceSession('model.onnx')
+	io_binding = session.io_binding()
+	io_binding.bind_cpu_input('input', X)
+	io_binding.bind_output('output')
+	session.run_with_iobinding(io_binding)
+	Y = io_binding.copy_outputs_to_cpu()[0]
+
+Scenario 2:
+
+The input data is on a device, users direclty use the input. The output data is on CPU.
+
+.. code-block:: python
+
+	session = onnxruntime.InferenceSession('model.onnx')
+	io_binding = session.io_binding()
+	io_binding.bind_input(name='input', device_type=X.device.type, device_id=0, element_type=np.float32, shape=list(X.size()), buffer_ptr=X.data_ptr())
+	io_binding.bind_output('output')
+	session.run_with_iobinding(io_binding)
+	Y = io_binding.copy_outputs_to_cpu()[0]
+
+Scenario 3:
+
+The input data on a dveice, users directly use the input and also place output on the device:
+
+.. code-block:: python
+
+	session = onnxruntime.InferenceSession('model.onnx')
+	io_binding = session.io_binding()
+	io_binding.bind_input(name='input', device_type=X.device.type, device_id=0, element_type=np.float32, shape=list(X.size()), buffer_ptr=X.data_ptr())
+	io_binding.bind_output(name='output', device_type=Y.device.type, device_id=0, element_type=np.float32, shape=list(Y.size()), buffer_ptr=Y.data_ptr())
+	session.run_with_iobinding(io_binding)
+
 Device
 ======
 

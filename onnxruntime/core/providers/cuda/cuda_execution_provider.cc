@@ -56,37 +56,22 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
-
 CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
+  CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit, arena_extend_strategy});
+       [](OrtDevice::DeviceId id) {
+         return onnxruntime::make_unique<CUDAAllocator>(id, CUDA);
+       },
+       cuda_mem_limit, 
+       arena_extend_strategy});
 
-  allocator_ = CreateAllocator(default_memory_info, device_id);
-}
-
-cublasHandle_t CUDAExecutionProvider::PerThreadContext::CublasHandle() {
-  if (!cublas_handle_) {
-    CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  }
-  return cublas_handle_;
-}
-
-cudnnHandle_t CUDAExecutionProvider::PerThreadContext::CudnnHandle() {
-  if (!cudnn_handle_) {
-    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  }
-  return cudnn_handle_;
-}
-
-curandGenerator_t CUDAExecutionProvider::PerThreadContext::CurandGenerator() {
-  if (!curand_generator_) {
-    CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
-  }
-  return curand_generator_;
+  // CUDA malloc/free is expensive so always use an arena
+  allocator_ = CreateAllocator(default_memory_info, device_id, /*create_arena*/ true);
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -94,28 +79,47 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    if (cublas_handle_) {
-      CUBLAS_CALL(cublasDestroy(cublas_handle_));
-    }
+    CUBLAS_CALL(cublasDestroy(cublas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
   }
 
   try {
-    if (cudnn_handle_) {
-      CUDNN_CALL(cudnnDestroy(cudnn_handle_));
-    }
+    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
 
   try {
-    if (curand_generator_) {
-      CURAND_CALL(curandDestroyGenerator(curand_generator_));
-    }
+    CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "curandDestroyGenerator threw:" << ex.what();
   }
+}
+
+/*
+ * This method should be called within the constructor,
+ * so that the configuration of provider related setting can be updated 
+ * and kept at IExecutionProvider level.
+ */
+void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
+  UnorderedMapStringToString options;
+
+  options["device_id"] = std::to_string(device_id_); 
+  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_); 
+  std::string strategy;
+  if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
+    strategy = "kNextPowerOfTwo";
+  }
+  else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+    strategy = "kSameAsRequested";
+  }
+  else {
+    strategy = "unknown"; 
+  }
+  options["arena_extend_strategy"] = strategy; 
+
+  IExecutionProvider::SetProviderOptions(options);
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
@@ -153,67 +157,101 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
-  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUInput,
-                                                   [](int device_id) { return onnxruntime::make_unique<CPUAllocator>(
-                                                                           onnxruntime::make_unique<OrtMemoryInfo>(
-                                                                               "CUDA_CPU",
-                                                                               OrtAllocatorType::OrtDeviceAllocator,
-                                                                               OrtDevice(),
-                                                                               device_id,
-                                                                               OrtMemTypeCPUInput)); },
-                                                   std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo cpu_memory_info(
+      {OrtMemTypeCPUInput,
+       [](int device_id) {
+         return onnxruntime::make_unique<CPUAllocator>(
+             OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                           OrtMemTypeCPUInput));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
+
+  UpdateProviderOptionsInfo();
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
   auto cpu_alloc = GetAllocator(CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    if (v.recorded)
-      CUDA_CALL_THROW(cudaEventSynchronize(e));
-    for (auto p : v.cpu_ptrs) {
-      cpu_alloc->Free(p);
+  {
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    auto it = deferred_release_cpu_ptr_.begin();
+    while (it != deferred_release_cpu_ptr_.end()) {
+      auto& e = it->first;
+      auto& v = it->second;
+      if (v.recorded)
+        CUDA_CALL_THROW(cudaEventSynchronize(e));
+      for (auto p : v.cpu_ptrs) {
+        cpu_alloc->Free(p);
+      }
+      CUDA_CALL_THROW(cudaEventDestroy(e));
+      it = deferred_release_cpu_ptr_.erase(it);
     }
-    CUDA_CALL_THROW(cudaEventDestroy(e));
-    it = deferred_release_cpu_ptr_.erase(it);
+  }
+
+  // clean up thread local context caches
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+      const auto cache = cache_weak.lock();
+      if (!cache) continue;
+      ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+    }
   }
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
-  if (per_thread_context_map_ == nullptr) {
-    per_thread_context_map_ = onnxruntime::make_unique<PerThreadContextMap>();
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
   }
 
-  auto* p = per_thread_context_map_.get();
-  if (p->count(this) == 0) {
-    std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    std::shared_ptr<PerThreadContext> ptc;
-    if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      context = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_, arena_extend_strategy_);
     } else {
-      ptc = retired_context_pool_.back();
-      retired_context_pool_.pop_back();
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
     }
-    p->insert(std::make_pair(this, ptc));
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
   }
-  return *(p->at(this));
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
 }
 
-void CUDAExecutionProvider::ReleasePerThreadStuffs() const {
-  ORT_ENFORCE(per_thread_context_map_ != nullptr);
-  auto iter_ctx = per_thread_context_map_->find(this);
-  ORT_ENFORCE(iter_ctx != per_thread_context_map_->end());
+void CUDAExecutionProvider::ReleasePerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
 
-  std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-  retired_context_pool_.push_back(iter_ctx->second);
-  per_thread_context_map_->erase(iter_ctx);
-  // Release TLS if empty to avoid memory leak report
-  if (per_thread_context_map_->empty()) {
-    per_thread_context_map_.reset(nullptr);
+  auto cached_context_it = per_thread_context_cache->find(this);
+  ORT_ENFORCE(cached_context_it != per_thread_context_cache->end());
+  auto cached_context = cached_context_it->second.lock();
+  ORT_ENFORCE(cached_context);
+
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    context_state_.active_contexts.erase(cached_context);
+    context_state_.retired_context_pool.push_back(cached_context);
   }
+
+  per_thread_context_cache->erase(cached_context_it);
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -279,7 +317,7 @@ Status CUDAExecutionProvider::OnRunEnd() {
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, nullptr));
-  ReleasePerThreadStuffs();
+  ReleasePerThreadContext();
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
   return Status::OK();
@@ -351,46 +389,12 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, And);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Or);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Xor);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, int32_t, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, int64_t, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, uint32_t, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, uint64_t, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, float, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, double, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, MLFloat16, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, int32_t, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, int64_t, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, uint32_t, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, uint64_t, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, float, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, double, Sum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, MLFloat16, Sum);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, float, Max);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, double, Max);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, MLFloat16, Max);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, float, Max);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, double, Max);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, MLFloat16, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int32_t, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint32_t, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint64_t, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double, Max);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16, Max);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, float, Min);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, double, Min);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, MLFloat16, Min);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, float, Min);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, double, Min);
-class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, MLFloat16, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int32_t, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint32_t, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint64_t, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double, Min);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16, Min);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, Sum);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, Sum);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 11, Max);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Max);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 11, Min);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Min);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 8, float, Greater);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 8, double, Greater);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 8, MLFloat16, Greater);
@@ -802,15 +806,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, GatherND);
 
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_MLFloat16, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_float, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_double, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_MLFloat16, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_float, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_double, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_MLFloat16, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_float, Dropout);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_double, Dropout);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Dropout);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Einsum);
 
 static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -879,46 +876,12 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, And)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Or)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, bool, Xor)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, int32_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, int64_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, uint32_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, uint64_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, float, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, double, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, MLFloat16, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, int32_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, int64_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, uint32_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, uint64_t, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, float, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, double, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, MLFloat16, Sum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, float, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, double, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, MLFloat16, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, float, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, double, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, MLFloat16, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int32_t, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint32_t, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint64_t, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16, Max)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, float, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, double, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, MLFloat16, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, float, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, double, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, 11, MLFloat16, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int32_t, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint32_t, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, uint64_t, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double, Min)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16, Min)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 7, Sum)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 8, Sum)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 11, Max)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Max)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 6, 11, Min)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Min)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 8, float, Greater)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 8, double, Greater)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 7, 8, MLFloat16, Greater)>,
@@ -1329,15 +1292,8 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, int64_t, GatherND)>,
 
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_MLFloat16, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_float, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, MLFloat16_double, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_MLFloat16, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_float, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, float_double, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_MLFloat16, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_float, Dropout)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, double_double, Dropout)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Dropout)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 12, Einsum)>,
   };
 
   for (auto& function_table_entry : function_table) {

@@ -144,7 +144,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   if (output_shape.Size() == 0)
     return Status::OK();
 
-  int64_t axis;
+  int64_t axis = 0;
   ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
 
   auto dim(output_tensor.Shape()[axis]);    // dimension size for the axis

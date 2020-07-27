@@ -77,8 +77,8 @@ Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContex
   ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 3, "boxes must be a 3D tensor.");
   ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 3, "scores must be a 3D tensor.");
 
-  auto boxes_dims = boxes_shape.GetDims();
-  auto scores_dims = scores_shape.GetDims();
+  const auto& boxes_dims = boxes_shape.GetDims();
+  const auto& scores_dims = scores_shape.GetDims();
   ORT_RETURN_IF_NOT(boxes_dims[0] == scores_dims[0], "boxes and scores should have same num_batches.");
   ORT_RETURN_IF_NOT(boxes_dims[1] == scores_dims[2], "boxes and scores should have same spatial_dimension.");
   ORT_RETURN_IF_NOT(boxes_dims[2] == 4, "The most inner dimension in boxes must have 4 data.");

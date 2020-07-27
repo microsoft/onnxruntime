@@ -16,7 +16,7 @@ struct LearningModelSessionAPITestsApi {
   VoidTest EvaluateFeaturesAsync;
   VoidTest EvaluationProperties;
   VoidTest CreateSessionWithCastToFloat16InModel;
-  VoidTest DISABLED_CreateSessionWithFloat16InitializersInModel;
+  VoidTest CreateSessionWithFloat16InitializersInModel;
   VoidTest EvaluateSessionAndCloseModel;
   VoidTest CloseSession;
 };
@@ -36,6 +36,6 @@ WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectX)
 WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXHighPerformance)
 WINML_TEST(LearningModelSessionAPITests, CreateSessionDeviceDirectXMinimumPower)
 WINML_TEST(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
-WINML_TEST(LearningModelSessionAPITests, DISABLED_CreateSessionWithFloat16InitializersInModel)
+WINML_TEST(LearningModelSessionAPITests, CreateSessionWithFloat16InitializersInModel)
 WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
 WINML_TEST_CLASS_END()

@@ -2,4 +2,4 @@ jobs:
 - template: templates/mac-ci.yml
   parameters:
     DoNugetPack: 'false'
-    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --use_featurizers --parallel --build_shared_lib --build_java --enable_language_interop_ops  --config Debug'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --build_wheel --skip_submodule_sync --use_featurizers --parallel --build_shared_lib --build_java --build_nodejs --enable_language_interop_ops  --config Debug'

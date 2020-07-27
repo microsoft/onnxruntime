@@ -101,7 +101,21 @@ class Node {
   /** Gets the Node's Node::Type. */
   Node::Type NodeType() const noexcept;
 
-  /** Gets the function body if the #NodeType is fused, or nullptr if not. */
+  /** 
+  Gets the function body if applicable otherwise nullptr
+  @param try_init_func_body If not already intialized, initialize the function body
+  (only applicable to operators which are defined as function in ONNX spec).
+  Function body can be initialized in 2 cases : 
+  1. For nodes of type "Fused" 
+  2. For nodes which are defined as functions in ONNX spec (example: DynamicQuantizeLinear)
+  For all other cases this will always return nullptr.
+  Nodes of type "Fused" are created during partitioning and the function body 
+  initialization for such nodes also happens during node creation. Therefore, 
+  initialization of function body will happen via this method only in case 2 mentioned above.
+  */ 
+  const Function* GetFunctionBody(bool try_init_func_body = true);
+
+  /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept;
 
   /** Gets the node description. */
@@ -117,6 +131,25 @@ class Node {
   */
   static common::Status ForEachWithIndex(const ConstPointerContainer<std::vector<NodeArg*>>& node_args,
                                          std::function<common::Status(const NodeArg& arg, size_t index)> func) {
+    for (size_t index = 0; index < node_args.size(); ++index) {
+      auto arg = node_args[index];
+      if (!arg->Exists())
+        continue;
+      ORT_RETURN_IF_ERROR(func(*arg, index));
+    }
+    return common::Status::OK();
+  }
+
+  /**
+  Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided function.
+  @param node_args Collection of NodeArgs returned by #MutableInputDefs() or #MutableOutputDefs()
+  @param func Function to call for each valid NodeArg in the node_args. The function is called with the NodeArg
+              and the index number in the container.
+  @returns common::Status with success or error information.
+  @remarks Returns immediately on error.
+  */
+  static common::Status ForEachMutableWithIndex(std::vector<NodeArg*>& node_args,
+                                                std::function<common::Status(NodeArg& arg, size_t index)> func) {
     for (size_t index = 0; index < node_args.size(); ++index) {
       auto arg = node_args[index];
       if (!arg->Exists())
@@ -263,6 +296,9 @@ class Node {
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept;
+
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept;
 
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
@@ -490,6 +526,9 @@ class Graph {
   /** Remove the initializer tensor with the provided name from the Graph. */
   void RemoveInitializedTensor(const std::string& tensor_name);
 
+  /** Check if a given name is an initializer tensor's name in this graph. */
+  bool IsInitializedTensor(const std::string& name) const;
+
   /** Replaces the initializer tensor with the same name as the given initializer tensor.
   The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
 
@@ -525,6 +564,11 @@ class Graph {
     return graph_inputs_including_initializers_;
   }
 
+  /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
+  bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+  }
+
   /** Gets the Graph inputs that are initializers
   These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
@@ -536,6 +580,10 @@ class Graph {
   /** Gets the Graph outputs.
   @remarks Contains no nullptr values.*/
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return graph_outputs_; }
+
+  bool IsOutput(const NodeArg* node_arg) const noexcept{
+    return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
+  }
 
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
@@ -556,6 +604,8 @@ class Graph {
   These are the values that are neither Graph inputs nor outputs.
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+
+  void AddValueInfo(const NodeArg* new_value_info);
 
   /** Gets the Node with the specified node index.
   @returns Node instance if found. nullptr if node_index is invalid or node has been freed.
@@ -607,15 +657,14 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-
     auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
-  /** Generate a unique name.in this Graph for a NodeArg */
+  /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
-  /** Generate a unique name.in this Graph for a Node */
+  /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
   /** Add a Node to this Graph.
@@ -726,6 +775,20 @@ class Graph {
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
 
+  /** Performs a reverse depth-first search (DFS) traversal from a set of nodes, via their inputs,
+  up to their source node/s.
+  @param from Set of Nodes to traverse from.
+  @param enter Visit function that will be invoked on a node when it is visited but its parents haven't been.
+  @param leave Visit function invoked on the node after its parents have all been visited.
+  @param stop Stop traversal from node n to input node p if stop(n, p) is true.
+  @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
+  */
+  void ReverseDFSFrom(const std::vector<const Node*>& from,
+                      const std::function<void(const Node*)>& enter,
+                      const std::function<void(const Node*)>& leave,
+                      const std::function<bool(const Node*, const Node*)>& comp,
+                      const std::function<bool(const Node*, const Node*)>& stop) const;
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
@@ -751,7 +814,10 @@ class Graph {
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
-  Status InlineFunction(Node& node);
+  Status InlineFunction(Node& node); 
+
+  /** Initialize function body for the given node */
+  void InitFunctionBodyForNode(Node& node);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..

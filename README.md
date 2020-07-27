@@ -18,7 +18,7 @@ Many users can benefit from ONNX Runtime, including those looking to:
 
 [ONNX Runtime inferencing](./onnxruntime) APIs are stable and production-ready since the [1.0 release](https://github.com/microsoft/onnxruntime/releases/tag/v1.0.0) in October 2019 and can enable faster customer experiences and lower costs.
 
-[ONNX Runtime training](./orttraining) feature was introduced in May 2020 in preview. This feaures supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
+[ONNX Runtime training](./orttraining) feature was introduced in May 2020 in preview. This feature supports acceleration of PyTorch training on multi-node NVIDIA GPUs for transformer models. Additional updates for this feature are coming soon.
 
 
 ***
@@ -50,7 +50,7 @@ To use ONNX Runtime, refer to the table on [aka.ms/onnxruntime](https://aka.ms/o
 * [Hardware accelerators](#supported-accelerators)
 * [Deploy ONNX Runtime inferencing](#deploying-onnx-runtime)
 * [Samples](./samples)
-* [High level architectural design](docs/HighLevelDesign.md)
+* [High level architectural design](docs/InferenceHighLevelDesign.md)
 * [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
 * [Extensibility: Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 * [Extensibility: Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
@@ -137,7 +137,7 @@ For production scenarios, it's strongly recommended to build only from an [offic
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 |---|---|---|---|
-|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
+|<ul><li>Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*</li><li>[Intel DNNL](./docs/execution_providers/DNNL-ExecutionProvider.md)</li><li>[Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)</li><li>Intel MKL-ML *(build option)*</li></ul>|<ul><li>NVIDIA CUDA</li><li>[NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)</li><li>[DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)</li><li>[AMD MIGraphX](./docs/execution_providers/MIGraphX-ExecutionProvider.md)</li></ul>|<ul><li>[Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)</li><li>[ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)</li><li>[Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)</li></ul>|<ul><li>[Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md) - (*preview*)</li><li>[Rockchip NPU](./docs/execution_providers/RKNPU-ExecutionProvider.md) (*preview*)</li><li>[Xilinx Vitis-AI](./docs/execution_providers/Vitis-AI-ExecutionProvider.md) (*preview*)</li></ul>| 
 
 * [Roadmap: Upcoming accelerators](./docs/Roadmap.md#accelerators-and-execution-providers)
 * [Extensibility: Add an execution provider](docs/AddingExecutionProvider.md)

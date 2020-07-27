@@ -37,7 +37,7 @@ __global__ void _TenaryElementWise(
       CUDA_LONG y_index = (YIndexType == BroadcastIndexType::NoBroadcast ? id : 0);
       CUDA_LONG offset = id;
 #pragma unroll
-      for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
+      for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
         if (dim >= output_rank) {
           break;
         }
@@ -111,73 +111,73 @@ __global__ void _TenaryElementWiseSimple(
   }
 }
 
-#define HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE)   \
-  case Y_INDEX_TYPE: {                                                            \
-    _TenaryElementWiseSimple<T,                                                   \
-                             COND_INDEX_TYPE,                                     \
-                             X_INDEX_TYPE,                                        \
-                             Y_INDEX_TYPE,                                        \
-                             GridDim::maxThreadsPerBlock,                         \
-                             GridDim::maxElementsPerThread>                       \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(cond_data,            \
-                                                            x_data,               \
-                                                            y_data,               \
-                                                            output_data,          \
-                                                            N);                   \
+#define HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE) \
+  case Y_INDEX_TYPE: {                                                          \
+    _TenaryElementWiseSimple<T,                                                 \
+                             COND_INDEX_TYPE,                                   \
+                             X_INDEX_TYPE,                                      \
+                             Y_INDEX_TYPE,                                      \
+                             GridDim::maxThreadsPerBlock,                       \
+                             GridDim::maxElementsPerThread>                     \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(cond_data,          \
+                                                            x_data,             \
+                                                            y_data,             \
+                                                            output_data,        \
+                                                            N);                 \
   } break
 
-#define HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE_VAL)                     \
-  case X_INDEX_TYPE: {                                                                                  \
-    switch(Y_INDEX_TYPE_VAL) {                                                                          \
-      HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::NoBroadcast);       \
-      HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::Scalar);            \
-    }                                                                                                   \
+#define HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE_VAL)               \
+  case X_INDEX_TYPE: {                                                                            \
+    switch (Y_INDEX_TYPE_VAL) {                                                                   \
+      HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::NoBroadcast); \
+      HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::Scalar);      \
+    }                                                                                             \
   } break
 
-#define HANDLE_COND_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE_VAL, Y_INDEX_TYPE_VAL)              \
-  case COND_INDEX_TYPE: {                                                                               \
-    switch(X_INDEX_TYPE_VAL) {                                                                          \
-      HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, BroadcastIndexType::NoBroadcast, Y_INDEX_TYPE_VAL);   \
-      HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, BroadcastIndexType::Scalar, Y_INDEX_TYPE_VAL);        \
-    }                                                                                                   \
+#define HANDLE_COND_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE_VAL, Y_INDEX_TYPE_VAL)            \
+  case COND_INDEX_TYPE: {                                                                             \
+    switch (X_INDEX_TYPE_VAL) {                                                                       \
+      HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, BroadcastIndexType::NoBroadcast, Y_INDEX_TYPE_VAL); \
+      HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, BroadcastIndexType::Scalar, Y_INDEX_TYPE_VAL);      \
+    }                                                                                                 \
   } break
 
-#define HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE)                        \
-  case Y_INDEX_TYPE: {                                                                          \
-    _TenaryElementWise<T,                                                                       \
-                       COND_INDEX_TYPE,                                                         \
-                       X_INDEX_TYPE,                                                            \
-                       Y_INDEX_TYPE,                                                            \
-                       GridDim::maxThreadsPerBlock,                                             \
-                       GridDim::maxElementsPerThread>                                           \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_rank_or_simple_broadcast,    \
-                                                            cond_padded_strides,                \
-                                                            cond_data,                          \
-                                                            x_padded_strides,                   \
-                                                            x_data,                             \
-                                                            y_padded_strides,                   \
-                                                            y_data,                             \
-                                                            fdm_output_strides,                 \
-                                                            output_data,                        \
-                                                            N);                                 \
+#define HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE)                     \
+  case Y_INDEX_TYPE: {                                                                       \
+    _TenaryElementWise<T,                                                                    \
+                       COND_INDEX_TYPE,                                                      \
+                       X_INDEX_TYPE,                                                         \
+                       Y_INDEX_TYPE,                                                         \
+                       GridDim::maxThreadsPerBlock,                                          \
+                       GridDim::maxElementsPerThread>                                        \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_rank_or_simple_broadcast, \
+                                                            cond_padded_strides,             \
+                                                            cond_data,                       \
+                                                            x_padded_strides,                \
+                                                            x_data,                          \
+                                                            y_padded_strides,                \
+                                                            y_data,                          \
+                                                            fdm_output_strides,              \
+                                                            output_data,                     \
+                                                            N);                              \
   } break
 
-#define HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE_VAL)                    \
-  case X_INDEX_TYPE: {                                                                          \
-    switch(Y_INDEX_TYPE_VAL) {                                                                  \
-      HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::NoBroadcast);      \
-      HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::Scalar);           \
-      HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::NeedCompute);      \
-    }                                                                                           \
+#define HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE_VAL)               \
+  case X_INDEX_TYPE: {                                                                     \
+    switch (Y_INDEX_TYPE_VAL) {                                                            \
+      HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::NoBroadcast); \
+      HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::Scalar);      \
+      HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, BroadcastIndexType::NeedCompute); \
+    }                                                                                      \
   } break
 
-#define HANDLE_COND_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE_VAL, Y_INDEX_TYPE_VAL)             \
-  case COND_INDEX_TYPE: {                                                                       \
-    switch(X_INDEX_TYPE_VAL) {                                                                  \
-      HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, BroadcastIndexType::NoBroadcast, Y_INDEX_TYPE_VAL);  \
-      HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, BroadcastIndexType::Scalar, Y_INDEX_TYPE_VAL);       \
-      HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, BroadcastIndexType::NeedCompute, Y_INDEX_TYPE_VAL);  \
-    }                                                                                           \
+#define HANDLE_COND_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE_VAL, Y_INDEX_TYPE_VAL)            \
+  case COND_INDEX_TYPE: {                                                                      \
+    switch (X_INDEX_TYPE_VAL) {                                                                \
+      HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, BroadcastIndexType::NoBroadcast, Y_INDEX_TYPE_VAL); \
+      HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, BroadcastIndexType::Scalar, Y_INDEX_TYPE_VAL);      \
+      HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, BroadcastIndexType::NeedCompute, Y_INDEX_TYPE_VAL); \
+    }                                                                                          \
   } break
 
 template <typename T>
@@ -198,12 +198,12 @@ void WhereImpl(
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (output_rank_or_simple_broadcast == static_cast<size_t>(SimpleBroadcast::NoBroadcast)) {
-    switch(cond_index_type) {
+    switch (cond_index_type) {
       HANDLE_COND_INDEX_TYPE_SIMPLE(BroadcastIndexType::NoBroadcast, x_index_type, y_index_type);
       HANDLE_COND_INDEX_TYPE_SIMPLE(BroadcastIndexType::Scalar, x_index_type, y_index_type);
     }
   } else {
-    switch(cond_index_type) {
+    switch (cond_index_type) {
       HANDLE_COND_INDEX_TYPE(BroadcastIndexType::NoBroadcast, x_index_type, y_index_type);
       HANDLE_COND_INDEX_TYPE(BroadcastIndexType::Scalar, x_index_type, y_index_type);
       HANDLE_COND_INDEX_TYPE(BroadcastIndexType::NeedCompute, x_index_type, y_index_type);

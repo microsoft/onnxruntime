@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
@@ -45,9 +46,12 @@ void CalculateOutput(const int64_t stride, const int64_t num_input_before_gather
 }
 
 #ifdef USE_CUDA
-#if __CUDA_ARCH__ >= 700
 //TODO: Currently this cannot pass CI, due to GPU architecture problem
 TEST(GatherOpTest, Gather_axis0_indices2d_half) {
+  if (NeedSkipIfCudaArchLowerThan(700)) {
+    return;
+  }
+
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<MLFloat16>("data", {3, 3},
@@ -64,6 +68,10 @@ TEST(GatherOpTest, Gather_axis0_indices2d_half) {
 }
 
 TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
+  if (NeedSkipIfCudaArchLowerThan(700)) {
+    return;
+  }
+
   OpTester test("GatherGrad", 1, kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<int64_t>("shape", {2},
@@ -78,7 +86,6 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_half) {
                             FloatToMLFloat16({0, 2, 4, 6, 8, 10, 0, 0, 0}));
   test.Run();
 }
-#endif
 #endif
 
 TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {

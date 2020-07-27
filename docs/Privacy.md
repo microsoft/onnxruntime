@@ -9,12 +9,12 @@ The software may collect information about you and your use of the software and 
 No data collection is performed when using your private builds.
 
 ### Official Builds
-Currently telemetry is only implemented for Windows builds, but may be expanded in the future to cover other platforms. Telemetry is turned OFF by default while this feature is in BETA. When the feature moves from BETA to RELEASE, developers should expect telemetry to be ON by default when using the Official Builds. This is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
+ONNX Runtime does not maintain any independent telemetry collection mechanisms outside of what is provided by the platforms it supports. However, where applicable, ONNX Runtime will take advantage of platform-supported telemetry systems to collect trace events with the goal of improving product quality.
+
+Currently telemetry is only implemented for Windows builds and is turned **ON** by default in the official builds distributed on Nuget.org. This may be expanded to cover other platforms in the future. Data collection is implemented via 'Platform Telemetry' per vendor platform providers (see telemetry.h).
 
 #### Technical Details
-The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation.
+The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. 
 
-Windows ML and onnxruntime C APIs allow telemetry collection to be turned on/off (see API pages for details).
-In all Official builds:
-1. Telemetry collection is *disabled* for calls to the ORT API. See additional information about how to enable and disable telemetry in the [C API: Telemetry](./C_API.md#telemetry) section on the C-API documentation page.
-2. Telemetry collection is *enabled* for calls to the Windows ML API.
+Windows ML and onnxruntime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details).
+For information on how to enable and disable telemetry, see [C API: Telemetry](./C_API.md#telemetry).

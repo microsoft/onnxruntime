@@ -33,6 +33,7 @@ TEST(FormalParamTest, Success) {
   //EXPECT_EQ(Utils::DataTypeUtils::ToType("tensor(int32)"), *p.GetTypes().begin());
 }
 
+#ifndef DISABLE_ML_OPS
 TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   Model model("traditionalMl", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -84,6 +85,7 @@ TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   delete output_arg1;
   delete output_arg4;
 }
+#endif
 
 TEST(OpRegistrationTest, OpRegTest) {
   OPERATOR_SCHEMA(__TestOpReg)

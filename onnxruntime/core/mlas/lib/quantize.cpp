@@ -422,3 +422,40 @@ Return Value:
 }
 
 #endif
+
+void
+MLASCALL
+MlasFindMinMaxElement(
+    const float* Input,
+    float* Min,
+    float* Max,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine finds the minimum and maximum values of the supplied buffer.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Min - Returns the minimum value of the supplied buffer.
+
+    Max - Returns the maximum value of the supplied buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+#if defined(MLAS_TARGET_AMD64)
+    MlasPlatform.ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+#else
+    MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+#endif
+}

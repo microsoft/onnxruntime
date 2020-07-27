@@ -160,7 +160,7 @@ std::unique_ptr<Provider_IDeviceAllocator> CreateCPUAllocator(std::unique_ptr<Pr
 std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<Provider_IDeviceAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 Provider_AllocatorPtr CreateDummyArenaAllocator(std::unique_ptr<Provider_IDeviceAllocator> resource_allocator);
-Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0);
+Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0, bool use_arena = true);
 
 std::unique_ptr<Provider_IDataTransfer> CreateGPUDataTransfer();
 

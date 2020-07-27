@@ -11,7 +11,7 @@ import sys
 import argparse
 import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
-from OnnxModel import OnnxModel
+from onnxruntime_tools.transformers.onnx_model import OnnxModel
 import os
 import onnxruntime
 import random
@@ -44,7 +44,6 @@ new_parameters = {
 
 
 class TinyBertOnnxModel(OnnxModel):
-
     def __init__(self, model):
         super(TinyBertOnnxModel, self).__init__(model)
         self.resize_model()
@@ -238,7 +237,7 @@ class TinyBertOnnxModel(OnnxModel):
                                                                                     data_type=TensorProto.INT64,
                                                                                     dims=[],
                                                                                     vals=[new_parameters["num_heads"]
-                                                                                         ])))
+                                                                                          ])))
                             print("constant", att.t.name, old_parameters["num_heads"], "=>",
                                   new_parameters["num_heads"])
                         if numpy_helper.to_array(att.t) == np.sqrt(old_parameters["size_per_head"]):

@@ -46,7 +46,6 @@ class VitisAICustomOp {
   }
 
  private:
-  Status Initialize(const OrtApi* api, OrtKernelContext* context) const;
 
   std::vector<std::string> in_tensor_names_;
   std::vector<std::string> out_tensor_names_;

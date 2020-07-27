@@ -49,7 +49,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime windowsapp.lib)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}

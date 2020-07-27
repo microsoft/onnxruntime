@@ -193,6 +193,30 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
+  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+    using namespace common;
+    if (fd < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
+    }
+
+    struct _stat buf;
+    int rc = _fstat(fd, &buf);
+    if (rc < 0) {
+      return Status(SYSTEM, errno);
+    }
+
+    if (buf.st_size < 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+    }
+
+    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    }
+
+    file_size = static_cast<size_t>(buf.st_size);
+    return Status::OK();
+  }
+
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override {
     ORT_RETURN_IF_NOT(file_path);

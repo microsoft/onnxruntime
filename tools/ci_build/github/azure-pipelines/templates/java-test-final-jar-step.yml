@@ -1,0 +1,80 @@
+parameters:
+  WindowsPool: 'Win-CPU-2019'
+  LinuxPool: 'Linux-CPU'
+  version: ''
+  RunMacOs: 'false'
+  artifactName: ''
+
+- job: Test_Final_Jar_Linux
+  timeoutInMinutes:  60
+  pool: '${{parameters.LinuxPool}}'
+  steps:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Final Jar'
+        inputs:
+          buildType: 'current'
+          artifactName: '${{parameters.artifactName}}'
+          targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+      - task: CmdLine@2
+        inputs:
+           script: |
+             sudo apt-get install -y openjdk-8-jdk
+             sudo apt autoremove
+             PATH=/usr/lib/jvm/jre-1.8.0-openjdk.x86_64/bin:${PATH}
+             mkdir test
+             pushd test
+             jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+             popd
+             wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+             wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+             java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .;./test;./protobuf-java-3.9.2.jar;./onnxruntime-${{parameters.version}}.jar --scan-class-path --fail-if-no-tests --disable-banner
+           workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+- job: Test_Final_Jar_MacOs
+  timeoutInMinutes:  60
+  pool: 
+    vmImage: 'macOS-10.14'
+  condition: eq(parameters['RunMacOs'], 'true')
+  steps:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Final Jar'
+        inputs:
+          buildType: 'current'
+          artifactName: '${{parameters.artifactName}}'
+          targetPath: '$(Build.BinariesDirectory)/final-jar'
+
+      - task: CmdLine@2
+        inputs:
+           script: |
+             mkdir test
+             pushd test
+             jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+             popd
+             wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+             wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+             java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .;./test;./protobuf-java-3.9.2.jar;./onnxruntime-${{parameters.version}}.jar --scan-class-path --fail-if-no-tests --disable-banner
+           workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+- job: Test_Final_Jar_Windows
+  timeoutInMinutes: 60
+  pool: '${{parameters.WindowsPool}}'
+  steps:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Final Jar'
+        inputs:
+          buildType: 'current'
+          artifactName: '${{parameters.artifactName}}'
+          targetPath: '$(Build.BinariesDirectory)\final-jar'
+
+      - task: CmdLine@2
+        inputs:
+           script: |
+             mkdir test 
+             pushd test
+             jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
+             popd
+             powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
+             powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
+             java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-${{parameters.version}}.jar --scan-class-path --fail-if-no-tests --disable-banner
+           workingDirectory: '$(Build.BinariesDirectory)\final-jar'

@@ -51,6 +51,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
   Tensor* Y = context->Output(0, output_dims);
+
+  // Return early if the output tensor is going to be of size 0
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   // kernel

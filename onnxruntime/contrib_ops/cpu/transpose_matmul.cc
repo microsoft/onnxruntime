@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "transpose_matmul.h"
-
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 
@@ -38,6 +36,10 @@ Status TransposeMatMul::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(helper.Compute(A->Shape(), B->Shape(), trans_a, trans_b));
 
   Tensor* Y = context->Output(0, helper.OutputShape());
+
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
 
   const size_t num_offsets = helper.OutputOffsets().size();
   for (size_t i = 0; i < num_offsets; ++i) {

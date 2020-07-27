@@ -98,16 +98,16 @@ LogisticKernelFrame ENDS
 
         alloc_stack (LogisticKernelFrame.ReturnAddress)
 
-        save_xmm128_avx xmm6,LogisticKernelFrame.SavedXmm6
-        save_xmm128_avx xmm7,LogisticKernelFrame.SavedXmm7
-        save_xmm128_avx xmm8,LogisticKernelFrame.SavedXmm8
-        save_xmm128_avx xmm9,LogisticKernelFrame.SavedXmm9
-        save_xmm128_avx xmm10,LogisticKernelFrame.SavedXmm10
-        save_xmm128_avx xmm11,LogisticKernelFrame.SavedXmm11
-        save_xmm128_avx xmm12,LogisticKernelFrame.SavedXmm12
-        save_xmm128_avx xmm13,LogisticKernelFrame.SavedXmm13
-        save_xmm128_avx xmm14,LogisticKernelFrame.SavedXmm14
-        save_xmm128_avx xmm15,LogisticKernelFrame.SavedXmm15
+        save_xmm128 xmm6,LogisticKernelFrame.SavedXmm6
+        save_xmm128 xmm7,LogisticKernelFrame.SavedXmm7
+        save_xmm128 xmm8,LogisticKernelFrame.SavedXmm8
+        save_xmm128 xmm9,LogisticKernelFrame.SavedXmm9
+        save_xmm128 xmm10,LogisticKernelFrame.SavedXmm10
+        save_xmm128 xmm11,LogisticKernelFrame.SavedXmm11
+        save_xmm128 xmm12,LogisticKernelFrame.SavedXmm12
+        save_xmm128 xmm13,LogisticKernelFrame.SavedXmm13
+        save_xmm128 xmm14,LogisticKernelFrame.SavedXmm14
+        save_xmm128 xmm15,LogisticKernelFrame.SavedXmm15
 
         END_PROLOGUE
 
@@ -185,16 +185,16 @@ ProcessRemainingCount:
 
 ExitKernel:
         vzeroupper
-        vmovaps xmm6,LogisticKernelFrame.SavedXmm6[rsp]
-        vmovaps xmm7,LogisticKernelFrame.SavedXmm7[rsp]
-        vmovaps xmm8,LogisticKernelFrame.SavedXmm8[rsp]
-        vmovaps xmm9,LogisticKernelFrame.SavedXmm9[rsp]
-        vmovaps xmm10,LogisticKernelFrame.SavedXmm10[rsp]
-        vmovaps xmm11,LogisticKernelFrame.SavedXmm11[rsp]
-        vmovaps xmm12,LogisticKernelFrame.SavedXmm12[rsp]
-        vmovaps xmm13,LogisticKernelFrame.SavedXmm13[rsp]
-        vmovaps xmm14,LogisticKernelFrame.SavedXmm14[rsp]
-        vmovaps xmm15,LogisticKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,LogisticKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,LogisticKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,LogisticKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,LogisticKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,LogisticKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,LogisticKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,LogisticKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,LogisticKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,LogisticKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,LogisticKernelFrame.SavedXmm15[rsp]
         add     rsp,(LogisticKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

@@ -226,8 +226,8 @@ struct Provider_IAllocator {
   void operator=(const Provider_IAllocator& v) = delete;
 };
 
+// This can probably be deleted
 struct Provider_IDeviceAllocator : Provider_IAllocator {
-  virtual bool AllowsArena() const = 0;
 };
 
 using Provider_AllocatorPtr = std::shared_ptr<Provider_IAllocator>;
@@ -627,7 +627,8 @@ struct Provider {
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
 struct ProviderHost {
-  virtual Provider_AllocatorPtr CreateAllocator(Provider_DeviceAllocatorRegistrationInfo& info, int16_t device_id = 0) = 0;
+  virtual Provider_AllocatorPtr CreateAllocator(const Provider_DeviceAllocatorRegistrationInfo& info,
+                                                int16_t device_id = 0, bool use_arena = true) = 0;
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
@@ -660,7 +661,8 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
-  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) = 0;
+  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
+                               const char* file, const char* function, uint32_t line) = 0;
 
   virtual bool CPU_HasAVX2() = 0;
   virtual bool CPU_HasAVX512f() = 0;

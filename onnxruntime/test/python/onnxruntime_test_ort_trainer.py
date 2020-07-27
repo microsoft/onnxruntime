@@ -67,7 +67,7 @@ def create_ort_trainer(gradient_accumulation_steps,
                         allreduce_post_accumulation,
                         use_simple_model_desc=True,
                         loss_scaler=None,
-                        partition_optimizer=False):
+                        deepspeed_zero_stage=0):
     model_desc = bert_model_description()
     simple_model_desc = remove_extra_info(model_desc) if use_simple_model_desc else model_desc
     learning_rate_description = ort_trainer_learning_rate_description()
@@ -78,13 +78,13 @@ def create_ort_trainer(gradient_accumulation_steps,
     model = ORTTrainer(onnx_model, None, simple_model_desc, "LambOptimizer",
                        map_optimizer_attributes,
                        learning_rate_description,
-                       device, postprocess_model=None,
+                       device,
                        gradient_accumulation_steps=gradient_accumulation_steps,
                        world_rank=0, world_size=1,
                        loss_scaler=loss_scaler,
                        use_mixed_precision=use_mixed_precision,
                        allreduce_post_accumulation=allreduce_post_accumulation,
-                       partition_optimizer = partition_optimizer)
+                       deepspeed_zero_stage = deepspeed_zero_stage)
 
     return model, model_desc, device
 
@@ -178,12 +178,27 @@ class MNISTWrapper():
             self.fc1 = nn.Linear(input_size, hidden_size)
             self.relu = nn.ReLU()
             self.fc2 = nn.Linear(hidden_size, num_classes)
+            self.register_buffer("bias_buffer", torch.tensor(1e-6))
 
         def forward(self, x):
             out = self.fc1(x)
             out = self.relu(out)
             out = self.fc2(out)
+            out = torch.add(out, self.bias_buffer.to(out.dtype))
             return out
+
+    class NeuralNetWithLoss(nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(MNISTWrapper.NeuralNetWithLoss, self).__init__()
+            self.fc1 = nn.Linear(input_size, hidden_size)
+            self.relu = nn.ReLU()
+            self.fc2 = nn.Linear(hidden_size, num_classes)
+
+        def forward(self, x, target):
+            out = self.fc1(x)
+            out = self.relu(out)
+            out = self.fc2(out)
+            return F.nll_loss(F.log_softmax(out, dim=1), target), out
 
     def my_loss(x, target):
         return F.nll_loss(F.log_softmax(x, dim=1), target)
@@ -261,9 +276,22 @@ class MNISTWrapper():
         model_desc = MNISTWrapper.mnist_model_description()
         return model, model_desc
 
-    def get_trainer(self, model, model_desc, device, onnx_opset_ver=12, frozen_weights=[]):
-        return ORTTrainer(model, MNISTWrapper.my_loss, model_desc, "SGDOptimizer", None, IODescription('Learning_Rate', [1, ],
-                                torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights)
+    def get_model_with_internal_loss(self):
+        input_size = 784
+        hidden_size = 500
+        num_classes = 10
+
+        # warning: changes the pytorch random generator state
+        model = MNISTWrapper.NeuralNetWithLoss(input_size, hidden_size, num_classes)
+        model_desc = MNISTWrapper.mnist_model_description()
+        return model, model_desc
+
+    def get_trainer(self, model, model_desc, device, onnx_opset_ver=12, frozen_weights=[],
+                    internal_loss_fn=False, get_lr_this_step=None, optimizer="SGDOptimizer"):
+        loss_fn = MNISTWrapper.my_loss if not internal_loss_fn else None
+        return ORTTrainer(model, loss_fn, model_desc, optimizer, None, IODescription('Learning_Rate', [1, ],
+                                torch.float32), device, _opset_version=onnx_opset_ver, frozen_weights=frozen_weights,
+                                get_lr_this_step=get_lr_this_step)
 
 class TestOrtTrainer(unittest.TestCase):
 
@@ -387,7 +415,7 @@ class TestOrtTrainer(unittest.TestCase):
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
         state_dict = trainer.state_dict()
-        assert state_dict.keys() == {'fc1.bias', 'fc1.weight', 'fc2.bias', 'fc2.weight'}
+        assert state_dict.keys() == {'fc1.bias', 'fc1.weight', 'fc2.bias', 'fc2.weight', 'bias_buffer'}
 
     def testMNISTSaveAsONNX(self):
         torch.manual_seed(1)
@@ -454,6 +482,32 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
+        assert (set([n.name for n in trainer.onnx_model_.graph.initializer])-set(['bias_buffer'])) \
+            == set([n for n, t in model.named_parameters()])
+
+    def testMNISTInitializerNamesWithInternalLoss(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model_with_internal_loss()
+
+
+        def get_lr_this_step(global_step):
+            learningRate = 0.02
+            return torch.tensor([learningRate])
+
+        trainer = mnist.get_trainer(model, model_desc, device, internal_loss_fn=True,
+                                    get_lr_this_step=get_lr_this_step)
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target)
+
         assert set([n.name for n in trainer.onnx_model_.graph.initializer]) \
             == set([n for n, t in model.named_parameters()])
 
@@ -485,6 +539,35 @@ class TestOrtTrainer(unittest.TestCase):
         fc2_trainstep_2 = trainer.state_dict()['fc2.weight']
         assert np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and \
             not np.array_equal(fc2_trainstep_1, fc2_trainstep_2)
+
+    def testMNISTTorchBuffer(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device)
+
+        learningRate = 0.02
+        epoch = 0
+
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        fc1_trainstep_1 = trainer.state_dict()['fc1.weight']
+        bias_buffer_trainstep_1 = trainer.state_dict()['bias_buffer']
+
+        loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        fc1_trainstep_2 = trainer.state_dict()['fc1.weight']
+        bias_buffer_trainstep_2 = trainer.state_dict()['bias_buffer']
+        assert not np.array_equal(fc1_trainstep_1, fc1_trainstep_2) and \
+            np.array_equal(bias_buffer_trainstep_1, bias_buffer_trainstep_2)
 
     def testMNISTFrozenWeightCheckpoint(self):
         torch.manual_seed(1)
@@ -523,10 +606,56 @@ class TestOrtTrainer(unittest.TestCase):
         ckpt_loss, _ = trainer.eval_step(data, target)
         assert loss == ckpt_loss
 
+        loaded_state_dict = trainer.state_dict()
+        assert state_dict.keys() == loaded_state_dict.keys()
+
+    def testMNISTTrainingCheckpoint(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+
+        mnist = MNISTWrapper()
+        train_loader, test_loader = mnist.get_loaders()
+        model, model_desc = mnist.get_model()
+
+        trainer = mnist.get_trainer(model, model_desc, device,
+            optimizer='LambOptimizer', frozen_weights=['fc1.weight'])
+
+        learningRate = 0.02
+        epoch = 0
+
+        # do 5 train step
+        for i in range(5):
+            data, target = next(iter(train_loader))
+            data, target = data.to(device), target.to(device)
+            data = data.reshape(data.shape[0], -1)
+
+            loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
+
+        # do one eval step
+        data, target = next(iter(train_loader))
+        data, target = data.to(device), target.to(device)
+        data = data.reshape(data.shape[0], -1)
+
+        loss, _ = trainer.eval_step(data, target)
+
+        # save checkpoint, load model and compare
+        state_dict = trainer.state_dict()
+
+        new_model, _ = mnist.get_model()
+        trainer = mnist.get_trainer(new_model, model_desc, device,
+            optimizer='LambOptimizer', frozen_weights=['fc1.weight'])
+        trainer.load_state_dict(state_dict)
+
+        ckpt_loss, _ = trainer.eval_step(data, target)
+        assert loss == ckpt_loss
+
+        loaded_state_dict = trainer.state_dict()
+        assert state_dict.keys() == loaded_state_dict.keys()
+        for key in state_dict:
+            assert np.array_equal(state_dict[key], loaded_state_dict[key])
+
     def testBertTrainingBasic(self):
-        expected_losses = [
-            11.02906322479248, 11.094074249267578, 11.00899887084961, 11.06129264831543,
-            11.029067039489746, 11.040265083312988, 11.046793937683105, 10.993699073791504]
+        expected_losses = [11.034271, 11.125311, 11.006095, 11.046938, 11.027476, 11.015745, 11.060884, 10.971851]
         expected_eval_loss = [10.95898914]
         actual_losses, actual_eval_loss = runBertTrainingTest(
             gradient_accumulation_steps=1, use_mixed_precision=False, allreduce_post_accumulation=False)
@@ -538,14 +667,12 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-04
+        rtol = 1e-03
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
     def testBertTrainingGradientAccumulation(self):
-        expected_losses = [
-            11.02906322479248, 11.094074249267578, 11.008995056152344, 11.061283111572266,
-            11.029059410095215, 11.04024887084961, 11.04680347442627, 10.993708610534668]
+        expected_losses = [11.034271, 11.125311, 11.006093, 11.046929, 11.027471, 11.015731, 11.060894, 10.971855]
         expected_eval_loss = [10.959011]
 
         actual_losses, actual_eval_loss = runBertTrainingTest(
@@ -558,7 +685,7 @@ class TestOrtTrainer(unittest.TestCase):
         # print('eval_loss actual:   ', actual_eval_loss)
         # import pdb; pdb.set_trace()
 
-        rtol = 1e-04
+        rtol = 1e-03
         assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(expected_eval_loss, actual_eval_loss, rtol=rtol, err_msg="evaluation loss mismatch")
 
@@ -620,6 +747,42 @@ class TestOrtTrainer(unittest.TestCase):
 
         rtol = 1e-03
         assert_allclose(expected_eval_loss, actual_eval_loss, err_msg="evaluation loss mismatch")
+
+    def testWrapModelLossFnStateDict(self):
+        torch.manual_seed(1)
+        device = torch.device("cuda")
+        class LinearModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(2, 4)
+            def forward(self, y=None, x=None):
+                if y is not None:
+                    return self.linear(x) + y
+                else:
+                    return self.linear(x) + torch.ones(2, 4)
+
+        pt_model = LinearModel()
+        data = torch.randn(2, 2)
+        label = torch.tensor([0, 1], dtype=torch.int64)
+        input_desc = IODescription('x', [2, 2], torch.float32)
+        label_desc = IODescription('label', [2, ], torch.int64, num_classes=4)
+        output_desc = IODescription('output', [2, 4], torch.float32)
+        loss_desc = IODescription('loss', [], torch.float32)
+        model_desc = ModelDescription([input_desc, label_desc], [loss_desc, output_desc])
+        def loss_fn(x, label):
+            return F.nll_loss(F.log_softmax(x, dim=1), label)
+
+        def get_lr_this_step(global_step):
+            learningRate = 0.02
+            return torch.tensor([learningRate])
+
+        ort_trainer = ORTTrainer(
+            pt_model, loss_fn, model_desc, "SGDOptimizer", None,
+            IODescription('Learning_Rate', [1, ], torch.float32), device,
+            get_lr_this_step=get_lr_this_step)
+        ort_trainer.train_step(x=data, label=label)
+        state_dict = ort_trainer.state_dict()
+        assert state_dict.keys() == {'linear.bias', 'linear.weight'}
 
 if __name__ == '__main__':
     unittest.main(module=__name__, buffer=True)

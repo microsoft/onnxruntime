@@ -7,6 +7,7 @@
 #include <string>
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
@@ -27,10 +28,11 @@ typedef std::vector<NodeDef> GradientDef;
 class GradientBuilderBase {
  public:
   GradientBuilderBase(
+      const GradientGraphConfiguration& gradient_graph_config,
       const Node* node,
       const std::unordered_set<std::string>& gradient_inputs,
       const std::unordered_set<std::string>& gradient_outputs)
-      : node_(node), gradient_inputs_(gradient_inputs), gradient_outputs_(gradient_outputs) {
+      : gradient_graph_config_(gradient_graph_config), node_(node), gradient_inputs_(gradient_inputs), gradient_outputs_(gradient_outputs) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -54,35 +56,46 @@ class GradientBuilderBase {
  protected:
   virtual GradientDef GetGradientDefsImpl() const = 0;
 
+  const GradientGraphConfiguration& GetGradientGraphConfiguration() const {
+    return gradient_graph_config_;
+  }
+
+  // i-th input of forward op
   ArgDef I(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
+  // i-th output of forward op
   ArgDef O(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 
+  // gradient of i-th input of forward op
   ArgDef GI(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
   }
 
+  // gradient of i-th output of forward op
   ArgDef GO(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
     return ArgDef(GradientName(node_->OutputDefs()[i]->Name()), node_->OutputDefs()[i]->TypeAsProto());
   }
 
+  // intermediate argument
   ArgDef IA(const std::string& argSuffix, const TypeProto* type_proto = nullptr) const {
     return ArgDef(Name(argSuffix), type_proto);
   }
 
+  // type of i-th input of forward op
   const TypeProto* IType(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return node_->InputDefs()[i]->TypeAsProto();
   }
 
+  // type of i-th output of forward op
   const TypeProto* OType(const size_t i) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
     return node_->OutputDefs()[i]->TypeAsProto();
@@ -178,6 +191,7 @@ class GradientBuilderBase {
     return unique_prefix.str();
   }
 
+  const GradientGraphConfiguration& gradient_graph_config_;
   const Node* node_;
   std::string unique_node_prefix_;
 

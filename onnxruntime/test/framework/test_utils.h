@@ -22,7 +22,7 @@
 #include "core/providers/openvino/openvino_execution_provider.h"
 #endif
 #ifdef USE_NNAPI
-#include "core/providers/nnapi/nnapi_execution_provider.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #endif
 #ifdef USE_RKNPU
 #include "core/providers/rknpu/rknpu_execution_provider.h"

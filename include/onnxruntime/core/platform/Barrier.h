@@ -25,13 +25,14 @@ class Barrier {
   }
 #endif
 
-  void Notify() {
-    unsigned int v = state_.fetch_sub(2, std::memory_order_acq_rel) - 2;
+  void Notify(unsigned int c = 1) {
+    unsigned int delta = c << 1;
+    unsigned int v = state_.fetch_sub(delta, std::memory_order_acq_rel) - delta;
     if (v != 1) {
       // Clear the lowest bit (waiter flag) and check that the original state
       // value was not zero. If it was zero, it means that notify was called
       // more times than the original count.
-      assert(((v + 2) & ~1) != 0);
+      assert(((v + delta) & ~1) != 0);
       return;  // either count has not dropped to 0, or waiter is not waiting
     }
     std::unique_lock<OrtMutex> l(mu_);

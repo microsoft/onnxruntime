@@ -640,7 +640,8 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
 }
 
 // After doing a Conv/Add fusion, there may be an activation node that could now
-// be fused into the Conv node as well.
+// be fused into the Conv node as well. Otherwise, this is an elementwise
+// operation that can directly use the NCHWc input.
 void NchwcTransformerImpl::TransformActivation(Node& node) {
   auto& input_defs = node.MutableInputDefs();
 
@@ -943,7 +944,9 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformBinary(node, false);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11})) {
       TransformConcat(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6})) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);

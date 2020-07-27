@@ -82,6 +82,9 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   echo "Installing cmake"
   GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.13.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+  echo "Installing Node.js"
+  GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
+  tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
   GetFile https://github.com/Kitware/CMake/releases/download/v3.13.5/cmake-3.13.5.tar.gz /tmp/src/cmake-3.13.5.tar.gz
@@ -94,10 +97,10 @@ else
   popd
 fi
 
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.2-bin.zip /tmp/src/gradle-6.2-bin.zip
+GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 cd /tmp/src
-unzip gradle-6.2-bin.zip
-mv /tmp/src/gradle-6.2 /usr/local/gradle
+unzip gradle-6.3-bin.zip
+mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps\.sh/install_protobuf\.sh}
@@ -111,10 +114,10 @@ if [ $DEVICE_TYPE = "Normal" ]; then
 elif [ $DEVICE_TYPE = "gpu" ]; then
     ${PYTHON_EXE} -m pip install sympy==1.1.1
     if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-      ${PYTHON_EXE} -m pip install --upgrade --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
-    fi
-    if [[ $BUILD_EXTR_PAR = *--enable_training_python_frontend_e2e_tests* ]]; then
-      ${PYTHON_EXE} -m pip install transformers
+      ${PYTHON_EXE} -m pip install --upgrade --pre torch==1.6.0.dev20200610 torchvision==0.7.0.dev20200610 -f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+      ${PYTHON_EXE} -m pip install  transformers==v2.10.0
+      # transformers requires sklearn
+      ${PYTHON_EXE} -m pip install sklearn
     fi
 fi
 

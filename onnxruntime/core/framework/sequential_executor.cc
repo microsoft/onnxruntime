@@ -61,7 +61,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   ORT_UNUSED_PARAMETER(node_name);
   for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output->IsTensor()) {
+    if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
@@ -75,7 +75,6 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
       total_output_sizes += tensor_size;
     }
   }
-
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
@@ -89,7 +88,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input->IsTensor()) {
+    if (p_input != nullptr && p_input->IsTensor()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -158,7 +157,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
 
-  const auto* graph_viewer = session_state.GetGraphViewer();
+  const auto& graph_viewer = session_state.GetGraphViewer();
 
 #ifdef CONCURRENCY_VISUALIZER
   // need unique name for the series. number of nodes should be good enough for a subgraph
@@ -175,11 +174,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator forward_range(
-    "forward-" + tag,
-    profile::Color::White);
+      "forward-" + tag,
+      profile::Color::White);
   profile::NvtxRangeCreator backward_range(
-    "backward-" + tag,
-    profile::Color::Black);
+      "backward-" + tag,
+      profile::Color::Black);
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
@@ -195,7 +194,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       continue;
     }
 
-    const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
+    const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
@@ -205,7 +204,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
       // Start timing forward pass when encountering the first forward node.
       forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled()) {
+    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() && forward_range.IsBeginCalled()) {
       // Start timing backward pass when encountering the first backward node.
       // In the meanwhile, forward range ends.
       forward_range.End();
@@ -270,7 +269,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     const std::string node_name_for_profiling = [&]() -> std::string {
       if (!is_profiler_enabled) return {};
-      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph 
+      // Derive something meaningful for profile traces and logs if node name field is blank in execution graph
       return node.Name().empty() ? MakeString(node.OpType(), "_", node_index) : node.Name();
     }();
 
@@ -287,7 +286,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes,input_parameter_sizes, node_name_for_profiling);
+                               input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
     }
 
 #ifdef CONCURRENCY_VISUALIZER

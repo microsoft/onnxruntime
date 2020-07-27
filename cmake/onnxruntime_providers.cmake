@@ -6,6 +6,10 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
+if(onnxruntime_DISABLE_ML_OPS)
+  list(FILTER onnxruntime_providers_srcs EXCLUDE REGEX ".*/ml/.*")
+endif()
+
 file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
@@ -55,7 +59,7 @@ if(onnxruntime_USE_TENSORRT)
   set(PROVIDERS_TENSORRT onnxruntime_providers_tensorrt)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
 endif()
-if(onnxruntime_USE_NNAPI_DNNLIBRARY)
+if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
@@ -82,6 +86,10 @@ endif()
 if(onnxruntime_USE_ACL)
   set(PROVIDERS_ACL onnxruntime_providers_acl)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
+endif()
+if(onnxruntime_USE_ARMNN)
+  set(PROVIDERS_ARMNN onnxruntime_providers_armnn)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
 endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -140,6 +148,7 @@ if(HAS_DEPRECATED_COPY)
 endif()
 
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${RE2_INCLUDE_DIR})
+
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -149,6 +158,9 @@ if (onnxruntime_ENABLE_TRAINING)
 
   if (onnxruntime_USE_HOROVOD)
     target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
+  endif()
+  if (onnxruntime_USE_NCCL OR onnxruntime_USE_HOROVOD)
+    target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
   endif()
 endif()
 
@@ -201,6 +213,12 @@ if (onnxruntime_USE_CUDA)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
       )
+    elseif (NOT onnxruntime_USE_NCCL)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
+      )
     endif()
 
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
@@ -223,13 +241,18 @@ if (onnxruntime_USE_CUDA)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
   endif()
   add_dependencies(onnxruntime_providers_cuda ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${PROJECT_SOURCE_DIR}/external/cub ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
 
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)
+  endif()
+
   if (onnxruntime_ENABLE_TRAINING)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT})
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_INCLUDE_DIRS})
+
     if (onnxruntime_USE_HOROVOD)
       target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
     endif()
@@ -306,6 +329,7 @@ if (onnxruntime_USE_TENSORRT)
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if (WIN32)
+    add_definitions(-D_SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING=1)
     set(OLD_CMAKE_CUDA_FLAGS ${CMAKE_CUDA_FLAGS})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /wd4324 /wd4701 /wd4804 /wd4702")
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -487,27 +511,23 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
-if (onnxruntime_USE_NNAPI_DNNLIBRARY)
+if (onnxruntime_USE_NNAPI_BUILTIN)
   add_definitions(-DUSE_NNAPI=1)
-  option(DNN_READ_ONNX "" ON)
-  set(DNN_CUSTOM_PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
-  option(DNN_CMAKE_INSTALL "" OFF)
-  option(DNN_BUILD_BIN "" OFF)
-  add_subdirectory(${REPO_ROOT}/cmake/external/DNNLibrary)
-  file(GLOB_RECURSE
-    onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.h"
+  file(GLOB
+    onnxruntime_providers_nnapi_cc_srcs_top CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
   )
+  file(GLOB_RECURSE
+    onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
+  )
+  set(onnxruntime_providers_nnapi_cc_srcs ${onnxruntime_providers_nnapi_cc_srcs_top} ${onnxruntime_providers_nnapi_cc_srcs_nested})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   add_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite dnnlibrary::dnnlibrary)
-  target_link_libraries(onnxruntime_providers_nnapi dnnlibrary::dnnlibrary)
-  add_dependencies(onnxruntime_providers_nnapi
-    dnnlibrary::dnnlibrary
-    onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  # Header files of DNNLibrary requires C++17, fortunately, all modern Android NDKs support C++17
-  set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD 17)
+  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite)
+  target_link_libraries(onnxruntime_providers_nnapi)
+  add_dependencies(onnxruntime_providers_nnapi onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nnapi PRIVATE ${ONNXRUNTIME_ROOT} ${nnapi_INCLUDE_DIRS})
@@ -655,4 +675,21 @@ if (onnxruntime_USE_ACL)
   target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_ARMNN)
+  add_definitions(-DUSE_ARMNN=1)
+  file(GLOB_RECURSE onnxruntime_providers_armnn_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/armnn/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_armnn_cc_srcs})
+  add_library(onnxruntime_providers_armnn ${onnxruntime_providers_armnn_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ARMNN_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
 endif()

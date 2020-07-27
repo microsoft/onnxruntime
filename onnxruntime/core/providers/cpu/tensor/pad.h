@@ -71,18 +71,10 @@ class PadBase {
   bool is_dynamic_ = false;
 };
 
-template <typename T>
 struct Pad final : public OpKernel, public PadBase {
   explicit Pad(const OpKernelInfo& info) : OpKernel(info), PadBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 };
-
-template <typename T>
-Status PadCpuImpl(OpKernelContext* ctx,
-                  const std::vector<int64_t>& pads,
-                  const std::vector<int64_t>& slices,
-                  const Mode& mode,
-                  T value);
 
 }  // namespace onnxruntime
