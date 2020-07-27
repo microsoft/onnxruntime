@@ -86,7 +86,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
     bool input_dims_changed = (s_.last_x_dims != x_dims);
     bool w_dims_changed = (s_.last_w_dims != w_dims);
-    if (input_dims_changed || w_dims_changed) {
+    if (input_dims_changed || w_dims_changed || true) {
       if (input_dims_changed)
         s_.last_x_dims = x_dims;
 
@@ -137,6 +137,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape2(x_shape.Slice(2), kernel_shape,
                                                         strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                         post_slicing_required, slice_starts, slice_ends, slice_axes));
+      ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
       s_.y_dims = y_dims;
       s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
       s_.post_slicing_required = post_slicing_required;
@@ -259,19 +260,18 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                                   s_.y_tensor,
                                                   y_data));
 
-    // To deal with asymmetric padding, we may have over-padded on one or both sides of a spatial dimension
-    // This may have lead to extra results that are unnecessary and hence we slice that off here
-    // NOTE: We slice unwanted portions of the result first so as to avoid unnecessary bias addition operations
-    if (s_.post_slicing_required) {
-      SliceOutUnwantedOutputSection(y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),
-                                    s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, element_size);
-    }
-
     if (has_bias) {
       const Tensor* B = context->Input<Tensor>(2);
       auto b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
       CUDNN_RETURN_IF_ERROR(cudnnAddTensor(CudnnHandle(), &alpha, s_.b_tensor, b_data, &alpha, s_.y_tensor,
-                                           reinterpret_cast<CudaT*>(Y->MutableDataRaw())));
+                                           y_data));
+    }
+
+    // To deal with asymmetric padding, we may have over-padded on one or both sides of a spatial dimension
+    // This may have lead to extra results that are unnecessary and hence we slice that off here
+    if (s_.post_slicing_required) {
+      SliceOutUnwantedOutputSection(y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),
+                                    s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, element_size);
     }
   }
 

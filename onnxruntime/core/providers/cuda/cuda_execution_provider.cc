@@ -1396,7 +1396,7 @@ static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
       ORT_ENFORCE(pads_size % 2 == 0);
       int rank = pads_size / 2;
       for (int i = 0; i < rank; i++) {
-        if (pads.Get(i) < pads.Get(i + rank)) {
+        if (pads.Get(i) != pads.Get(i + rank)) {
           return true;
         }
       }

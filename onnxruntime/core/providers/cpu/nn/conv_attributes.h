@@ -181,8 +181,6 @@ struct ConvAttributes {
         output_shape_with_revised_pads.push_back(output_dim_size);
       } else {
         // asymmetric padding
-        int64_t excess_output_head = 0;
-        int64_t excess_output_tail = 0;
 
         int64_t& pad_head = pads_p[dim];
         int64_t& pad_tail = pads_p[rank + dim];
@@ -191,6 +189,8 @@ struct ConvAttributes {
         bool head_overpadded = false;
 
         if (pad_head < pad_tail) {
+          int64_t excess_output_head = 0;
+
           // pad_head is under-padded
           // So "over-pad" it
           while (pad_head < pad_tail) {
@@ -223,8 +223,8 @@ struct ConvAttributes {
             // Ensure that the size has changed - otherwise no operation needed.
             if (revised_dim_size !=
                 output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1]) {
-              excess_output_tail = revised_dim_size - output_dim_size - excess_output_head;
-              slice_ends[slice_ends.size() - 1] = (-1 * excess_output_tail);
+              slice_ends[slice_ends.size() - 1] = output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1] -
+                                                  revised_dim_size;
               output_shape_with_revised_pads[output_shape_with_revised_pads.size() - 1] = revised_dim_size;
             }
           } else {
@@ -237,8 +237,10 @@ struct ConvAttributes {
               slice_axes.push_back(dim + 2);
               slice_starts.push_back(0);
               slice_ends.push_back(output_dim_size - revised_dim_size);
-              output_shape_with_revised_pads.push_back(revised_dim_size);
             }
+
+            // make note of the shape of this spatial dimension
+            output_shape_with_revised_pads.push_back(revised_dim_size);
           }
         }
       }
