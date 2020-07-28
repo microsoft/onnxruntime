@@ -85,7 +85,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   return Status::OK();
 }
 
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)                     \
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, class_name, ver, T)       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       x,                                                                        \
       kOnnxDomain,                                                              \
@@ -93,7 +93,19 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       T,                                                                        \
       kHipExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      x<T>);
+      class_name<T>);
+
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(x, x, ver, T)
+
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_NONTEMP(x, class_name, ver, ...)              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                         \
+      x,                                                                                 \
+      kOnnxDomain,                                                                       \
+      ver,                                                                               \
+      kHipExecutionProvider,                                                            \
+      KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<>(__VAR_ARGS__)), \
+      class_name);
 
 #define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                     \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
@@ -116,29 +128,44 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
       x<T>);
 
+#define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_CLASS(x, class_name, startver, endver, T) \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                           \
+      x,                                                                                             \
+      kOnnxDomain,                                                                                   \
+      startver,                                                                                      \
+      endver,                                                                                        \
+      T,                                                                                             \
+      kHipExecutionProvider,                                                                        \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                      \
+      class_name<T>);
+
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare(this);                                                                  \
-    Prepare(context,  &prepare);                                                          \
+    Prepare(context,  &prepare);                                                                                 \
     ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
-    Impl_##x<typename ToHipType<T>::MappedType>(                                                                \
+    Impl_##x<typename ToHipType<T>::MappedType>(                                                                 \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         prepare.lhs_padded_strides.GpuPtr(),                                                                     \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
-        prepare.rhs_padded_strides.GpuPtr(),                                                                     \
+        prepare.rhs_padded_strides.GpuPtr(),                                                                    \
         reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
         prepare.fdm_output_strides.GpuPtr(),                                                                     \
         prepare.fdm_H,                                                                                           \
         prepare.fdm_C,                                                                                           \
         reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
-        prepare.output_tensor->Shape().Size());                                                                 \
+        prepare.output_tensor->Shape().Size());                                                                  \
     return Status::OK();                                                                                         \
   }
 
 #define BINARY_OP_TYPED(name, ver, T)                    \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
+
+#define BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, T)                        \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_CLASS(name, class_name, startver, endver, T) \
+  BINARY_ELEMENTWISE_COMPUTE(class_name, T)
 
 #define BINARY_LOGICALOP_TYPED(name, ver, T)                       \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
@@ -212,6 +239,11 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, float)     \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, double)
 
+#define BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(name, class_name, startver, endver) \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, MLFloat16)       \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, float)           \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, double)
+
 #define BINARY_OP_REGISTER_VERSIONED_UZILHFD(name, startver, endver)                   \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint32_t) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint64_t) \
@@ -223,107 +255,113 @@ BINARY_OP_UZILHFD(Add, 7)
 BINARY_OP_UZILHFD(Sub, 7)
 BINARY_OP_UZILHFD(Mul, 7)
 BINARY_OP_UZILHFD(Div, 7)
-BINARY_OP_HFD(Pow, 7)
+BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_HFD(PRelu, 7)
 
-template <typename T, typename HipT>
-Status VariadicInputBase<T, HipT>::ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const {
-  const auto& node = Node();
-  const auto& node_name = node.Name();
-  auto input_count = node.InputArgCount().front();
-  ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
+// Pow version 12
+ONNX_OPERATOR_KERNEL_EX(
+    Pow,
+    kOnnxDomain,
+    12,
+    kHipExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<int32_t, int64_t, float, double>()).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t, float, double>()),
+    Pow);
 
-  auto lhs_tensor = context->Input<Tensor>(0);
-  if (input_count == 1) {
-    const auto& input_shape = lhs_tensor->Shape();
-    auto output_tensor = context->Output(0, input_shape);
-    if (lhs_tensor->DataRaw() != output_tensor->DataRaw()) {
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(output_tensor->MutableDataRaw(), lhs_tensor->DataRaw(), sizeof(HipT) * input_shape.Size(), hipMemcpyDeviceToDevice));
-    }
-  } else {
-    // compute output shape first, using broadcast rule
-    TensorShape output_shape;
-    TensorShape previous_output_shape = lhs_tensor->Shape();
-    for (int index = 1; index < input_count; index++) {
-      ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
-      previous_output_shape = output_shape;
-    }
-    Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare(this);
-
-    auto rhs_tensor = context->Input<Tensor>(1);
-    if (input_count == 2) {
-      // special case for 2 tensors to avoid memset zero
-      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare));
-      Impl_Compute(
+namespace pow12_internal {
+template <class T>
+Status DispatchOnFirstArg(const BinaryElementwisePreparation& prepare) {
+  namespace on = ONNX_NAMESPACE;
+  Status s;
+  switch (prepare.rhs_tensor->GetElementType()) {
+    case on::TensorProto_DataType_INT32:
+      ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<int32_t>::MappedType>(
           prepare.output_rank_or_simple_broadcast,
           prepare.lhs_padded_strides.GpuPtr(),
-          reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
           prepare.rhs_padded_strides.GpuPtr(),
-          reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToHipType<int32_t>::MappedType*>(prepare.rhs_tensor->template Data<int32_t>()),
           prepare.fdm_output_strides.GpuPtr(),
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
           prepare.output_tensor->Shape().Size());
-    } else {
-      // for more than 2 inputs, we need to accumulate into output tensor, as the shape from input0 + input1 might be different from output shape
-      HIP_RETURN_IF_ERROR(hipMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(HipT)));
-
-      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, lhs_tensor, output_tensor, &prepare));
-      Impl_Add(
+      break;
+    case on::TensorProto_DataType_INT64:
+      ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<int64_t>::MappedType>(
           prepare.output_rank_or_simple_broadcast,
           prepare.lhs_padded_strides.GpuPtr(),
-          reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
           prepare.rhs_padded_strides.GpuPtr(),
-          reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
+          reinterpret_cast<const typename ToHipType<int64_t>::MappedType*>(prepare.rhs_tensor->template Data<int64_t>()),
           prepare.fdm_output_strides.GpuPtr(),
           prepare.fdm_H,
           prepare.fdm_C,
-          reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
           prepare.output_tensor->Shape().Size());
-
-      for (int index = 1; index < input_count; index++) {
-        ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
-        Impl_Compute(
-            prepare.output_rank_or_simple_broadcast,
-            prepare.lhs_padded_strides.GpuPtr(),
-            reinterpret_cast<const HipT*>(prepare.lhs_tensor->template Data<T>()),
-            prepare.rhs_padded_strides.GpuPtr(),
-            reinterpret_cast<const HipT*>(prepare.rhs_tensor->template Data<T>()),
-            prepare.fdm_output_strides.GpuPtr(),
-            prepare.fdm_H,
-            prepare.fdm_C,
-            reinterpret_cast<HipT*>(prepare.output_tensor->template MutableData<T>()),
-            prepare.output_tensor->Shape().Size());
-      }
-    }
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<float>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          prepare.lhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          prepare.rhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const typename ToHipType<float>::MappedType*>(prepare.rhs_tensor->template Data<float>()),
+          prepare.fdm_output_strides.GpuPtr(),
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      ImplT1_Pow<typename ToHipType<T>::MappedType, typename ToHipType<double>::MappedType>(
+          prepare.output_rank_or_simple_broadcast,
+          prepare.lhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const typename ToHipType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),
+          prepare.rhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const typename ToHipType<double>::MappedType*>(prepare.rhs_tensor->template Data<double>()),
+          prepare.fdm_output_strides.GpuPtr(),
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<typename ToHipType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+      break;
+    default:
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported Y type: ",
+                          DataTypeImpl::ToString(prepare.rhs_tensor->DataType()));
   }
-  return Status::OK();
+  return s;
 }
+}  // namespace pow12_internal
 
-template <typename T>
-Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
-  this->ComputeMethod(context, &Impl_Add);
+Status Pow::ComputeInternal(OpKernelContext* context) const {
+  BinaryElementwisePreparation prepare(this);
+  Prepare(context, &prepare);
+  namespace on = ONNX_NAMESPACE;
+  using namespace pow12_internal;
 
-  return Status::OK();
-}
+  Status s;
 
-template <typename T>
-Status Max<T>::ComputeInternal(OpKernelContext* context) const {
-  this->ComputeMethod(context, &Impl_Max);
-
-  return Status::OK();
-}
-
-template <typename T>
-Status Min<T>::ComputeInternal(OpKernelContext* context) const {
-  this->ComputeMethod(context, &Impl_Min);
-
-  return Status::OK();
+  switch (prepare.lhs_tensor->GetElementType()) {
+    case on::TensorProto_DataType_INT32:
+      s = DispatchOnFirstArg<int32_t>(prepare);
+      break;
+    case on::TensorProto_DataType_INT64:
+      s = DispatchOnFirstArg<int64_t>(prepare);
+      break;
+    case on::TensorProto_DataType_FLOAT:
+      s = DispatchOnFirstArg<float>(prepare);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      s = DispatchOnFirstArg<double>(prepare);
+      break;
+    default:
+      s = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported X type: ",
+                          DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
+  }
+  return s;
 }
 
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
@@ -379,16 +417,10 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-BINARY_OP_REGISTER_UZILHFD(Sum, 8)
-BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 9)
 BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 7, 10)
 BINARY_OP_REGISTER_OIL(Equal, 11)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
-BINARY_OP_REGISTER_HFD(Max, 8)
-BINARY_OP_REGISTER_VERSIONED_HFD(Max, 6, 7)
-BINARY_OP_REGISTER_HFD(Min, 8)
-BINARY_OP_REGISTER_VERSIONED_HFD(Min, 6, 7)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 9)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
 
