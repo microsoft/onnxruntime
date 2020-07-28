@@ -181,7 +181,6 @@ class ORTTransformerTrainer:
             device=self.args.device,
             gradient_accumulation_steps=self.args.gradient_accumulation_steps,
             world_rank=self.args.local_rank,
-            world_size=4,
             use_mixed_precision=self.args.fp16,
             allreduce_post_accumulation=True,
             get_lr_this_step=get_lr_this_step,

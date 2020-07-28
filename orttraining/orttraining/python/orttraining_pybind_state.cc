@@ -12,7 +12,6 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
-#include "orttraining/training_ops/cuda/collective/nccl_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 
@@ -146,6 +145,34 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   return python_config_result;
 }
 
+#if defined(USE_NCCL)
+void CopyMPIContextToTrainingParameters(const onnxruntime::training::MPIContext& mpi_context,
+  TrainingParameters& parameters) {
+    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
+    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
+    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
+
+    parameters.local_rank = mpi_context.local_rank;
+    parameters.local_size = mpi_context.local_size;
+    if (parameters.world_rank != 0 && parameters.world_rank != mpi_context.world_rank) {
+      std::cout << "WARNING: TrainingParameters world_rank is not correct, tuned automatically to "
+              << mpi_context.world_rank << std::endl;
+      parameters.world_rank = mpi_context.world_rank;
+    }
+    if (parameters.world_size != 0 && parameters.world_size != mpi_context.world_size) {
+      std::cout << "WARNING: TrainingParameters world_size is not correct, tuned automatically to "
+              << mpi_context.world_size << std::endl;
+      parameters.world_size = mpi_context.world_size;
+    }
+}
+
+onnxruntime::training::MPIContext& GetMpiContext() {
+  static onnxruntime::training::MPIContext mpi_context = training::setup_mpi();
+  return mpi_context;
+}
+#endif
+
 void addObjectMethodsForTraining(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
@@ -170,31 +197,10 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("use_invertible_layernorm_grad", &TrainingParameters::use_invertible_layernorm_grad);
 
 #if defined(USE_NCCL)
-  // USE_NCCL is set by default. It is unset if MPI is not found.
-  static onnxruntime::training::MPIContext mpi_context = training::setup_mpi();
-  std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
-  std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
-  std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
-  std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
-
-  m.def("get_mpi_context_local_rank", []() -> int { return mpi_context.local_rank; });
-  m.def("get_mpi_context_local_size", []() -> int { return mpi_context.local_size; });
-  m.def("get_mpi_context_world_rank", []() -> int { return mpi_context.world_rank; });
-  m.def("get_mpi_context_world_size", []() -> int { return mpi_context.world_size; });
-  
-  // TODO: consider remove mip rank, size from TrainingParameters
-  parameters.local_rank = mpi_context.local_rank;
-  parameters.local_size = mpi_context.local_size;
-  if (parameters.world_rank != 0 && parameters.world_rank != mpi_context.world_rank) {
-    std::cout << "WARNING: TrainingParameters world_rank is not correct, tuned automatically to "
-            << mpi_context.world_rank << std::endl;
-    parameters.world_rank = mpi_context.world_rank;
-  }
-  if (parameters.world_size != 0 && parameters.world_size != mpi_context.world_size) {
-    std::cout << "WARNING: TrainingParameters world_size is not correct, tuned automatically to "
-            << mpi_context.world_size << std::endl;
-    parameters.world_size = mpi_context.world_size;
-  }
+  m.def("get_mpi_context_local_rank", []() -> int { return GetMpiContext().local_rank; });
+  m.def("get_mpi_context_local_size", []() -> int { return GetMpiContext().local_size; });
+  m.def("get_mpi_context_world_rank", []() -> int { return GetMpiContext().world_rank; });
+  m.def("get_mpi_context_world_size", []() -> int { return GetMpiContext().world_size; });
 #endif
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
@@ -223,6 +229,9 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         OrtPybindThrowIfError(sess->Load(path));
 
+#if defined(USE_NCCL)
+        CopyMPIContextToTrainingParameters(GetMpiContext(), parameters);
+#endif
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
@@ -234,6 +243,9 @@ void addObjectMethodsForTraining(py::module& m) {
         std::istringstream buffer(serialized_model);
         OrtPybindThrowIfError(sess->Load(buffer));
 
+#if defined(USE_NCCL)
+        CopyMPIContextToTrainingParameters(GetMpiContext(), parameters);
+#endif
         const auto config_result = ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};

@@ -25,11 +25,11 @@ from transformers import (
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
+from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_local_size, get_mpi_context_world_rank, get_mpi_context_world_size
 
 from orttraining_transformer_trainer import ORTTransformerTrainer
 
 import torch
-import argparse
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +57,10 @@ class ORTGlueTest(unittest.TestCase):
     def setUp(self):
         # configurations not to be changed accoss tests
         self.max_seq_length = 128
-        self.train_batch_size = 2
+        self.train_batch_size = 8
         self.learning_rate = 2e-5
         self.num_train_epochs = 3.0
-        self.local_rank = args.local_rank
+        self.local_rank = -1
         self.overwrite_output_dir = True
         self.gradient_accumulation_steps = 1
         self.data_dir = "/bert_data/hf_data/glue_data/"
@@ -69,29 +69,29 @@ class ORTGlueTest(unittest.TestCase):
         self.logging_steps = 10
         self.rtol = 1e-02
 
-    # def test_roberta_with_mrpc(self):
-    #     expected_acc = 0.8676470588235294
-    #     expected_f1 = 0.9035714285714286
-    #     expected_acc_and_f1 = 0.885609243697479
-    #     expected_loss = 0.3022572344862947
+    def test_roberta_with_mrpc(self):
+        expected_acc = 0.8676470588235294
+        expected_f1 = 0.9035714285714286
+        expected_acc_and_f1 = 0.885609243697479
+        expected_loss = 0.3022572344862947
 
-    #     results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
-    #     assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-    #     assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-    #     assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-    #     assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=False)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
-    # def test_roberta_fp16_with_mrpc(self):
-    #     expected_acc = 0.8995098039215687
-    #     expected_f1 = 0.9279437609841829
-    #     expected_acc_and_f1 = 0.9137267824528758
-    #     expected_loss = 0.32052762967114357
+    def test_roberta_fp16_with_mrpc(self):
+        expected_acc = 0.8995098039215687
+        expected_f1 = 0.9279437609841829
+        expected_acc_and_f1 = 0.9137267824528758
+        expected_loss = 0.32052762967114357
 
-    #     results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
-    #     assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-    #     assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-    #     assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-    #     assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+        results = self.run_glue(model_name="roberta-base", task_name="MRPC", fp16=True)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_with_mrpc(self):
         expected_acc = 0.8553921568627451
@@ -106,17 +106,17 @@ class ORTGlueTest(unittest.TestCase):
             assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
             assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
-    # def test_bert_fp16_with_mrpc(self):
-    #     expected_acc = 0.8651960784313726
-    #     expected_f1 = 0.9063032367972743
-    #     expected_acc_and_f1 = 0.8857496576143234
-    #     expected_loss = 0.38716790532948925
+    def test_bert_fp16_with_mrpc(self):
+        expected_acc = 0.8651960784313726
+        expected_f1 = 0.9063032367972743
+        expected_acc_and_f1 = 0.8857496576143234
+        expected_loss = 0.38716790532948925
 
-    #     results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
-    #     assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
-    #     assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
-    #     assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
-    #     assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
+        results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
+        assert_allclose(results['acc'], expected_acc, rtol=self.rtol)
+        assert_allclose(results['f1'], expected_f1, rtol=self.rtol)
+        assert_allclose(results['acc_and_f1'], expected_acc_and_f1, rtol=self.rtol)
+        assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def model_to_desc(self, model_name, model):
         if model_name.startswith('bert') or model_name.startswith('xlnet'):
@@ -148,7 +148,8 @@ class ORTGlueTest(unittest.TestCase):
         training_args = TrainingArguments(
             output_dir=self.output_dir + "/" + task_name, do_train=True, do_eval=True,
             per_gpu_train_batch_size=self.train_batch_size,
-            learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs, local_rank=self.local_rank,
+            learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,
+            local_rank=self.local_rank,
             overwrite_output_dir=self.overwrite_output_dir, gradient_accumulation_steps=self.gradient_accumulation_steps,
             fp16=fp16, logging_steps=self.logging_steps)
 
@@ -167,15 +168,6 @@ class ORTGlueTest(unittest.TestCase):
             training_args.fp16,
         )
         logger.info("Training/evaluation parameters %s", training_args)
-
-        # from mpi4py import MPI
-        # comm = MPI.COMM_WORLD
-        # args.local_rank = comm.Get_rank()
-        # args.world_rank = comm.Get_rank()
-        # args.world_size = comm.Get_size()
-        # torch.cuda.set_device(args.local_rank)
-        # device = torch.device("cuda", args.local_rank)
-        # args.n_gpu = 1
 
         set_seed(training_args.seed)
         onnxruntime.set_seed(training_args.seed)
@@ -254,27 +246,27 @@ class ORTGlueTest(unittest.TestCase):
 
         return results
 
-def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--local_rank",
-                        type=int,
-                        default=-1,
-                        help="local_rank for distributed training on gpus")
-    args = parser.parse_args()
-    return args
-
-import sys
 if __name__ == "__main__":
-    args = parse_arguments()
-    print("args: ", args)
+    if get_mpi_context_world_size() > 1:
+        # mpi launch
 
-    # for arg in sys.argv:
-    #     print("arg: ", arg)
-    # # https://tellthemuserstories.wordpress.com/2013/01/19/python-unittest-command-line-argument/
-    # # remove command-line arguments otherwise unittest.main() will complain.
-    # del sys.argv[1]
+        print("mpirun launch")
+        # TrainingArguments._setup_devices will call torch.distributed.init_process_group(backend="nccl")
+        # pytorch expects following environment settings (which would be set if launched with torch.distributed.launch).
 
-    # # torch.distributed.init_process_group(backend='mpi')
-    # print("torch.distributed.is_initialized(): ", torch.distributed.is_initialized())
-    # print("torch.distributed.is_mpi_available(): ", torch.distributed.is_mpi_available())
-    unittest.main()
+        local_rank = get_mpi_context_local_rank()
+        print("get_mpi_context_local_rank(): ", local_rank)
+        os.environ['RANK'] = str(local_rank)
+        os.environ['WORLD_SIZE'] = str(get_mpi_context_world_size())
+        os.environ['MASTER_ADDR'] = '127.0.0.1'
+        os.environ['MASTER_PORT'] = '29500'
+
+        from onnxruntime.capi._pybind_state import set_cuda_device_id
+        set_cuda_device_id(local_rank)
+
+        test = ORTGlueTest()
+        test.setUp()
+        test.local_rank = local_rank
+        test.test_bert_with_mrpc()
+    else:
+        unittest.main()
