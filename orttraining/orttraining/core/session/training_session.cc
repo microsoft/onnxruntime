@@ -109,11 +109,10 @@ bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
 }
 }  // namespace
 
-
 void TrainingSession::FilterUnusedWeights(const std::unordered_set<std::string>& weight_names_to_train,
-  std::unordered_set<std::string>& filtered_weight_names_to_train) {
+                                          std::unordered_set<std::string>& filtered_weight_names_to_train) {
   filtered_weight_names_to_train.clear();
-  for (const auto& name: weight_names_to_train) {
+  for (const auto& name : weight_names_to_train) {
     auto nodes = model_->MainGraph().GetConsumerNodes(name);
     if (!nodes.empty())
       filtered_weight_names_to_train.insert(name);
@@ -148,13 +147,28 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 
+  int32_t pipeline_stage_id = config.pipeline_config.has_value() ?
+                              DistributedRunContext::RankInGroup(WorkerGroupType::ModelParallel) :
+                              -1;
+
   if (config.pipeline_config.has_value() && config.pipeline_config.value().do_partition) {
     // Apply online pipeline partition to graph obj. This needs to be done first before any graph
     // transportation which may alter node_arg and invalidate cut_list info from the original graph.
+    ORT_ENFORCE(pipeline_stage_id >= 0, "invalid pipelie stage id (", pipeline_stage_id, ") before doing online partition.");
+
     ORT_RETURN_IF_ERROR(ApplyPipelinePartitionToMainGraph(model_->MainGraph(),
                                                           config.pipeline_config.value().cut_list,
-                                                          config.distributed_config.world_rank,
-                                                          config.distributed_config.world_size));
+                                                          pipeline_stage_id,
+                                                          config.distributed_config.pipeline_parallel_size));
+
+    if (config.pipeline_config.value().partitioned_model_path.has_value()) {
+      // Save the partitioned file out.
+      // To avoid writing conflict, only the ranks in first pipeline group write the partition file out.
+      if (DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0) {
+        ORT_IGNORE_RETURN_VALUE(Save(
+            config.pipeline_config.value().partitioned_model_path.value(), SaveOption::NO_RELOAD));
+      }
+    }
   }
 
   is_mixed_precision_enabled_ = config.mixed_precision_config.has_value();
@@ -166,7 +180,7 @@ Status TrainingSession::ConfigureForTraining(
   // enabled, we need to devise another way to check MP stages.
   bool enable_loss_scale = is_mixed_precision_enabled_ &&
                            (!config.pipeline_config.has_value() ||
-                            (config.distributed_config.world_rank + 1 == config.distributed_config.world_size));
+                            (pipeline_stage_id + 1 == config.distributed_config.pipeline_parallel_size));
   optional<std::string> loss_scale_input_name =
       enable_loss_scale ? optional<std::string>{""} : optional<std::string>{};
   if (config.pipeline_config.has_value()) {
@@ -355,9 +369,12 @@ Status TrainingSession::ConfigureForTraining(
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
   // store different model partition), and if model_with_training_graph_path is specified, save the model.
   // Note: in the pipeline case, different ranks may resident in the same node. This could lead to a potential write
-  // conflict. It is user's responsibility to make sure different rank is passed in with different
+  // conflict. It is user's responsibility to make sure different rank is passed in with different. Also, to avoid
+  // writing conflict, only the ranks in first pipeline group write the partition file out.
   // model_with_training_graph_path value.
-  if ((IsRootNode(config) || config.pipeline_config.has_value()) && config.model_with_training_graph_path.has_value()) {
+  if ((IsRootNode(config) || (config.pipeline_config.has_value() &&
+                              DistributedRunContext::GroupId(WorkerGroupType::ModelParallel) == 0)) &&
+      config.model_with_training_graph_path.has_value()) {
     ORT_IGNORE_RETURN_VALUE(Save(
         config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
   }
@@ -817,8 +834,7 @@ bool TrainingSession::IsGraphOutputFp32Node(const std::string& output_name) cons
   ORT_ENFORCE(output_producer_node != nullptr, "Output: " + output_name + " is not produced by any node.");
 
   for (auto output : output_producer_node->OutputDefs()) {
-    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type()
-        && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (output->Name() == output_name && output->TypeAsProto() != nullptr && output->TypeAsProto()->has_tensor_type() && output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       return true;
     }
   }
@@ -879,18 +895,18 @@ Status TrainingSession::SetEvalFeedNames() {
 
   for (auto& node : graph.Nodes()) {
     auto it = Nodes_Need_Eval_Feeds.find(node.OpType());
-    if(it != Nodes_Need_Eval_Feeds.cend()) {
+    if (it != Nodes_Need_Eval_Feeds.cend()) {
       // The opset is < 12, add each ratio input to graph inputs for overriding.
       // Needs to be removed when TrainableDropout is deprecated.
-      if(it->compare("TrainableDropout") == 0) {
+      if (it->compare("TrainableDropout") == 0) {
         auto& ratio_name = node.InputDefs()[1]->Name();
         dropout_eval_feeds_.insert(ratio_name);
         ORT_ENFORCE(model_->MainGraph().GetProducerNode(ratio_name) == nullptr,
-        "Input: " + ratio_name + " should not have any producer node.");
+                    "Input: " + ratio_name + " should not have any producer node.");
         defs.AddGraphInputs({ratio_name});
       }
       // Found an opset-12 dropout node, replace initializer name.
-      else if(node.InputArgCount().size() > 2) {
+      else if (node.InputArgCount().size() > 2) {
         auto& mode_input = node.MutableInputDefs()[2];
         const ONNX_NAMESPACE::TensorProto* mode_initializer = nullptr;
         if (!graph.GetInitializedTensor(training_mode_string_, mode_initializer)) {
@@ -910,7 +926,7 @@ Status TrainingSession::SetEvalFeedNames() {
       }
     }
   }
-  
+
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
   return DoPostLoadProcessing(*model_);
 }
