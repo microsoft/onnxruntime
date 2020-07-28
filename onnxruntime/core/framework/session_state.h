@@ -151,7 +151,7 @@ class SessionState {
   * Prepack the constant initialized tensors for better performance.
   * The original constant initialized tensors will be removed to save memory.
   */
-  Status PrepackConstantInitializedTensors();
+  Status PrepackInitializedConstantTensors();
 
 #ifdef ENABLE_TRAINING
   /**

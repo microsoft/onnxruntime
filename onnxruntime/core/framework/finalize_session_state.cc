@@ -99,7 +99,7 @@ Status FinalizeSessionState(SessionState& session_state,
   session_state.CleanInitializedTensorsFromGraph();
 
   ORT_RETURN_IF_ERROR(session_state.CreateKernels(kernel_registry_manager));
-  ORT_RETURN_IF_ERROR(session_state.PrepackConstantInitializedTensors());
+  ORT_RETURN_IF_ERROR(session_state.PrepackInitializedConstantTensors());
 
   ORT_RETURN_IF_ERROR(SaveInputOutputNamesToNodeMapping(graph_viewer, kernel_registry_manager, session_state,
                                                         valid_outer_scope_node_args));

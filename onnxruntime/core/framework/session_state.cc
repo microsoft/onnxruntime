@@ -214,7 +214,7 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-Status SessionState::PrepackConstantInitializedTensors() {
+Status SessionState::PrepackInitializedConstantTensors() {
   // calculate the use count of each value
   std::unordered_map<std::string, size_t> node_arg_use_count;
   for (const auto& node : GetGraphViewer().Nodes()) {
@@ -238,7 +238,7 @@ Status SessionState::PrepackConstantInitializedTensors() {
           bool is_packed = false;
           const Tensor& const_initialized_tensor = constant_initialized_tensors_[ort_value_idx].Get<Tensor>();
           ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
-          if (is_packed && node_arg_use_count.count(input_name) && node_arg_use_count[input_name] == 1) {
+          if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
             // release the constant intialized tensor
             initialized_tensors_[ort_value_idx] = OrtValue();
             constant_initialized_tensors_[ort_value_idx] = OrtValue();
