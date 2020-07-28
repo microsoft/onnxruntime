@@ -37,7 +37,7 @@ def conv1d_to_linear(model):
 
 def _get_size_of_pytorch_model(model):
     torch.save(model.state_dict(), "temp.p")
-    size = os.path.getsize("temp.p")/1e6
+    size = os.path.getsize("temp.p")/(1024*1024)
     os.remove('temp.p')
     return size
 
@@ -58,7 +58,7 @@ class QuantizeHelper:
     @staticmethod
     def quantize_onnx_model(onnx_model_path, quantized_model_path):
         from onnxruntime.quantization import quantize, QuantizationMode
-        logger.info(f'Size of full precision ONNX model(MB):{os.path.getsize(onnx_model_path)/1e6}')
+        logger.info(f'Size of full precision ONNX model(MB):{os.path.getsize(onnx_model_path)/(1024*1024)}')
         onnx_opt_model = onnx.load(onnx_model_path)
         quantized_onnx_model = quantize(onnx_opt_model,
                                         quantization_mode=QuantizationMode.IntegerOps,
@@ -66,4 +66,4 @@ class QuantizeHelper:
                                         force_fusions=True)
         onnx.save(quantized_onnx_model, quantized_model_path)
         logger.info(f"quantized model saved to:{quantized_model_path}")
-        logger.info(f'Size of quantized ONNX model(MB):{os.path.getsize(quantized_model_path)/1e6}')
+        logger.info(f'Size of quantized ONNX model(MB):{os.path.getsize(quantized_model_path)/(1024*1024)}')
