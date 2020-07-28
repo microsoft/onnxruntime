@@ -30,12 +30,16 @@ static bool IsCurrentModuleInSystem32() {
 }
 
 static HRESULT GetOnnxruntimeLibrary(HMODULE& module) {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
+  auto out_module = LoadPackagedLibrary(L"onnxruntime.dll", 0);
+#else
   DWORD flags = 0;
 #ifdef BUILD_INBOX
   flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
 #endif
 
   auto out_module = LoadLibraryExA("onnxruntime.dll", nullptr, flags);
+#endif
   if (out_module == nullptr) {
     return HRESULT_FROM_WIN32(GetLastError());
   }
