@@ -17,6 +17,8 @@ static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
+static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
+static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -40,18 +42,18 @@ class TensorrtLogger : public nvinfer1::ILogger {
 
 namespace tensorrt_ptr {
 
-  struct TensorrtInferDeleter {
-    template <typename T>
-    void operator()(T* obj) const {
-      if (obj) {
-        obj->destroy();
-      }
-    }
-  };
-
+struct TensorrtInferDeleter {
   template <typename T>
-  using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
+  void operator()(T* obj) const {
+    if (obj) {
+      obj->destroy();
+    }
+  }
 };
+
+template <typename T>
+using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
+};  // namespace tensorrt_ptr
 
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
@@ -60,19 +62,17 @@ struct TensorrtExecutionProviderInfo {
 
 // Information to construct kernel function state.
 struct TensorrtFuncState {
-
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
   nvonnxparser::IParser* parser = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> * engine = nullptr;
-  tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> * context = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>* engine = nullptr;
+  tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
   nvinfer1::IBuilder* builder = nullptr;
   nvinfer1::INetworkDefinition* network = nullptr;
-  std::vector<std::vector<int>> input_info;
-  std::vector<std::vector<int>> output_info;
-  std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
-  std::vector<std::vector<int64_t>> output_shapes;
+  std::vector<std::unordered_map<std::string, int>> input_info;
+  std::vector<std::unordered_map<std::string, int>> output_info;
+  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
   size_t* max_workspace_size_ptr = nullptr;
@@ -104,7 +104,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int min_subgraph_size_ = 1;
   bool fp16_enable_ = false;
   bool dump_subgraphs_ = false;
-
+  bool engine_cache_enable_ = false;
+  std::string engine_cache_path_;
+  nvinfer1::IRuntime* runtime_ = nullptr;
 
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -113,10 +115,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>> networks_;
-  std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
-  std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
-  std::unordered_map<std::string, std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>> output_shapes_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index,

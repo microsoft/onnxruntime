@@ -41,20 +41,21 @@ struct Exception : std::exception {
 // it transparent to the users of the API.
 template <typename T>
 struct Global {
-  static const OrtApi& api_;
+  static const OrtApi* api_;
 };
 
-#ifdef EXCLUDE_REFERENCE_TO_ORT_DLL
-OrtApi stub_api;
+// If macro ORT_API_MANUAL_INIT is defined, no static initialization will be performed. Instead, user must call InitApi() before using it.
+
 template <typename T>
-const OrtApi& Global<T>::api_ = stub_api;
+#ifdef ORT_API_MANUAL_INIT
+const OrtApi* Global<T>::api_{};
+inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 #else
-template <typename T>
-const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
-inline const OrtApi& GetApi() { return Global<void>::api_; }
+inline const OrtApi& GetApi() { return *Global<void>::api_; }
 
 // This is a C++ wrapper for GetAvailableProviders() C API and returns
 // a vector of strings representing the available execution providers.
@@ -63,7 +64,7 @@ std::vector<std::string> GetAvailableProviders();
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.
 #define ORT_DEFINE_RELEASE(NAME) \
-  inline void OrtRelease(Ort##NAME* ptr) { Global<void>::api_.Release##NAME(ptr); }
+  inline void OrtRelease(Ort##NAME* ptr) { GetApi().Release##NAME(ptr); }
 
 ORT_DEFINE_RELEASE(MemoryInfo);
 ORT_DEFINE_RELEASE(CustomOpDomain);
@@ -189,6 +190,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetExecutionMode(ExecutionMode execution_mode);
 
   SessionOptions& SetLogId(const char* logid);
+  SessionOptions& SetLogSeverityLevel(int level);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 
@@ -292,6 +294,12 @@ struct Value : Base<OrtValue> {
 
   TypeInfo GetTypeInfo() const;
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
+
+  size_t GetStringTensorElementLength(size_t element_index) const;
+  void GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const;
+
+  void FillStringTensor(const char* const* s, size_t s_len);
+  void FillStringTensorElement(const char* s, size_t index);
 };
 
 struct AllocatorWithDefaultOptions {

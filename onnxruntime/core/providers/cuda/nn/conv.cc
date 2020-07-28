@@ -89,8 +89,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
 
       std::vector<int64_t> y_dims;
       y_dims.insert(y_dims.begin(), {N, M});
-      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape<true>(x_shape.Slice(2), kernel_shape,
-                                                             strides, dilations, &pads, &y_dims));
+      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(x_shape.Slice(2), kernel_shape,
+                                                       strides, dilations, pads, y_dims, true));
       s_.y_dims = y_dims;
       Tensor* Y = context->Output(0, TensorShape(s_.y_dims));
       y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());

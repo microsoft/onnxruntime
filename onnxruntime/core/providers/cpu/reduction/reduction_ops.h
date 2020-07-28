@@ -7,8 +7,27 @@
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/containers.h"
+#include "core/util/math_cpuonly.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
+
+template <typename T>
+bool PrepareForReduce(const Tensor* input_tensor_ptr,
+                      FastAllocVector<T>& transposed_input_data,
+                      int64_t& block_size,
+                      int64_t& blocks,
+                      const std::vector<int64_t>& axes_,
+                      bool keepdims_,
+                      /*out*/ std::vector<int64_t>& reduced_dims,
+                      bool check_no_transpose = false,
+                      const TensorShape* input_shape_override = nullptr);
+
+template <typename T>
+void ReduceSumCore(const T* input_data, T* output_data, bool no_transpose,
+                   int64_t blocks, int64_t block_size, FastAllocVector<T>& transposed_input_data,
+                   concurrency::ThreadPool* tp);
 
 template <bool allow_multi_axes>
 class ReduceKernelBase {
@@ -27,12 +46,15 @@ class ReduceKernelBase {
       ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
     }
     keepdims_ = (keepdims == 1);
+    int64_t noop_with_empty_axes = info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0);
+    noop_with_empty_axes_ = (noop_with_empty_axes == 1);
     int64_t select_last_index = info.GetAttrOrDefault<int64_t>("select_last_index", 0);
     select_last_index_ = (select_last_index != 0);
   }
 
   std::vector<int64_t> axes_;
   bool keepdims_;
+  bool noop_with_empty_axes_;
   bool select_last_index_;
 };
 

@@ -4,6 +4,9 @@
 #include <unordered_map>
 #include <vector>
 
+namespace onnxruntime {
+namespace nnapi {
+
 class Shaper {
  public:
   using Shape = std::vector<uint32_t>;
@@ -69,3 +72,6 @@ class Shaper {
 };
 
 std::string Shape2String(const Shaper::Shape& shape);
+
+}  // namespace nnapi
+}  // namespace onnxruntime
