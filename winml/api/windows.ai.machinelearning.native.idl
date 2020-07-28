@@ -39,7 +39,7 @@ interface ILearningModelDeviceFactoryNative : IUnknown
 interface ILearningModelSessionOptionsNative : IUnknown
 {
     HRESULT OverrideIntraOpNumThreads(UINT32 intraOpNumThreads);
-    UINT32 GetIntraOpNumThreads();
+    HRESULT GetIntraOpNumThreads(UINT32* numThreads);
 };
 
 cpp_quote("#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) */")

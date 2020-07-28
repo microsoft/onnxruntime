@@ -12,7 +12,7 @@
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
 #include "Psapi.h"
-#include <thread>
+
 using namespace winrt;
 using namespace winml;
 using namespace wfc;
@@ -395,14 +395,17 @@ static void SetIntraOpNumThreads() {
    auto options = LearningModelSessionOptions();
    auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
 
+   uint32_t numIntraOpThreads;
    // The default number of intra op threads is equal to the maximum number of logical cores
-   WINML_EXPECT_EQUAL(nativeOptions->GetIntraOpNumThreads(), std::thread::hardware_concurrency());
+   WINML_EXPECT_NO_THROW(nativeOptions->GetIntraOpNumThreads(&numIntraOpThreads));
+   WINML_EXPECT_EQUAL(numIntraOpThreads, std::thread::hardware_concurrency());
 
    // Set the number of intra op threads to half of logical cores.
    WINML_EXPECT_NO_THROW(nativeOptions->OverrideIntraOpNumThreads(std::thread::hardware_concurrency() / 2));
 
    // Interrogate session options for the number of threads set
-   WINML_EXPECT_EQUAL(nativeOptions->GetIntraOpNumThreads(), std::thread::hardware_concurrency() / 2);
+   WINML_EXPECT_NO_THROW(nativeOptions->GetIntraOpNumThreads(&numIntraOpThreads));
+   WINML_EXPECT_EQUAL(numIntraOpThreads, std::thread::hardware_concurrency()/2);
 
    LearningModelSession session = nullptr;
    WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));

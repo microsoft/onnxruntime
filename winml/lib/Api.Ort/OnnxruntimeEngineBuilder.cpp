@@ -42,6 +42,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
                             ort_api);
   }
 
+  // Onnxruntime will use half the number of concurrent threads supported on the system by default if SetIntraOpNumThreads isn't called.
   if (intra_op_num_threads_override_.has_value()) {
     RETURN_HR_IF_NOT_OK_MSG(ort_api->SetInterOpNumThreads(session_options.get(), intra_op_num_threads_override_.value()),
         ort_api);

@@ -116,8 +116,9 @@ void LearningModelSession::Initialize() {
       WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
     }
     // Make Onnxruntime apply the number of intra op threads
-    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(
-        session_options_.as<WINMLP::LearningModelSessionOptions>()->GetIntraOpNumThreads())
+    uint32_t numIntraOpThreads;
+    WINML_THROW_IF_FAILED(session_options_.as<ILearningModelSessionOptionsNative>()->GetIntraOpNumThreads(&numIntraOpThreads));
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads)
     );
   }
 
