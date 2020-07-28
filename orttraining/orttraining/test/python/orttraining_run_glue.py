@@ -146,7 +146,7 @@ class ORTGlueTest(unittest.TestCase):
             max_seq_length=self.max_seq_length)
 
         training_args = TrainingArguments(
-            output_dir=self.output_dir + "/" + task_name, do_train=True, do_eval=True,
+            output_dir=os.path.join(self.output_dir, task_name), do_train=True, do_eval=True,
             per_gpu_train_batch_size=self.train_batch_size,
             learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,
             local_rank=self.local_rank,
