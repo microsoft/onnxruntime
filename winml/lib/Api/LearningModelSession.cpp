@@ -118,7 +118,7 @@ void LearningModelSession::Initialize() {
 
     // Make onnxruntime apply named dimension overrides, if any
     com_ptr<winmlp::LearningModelSessionOptions> session_options_impl = session_options_.as<winmlp::LearningModelSessionOptions>();
-    if (session_options_impl && !session_options_impl->NamedDimensionOverrides().empty()) {
+    if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
       WINML_THROW_IF_FAILED(engine_builder->SetNamedDimensionOverrides(session_options_impl->NamedDimensionOverrides()));
     }
   }

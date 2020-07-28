@@ -27,7 +27,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   (uint32_t batch_size_override);
 
   STDMETHOD(SetNamedDimensionOverrides)
-  (std::map<winrt::hstring, uint32_t> named_dimension_overrides);
+  (wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides);
 
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine** out);
@@ -38,7 +38,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_ = nullptr;
   bool metacommands_enabled_ = true;
   std::optional<uint32_t> batch_size_override_;
-  std::map<winrt::hstring, uint32_t> named_dimension_overrides_;
+  wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
 };
 
 }  // namespace _winml

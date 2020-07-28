@@ -18,7 +18,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
   
-  std::map<winrt::hstring, uint32_t> NamedDimensionOverrides();
+  wfc::IMapView<winrt::hstring, uint32_t> NamedDimensionOverrides();
   void OverrideNamedDimension(winrt::hstring name, uint32_t value);
 
  private:
@@ -50,7 +50,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   // 0    : the dimension present in the model should be honored.
   // 1...n: override the named input dimension to the given value and optimize evaluations.
-  std::map<winrt::hstring, uint32_t> named_dim_overrides_;
+  wfc::IMap<winrt::hstring, uint32_t> named_dim_overrides_ = winrt::single_threaded_map<winrt::hstring, uint32_t>();
 };
 
 }  // namespace WINMLP

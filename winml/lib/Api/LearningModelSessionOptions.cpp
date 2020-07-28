@@ -24,11 +24,11 @@ void LearningModelSessionOptions::CloseModelOnSessionCreation(bool value) {
   close_model_on_session_creation_ = value;
 }
 
-std::map<winrt::hstring, uint32_t> LearningModelSessionOptions::NamedDimensionOverrides() {
-  return named_dim_overrides_;
+wfc::IMapView<winrt::hstring, uint32_t> LearningModelSessionOptions::NamedDimensionOverrides() {
+  return named_dim_overrides_.GetView();
 }
 
 void LearningModelSessionOptions::OverrideNamedDimension(winrt::hstring name, uint32_t value) {
-  named_dim_overrides_.insert_or_assign(name, value);
+  named_dim_overrides_.Insert(name, value);
 }
 }  // namespace WINMLP
