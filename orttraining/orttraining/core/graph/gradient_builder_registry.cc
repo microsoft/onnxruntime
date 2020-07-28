@@ -12,7 +12,6 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
                              const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad) {
-                               
   // REVIEW(bahuang): We don't have a version control for forward to backward op mapping.
   // Current SliceGrad(kMSDomain, 1) only supports Slice(kOnnxDomain, 10/11) because adding grad operator for versions
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
@@ -56,6 +55,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Mul", GetMulGradient);
   REGISTER_GRADIENT_BUILDER("Div", GetDivGradient);
   REGISTER_GRADIENT_BUILDER("Concat", GetConcatGradient);
+  REGISTER_GRADIENT_BUILDER("ConcatTraining", GetConcatTrainingGradient);
   REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);
   REGISTER_GRADIENT_BUILDER("Transpose", GetTransposeGradient);
   REGISTER_GRADIENT_BUILDER("Gemm", GetGemmGradient);

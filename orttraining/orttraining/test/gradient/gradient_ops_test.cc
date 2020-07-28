@@ -784,6 +784,75 @@ TEST(GradientCheckerTest, ConcatGrad) {
   }
 }
 
+TEST(GradientCheckerTest, ConcatTrainingGrad) { /*also test w/o shape inferencing */
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ConcatTraining", kMSDomain, 1};
+
+  //concat_1d
+  {
+    TensorShape x_shape({2});
+    TensorShape y_shape({6});
+    TensorShape y1_shape({3});
+    TensorInfo y1 = TensorInfo(y1_shape, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+
+    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
+                                          {y_shape, y1}, &max_error,
+                                          {MakeAttribute("axis", int64_t(0))}, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_2d
+  {
+    TensorShape x_shape({2, 2});
+    TensorShape y_shape({2, 6});
+    TensorShape y1_shape({3});
+    TensorInfo y1 = TensorInfo(y1_shape, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
+                                          {y_shape, y1}, &max_error,
+                                          {MakeAttribute("axis", int64_t(1))}, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_3d
+  {
+    TensorShape x_shape({1, 2, 3});
+    TensorShape y_shape({1, 2, 9});
+    TensorShape y1_shape({3});
+    TensorInfo y1 = TensorInfo(y1_shape, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
+                                          {y_shape, y1}, &max_error,
+                                          {MakeAttribute("axis", int64_t(2))}, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_different_shape
+  {
+    TensorShape x1_shape({2, 2});
+    TensorShape x2_shape({2, 4});
+    TensorShape y_shape({2, 6});
+    TensorShape y1_shape({2});
+    TensorInfo y1 = TensorInfo(y1_shape, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
+                                          {y_shape, y1}, &max_error,
+                                          {MakeAttribute("axis", int64_t(1))}, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  //concat_different_shape_and_negative_axis
+  {
+    TensorShape x1_shape({2, 2});
+    TensorShape x2_shape({2, 4});
+    TensorShape y_shape({2, 6});
+    TensorShape y1_shape({2});
+    TensorInfo y1 = TensorInfo(y1_shape, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
+                                          {y_shape, y1}, &max_error,
+                                          {MakeAttribute("axis", int64_t(-1))}, true, true);
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
 TEST(GradientCheckerTest, AveragePoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
