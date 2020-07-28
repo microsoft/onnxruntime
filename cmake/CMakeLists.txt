@@ -162,11 +162,17 @@ if(NOT WIN32)
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
 else()
-  add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
   if(WINDOWS_STORE)
-    # cmake/external/protobuf/src/google/protobuf/compiler/subprocess.cc and onnxruntime/core/platform/windows/env.cc call a bunch of Win32 APIs.
-    # For now, we'll set the API family to desktop globally to expose Win32 symbols in headers; this must be fixed!
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FI${CMAKE_CURRENT_SOURCE_DIR}/set_winapi_family_desktop.h>")
+    if (WINDOWS_STORE_FOR_REAL)
+#      add_compile_definitions(WINAPI_FAMILY=2 __cplusplus_winrt)
+#      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FIvccorlib.h /ZW:nostdlib /FUplatform.winmd>")
+      add_compile_definitions(WINAPI_FAMILY=2)
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:/ZW:nostdlib /FUplatform.winmd>")
+
+      add_link_options(/APPCONTAINER)
+    else()
+      add_compile_definitions(WINVER=0x0601)  # Support Windows 7 and newer
+    endif()
   endif()
 endif()
 
