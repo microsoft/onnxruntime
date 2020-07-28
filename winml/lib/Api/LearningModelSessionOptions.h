@@ -21,8 +21,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   STDMETHOD(OverrideIntraOpNumThreads)
   (uint32_t intraOpNumThreads);
 
-  STDMETHOD(GetIntraOpNumThreads)
-  (uint32_t* numThreads);
+  uint32_t GetIntraOpNumThreads();
 
  private:
   // The batch size override property is used to inform the engine when the developer

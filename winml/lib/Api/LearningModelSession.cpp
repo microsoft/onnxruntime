@@ -116,10 +116,15 @@ void LearningModelSession::Initialize() {
       WINML_THROW_IF_FAILED(engine_builder->SetBatchSizeOverride(session_options_.BatchSizeOverride()));
     }
     // Make Onnxruntime apply the number of intra op threads
-    uint32_t numIntraOpThreads;
-    WINML_THROW_IF_FAILED(session_options_.as<ILearningModelSessionOptionsNative>()->GetIntraOpNumThreads(&numIntraOpThreads));
+    uint32_t numIntraOpThreads = session_options_.as<WINMLP::LearningModelSessionOptions>()->GetIntraOpNumThreads();
     WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(numIntraOpThreads)
     );
+  } else {
+    // Onnxruntime will use half the number of concurrent threads supported on the system
+    // by default. This causes MLAS to not exercise every logical core.
+    // If session options aren't provided, force the thread pool size to be maxxed out
+    // to ensure that WinML always runs the fastest.
+    WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(std::thread::hardware_concurrency()));
   }
 
   com_ptr<_winml::IEngine> engine;
@@ -414,5 +419,10 @@ void LearningModelSession::CheckClosed() {
   if (!engine_) {
     WINML_THROW_HR(RO_E_CLOSED);
   }
+}
+
+STDMETHODIMP LearningModelSession::GetIntraOpNumThreads(uint32_t* numThreads)
+{
+  return engine_->GetNumberOfIntraOpThreads(numThreads);
 }
 }  // namespace WINMLP
