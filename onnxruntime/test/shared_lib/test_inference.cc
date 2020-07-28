@@ -358,8 +358,8 @@ TEST(CApiTest, test_custom_op_library) {
   TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
-#if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST(CApiTest, DISABLED_test_pyop) {
+#if defined(ENABLE_LANGUAGE_INTEROP_OPS)
+TEST(CApiTest, test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
