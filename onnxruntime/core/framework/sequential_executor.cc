@@ -296,7 +296,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       Status compute_status;
 
       try {
-        std::cerr << "Node: " << p_op_kernel->Node().OpType() << " EP: " << p_op_kernel->Info().GetExecutionProvider()->Type() << std::endl;
+        // std::cerr << "Node: " << p_op_kernel->Node().OpType() << " EP: " << p_op_kernel->Info().GetExecutionProvider()->Type() << std::endl;
         compute_status = p_op_kernel->Compute(&op_kernel_context);
       } catch (const std::exception& ex) {
         compute_status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
