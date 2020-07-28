@@ -2844,13 +2844,14 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       });
 
   static const char* Trilu_ver1_doc = R"DOC(
-	  Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices depending on whether attribute upper is true or not.
-    Tri takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper/lower triangular part consists
-    of the elements on or above/below the given diagonal (k).
-	  If k = 0, this op retains elements on or above/below the the main diagonal. If k > 0, this op
-	  retains elements on or above/below k diagonals over the main diagonal. If k < 0, this op retains elements
-	  on or above/below as many diagonals below the main diagonal. All other elements in the matrix are set to zero.
-	  )DOC";
+      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If setting attribute upper to true,
+      the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
+      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper/lower triangular part consists
+      of the elements on or above/below the given diagonal (k).
+      If k = 0, this op retains elements on or above/below the the main diagonal. If k > 0, this op
+      retains elements on or above/below k diagonals over the main diagonal. If k < 0, this op retains elements
+      on or above/below as many diagonals below the main diagonal. All other elements in the matrix are set to zero.
+      )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Trilu)
       .SetDomain(kMSDomain)
@@ -2893,7 +2894,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "tensor(int32)",
            "tensor(int64)",
            "tensor(bool)"},
-          "Constrain input and output types to int and float tensors.")
+          "Constrain input and output types to all numeric tensors and bool tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         using namespace ONNX_NAMESPACE;
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
