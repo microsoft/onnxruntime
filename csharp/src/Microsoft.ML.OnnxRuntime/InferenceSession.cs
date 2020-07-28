@@ -695,23 +695,63 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public IoBinding CreateIOBinding()
+        public OrtIoBinding CreateIOBinding()
         {
-            return new IoBinding(this);
+            return new OrtIoBinding(this);
         }
 
         /// <summary>
         ///  Make this method return a collection of DisposableNamedOnnxValue as in other interfaces
-        ///  Query names from IoBinding object and pair then with the array of OrtValues returned
+        ///  Query names from OrtIoBinding object and pair then with the array of OrtValues returned
         ///  
         /// This method will run inference and will return outputs with names for the outputs
         /// previously bound to ioBinding instance.
         /// </summary>
         /// <param name="runOptions">RunOptions</param>
-        /// <param name="ioBinding">IoBinding instance with bindings</param>
-        public void Run(RunOptions runOptions, IoBinding ioBinding)
+        /// <param name="ioBinding">OrtIoBinding instance with bindings</param>
+        /// <param name="names">optional parameter. If you already know the names of the outputs you can save a native
+        /// call to retrieve parameter names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
+        /// Otherwise, the method will retrieve output names from the OrtIoBinding instance.
+        /// It is an error if you supply a different number of names than the returned outputs</param>
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
+            using (var ortValues = ioBinding.GetOutputValues())
+            {
+                string[] outputNames = names;
+                if (outputNames == null)
+                {
+                    outputNames = ioBinding.GetOutputNames();
+                }
+
+                if (outputNames.Length != ortValues.Count)
+                {
+                    if (names != null)
+                    {
+                        throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                            "Number of specified names: " + names.Length + " does not match the output number: " +
+                            ortValues.Count);
+                    }
+                    throw new OnnxRuntimeException(ErrorCode.EngineError,
+                        "BUG check. Number of fetched output names does not match number of outputs");
+                }
+
+                var result = new DisposableList<DisposableNamedOnnxValue>(outputNames.Length);
+                try
+                {
+                    for (int i = 0; i < outputNames.Length; ++i)
+                    {
+                        var ortValue = ortValues.ElementAt<OrtValue>(i);
+                        result.Add(DisposableNamedOnnxValue.CreateTensorFromOnnxValue(outputNames[i], ortValue.Handle));
+                        ortValue.Disown();
+                    }
+                } catch(Exception e)
+                {
+                    result.Dispose();
+                    throw e;
+                }
+                return result;
+            }
         }
 
         /// <summary>

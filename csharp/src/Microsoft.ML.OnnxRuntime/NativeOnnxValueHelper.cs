@@ -385,7 +385,7 @@ internal static class NativeOnnxValueHelper
         /// <returns>UTF-8 encoded equivalent</returns>
         internal static byte[] StringToZeroTerminatedUtf8(string s)
         {
-            return UTF8Encoding.UTF8.GetBytes(s + '\0');
+            return UTF8Encoding.UTF8.GetBytes(s + Char.MinValue);
         }
 
         /// <summary>
@@ -399,6 +399,11 @@ internal static class NativeOnnxValueHelper
             // .NET 5.0 has Marshal.PtrToStringUTF8 that does the below
             int len = 0;
             while (Marshal.ReadByte(nativeUtf8, len) != 0) ++len;
+            return StringFromNativeUtf8(nativeUtf8, 0, len);
+        }
+
+        internal static string StringFromNativeUtf8(IntPtr nativeUtf8, int  offset, int len)
+        {
             byte[] buffer = new byte[len];
             Marshal.Copy(nativeUtf8, buffer, 0, buffer.Length);
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);

@@ -1,7 +1,8 @@
-﻿using Microsoft.ML.OnnxRuntime.Tensors;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -22,11 +23,10 @@ namespace Microsoft.ML.OnnxRuntime
         internal IntPtr Handle { get; private set; }
 
         /// <summary>
-        /// This internal interface is used to transfer ownership to
-        /// DisposableNamdOnnxValue class.
+        /// This internal interface is used to transfer ownership elsewhere.
         /// </summary>
         /// <returns></returns>
-        internal IntPtr TakeOwnership()
+        internal IntPtr Disown()
         {
             var handle = Handle;
             Handle = IntPtr.Zero;
@@ -53,8 +53,16 @@ namespace Microsoft.ML.OnnxRuntime
                                                          IntPtr dataBuffer,
                                                          uint bufferLength)
         {
+            Type type;
+            int width;
+            TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width);
+            if(width == 0)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unknown tensor type");
+            }
+
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);
-            if(shapeSize > bufferLength)
+            if((shapeSize * width) > bufferLength)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Can not bind the shape to smaller buffer");
             }
