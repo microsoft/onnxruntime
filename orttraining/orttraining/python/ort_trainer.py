@@ -12,6 +12,7 @@ import onnxruntime as ort
 from ..experimental import postprocess
 from distutils.version import LooseVersion
 import warnings
+import datetime
 
 from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
@@ -315,6 +316,10 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     # this is a problem because the model graph depends on inputs provided.
     model = wrap_for_input_match(model, loss_fn, input_names)
 
+    now = datetime.datetime.now()
+    print ("Current date and time 0 : ")
+    print (now.strftime("%Y-%m-%d %H:%M:%S"))
+
     model.eval()
     with torch.no_grad():
         import copy
@@ -328,6 +333,10 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
     for sample_output, output_desc in zip(sample_outputs, model_desc.outputs_):
         output_desc.dtype_ = sample_output.dtype
     model.train()
+
+    now = datetime.datetime.now()
+    print ("Current date and time 1 : ")
+    print (now.strftime("%Y-%m-%d %H:%M:%S"))
 
     f = io.BytesIO()
 
@@ -359,6 +368,10 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
                        **other_export_options)
+
+    now = datetime.datetime.now()
+    print ("Current date and time 2 : ")
+    print (now.strftime("%Y-%m-%d %H:%M:%S"))
 
     onnx_model = onnx.load_model_from_string(f.getvalue())
 
