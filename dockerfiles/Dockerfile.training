@@ -104,7 +104,7 @@ ARG PYTORCH_VERSION
 RUN pip install torch==${PYTORCH_VERSION}
 
 # in case you need to build pytorch:
-# note: only if you want to link system cuda libraries or map torch.distributed to MPI
+# note: if you want specific branch or to link system cuda libraries or MPI
 # note: recommend using many high-frequency cores (e.g. 32+ skylake cores)
 # ENV CUDA_HOME="/usr/local/cuda" \
 #     CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
