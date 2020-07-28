@@ -1018,6 +1018,7 @@ namespace Microsoft.ML.OnnxRuntime
                 return new NodeMetadata(valueType, new int[] { }, new string[] { }, typeof(NamedOnnxValue));
             }
 
+            // This should not be released
             IntPtr tensorInfo;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(typeInfo, out tensorInfo)); //(IntPtr)(int)(uint)
             // Convert the newly introduced OrtTypeInfo* to the older OrtTypeAndShapeInfo*
@@ -1026,9 +1027,10 @@ namespace Microsoft.ML.OnnxRuntime
                 return null;
 
             TensorElementType type;
-            unsafe
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, new IntPtr(&type)));
+                IntPtr el_type;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, out el_type));
+                type = (TensorElementType)el_type;
             }
             Type dotnetType = null;
             int width = 0;

@@ -43,9 +43,10 @@ namespace Microsoft.ML.OnnxRuntime
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
                 TensorElementType elemType;
-                unsafe
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
+                    IntPtr el_type;
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out el_type));
+                    elemType = (TensorElementType)el_type;
                 }
                 TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
 

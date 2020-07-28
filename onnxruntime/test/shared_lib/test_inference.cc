@@ -426,7 +426,7 @@ TEST(CApiTest, get_allocator_cuda) {
 
 TEST(CApiTest, io_binding) {
   Ort::SessionOptions session_options;
-  OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1);
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
   Ort::MemoryInfo info_cpu = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemTypeDefault);
