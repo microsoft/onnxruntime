@@ -510,6 +510,9 @@ struct ProviderLibrary {
       return;
 
 #if defined(_WIN32) && !defined(_OPENMP)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
+#error Unsupported configuration
+#endif
     {
       // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
       // still running code inside the openmp runtime DLL if OMP_WAIT_POLICY is set to ACTIVE).
