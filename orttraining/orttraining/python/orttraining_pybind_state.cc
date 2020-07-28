@@ -155,14 +155,14 @@ void CopyMPIContextToTrainingParameters(const onnxruntime::training::MPIContext&
 
     parameters.local_rank = mpi_context.local_rank;
     parameters.local_size = mpi_context.local_size;
-    if (parameters.world_rank != 0 && parameters.world_rank != mpi_context.world_rank) {
-      std::cout << "WARNING: TrainingParameters world_rank is not correct, tuned automatically to "
-              << mpi_context.world_rank << std::endl;
+    if (parameters.world_rank != mpi_context.world_rank) {
+      if (parameters.world_rank != 0)
+        std::cout << "WARNING: TrainingParameters world_rank is not correct, tuned automatically to " << mpi_context.world_rank << std::endl;
       parameters.world_rank = mpi_context.world_rank;
     }
-    if (parameters.world_size != 0 && parameters.world_size != mpi_context.world_size) {
-      std::cout << "WARNING: TrainingParameters world_size is not correct, tuned automatically to "
-              << mpi_context.world_size << std::endl;
+    if (parameters.world_size != mpi_context.world_size) {
+      if (parameters.world_size != 1)
+        std::cout << "WARNING: TrainingParameters world_size is not correct, tuned automatically to " << mpi_context.world_size << std::endl;
       parameters.world_size = mpi_context.world_size;
     }
 }
