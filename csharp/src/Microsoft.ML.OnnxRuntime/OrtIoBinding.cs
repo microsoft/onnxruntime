@@ -18,7 +18,7 @@ namespace Microsoft.ML.OnnxRuntime
         private IntPtr _handle;
 
         /// <summary>
-        /// Use InferenceSession.CreateIOBinding()
+        /// Use InferenceSession.CreateIoBinding()
         /// </summary>
         /// <param name="session"></param>
         internal OrtIoBinding(InferenceSession session)
@@ -175,7 +175,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// This fetches bound outputs after running the model with RunWithBinding()
         /// </summary>
-        /// <returns>IDisposableReadOnlyCollection<OrtValue>if no outputs returns null</returns>
+        /// <returns>IDisposableReadOnlyCollection<OrtValue></returns>
         public IDisposableReadOnlyCollection<OrtValue> GetOutputValues()
         {
             IntPtr ortValues = IntPtr.Zero;
@@ -185,7 +185,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             if(count.Equals(UIntPtr.Zero))
             {
-                return null;
+                return new DisposableList<OrtValue>();
             }
 
             using(var ortValuesAllocation = new OrtMemoryAllocation(allocator, ortValues, 0))
