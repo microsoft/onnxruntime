@@ -126,7 +126,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
     python tools/ci_build/build.py \
         --cmake_extra_defines \
             ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
-        --config RelWithDebInfo \
+        --config Release \
         --enable_training \
         --mpi_home /opt/openmpi-${OPENMPI_VERSION} \
         --use_cuda \
