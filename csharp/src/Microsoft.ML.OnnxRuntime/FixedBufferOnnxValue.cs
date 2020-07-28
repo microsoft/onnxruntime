@@ -63,11 +63,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        ~FixedBufferOnnxValue()
-        {
-            Dispose(false);
-        }
-
         public void Dispose()
         {
             Dispose(true);

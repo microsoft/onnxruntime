@@ -30,25 +30,21 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (disposing)
                 {
-                    // TODO: dispose managed state (managed objects).
-                    for (int i = 0; i < this.Count; i++)
+                    // Dispose in the reverse order.
+                    // Objects should typically be destroyed/disposed
+                    // in the reverse order of its creation
+                    // especially if the objects created later refer to the
+                    // objects created earlier. For homogeneous collections of objects
+                    // it would not matter.
+                    for (int i = this.Count - 1; i >= 0; --i)
                     {
                         this[i]?.Dispose();
                     }
                     this.Clear();
                 }
 
-                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
-                // TODO: set large fields to null.
-
                 disposedValue = true;
             }
-        }
-
-        ~DisposableList()
-        {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(false);
         }
 
         // This code added to correctly implement the disposable pattern.

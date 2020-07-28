@@ -695,25 +695,44 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public OrtIoBinding CreateIOBinding()
+        /// <summary>
+        /// Create OrtIoBinding instance to bind pre-allocated buffers
+        /// to input/output
+        /// </summary>
+        /// <returns></returns>
+        public OrtIoBinding CreateIoBinding()
         {
             return new OrtIoBinding(this);
         }
 
         /// <summary>
-        ///  Make this method return a collection of DisposableNamedOnnxValue as in other interfaces
+        /// This method runs inference on the OrtIoBinding instance
+        /// The method does not return anything. This is a lightweight version of 
+        /// RunWithBindingAndNames(). When you bind pre-allocated buffers to the output values
+        /// you may not want to fetch the outputs since you already have access to them so you can spare
+        /// the expense of fetching them and pairing with names.
+        /// You can still fetch the outputs by calling OrtIOBinding.GetOutputValues()
+        /// </summary>
+        /// <param name="runOptions"></param>
+        /// <param name="ioBinding"></param>
+        public void RunWithBinding(RunOptions runOptions, OrtIoBinding ioBinding)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
+        }
+
+        /// <summary>
+        ///  This method return a collection of DisposableNamedOnnxValue as in other interfaces
         ///  Query names from OrtIoBinding object and pair then with the array of OrtValues returned
-        ///  
-        /// This method will run inference and will return outputs with names for the outputs
-        /// previously bound to ioBinding instance.
+        /// from OrtIoBinding.GetOutputValues()
+        /// 
         /// </summary>
         /// <param name="runOptions">RunOptions</param>
         /// <param name="ioBinding">OrtIoBinding instance with bindings</param>
         /// <param name="names">optional parameter. If you already know the names of the outputs you can save a native
-        /// call to retrieve parameter names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
+        /// call to retrieve output names. They will be paired with the returned OrtValues and combined into DisposbleNamedOnnxValues.
         /// Otherwise, the method will retrieve output names from the OrtIoBinding instance.
         /// It is an error if you supply a different number of names than the returned outputs</param>
-        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> RunWithBindingAndNames(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
             using (var ortValues = ioBinding.GetOutputValues())
@@ -726,14 +745,9 @@ namespace Microsoft.ML.OnnxRuntime
 
                 if (outputNames.Length != ortValues.Count)
                 {
-                    if (names != null)
-                    {
-                        throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                            "Number of specified names: " + names.Length + " does not match the output number: " +
-                            ortValues.Count);
-                    }
-                    throw new OnnxRuntimeException(ErrorCode.EngineError,
-                        "BUG check. Number of fetched output names does not match number of outputs");
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                        "Number of specified names: " + names.Length + " does not match the output number: " +
+                        ortValues.Count);
                 }
 
                 var result = new DisposableList<DisposableNamedOnnxValue>(outputNames.Length);
@@ -741,8 +755,10 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     for (int i = 0; i < outputNames.Length; ++i)
                     {
-                        var ortValue = ortValues.ElementAt<OrtValue>(i);
+                        var ortValue = ortValues.ElementAt(i);
                         result.Add(DisposableNamedOnnxValue.CreateTensorFromOnnxValue(outputNames[i], ortValue.Handle));
+                        // We transferred ownership of the handle.
+                        // Make sure it is not disposed here
                         ortValue.Disown();
                     }
                 } catch(Exception e)

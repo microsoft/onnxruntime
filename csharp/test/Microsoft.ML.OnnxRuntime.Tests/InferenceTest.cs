@@ -1,12 +1,12 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -1719,7 +1719,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestAllocator()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            // Set the optimized model file path to assert that no exception are thrown.
             using (SessionOptions options = new SessionOptions())
             {
                 options.AppendExecutionProvider_CPU(1);
@@ -1733,6 +1732,136 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     TestCUDAAllocator(session);
 #endif
                 }
+            }
+        }
+
+        /// <summary>
+        /// This works only for allocations accessible from host memory
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <param name="elements"></param>
+        private static void PopulateNativeBufferFloat(OrtMemoryAllocation buffer, float[] elements)
+        {
+            if(buffer.Size < elements.Length * sizeof(float))
+            {
+                Assert.True(false);
+            }
+
+            unsafe
+            {
+                float* p = (float*)buffer.Pointer;
+                for (int i = 0; i < elements.Length; ++i)
+                {
+                    *p++ = elements[i];
+                }
+            }
+        }
+
+        private static void CompareNativeBufferFloat(OrtMemoryAllocation buffer, float[] elements, IEqualityComparer<float> comp)
+        {
+            if (buffer.Size != elements.Length * sizeof(float))
+            {
+                Assert.True(false);
+            }
+
+            unsafe
+            {
+                float* p = (float*)buffer.Pointer;
+                for (int i = 0; i < elements.Length; ++i)
+                {
+                    Assert.True(comp.Equals(*p++, elements[i]));
+                }
+            }
+        }
+
+        [Fact]
+        private void TestBinding()
+        {
+            var inputName = "data_0";
+            var outputName = "softmaxout_1";
+            var allocator = OrtAllocator.DefaultInstance;
+            // From the model
+            using (var dispList = new DisposableList<IDisposable>())
+            {
+                var tuple = OpenSessionSqueezeNet();
+                var session = tuple.Item1;
+                var inputData = tuple.Item2;
+                var inputTensor = tuple.Item3;
+                var outputData = tuple.Item4;
+                dispList.Add(session);
+                var outputMeta = session.OutputMetadata;
+                var outputTensor = new DenseTensor<float>(outputData, outputMeta[outputName].Dimensions);
+
+                // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+                var ioBinding = session.CreateIoBinding();
+                dispList.Add(ioBinding);
+
+                var ortAllocationInput = allocator.Allocate((uint)inputData.Length * sizeof(float));
+                dispList.Add(ortAllocationInput);
+                PopulateNativeBufferFloat(ortAllocationInput, inputData);
+
+                var ortAllocationOutput = allocator.Allocate((uint)outputData.Length * sizeof(float));
+                dispList.Add(ortAllocationOutput);
+
+                // Test 1. Bind input to fixed, Bind Output to Fixed.
+                using (FixedBufferOnnxValue fixeInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor),
+                      fixedOutputBuffer = FixedBufferOnnxValue.CreateFromTensor(outputTensor))
+                {
+                    ioBinding.BindInput(inputName, fixeInputBuffer);
+                    ioBinding.BindOutput(outputName, fixedOutputBuffer);
+                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    {
+                        Assert.Equal(1, outputs.Count);
+                        var output = outputs.First();
+                        Assert.Equal(outputName, output.Name);
+                        var tensor = output.AsTensor<float>();
+                        Assert.True(tensor.IsFixedSize);
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                    }
+                }
+
+                //Test 2. Use the same input as in Test 1
+                // but rebind the output to OrtAllocated buffer
+                using (FixedBufferOnnxValue fixedInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor))
+                {
+                    ioBinding.BindInput(inputName, fixedInputBuffer);
+                    var longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, i => i);
+                    ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, longShape, ortAllocationOutput);
+                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    {
+                        Assert.Equal(1, outputs.Count);
+                        var output = outputs.First();
+                        Assert.Equal(outputName, output.Name);
+                        var tensor = output.AsTensor<float>();
+                        Assert.True(tensor.IsFixedSize);
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+
+                        // Let's check that the output buffer actually contains the data
+                        CompareNativeBufferFloat(ortAllocationOutput, outputData, new floatComparer());
+                    }
+                }
+
+                // Test 3. Bind input to preallocated buffer. Output to a device so the allocation would happen
+                // automatically
+                using (FixedBufferOnnxValue fixedInputBuffer = FixedBufferOnnxValue.CreateFromTensor(inputTensor))
+                {
+                    ioBinding.BindInput(inputName, fixedInputBuffer);
+                    ioBinding.BindOutputToDevice(outputName, allocator.Info);
+
+                    using (var outputs = session.RunWithBindingAndNames(new RunOptions(), ioBinding))
+                    {
+                        Assert.Equal(1, outputs.Count);
+                        var output = outputs.First();
+                        Assert.Equal(outputName, output.Name);
+                        var tensor = output.AsTensor<float>();
+                        Assert.True(tensor.IsFixedSize);
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new floatComparer());
+                    }
+                }
+
+                // Rebinding would happen without these but we want run them.
+                ioBinding.ClearBoundInputs();
+                ioBinding.ClearBoundOutputs();
             }
         }
 
@@ -2032,21 +2161,29 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         static Tuple<InferenceSession, float[], DenseTensor<float>, float[]> OpenSessionSqueezeNet(int? cudaDeviceId = null)
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            var option = new SessionOptions();
 #if USE_CUDA
-            if (cudaDeviceId.HasValue)
+            using (var option = (cudaDeviceId.HasValue) ? 
+                SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value) :
+                new SessionOptions())
             {
-                option = SessionOptions.MakeSessionOptionWithCudaProvider(cudaDeviceId.Value);
-            }
+                if(!cudaDeviceId.HasValue)
+                {
+                    option.AppendExecutionProvider_CPU(1);
+                }
+#else
+            using (var option = new SessionOptions())
+            {
+                option.AppendExecutionProvider_CPU(1);
 #endif
-            var session = (cudaDeviceId.HasValue)
-                ? new InferenceSession(modelPath, option)
-                : new InferenceSession(modelPath);
-            float[] inputData = LoadTensorFromFile(@"bench.in");
-            float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
-            var inputMeta = session.InputMetadata;
-            var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
-            return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
+                var session = (cudaDeviceId.HasValue)
+                    ? new InferenceSession(modelPath, option)
+                    : new InferenceSession(modelPath);
+                float[] inputData = LoadTensorFromFile(@"bench.in");
+                float[] expectedOutput = LoadTensorFromFile(@"bench.expected_out");
+                var inputMeta = session.InputMetadata;
+                var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
+                return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
+            }
         }
 
         class floatComparer : IEqualityComparer<float>
@@ -2101,45 +2238,5 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-    }
-
-    // A Disposable list is a list of IDisposable objects. All elements will be disposed when the container is disposed.
-    internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
-    where T : IDisposable
-    {
-        public DisposableList() { }
-        public DisposableList(int count) : base(count) { }
-
-        #region IDisposable Support
-        private bool disposedValue = false; // To detect redundant calls
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    for (int i = 0; i < this.Count; i++)
-                    {
-                        this[i]?.Dispose();
-                    }
-                    this.Clear();
-                }
-
-                disposedValue = true;
-            }
-        }
-
-        ~DisposableList()
-        {
-            Dispose(false);
-        }
-
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-        #endregion
     }
 }
