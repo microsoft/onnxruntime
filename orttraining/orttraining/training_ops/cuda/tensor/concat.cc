@@ -1,29 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "concat.h"
-#include "concat_impl.h"
+#include "orttraining/training_ops/cuda/tensor/concat.h"
+#include "core/providers/cuda/tensor/concat_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
-                                  kOnnxDomain,
-                                  4, 10,
-                                  kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                                  Concat);
-
-// opset 11 explicitly support negative axis
-ONNX_OPERATOR_KERNEL_EX(Concat,
-                        kOnnxDomain,
-                        11,
+ONNX_OPERATOR_KERNEL_EX(ConcatTraining,
+                        kMSDomain,
+                        1,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-                        Concat);
+                        ConcatTraining);
 
-Status Concat::ComputeInternal(OpKernelContext* ctx) const {
+Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
@@ -78,6 +69,10 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                  p.output_tensor->MutableDataRaw(),
                                  input_ptr.GpuPtr(),
                                  p.output_num_elements));
+
+  Tensor* output_1_tensor = ctx->Output(1, {input_count});
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_1_tensor->template MutableData<int64_t>(), concat_sizes_gpu.GpuPtr(), input_count * sizeof(int64_t), cudaMemcpyDeviceToDevice));
+
   return Status::OK();
 }
 }  // namespace cuda
