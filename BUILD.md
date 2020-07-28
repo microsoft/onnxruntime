@@ -257,13 +257,13 @@ DNNL: `./build.sh --use_dnnl`
 #### Deprecation Notice
 
 | | |
-| --- | --- | 
+| --- | --- |
 | Deprecation Begins	| June 1, 2020 |
 | Removal Date |	December 1, 2020 |
 
 Starting with the OpenVINO™ toolkit 2020.2 release, all of the features previously available through nGraph have been merged into the OpenVINO™ toolkit. As a result, all the features previously available through ONNX RT Execution Provider for nGraph have been merged with ONNX RT Execution Provider for OpenVINO™ toolkit.
 
-Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware. 
+Therefore, ONNX RT Execution Provider for **nGraph** will be deprecated starting June 1, 2020 and will be completely removed on December 1, 2020. Users are recommended to migrate to the ONNX RT Execution Provider for OpenVINO™ toolkit as the unified solution for all AI inferencing on Intel® hardware.
 
 See more information on the nGraph Execution Provider [here](./docs/execution_providers/nGraph-ExecutionProvider.md).
 
@@ -343,31 +343,6 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](./docs/execution_providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
 
----
-
-### Android NNAPI
-
-See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
-
-#### Prerequisites
-
-To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
-
-#### Build Instructions
-
-The basic build commands are below. There are also some other parameters for building the Android version. See [Android Build instructions](#android) for more details.
-
-##### Cross compiling on Windows
-
-```bash
-./build.bat --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
-```
-
-##### Cross compiling on Linux
-
-```bash
-./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --use_dnnlibrary
-```
 ---
 
 ### NUPHAR
@@ -983,7 +958,7 @@ Install an NDK version
         - NDK path in our example with this install would be `.../Android/ndk/21.1.6352462`
       - NOTE: If you install the ndk-bundle package the path will be `.../Android/ndk-bundle` as there's no version number
 
-#### Build Instructions
+#### Android Build Instructions
 
 ##### Cross compiling on Windows
 
@@ -998,14 +973,23 @@ e.g. using the paths from our example
 ./build.bat --android --android_sdk_path .../Android --android_ndk_path .../Android/ndk/21.1.6352462 --android_abi arm64-v8a --android_api 27 --cmake_generator Ninja
 ```
 
-##### Cross compiling on Linux
+##### Cross compiling on Linux and macOS
 
 ```
 ./build.sh --android --android_sdk_path <android sdk path> --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
 ```
-Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar.
 
-If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+##### Build Android Archive (AAR)
+
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+
+#### Android NNAPI Execution Provider
+
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](/docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+##### Build Instructions
+
+Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
 ---
 
@@ -1014,7 +998,7 @@ If you want to use NNAPI Execution Provider on Android, see [docs/execution_prov
 See more information on the MIGraphX Execution Provider [here](./docs/execution_providers/MIGraphX-ExecutionProvider.md).
 
 #### Prerequisites
-* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html) 
+* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
    * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
    * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
