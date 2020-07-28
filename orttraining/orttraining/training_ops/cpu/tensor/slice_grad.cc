@@ -37,7 +37,7 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
 
   SliceOp::PrepareForComputeMetadata prepare_for_compute(data_shape.GetDims());
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
-                                        prepare_for_compute));
+                                        data_shape.GetDims(), prepare_for_compute));
 
   MLDataType T_type = grad.DataType();
   if (T_type == DataTypeImpl::GetType<float>()) {
