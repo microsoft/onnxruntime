@@ -164,6 +164,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseIoBinding;
         public IntPtr BindInput;
         public IntPtr BindOutput;
+        public IntPtr BindOutputToDevice;
+        public IntPtr GetBoundOutputNames;
+        public IntPtr GetBoundOutputValues;
         public IntPtr ClearBoundInputs;
         public IntPtr ClearBoundOutputs;
     }
@@ -258,6 +261,9 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseIoBinding = (DOrtReleaseIoBinding)Marshal.GetDelegateForFunctionPointer(api_.ReleaseIoBinding, typeof(DOrtReleaseIoBinding));
             OrtBindInput = (DOrtBindInput)Marshal.GetDelegateForFunctionPointer(api_.BindInput, typeof(DOrtBindInput));
             OrtBindOutput = (DOrtBindOutput)Marshal.GetDelegateForFunctionPointer(api_.BindOutput, typeof(DOrtBindOutput));
+            OrtBindOutputToDevice = (DOrtBindOutputToDevice)Marshal.GetDelegateForFunctionPointer(api_.BindOutputToDevice, typeof(DOrtBindOutputToDevice));
+            OrtGetBoundOutputNames = (DOrtGetBoundOutputNames)Marshal.GetDelegateForFunctionPointer(api_.GetBoundOutputNames, typeof(DOrtGetBoundOutputNames));
+            OrtGetBoundOutputValues = (DOrtGetBoundOutputValues)Marshal.GetDelegateForFunctionPointer(api_.GetBoundOutputValues, typeof(DOrtGetBoundOutputValues));
             OrtClearBoundInputs = (DOrtClearBoundInputs)Marshal.GetDelegateForFunctionPointer(api_.ClearBoundInputs, typeof(DOrtClearBoundInputs));
             OrtClearBoundOutputs = (DOrtClearBoundOutputs)Marshal.GetDelegateForFunctionPointer(api_.ClearBoundOutputs, typeof(DOrtClearBoundOutputs));
 
@@ -647,8 +653,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// and write model outputs to the supplied memory.
         /// </summary>
         /// <param name="session">session to create OrtIoBinding instance</param>
-        /// <param name="io_bidning">out a new instance of OrtIoBinding</param>
-        public delegate IntPtr DOrtCreateIoBinding(IntPtr /*(const OrtSession*)*/ session, out IntPtr /*(OrtIoBinding)*/ io_binding);
+        /// <param name="io_binding">out a new instance of OrtIoBinding</param>
+        public delegate IntPtr /* OrtStatus*/ DOrtCreateIoBinding(IntPtr /*(const OrtSession*)*/ session, out IntPtr /*(OrtIoBinding)*/ io_binding);
         public static DOrtCreateIoBinding OrtCreateIoBinding;
 
         /// <summary>
@@ -667,7 +673,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="ort_value">OrtValue that is used for input (may wrap arbitrary memory). 
         ///      The param instance is copied internally so this argument may be released.
         /// </param>
-        public delegate IntPtr DOrtBindInput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*)*/ name, IntPtr /*const OrtValue**/ ort_value);
+        public delegate IntPtr /* OrtStatus*/ DOrtBindInput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*)*/ name, IntPtr /*const OrtValue**/ ort_value);
         public static DOrtBindInput OrtBindInput;
 
         /// <summary>
@@ -679,22 +685,70 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="ort_value">OrtValue that is used for output (may wrap arbitrary memory). 
         ///      The param instance is copied internally so this argument may be released.
         /// </param>
-        public delegate IntPtr DOrtBindOutput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*) */ name, IntPtr /*const OrtValue**/ ort_value);
+        public delegate IntPtr /* OrtStatus*/ DOrtBindOutput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*) */ name, IntPtr /*const OrtValue**/ ort_value);
         public static DOrtBindOutput OrtBindOutput;
 
         /// <summary>
-        /// Clears Input bindings. This is a convenience method.
-        /// Releasing IoBinding instance would clear all bound inputs.
+        /// Bind a device to the model output with the specified name
+        /// This is useful when the OrtValue can not be allocated ahead of time
+        /// due to unknown dimensions.
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">Instance of OrtIoBinding</param>
+        /// <param name="name">UTF-8 zero terminated name</param>
+        /// <param name="mem_info">OrtMemoryInfo instance that contains device id. May be obtained from the device specific allocator instance</param>
+        /// <returns></returns>
+        public delegate IntPtr /* OrtStatus*/ DOrtBindOutputToDevice(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*) */ name, IntPtr /* const OrtMemoryInfo */ mem_info);
+        public static DOrtBindOutputToDevice OrtBindOutputToDevice;
+
+        /// <summary>
+        /// The function will return all bound output names in the order they were bound.
+        /// It is the same order that the output values will be returned after RunWithBinding() is used.
+        /// The function will allocate two native allocations  using the allocator supplied.
+        /// The caller is responsible for deallocating both of the buffers using the same allocator.
+        /// You may use OrtMemoryAllocation disposable class to wrap those allocations.
+        /// </summary>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
+        /// <param name="allocator">allocator to use for memory allocation</param>
+        /// <param name="buffer">a continuous buffer that contains all output names.
+        /// Names are not zero terminated use lengths to extract strings. This needs to be deallocated.</param>
+        /// <param name="lengths">A buffer that contains lengths (size_t) for each of the returned strings in order.
+        /// You may use Marshal.ReadIntPtr() to read each element of the array. The buffer must be deallocated.</param>
+        /// <param name="count">this contains the count of names returned which is the number of elements in lengths.</param>
+        /// <returns></returns>
+        public delegate IntPtr /* OrtStatus*/ DOrtGetBoundOutputNames(IntPtr /* (const OrtIoBinding*) */ io_binding, IntPtr /* OrtAllocator* */ allocator,
+                                                                      out IntPtr /* char** */ buffer, out IntPtr /* size_t** */ lengths, out UIntPtr count);
+        public static DOrtGetBoundOutputNames OrtGetBoundOutputNames;
+
+        /// <summary>
+        /// The function returns output values after the model has been run with RunWithBinding()
+        /// It returns a natively allocated buffer of OrtValue pointers. All of the OrtValues must be individually
+        /// released after no longer needed. You may use OrtValue disposable class to wrap the native handle and properly dispose it
+        /// in connection with DisposableList<T>. All values are returned in the same order as they were bound.
+        /// The buffer that contains OrtValues must deallocated using the same allocator that was specified as an argument.
+        /// You may use an instance OrtMemoryAllocation to properly dispose of the native memory.
+        /// </summary>
+        /// <param name="io_binding">instance of OrtIOBinding</param>
+        /// <param name="allocator">allocator to use to allocate output buffer</param>
+        /// <param name="ortvalues">allocated buffer that contains pointers (IntPtr) to individual OrtValue instances</param>
+        /// <param name="count">count of OrtValues returned</param>
+        /// <returns></returns>
+        public delegate IntPtr /* OrtStatus*/ DOrtGetBoundOutputValues(IntPtr /* (const OrtIoBinding*) */ io_binding, IntPtr /* OrtAllocator* */ allocator,
+                                                                       out IntPtr /* OrtValue** */ ortvalues, out UIntPtr count);
+        public static DOrtGetBoundOutputValues OrtGetBoundOutputValues;
+
+        /// <summary>
+        /// Clears Input bindings. This is a convenience method.
+        /// Releasing OrtIoBinding instance would clear all bound inputs.
+        /// </summary>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         public delegate void DOrtClearBoundInputs(IntPtr /*(OrtIoBinding)*/ io_binding);
         public static DOrtClearBoundInputs OrtClearBoundInputs;
 
         /// <summary>
         /// Clears Output bindings. This is a convenience method.
-        /// Releasing IoBinding instance would clear all bound outputs.
+        /// Releasing OrtIoBinding instance would clear all bound outputs.
         /// </summary>
-        /// <param name="io_bidning">instance of OrtIoBinding</param>
+        /// <param name="io_binding">instance of OrtIoBinding</param>
         public delegate void DOrtClearBoundOutputs(IntPtr /*(OrtIoBinding)*/ io_binding);
         public static DOrtClearBoundOutputs OrtClearBoundOutputs;
 

@@ -182,13 +182,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue)
         {
-            IntPtr allocator = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAllocatorWithDefaultOptions(out allocator));
-            var ret = CreateFromOnnxValue(name, nativeOnnxValue, allocator);
-            return (DisposableNamedOnnxValue)ret;
+            return CreateFromOnnxValue(name, nativeOnnxValue, OrtAllocator.DefaultInstance);
         }
 
-        internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue, IntPtr allocator)
+        internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue, OrtAllocator allocator)
         {
             OnnxValueType onnxValueType;
             unsafe
@@ -207,7 +204,7 @@ namespace Microsoft.ML.OnnxRuntime
                     for (int i = 0; i < count.ToInt32(); i++)
                     {
                         IntPtr nativeOnnxValueSeq;
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, i, allocator, out nativeOnnxValueSeq));
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, i, allocator.Pointer, out nativeOnnxValueSeq));
                         sequence.Add(CreateFromOnnxValue(string.Empty, nativeOnnxValueSeq, allocator));
                     }
                     return new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, TensorElementType.DataTypeMax, null);
@@ -217,8 +214,8 @@ namespace Microsoft.ML.OnnxRuntime
                     IntPtr nativeOnnxValueMapKeys = IntPtr.Zero;
                     IntPtr nativeOnnxValueMapValues = IntPtr.Zero;
                     TensorElementType elemType = TensorElementType.DataTypeMax;
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 0, allocator, out nativeOnnxValueMapKeys));
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 1, allocator, out nativeOnnxValueMapValues));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 0, allocator.Pointer, out nativeOnnxValueMapKeys));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 1, allocator.Pointer, out nativeOnnxValueMapValues));
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValueMapKeys, out typeAndShape));
 
                     unsafe
