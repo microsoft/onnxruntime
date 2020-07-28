@@ -9,6 +9,7 @@ ARG CONDA_VERSION=4.7.10
 ARG MKL_VERSION=2020.1
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
+ARG PYTORCH_VERSION=1.6.0
 
 # cuda development image for building sources
 FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
@@ -16,10 +17,11 @@ FROM nvidia/cuda:10.2-cudnn7-devel-ubuntu18.04 as build
 # set location for builds
 WORKDIR /stage
 
-# install curl
+# install curl and git
 RUN apt-get -y update &&\
     apt-get -y --no-install-recommends install \
-        curl
+        curl \
+        git
     
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
@@ -97,20 +99,25 @@ ENV LD_LIBRARY_PATH=/opt/openmpi-${OPENMPI_VERSION}/lib:$LD_LIBRARY_PATH
 # install mpi4py (be sure to link existing /opt/openmpi-xxx)
 RUN CC=mpicc MPICC=mpicc pip install mpi4py --no-binary mpi4py
 
-# build pytorch (using v1.6.0-rc3)
-# todo: need to update to pytorch 1.6.0 releaase when ready
-ENV CUDA_HOME="/usr/local/cuda" \
-    CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
-    NCCL_INCLUDE_DIR="/usr/include" \
-    NCCL_LIB_DIR="/usr/lib/x86_64-linux-gnu" \
-    USE_SYSTEM_NCCL=1 
-RUN apt-get -y update && apt-get -y --no-install-recommends install git &&\
-    cd /stage && git clone https://github.com/pytorch/pytorch.git &&\
-    cd pytorch &&\
-    git checkout v1.6.0-rc3 &&\
-    git submodule update --init --recursive &&\
-    python setup.py bdist_wheel -d build/wheel &&\
-    pip install build/wheel/*.whl
+# install pytorch
+ARG PYTORCH_VERSION
+RUN pip install torch==${PYTORCH_VERSION}
+
+# in case you need to build pytorch:
+# note: only if you want to link system cuda libraries and use MPI
+# note: recommend using many high-frequency cores (e.g. 32+ skylake cores)
+# ENV CUDA_HOME="/usr/local/cuda" \
+#     CUDNN_LIBRARY="/usr/lib/x86_64-linux-gnu" \
+#     NCCL_INCLUDE_DIR="/usr/include" \
+#     NCCL_LIB_DIR="/usr/lib/x86_64-linux-gnu" \
+#     USE_SYSTEM_NCCL=1 
+# RUN apt-get -y update && apt-get -y --no-install-recommends install git &&\
+#     cd /stage && git clone https://github.com/pytorch/pytorch.git &&\
+#     cd pytorch &&\
+#     git checkout v1.6.0-rc3 &&\
+#     git submodule update --init --recursive &&\
+#     python setup.py bdist_wheel -d build/wheel &&\
+#     pip install build/wheel/*.whl
 
 # build onnxruntime wheel with cuda and mpi support
 RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
@@ -186,6 +193,16 @@ RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' \
         /etc/ssh/ssh_config &&\
     mkdir /run/sshd &&\
     chmod u=rwx,go=rx /run/sshd
+
+# export versions
+LABEL MOFED_VERSION=${MOFED_VERSION}
+LABEL UCX_VERSION=${UCX_VERSION}
+LABEL OPENMPI_VERSION=${OPENMPI_VERSION}
+LABEL CONDA_VERSION=${CONDA_VERSION}
+LABEL MKL_VERSION=${MKL_VERSION}
+LABEL NUMPY_VERSION=${NUMPY_VERSION}
+LABEL ONNX_VERSION=${ONNX_VERSION}
+LABEL PYTORCH_VERSION=${PYTORCH_VERSION}
 
 # clean\finalize environment
 RUN conda remove -y cmake ninja &&\
