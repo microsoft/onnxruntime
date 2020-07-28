@@ -288,7 +288,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           dimensions.push_back(static_cast<uint32_t>(dim));
 
         if (dimensions.empty())
-          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "The actual input cannot be empty");
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "NNAPI does not support scalar input");
 
         // it is possible that the input has the detailed size while
         // the model has an operand with unknown size, use the size
@@ -369,6 +369,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           const auto& output_shape = dynamic_output_shapes[i];
           auto model_output_type = dynamic_shape_output_types[i];
           model_output_type.SetDimensions(output_shape);
+          ORT_RETURN_IF_NOT(model_output_type.GetOperandBlobByteSize() != 0, "We do not support 0 size output for now");
+
           void* model_output_buffer = dynamic_shape_output_buffers[i].get();
           void* onnx_output_buffer = nullptr;
           ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
