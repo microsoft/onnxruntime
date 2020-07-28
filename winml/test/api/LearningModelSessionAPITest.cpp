@@ -386,29 +386,36 @@ static void CloseSession()
  }
 
 static void SetIntraOpNumThreads() {
-   auto shape = std::vector<int64_t>{1, 1000};
-   auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
-   auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
-   auto options = LearningModelSessionOptions();
-   auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
-   uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
+    auto shape = std::vector<int64_t>{1, 1000};
+    auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
+    auto device = LearningModelDevice(LearningModelDeviceKind::DirectX);
+    auto options = LearningModelSessionOptions();
+    auto nativeOptions = options.as<ILearningModelSessionOptionsNative>();
+    uint32_t desiredThreads = std::thread::hardware_concurrency() / 2;
 
+    // Set the number of intra op threads to half of logical cores.
+    WINML_EXPECT_NO_THROW(nativeOptions->OverrideIntraOpNumThreads(desiredThreads));
+    // Create session and grab the number of intra op threads to see if is set properly
+    LearningModelSession session = nullptr;
+    WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
+    auto nativeSession = session.as<ILearningModelSessionNative>();
+    uint32_t numIntraOpThreads;
+    WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
+    WINML_EXPECT_EQUAL(desiredThreads, numIntraOpThreads);
 
-   // Set the number of intra op threads to half of logical cores.
-   WINML_EXPECT_NO_THROW(nativeOptions->OverrideIntraOpNumThreads(desiredThreads));
-   // Create session and grab the number of intra op threads to see if is set properly
-   LearningModelSession session = nullptr;
-   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
-   auto nativeSession = session.as<ILearningModelSessionNative>();
-   uint32_t numIntraOpThreads;
-   WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
-   WINML_EXPECT_EQUAL(desiredThreads, numIntraOpThreads);
+    // Check to see that bind and evaluate continue to work when setting the intra op thread count
+    std::vector<float> input(1000);
+    std::iota(std::begin(input), std::end(input), 0.0f);
+    auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
+    auto binding = LearningModelBinding(session);
+    binding.Bind(L"input", tensor_input);
+    WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 
-   // Check to verify that the default number of threads in LearningModelSession is equal to the number of logical cores.
-   session = LearningModelSession(model, device);
-   nativeSession = session.as<ILearningModelSessionNative>();
-   WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
-   WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
+    // Check to verify that the default number of threads in LearningModelSession is equal to the number of logical cores.
+    session = LearningModelSession(model, device);
+    nativeSession = session.as<ILearningModelSessionNative>();
+    WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
+    WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
  }
 
 const LearningModelSessionAPITestsApi& getapi() {
