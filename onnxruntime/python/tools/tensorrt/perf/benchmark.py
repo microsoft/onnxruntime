@@ -11,7 +11,7 @@ import copy
 import json
 import re
 from onnx import numpy_helper
-from perf_utils import analyze_profiling_file
+from perf_utils import * 
 import pprint
 import torch
 
@@ -32,6 +32,7 @@ from EmotionFerplus import *
 from Googlenet import *
 from Alexnet import *
 from Caffenet import *
+from Densenet import *
 from RcnnIlsvrc13 import *
 from TinyYolov2 import *
 from TinyYolov3 import *
@@ -50,37 +51,38 @@ from GPT2 import *
 logger = logging.getLogger('')
 
 MODELS = {
-    # "bert-squad": (BERTSquad, "bert-squad"),
-    # "fast-rcnn": (FastRCNN, "fast-rcnn"),
-    # "mask-rcnn": (MaskRCNN, "mask-rcnn"),
-    # "ssd": (SSD, "ssd"),
-    # "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
+    "bert-squad": (BERTSquad, "bert-squad"),
+    "fast-rcnn": (FastRCNN, "fast-rcnn"),
+    "mask-rcnn": (MaskRCNN, "mask-rcnn"),
+    "ssd": (SSD, "ssd"),
+    "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
-    # "resnet152": (Resnet152, "resnet152"),
-    # "inception-v2": (InceptionV2, "inception-v2"),
-    # "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
-    # "zfnet512": (Zfnet512, "zfnet512"),
-    # "vgg19-bn": (Vgg, "vgg19-bn"),
-    # "resnet50": (Resnet50, "resnet50"),
-    # "resnet101": (Resnet101, "resnet101"),
-    # "inception-v1": (InceptionV1, "inception-v1"),
-    # "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
-    # "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
-    # "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
-    # "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
-    # "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
-    # "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
-    # "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
-    # "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
-    # "retinanet": (Retinanet, "retinanet"),
-    # ##### "yolov3": (YoloV3, "yolov3"), # TRT runtime error
-    # "yolov4": (YoloV4, "yolov4"),
-    # "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
-    # "Arc-Face": (ArcFace, "arc-face"),
-    # #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
-    # "Fast-Neural": (FastNeural, "Fast-Neural"),
-    # "BiDAF": (BiDAF, "BiDAF"),
-    # ### "GPT2": (GPT2, "GPT2"), # OOM
+    "resnet152": (Resnet152, "resnet152"),
+    "inception-v2": (InceptionV2, "inception-v2"),
+    "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
+    "zfnet512": (Zfnet512, "zfnet512"),
+    "vgg19-bn": (Vgg, "vgg19-bn"),
+    "resnet50": (Resnet50, "resnet50"),
+    "resnet101": (Resnet101, "resnet101"),
+    "inception-v1": (InceptionV1, "inception-v1"),
+    "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
+    "shufflenet-v2": (ShufflenetV2, "shufflenet-v2"),
+    "squeezenet1.1": (Squeezenet, "squeezenet1.1"),
+    "emotion-ferplus": (EmotionFerplus, "emotion-ferplus"),
+    "bvlc-googlenet": (Googlenet, "bvlc-googlenet"),
+    "bvlc-alexnet": (Alexnet, "bvlc-alexnet"),
+    "bvlc-caffenet": (Caffenet, "bvlc-caffenet"),
+    "bvlc-rcnn-ilvscr13": (RcnnIlsvrc13, "bvlc-rcnn-ilvscr13"),
+    "retinanet": (Retinanet, "retinanet"),
+    "densenet": (Densenet, "densenet"),
+    ##### "yolov3": (YoloV3, "yolov3"), # TRT runtime error
+    "yolov4": (YoloV4, "yolov4"),
+    "Resnet101-DUC": (Resnet101DucHdc, "Resnet101-DUC"),
+    "Arc-Face": (ArcFace, "arc-face"),
+    #### "Super-Resolution": (SuperResolution, "super-resolution"), # can't read output
+    "Fast-Neural": (FastNeural, "Fast-Neural"),
+    "BiDAF": (BiDAF, "BiDAF"),
+    ### "GPT2": (GPT2, "GPT2"), # OOM
 }
 
 
@@ -416,6 +418,16 @@ def run_onnxruntime(args, models=MODELS):
         "TensorrtExecutionProvider_fp16": ["TensorrtExecutionProvider", "CUDAExecutionProvider"],
     }
 
+    if args.fp16:
+        provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
+    else:
+        provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+
+    # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+    # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+    # provider_list = ["CUDAExecutionProvider"]
+    # provider_list = ["TensorrtExecutionProvider"]
+
     # iterate models
     for name in models.keys():
         info = models[name] 
@@ -435,17 +447,8 @@ def run_onnxruntime(args, models=MODELS):
         inputs = []
         ref_outputs = []
         ep_fail_set = set()
-
-        if args.fp16:
-            provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider","TensorrtExecutionProvider_fp16"]
-        else:
-            provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-
-        # provider_list = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
-        # provider_list = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-        # provider_list = ["CUDAExecutionProvider"]
-        # provider_list = ["TensorrtExecutionProvider"]
-
+        ep_op_map = {} # map of ep -> operator
+        profile_already_parsed = set()
 
         # iterate ep 
         for i in range(len(provider_list)):
@@ -573,26 +576,68 @@ def run_onnxruntime(args, models=MODELS):
                     results.append(result)
 
             latency_comparison_map[model_name] = copy.deepcopy(latency_result)
+            
+            metrics = get_profile_metrics(path, profile_already_parsed)
+            if metrics:
+                ep_op_map[ep] = metrics
 
             # end of ep
 
-        if len(ep_fail_set) == 0:
-            presults = analyze_profiling_file(path)
-            for i in range(len(presults)):
-                result = presults[i]
-                total_ops_in_trt = result[0]
-                total_ops = result[1]
-                ratio_of_ops_in_trt = result[2]
-                ratio_of_execution_time_in_trt =  result[3]
-                
-                name = model_name + " (TRT fp16)" if i == 0 else model_name
-                profile_metrics_map[name] = {}
-                profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
-                profile_metrics_map[name]['total_ops'] = total_ops
-                profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
-                profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
 
-        # cleanup_files()
+        # get TRT operators/latency percentage
+        if len(ep_op_map) > 0:
+            trt_op_map = None 
+            trt_fp16_op_map = None 
+            cuda_op_map = None 
+
+            for ep, op_map in ep_op_map.items():  
+                if ep == "CUDAExecutionProvider":
+                    cuda_op_map = op_map
+                elif ep == "TensorrtExecutionProvider":
+                    trt_op_map = op_map
+                elif ep == "TensorrtExecutionProvider_fp16":
+                    trt_fp16_op_map = op_map
+
+            if trt_op_map:
+                ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
+                profile_metrics_map[model_name] = {}
+                profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+                if cuda_op_map:
+                    total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_op_map, cuda_op_map)
+                    profile_metrics_map[model_name]['total_ops'] = total_ops
+                    profile_metrics_map[model_name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                    profile_metrics_map[model_name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+
+            if trt_fp16_op_map:
+                ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_fp16_op_map)
+                model_name_ = model_name + "(TRT FP16)"
+                profile_metrics_map[model_name_] = {}
+                profile_metrics_map[model_name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+                if cuda_op_map:
+                    total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_fp16_op_map, cuda_op_map)
+                    profile_metrics_map[model_name_]['total_ops'] = total_ops
+                    profile_metrics_map[model_name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                    profile_metrics_map[model_name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+
+
+        # analyze profiling files 
+        # if len(ep_fail_set) == 0:
+            # presults = analyze_profiling_file(path)
+            # for i in range(len(presults)):
+                # result = presults[i]
+                # total_ops_in_trt = result[0]
+                # total_ops = result[1]
+                # ratio_of_ops_in_trt = result[2]
+                # ratio_of_execution_time_in_trt =  result[3]
+                
+                # name = model_name + " (TRT fp16)" if i == 0 else model_name
+                # profile_metrics_map[name] = {}
+                # profile_metrics_map[name]['total_ops_in_trt'] = total_ops_in_trt
+                # profile_metrics_map[name]['total_ops'] = total_ops
+                # profile_metrics_map[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt 
+                # profile_metrics_map[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt 
+
+        cleanup_files()
         os.chdir(pwd)
 
         # end of model

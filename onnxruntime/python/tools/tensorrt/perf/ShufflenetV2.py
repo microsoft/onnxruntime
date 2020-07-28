@@ -26,6 +26,13 @@ class ShufflenetV2(BaseModel):
     def preprocess(self):
         return
 
+    def get_ort_inputs(self, inputs):
+        data = {
+            self.session_.get_inputs()[0].name: inputs 
+        }
+
+        return data
+
     def inference(self):
         # session = self.session_
         # if input_list:
@@ -40,11 +47,11 @@ class ShufflenetV2(BaseModel):
 
         self.outputs_ = []
         for test_data in self.inputs_:
-            img_data = test_data[0]
+            img_data = test_data
             output = self.session_.run(None, {
                 self.session_.get_inputs()[0].name: img_data
             })
-            self.outputs_.append([output[0]])
+            self.outputs_.append(output[0])
 
     def postprocess(self):
         return

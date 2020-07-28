@@ -146,6 +146,102 @@ def calculate_metrics(trt_op_map, cuda_op_map):
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt, ratio_of_trt_execution_time)
 
+def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
+    # % of TRT ops
+    total_ops = 0
+    total_cuda_and_cpu_ops = 0 
+    for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
+        if ep in cuda_op_map:
+            op_map = cuda_op_map[ep]
+            total_ops += len(op_map)
+
+        if ep in trt_op_map:
+            op_map = trt_op_map[ep]
+            total_cuda_and_cpu_ops += len(op_map)
+
+    if total_ops == 0:
+        print("Error ...")
+        raise
+
+    if len(trt_op_map) == 0:
+        total_cuda_and_cpu_ops = total_ops
+
+    #
+    # equation of % TRT ops: 
+    # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
+    #
+    ratio_of_ops_in_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
+    if debug:
+        print("total_cuda_and_cpu_ops: {}".format(total_cuda_and_cpu_ops))
+        print("total_ops: {}".format(total_ops))
+        print("ratio_of_ops_in_trt: {}".format(ratio_of_ops_in_trt))
+
+    return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
+
+def calculate_trt_latency_percentage(trt_op_map):
+    # % of TRT execution time
+    total_execution_time = 0
+    total_trt_execution_time = 0 
+    for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]:
+        if ep in trt_op_map:
+            op_map = trt_op_map[ep]
+
+            total_time = 0
+            for key, value in op_map.items():
+                total_time += int(value)
+
+            if ep == "TensorrtExecutionProvider":
+                total_trt_execution_time = total_time
+
+            total_execution_time += total_time
+
+
+
+    if total_execution_time == 0:
+        ratio_of_trt_execution_time = 0
+    else:
+        ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
+
+    if debug:
+        print("total_trt_execution_time: {}".format(total_trt_execution_time))
+        print("total_execution_time: {}".format(total_execution_time))
+        print("ratio_of_trt_execution_time: {}".format(ratio_of_trt_execution_time))
+
+    return ratio_of_trt_execution_time
+
+
+
+def get_profile_metrics(path, profile_already_parsed):
+    print("Analying profiling files in {} ...".format(path))
+    p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*"], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = p2.communicate()
+    stdout = stdout.decode("ascii").strip()
+    profiling_file_dir = stdout.split("\n") 
+    print(profiling_file_dir)
+
+    pp = pprint.PrettyPrinter(indent=4)
+
+    data = []
+    for profile in profiling_file_dir:
+        if profile in profile_already_parsed:
+            continue
+        profile_already_parsed.add(profile)
+        print("start to parse {} ...".format(profile))
+        with open(profile) as f:
+            op_map = parse_single_file(f)
+            if op_map:
+                data.append(op_map)
+
+    if len(data) == 0:
+        print("No profile metrics got.")
+        return None
+    elif len(data) > 1 :
+        print("We expect to get only one profile file ...")
+        raise
+    
+    return data[0]
+
 
 def analyze_profiling_file(path):
     print("Analying profiling files in {} ...".format(path))

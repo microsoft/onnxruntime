@@ -14,13 +14,13 @@ class Densenet(BaseModel):
         self.ref_outputs_ = []
         self.validate_decimal_ = 3 
 
-        self.model_path_ = os.path.join(os.getcwd(), "densenet", "model.onnx")
+        self.model_path_ = os.path.join(os.getcwd(), "densenet121", "model.onnx")
 
         if not os.path.exists(self.model_path_):
             subprocess.run("wget https://github.com/onnx/models/raw/master/vision/classification/densenet-121/model/densenet-7.tar.gz", shell=True, check=True)
             subprocess.run("tar zxf densenet-7.tar.gz", shell=True, check=True)
 
-        self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "densenet") 
+        self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "densenet121") 
 
 
     def preprocess(self):
