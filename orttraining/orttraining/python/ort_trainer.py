@@ -773,7 +773,13 @@ class ORTTrainer():
             if n.name not in torch_state:
                 torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
 
-        return torch_state
+        # Need to remove redundant initializers and name suffices to map back to original torch state names
+        torch_state_to_return = {}
+        for name, value in torch_state.items():
+            if not (("Moment" in name) or ("Update_Count" in name)):
+                name = name.replace('_fp16', '')
+                torch_state_to_return[name] = value
+        return torch_state_to_return
 
     def load_state_dict(self, state_dict, strict=False):
         # Note: It may happen ONNX model has not yet been initialized
