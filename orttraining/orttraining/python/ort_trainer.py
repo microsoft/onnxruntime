@@ -610,6 +610,7 @@ class ORTTrainer():
         self.torch_model_ = None
         self.onnx_model_ = None
         self._enable_internal_postprocess = _enable_internal_postprocess
+        self._extra_postprocess = _extra_postprocess
 
         if isinstance(model, torch.nn.Module):
             self.torch_model_ = model
@@ -646,7 +647,6 @@ class ORTTrainer():
         # we use self.global_step_ to count optimizations being performed.
         # it is used to calculate learning rate if self.get_lr_this_step_ is provided.
         self.global_step_ = global_step
-        self._extra_postprocess = _extra_postprocess
         self.get_lr_this_step_ = get_lr_this_step
         self.loss_scaler_ = loss_scaler
 
