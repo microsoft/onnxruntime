@@ -23,6 +23,8 @@ void ComputeBroadcastBackwardAxes(
 
 void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
                                          const ArgDef& b,
+                                         const ArgDef& a_shape,
+                                         const ArgDef& b_shape,
                                          const ArgDef* a_axes,
                                          const ArgDef* b_axes,
                                          std::vector<NodeDef>& output);
@@ -180,8 +182,10 @@ class GradientBuilderBase {
                           const ArgDef& output_grad,
                           const std::vector<int64_t>& reduce_axes,
                           std::vector<NodeDef>& output) const;
+
   void HandleBroadcastingDynamic(const ArgDef& input_grad,
                                  const ArgDef& target,
+                                 const ArgDef& target_shape,
                                  const ArgDef& output_grad,
                                  const ArgDef& reduce_axes,
                                  std::vector<NodeDef>& output) const;

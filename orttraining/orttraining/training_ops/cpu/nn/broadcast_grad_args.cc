@@ -79,8 +79,7 @@ Status BroadcastGradientArgs<T>::Compute(OpKernelContext* context) const {
     std::copy(b_axes.begin(), b_axes.end(), B_axes_data);
   }
   if (!A_axes && !B_axes)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "No output found for node.");
+    LOGS_DEFAULT(WARNING) << "No output found for op BroadcastGradientArgs.";
 
   return Status::OK();
 }

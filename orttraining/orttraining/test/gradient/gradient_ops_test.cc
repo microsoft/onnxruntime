@@ -102,7 +102,7 @@ TEST(GradientCheckerTest, SqrtGrad) {
 
 void TestBroadcastableBinaryOpGrad(const std::string& op_type,
                                    std::function<float(float)>* transformer = nullptr,
-                                   bool check_not_have_shape_inferencing = false) {
+                                   bool check_not_have_shape_inferencing = true) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type};
@@ -221,21 +221,21 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
 }
 
 TEST(GradientCheckerTest, AddGrad) {
-  TestBroadcastableBinaryOpGrad("Add", nullptr, true);
+  TestBroadcastableBinaryOpGrad("Add");
 }
 
 TEST(GradientCheckerTest, SubGrad) {
-  TestBroadcastableBinaryOpGrad("Sub", nullptr, true);
+  TestBroadcastableBinaryOpGrad("Sub");
 }
 
 TEST(GradientCheckerTest, MulGrad) {
-  TestBroadcastableBinaryOpGrad("Mul", nullptr, true);
+  TestBroadcastableBinaryOpGrad("Mul");
 }
 
 #ifdef USE_CUDA
 TEST(GradientCheckerTest, DivGrad) {
   std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
-  TestBroadcastableBinaryOpGrad("Div", &transformer, true);
+  TestBroadcastableBinaryOpGrad("Div", &transformer);
 }
 #endif
 

@@ -86,8 +86,7 @@ void ComputeBroadcastBackwardAxes(
 }
 
 Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
-  //Throw OnnxruntimeShapeException type, so that it can specifically be caught in the gradient builder
-  // to build shape-independent gradient graph
+  shape.clear();
   ORT_RETURN_IF_NOT(arg_def.type_proto && arg_def.type_proto->has_tensor_type() && arg_def.type_proto->tensor_type().has_shape(),
                     "During GetShape, ", arg_def.name, "'s shape is null.");
   const auto& dims = arg_def.type_proto->tensor_type().shape().dim();
@@ -99,11 +98,11 @@ Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
 
 void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
                                          const ArgDef& b,
+                                         const ArgDef& a_shape,
+                                         const ArgDef& b_shape,
                                          const ArgDef* a_axes,
                                          const ArgDef* b_axes,
                                          std::vector<NodeDef>& output) {
-  ArgDef a_shape = ArgDef("Shape_" + a.name);
-  ArgDef b_shape = ArgDef("Shape_" + b.name);
   output.push_back(
       NodeDef("Shape",
               {a},
@@ -194,6 +193,7 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
 
 void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
                                                     const ArgDef& target,
+                                                    const ArgDef& target_shape,
                                                     const ArgDef& output_grad,
                                                     const ArgDef& reduce_axes,
                                                     std::vector<NodeDef>& output) const {
@@ -206,11 +206,9 @@ void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
               {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
                {"noop_with_empty_axes", ONNX_NAMESPACE::MakeAttribute("noop_with_empty_axes", int64_t(1))}}));
 
-  //reuse shape node from BroadcastGradientArgs input
-  ArgDef target_shape_arg = ArgDef("Shape_" + target.name);
   output.push_back(
       NodeDef("Reshape",
-              {reduce_grad_arg, target_shape_arg},
+              {reduce_grad_arg, target_shape},
               {output_grad}));
 }
 
