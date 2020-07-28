@@ -56,8 +56,8 @@ class Shaper {
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
-  void UpdateShape(const std::string& name, const Shape& new_shape);
-  void UpdateDynamicDimensions();
+  Status UpdateShape(const std::string& name, const Shape& new_shape);
+  Status UpdateDynamicDimensions();
 
   // Need to call Finalize() after the entire graph
   // is converted to NNAPI

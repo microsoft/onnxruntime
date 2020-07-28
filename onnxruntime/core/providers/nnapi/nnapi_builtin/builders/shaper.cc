@@ -371,25 +371,29 @@ void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
 }
 
-void Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
-  ORT_ENFORCE(shaper_finalized_,
-              "Cannot UpdateShape while shaper is not finalized");
+Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
+  ORT_RETURN_IF_NOT(shaper_finalized_,
+                    "Cannot UpdateShape while shaper is not finalized");
 
   const Shape& old_shape = shape_map_.at(name);
   if (old_shape != new_shape) {
-    if (Product(old_shape) != 0)
-      ORT_THROW("The shape should be same size or old shape has size 0 (dynamic shape)");
+    ORT_RETURN_IF_NOT(Product(old_shape) == 0,
+                      "The shape should be same size or old shape has size 0 (dynamic shape)");
 
     shape_map_[name] = new_shape;
   }
+
+  return Status::OK();
 }
 
-void Shaper::UpdateDynamicDimensions() {
-  ORT_ENFORCE(shaper_finalized_,
-              "Cannot UpdateDynamicDimensions while shaper is not finalized");
+Status Shaper::UpdateDynamicDimensions() {
+  ORT_RETURN_IF_NOT(shaper_finalized_,
+                    "Cannot UpdateDynamicDimensions while shaper is not finalized");
 
   for (auto& shape_op : shape_ops_)
     shape_op(*this);
+
+  return Status::OK();
 }
 
 void Shaper::Clear() {

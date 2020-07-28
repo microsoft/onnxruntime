@@ -29,6 +29,27 @@
             std::string(", ") + (note));                                  \
   }
 
+#define RETURN_STATUS_ON_ERROR(val)                                       \
+  {                                                                       \
+    const auto ret = (val);                                               \
+    ORT_RETURN_IF_NOT(                                                    \
+        ret == ANEURALNETWORKS_NO_ERROR,                                  \
+        std::string("Error in ") + __FILE__ + std::string(":") +          \
+            std::to_string(__LINE__) + std::string(", function name: ") + \
+            std::string(__func__) + "error, ret: " + GetErrorCause(ret)); \
+  }
+
+#define RETURN_STATUS_ON_ERROR_WITH_NOTE(val, note)                       \
+  {                                                                       \
+    const auto ret = (val);                                               \
+    ORT_RETURN_IF_NOT(                                                    \
+        ret == ANEURALNETWORKS_NO_ERROR,                                  \
+        std::string("Error in ") + __FILE__ + std::string(":") +          \
+            std::to_string(__LINE__) + std::string(", function name: ") + \
+            std::string(__func__) + "error, ret: " + GetErrorCause(ret) + \
+            std::string(", ") + (note));                                  \
+  }
+
 template <class Map, class Key>
 inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();

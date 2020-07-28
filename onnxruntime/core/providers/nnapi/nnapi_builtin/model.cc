@@ -78,37 +78,48 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
   return output_map_.at(name);
 }
 
-void Model::SetInputBuffer(const int32_t index, const InputBuffer& input) {
-  PrepareForExecution();
+Status Model::SetInputBuffer(const int32_t index, const InputBuffer& input) {
+  ORT_RETURN_IF_ERROR(PrepareForExecution());
 
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setInput(
+  RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_setInput(
       execution_, index, &input.type.operandType, input.buffer, input.type.GetOperandBlobByteSize()));
+
+  return Status::OK();
 }
 
-void Model::SetOutputBuffer(const int32_t index, const OutputBuffer& output) {
-  PrepareForExecution();
+Status Model::SetOutputBuffer(const int32_t index, const OutputBuffer& output) {
+  ORT_RETURN_IF_ERROR(PrepareForExecution());
 
   LOGS_DEFAULT(VERBOSE) << "Model::SetOutputBuffer, output shape "
                         << Shape2String(output.type.dimensions);
 
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_setOutput(
+  RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_setOutput(
       execution_, index, &output.type.operandType, output.buffer, output.type.GetOperandBlobByteSize()));
+
+  return Status::OK();
 }
 
-void Model::PrepareForExecution() {
-  if (prepared_for_exe_)
-    return;
+bool Model::SupportsDynamicOutputShape() const {
+  // dynamic output shape is only supported on Android API levle 29+
+  return GetAndroidSdkVer() >= 29 && dynamic_output_buffer_size_ > 0;
+}
 
-  ORT_ENFORCE(nullptr != compilation_,
-              "Error in PrepareForExecution, compilation_ is null");
+Status Model::PrepareForExecution() {
+  if (prepared_for_exe_)
+    return Status::OK();
+
+  ORT_RETURN_IF_NOT(nullptr != compilation_,
+                    "Error in PrepareForExecution, compilation_ is null");
 
   // Copy the shaper for calculate the dynamic output shape
   // based on the input shape
   shaper_for_exeuction_ = shaper_;
 
-  THROW_ON_ERROR(
+  RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &execution_));
   prepared_for_exe_ = true;
+
+  return Status::OK();
 }
 
 void Model::ResetExecution() {
@@ -118,36 +129,59 @@ void Model::ResetExecution() {
   prepared_for_exe_ = false;
 }
 
-void Model::Predict() {
-  PrepareForExecution();
+Status Model::Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes) {
+  ORT_RETURN_IF_ERROR(PrepareForExecution());
 
   ANeuralNetworksEvent* event = nullptr;
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
+  RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_startCompute(execution_, &event));
 
-  THROW_ON_ERROR(nnapi_->ANeuralNetworksEvent_wait(event));
+  RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksEvent_wait(event));
 
   nnapi_->ANeuralNetworksEvent_free(event);
 
+  dynamic_output_shapes.clear();
+  dynamic_output_shapes.reserve(dynamic_outputs.size());
+  for (const int32_t i : dynamic_outputs) {
+    uint32_t output_rank = 0;
+    RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_getOutputOperandRank(execution_, i, &output_rank));
+
+    std::vector<uint32_t> output_shape(output_rank);
+    RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_getOutputOperandDimensions(execution_, i, output_shape.data()));
+
+    dynamic_output_shapes.push_back(output_shape);
+  }
+
   ResetExecution();
+
+  return Status::OK();
 }
 
-void Model::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
-  PrepareForExecution();
+Status Model::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
+  ORT_RETURN_IF_ERROR(PrepareForExecution());
 
   for (size_t i = 0; i < inputs.size(); i++) {
-    SetInputBuffer(i, inputs[i]);
-    shaper_for_exeuction_.UpdateShape(input_names_[i], inputs[i].type.dimensions);
+    ORT_RETURN_IF_ERROR(SetInputBuffer(i, inputs[i]));
+    ORT_RETURN_IF_ERROR(
+        shaper_for_exeuction_.UpdateShape(input_names_[i], inputs[i].type.dimensions));
   }
 
-  shaper_for_exeuction_.UpdateDynamicDimensions();
+  ORT_RETURN_IF_ERROR(shaper_for_exeuction_.UpdateDynamicDimensions());
+
+  return Status::OK();
 }
 
-void Model::SetOutputBuffers(const std::vector<OutputBuffer>& outputs) {
-  PrepareForExecution();
+Status Model::SetOutputBuffers(const std::vector<OutputBuffer>& outputs) {
+  ORT_RETURN_IF_ERROR(PrepareForExecution());
 
   for (size_t i = 0; i < outputs.size(); i++) {
-    SetOutputBuffer(i, outputs[i]);
+    ORT_RETURN_IF_ERROR(SetOutputBuffer(i, outputs[i]));
   }
+
+  return Status::OK();
+}
+
+int32_t Model::GetAndroidSdkVer() const {
+  return nnapi_ ? nnapi_->android_sdk_version : 0;
 }
 
 #ifdef USENNAPISHAREDMEM

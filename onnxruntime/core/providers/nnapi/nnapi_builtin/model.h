@@ -85,11 +85,19 @@ class Model {
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
-  void SetInputBuffers(const std::vector<InputBuffer>& inputs);
-  void SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
+  Status SetInputBuffers(const std::vector<InputBuffer>& inputs);
+  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
+
+  // If we support the dynamic output shape,
+  // This is only for the case where output size cannot be determined at model execution time
+  // Do not use this for case a determined output shape can be returned from GetOutputType()
+  bool SupportsDynamicOutputShape() const;
+
+  size_t GetDynamicOutputBufferSize() const { return dynamic_output_buffer_size_; }
 
   // Execute the NNAPI model
-  void Predict();
+  // if there is dynamic output shape, will output the actual output shapes
+  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
 
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
@@ -101,6 +109,8 @@ class Model {
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
   ANeuralNetworksExecution* execution_{nullptr};
+
+  size_t dynamic_output_buffer_size_{1024};
 
   std::unique_ptr<NNMemory> mem_initializers_;
   std::vector<std::unique_ptr<NNMemory>> mem_persist_buffers_;
@@ -133,11 +143,13 @@ class Model {
 
   void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
-  void SetInputBuffer(const int32_t index, const InputBuffer& input);
-  void SetOutputBuffer(const int32_t index, const OutputBuffer& output);
+  Status SetInputBuffer(const int32_t index, const InputBuffer& input);
+  Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
-  void PrepareForExecution();
+  Status PrepareForExecution();
   void ResetExecution();
+
+  int32_t GetAndroidSdkVer() const;
 };
 
 }  // namespace nnapi
