@@ -21,7 +21,7 @@
 #include "core/framework/bfc_arena.h"
 #include "core/session/IOBinding.h"
 
-#if USE_CUDA
+#if defined(USE_CUDA) || defined(USE_HIP)
 #define BACKEND_PROC "GPU"
 #else
 #define BACKEND_PROC "CPU"
@@ -118,10 +118,14 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 
+#if defined(USE_CUDA) || defined(USE_HIP)
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cuda_provider_options.h"
+#elif USE_HIP
+#include "core/providers/hip/hip_provider_factory.h"
+#endif
 OrtDevice::DeviceId cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
@@ -158,6 +162,9 @@ std::string nuphar_settings;
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit,
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(OrtDevice::DeviceId device_id,
                                                                                size_t cuda_mem_limit,
                                                                                onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
@@ -308,7 +315,8 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 
 // ordered by default priority from highest to lowest. kCpuExecutionProvider should always be last.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMIGraphXExecutionProvider,
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
+                                                   kMIGraphXExecutionProvider, kHipExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
                                                    kNupharExecutionProvider, kVitisAIExecutionProvider, kArmNNExecutionProvider,
                                                    kAclExecutionProvider, kCpuExecutionProvider};
@@ -446,6 +454,10 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
+#endif
+    } else if (type == kHipExecutionProvider) {
+#ifdef USE_HIP
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_HIP(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -655,6 +667,9 @@ void addGlobalMethods(py::module& m, const Environment& env) {
 #ifdef USE_CUDA
             onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
 #endif
+#ifdef USE_HIP
+            onnxruntime::CreateExecutionProviderFactory_HIP(cuda_device_id, cuda_mem_limit, arena_extend_strategy),
+#endif
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
@@ -694,7 +709,7 @@ void addGlobalMethods(py::module& m, const Environment& env) {
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_HIP)
   /*
    * The following set_* methods are deprecated.
    * 
@@ -850,6 +865,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   binding
       .def(py::init<InferenceSession*>())
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
+        std::cout << "zwwx1======================" << std::endl;
         OrtValue mlvalue;
 
         InferenceSession* sess = io_binding->GetInferenceSession();
@@ -886,6 +902,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
       })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
+        std::cout << "zwwx2======================" << std::endl;
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
           throw std::runtime_error("Not a valid numpy type");
@@ -1143,6 +1160,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
+            std::cout<<"zwx=================================" << std::endl;
             OrtPybindThrowIfError(sess->Load());
             InitializeSession(sess, provider_types);
           },
