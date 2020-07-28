@@ -112,22 +112,17 @@ namespace Microsoft.ML.OnnxRuntime
 
             /* Get Tensor element type */  //TODO: Assumed value is Tensor, need to support non-tensor types in future
             IntPtr typeAndShape = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValue, out typeAndShape));
             TensorElementType elemType = TensorElementType.DataTypeMax;
             try
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValue, out typeAndShape));
-                unsafe
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
-                }
-
+                IntPtr el_type;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out el_type));
+                elemType = (TensorElementType)el_type;
             }
             finally
             {
-                if (typeAndShape != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
-                }
+                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
             }
 
             switch (elemType)
@@ -183,11 +178,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         internal static DisposableNamedOnnxValue CreateFromOnnxValue(string name, IntPtr nativeOnnxValue, OrtAllocator allocator)
         {
-            OnnxValueType onnxValueType;
-            unsafe
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(nativeOnnxValue, new IntPtr(&onnxValueType)));
-            }
+            IntPtr valueType;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(nativeOnnxValue, out valueType));
+            OnnxValueType onnxValueType = (OnnxValueType)valueType;
             switch (onnxValueType)
             {
                 case OnnxValueType.ONNX_TYPE_TENSOR:
@@ -206,22 +199,25 @@ namespace Microsoft.ML.OnnxRuntime
                     return new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, TensorElementType.DataTypeMax, null);
 
                 case OnnxValueType.ONNX_TYPE_MAP:
-                    IntPtr typeAndShape = IntPtr.Zero;
                     IntPtr nativeOnnxValueMapKeys = IntPtr.Zero;
                     IntPtr nativeOnnxValueMapValues = IntPtr.Zero;
-                    TensorElementType elemType = TensorElementType.DataTypeMax;
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 0, allocator.Pointer, out nativeOnnxValueMapKeys));
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValue(nativeOnnxValue, 1, allocator.Pointer, out nativeOnnxValueMapValues));
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValueMapKeys, out typeAndShape));
 
-                    unsafe
+                    IntPtr typeAndShape = IntPtr.Zero;
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(nativeOnnxValueMapKeys, out typeAndShape));
+                    TensorElementType elemType = TensorElementType.DataTypeMax;
+                    try 
                     {
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, new IntPtr(&elemType)));
+                        IntPtr el_type;
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out el_type));
+                        elemType = (TensorElementType)el_type;
                     }
-                    if (typeAndShape != IntPtr.Zero)
+                    finally
                     {
                         NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
                     }
+
                     switch (elemType)
                     {
                         case TensorElementType.Int64:

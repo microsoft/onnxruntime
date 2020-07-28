@@ -115,7 +115,7 @@ inline void IoBinding::BindOutput(const char* name, const MemoryInfo& mem_info) 
   ThrowOnError(GetApi().BindOutputToDevice(p_, name, mem_info));
 }
 
-inline std::vector<std::string> IoBinding::GetOutputNames(OrtAllocator* allocator) const {
+inline std::vector<std::string> IoBinding::GetOutputNamesHelper(OrtAllocator* allocator) const {
   std::vector<std::string> result;
   auto free_fn = [allocator](void* p) { if (p) allocator->Free(allocator, p); };
   using Ptr = std::unique_ptr<void, decltype(free_fn)>;
@@ -144,14 +144,14 @@ inline std::vector<std::string> IoBinding::GetOutputNames(OrtAllocator* allocato
 
 inline std::vector<std::string> IoBinding::GetOutputNames() const {
   AllocatorWithDefaultOptions allocator;
-  return GetOutputNames(allocator);
+  return GetOutputNamesHelper(allocator);
 }
 
 inline std::vector<std::string> IoBinding::GetOutputNames(Allocator& allocator) const {
-  return GetOutputNames(allocator);
+  return GetOutputNamesHelper(allocator);
 }
 
-inline std::vector<Value> Ort::IoBinding::GetOutputValues(OrtAllocator* allocator) const {
+inline std::vector<Value> Ort::IoBinding::GetOutputValuesHelper(OrtAllocator* allocator) const {
   std::vector<Value> result;
   size_t owned = 0;
   size_t output_count = 0;
@@ -185,12 +185,12 @@ inline std::vector<Value> Ort::IoBinding::GetOutputValues(OrtAllocator* allocato
 }
 
 inline std::vector<Value> Ort::IoBinding::GetOutputValues(Allocator& allocator) const {
-  return GetOutputValues(allocator);
+  return GetOutputValuesHelper(allocator);
 }
 
 inline std::vector<Value> Ort::IoBinding::GetOutputValues() const {
   AllocatorWithDefaultOptions allocator;
-  return GetOutputValues(allocator);
+  return GetOutputValuesHelper(allocator);
 }
 
 inline void IoBinding::ClearBoundInputs() {

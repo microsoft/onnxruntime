@@ -762,7 +762,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                  out IntPtr /*(OrtValue**)*/ outputValue);
         public static DOrtGetValue OrtGetValue;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValueType(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OnnxValueType*)*/ onnxtype);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValueType(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(OnnxValueType*)*/ onnxtype);
         public static DOrtGetValueType OrtGetValueType;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetOnnxTypeFromTypeInfo(IntPtr /*(OrtTypeInfo*)*/ typeinfo, IntPtr /*(OnnxValueType*)*/ onnxtype);
@@ -828,7 +828,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseTensorTypeAndShapeInfo(IntPtr /*(OrtTensorTypeAndShapeInfo*)*/ value);
         public static DOrtReleaseTensorTypeAndShapeInfo OrtReleaseTensorTypeAndShapeInfo;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, IntPtr /*(TensorElementType*)*/ output);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorElementType(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out IntPtr /*(TensorElementType*)*/ output);
         public static DOrtGetTensorElementType OrtGetTensorElementType;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetDimensionsCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out UIntPtr output);

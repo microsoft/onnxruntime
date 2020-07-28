@@ -343,8 +343,8 @@ struct Allocator : public Base<OrtAllocator> {
 
 struct IoBinding : public Base<OrtIoBinding> {
  private:
-  std::vector<std::string> GetOutputNames(OrtAllocator*) const;
-  std::vector<Value> GetOutputValues(OrtAllocator*) const;
+  std::vector<std::string> GetOutputNamesHelper(OrtAllocator*) const;
+  std::vector<Value> GetOutputValuesHelper(OrtAllocator*) const;
  public:
   explicit IoBinding(Session& session);
   void BindInput(const char* name, const Value&);
