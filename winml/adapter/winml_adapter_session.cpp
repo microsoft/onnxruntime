@@ -248,7 +248,7 @@ ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* s
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_options = inference_session->GetSessionOptions();
-  *num_threads = session_options.inter_op_param.thread_pool_size;
+  *num_threads = session_options.intra_op_param.thread_pool_size;
   return nullptr;
   API_IMPL_END
 }
