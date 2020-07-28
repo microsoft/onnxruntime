@@ -514,3 +514,4 @@ def testInstantiateORTTrainer(step_fn):
             assert output_dim[dim_idx] == dim.dim_value
             assert output_type == _utils.dtype_onnx_to_torch(
                 trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
+

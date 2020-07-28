@@ -3,6 +3,7 @@ import onnx
 import torch
 from inspect import signature
 
+import onnxruntime as ort
 from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
@@ -355,6 +356,9 @@ class ORTTrainer(object):
         # Perform user-specified post-processing
         if self.options._internal_use.extra_postprocess:
             self.options._internal_use.extra_postprocess(self._onnx_model)
+        
+        # TODO: Pass debug flag from ORTTrainerOptions._internal_use
+        self._create_ort_training_session()
         return
 
     def _prepare_model_input(self, inputs_desc, lr, loss_scale, *args, **kwargs):
@@ -371,32 +375,30 @@ class ORTTrainer(object):
 
         return input
 
-    def _create_ort_training_session(self):
+
+    def _create_ort_training_session(self, use_deterministic_compute=False):
         # Validating frozen_weights names
-        unused_frozen_weights = [n for n in options.utils.frozen_weights if n not in [
-            i.name for i in model.graph.initializer]]
+        unused_frozen_weights = [n for n in self.options.utils.frozen_weights if n not in [i.name for i in self._onnx_model.graph.initializer]]
         if unused_frozen_weights:
             raise RuntimeError("{} params from 'frozen_weights' not found in the ONNX model.".format(
                 unused_frozen_weights))
 
         # Get loss name from model description
-        loss_name = [name for item in self.model_desc.outputs if len(
-            item) == 3 and item[2]]
-        assert len(
-            loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
-        loss_name = loss[0]
+        loss_name = [item.name for item in self.model_desc.outputs if len(item) == 4 and item[2]]
+        assert len(loss_name) == 1, f"Only one loss output is supported ({len(loss_name)} were specified)"
+        loss_name = loss_name[0]
 
         # Parse optimizer parameters
         optimizer_attributes_map = {}
         optimizer_int_attributes_map = {}
         trainable_params = set()
-        for initializer in model.graph.initializer:
-            if initializer.name in frozen_weights:
+        for initializer in self._onnx_model.graph.initializer:
+            if initializer.name in self.options.utils.frozen_weights:
                 continue  # only trainable parameters are passed to the backend
             trainable_params.add(initializer.name)
             optimizer_attributes_map[initializer.name] = {}
             optimizer_int_attributes_map[initializer.name] = {}
-            for param_group in self.optimizer_config.params:
+            for param_group in self.optim_config.params:
                 if initializer.name not in param_group['params']:
                     continue  # keep looking for a matching param_group
                 optimizer_attributes_map[initializer.name] = {}
@@ -415,17 +417,19 @@ class ORTTrainer(object):
         # TrainingParameters
         ort_parameters = ort.TrainingParameters()
         ort_parameters.loss_output_name = loss_name
-        ort_parameters.use_mixed_precision = options.mixed_precision.enabled
-        ort_parameters.world_rank = options.distributed.world_rank
-        ort_parameters.world_size = options.distributed.world_size
-        ort_parameters.gradient_accumulation_steps = options.batch.gradient_accumulation_steps
-        ort_parameters.allreduce_post_accumulation = options.distributed.allreduce_post_accumulation
-        ort_parameters.deepspeed_zero_stage = options.distributed.deepspeed_zero_stage
-        ort_parameters.enable_grad_norm_clip = options.utils.grad_norm_clip
+        ort_parameters.use_mixed_precision = self.options.mixed_precision.enabled
+        ort_parameters.world_rank = self.options.distributed.world_rank
+        ort_parameters.world_size = self.options.distributed.world_size
+        ort_parameters.gradient_accumulation_steps = self.options.batch.gradient_accumulation_steps
+        ort_parameters.allreduce_post_accumulation = self.options.distributed.allreduce_post_accumulation
+        ort_parameters.deepspeed_zero_stage = self.options.distributed.deepspeed_zero_stage
+        ort_parameters.enable_grad_norm_clip = self.options.utils.grad_norm_clip
         ort_parameters.set_gradients_as_graph_outputs = False
-        ort_parameters.training_optimizer_name = optimizer_config.name
-        ort_parameters.lr_params_feed_name = optimizer_config.lr
-        ort_parameters.trainable_params = trainable_params
+        ort_parameters.training_optimizer_name = self.optim_config.name
+        
+        ort_parameters.lr_params_feed_name = str(self.optim_config.lr)
+        #ort_parameters.trainable_params = trainable_params
+        ort_parameters.weights_to_train = trainable_params
         ort_parameters.optimizer_attributes_map = optimizer_attributes_map
         ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
@@ -434,9 +438,8 @@ class ORTTrainer(object):
         session_options.use_deterministic_compute = use_deterministic_compute
 
         # TrainingSession
-        self._training_session = ort.TrainingSession(
-            model.SerializeToString(), ort_parameters, session_options)
+        self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters, session_options)
 
         # I/O bindings
-        self._train_io_binding = session.io_binding()
-        self._eval_io_binding = session.io_binding()
+        self._train_io_binding = self._training_session.io_binding()
+        self._eval_io_binding = self._training_session.io_binding()
