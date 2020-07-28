@@ -10,22 +10,22 @@ namespace onnxruntime {
 namespace hip {
 
 // broadcast by computing output coordinate from offset, using fast_divmod
-template <typename T, typename FuncT, bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T, typename T1, typename FuncT, bool lhs_need_compute, bool rhs_need_compute, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWise(
     int32_t output_rank,
     const int64_t* lhs_padded_strides,
     const T* lhs_data,
     const int64_t* rhs_padded_strides,
-    const T* rhs_data,
+    const T1* rhs_data,
     const fast_divmod* fdm_output_strides,
     T* output_data,
-    const FuncT func,
+    const FuncT& functor,
     HIP_LONG N) {
-HIP_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-T lvalue[NumElementsPerThread];
-T rvalue[NumElementsPerThread];
+  HIP_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  T lvalue[NumElementsPerThread];
+  T1 rvalue[NumElementsPerThread];
 
-HIP_LONG id = start;
+  HIP_LONG id = start;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
@@ -33,20 +33,16 @@ HIP_LONG id = start;
       HIP_LONG rhs_index = (rhs_need_compute ? 0 : id);
       // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
       HIP_LONG offset = id;
-      // #pragma unroll
-      // for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
-      //   if (dim >= output_rank) {
-      //     break;
-      //   }
+
       for (auto dim = 0; dim < output_rank; dim++) {
         int q, r;
         fdm_output_strides[dim].divmod(offset, q, r);
         if (lhs_need_compute) {
-            lhs_index += static_cast<int>(lhs_padded_strides[dim]) * q;
+          lhs_index += static_cast<int>(lhs_padded_strides[dim]) * q;
         }
 
         if (rhs_need_compute) {
-            rhs_index += static_cast<int>(rhs_padded_strides[dim]) * q;
+          rhs_index += static_cast<int>(rhs_padded_strides[dim]) * q;
         }
         offset = r;
       }
@@ -58,10 +54,10 @@ HIP_LONG id = start;
   }
 
   id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output_data[id] = func(lvalue[i], rvalue[i]);
+      output_data[id] = functor(lvalue[i], rvalue[i]);
 
       id += NumThreadsPerBlock;
     }
@@ -69,19 +65,19 @@ HIP_LONG id = start;
 }
 
 // for scalar broadcast or non-broadcast case
-template <bool IncL, bool IncR, typename T, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
+template <bool IncL, bool IncR, typename T, typename T1, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWiseSimple(
     const T* lhs_data,
-    const T* rhs_data,
+    const T1* rhs_data,
     T* output_data,
-    const FuncT func,
+    const FuncT& func,
     HIP_LONG N) {
   HIP_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T lvalue[NumElementsPerThread];
-  T rvalue[NumElementsPerThread];
+  T1 rvalue[NumElementsPerThread];
 
   HIP_LONG id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       lvalue[i] = lhs_data[IncL ? id : 0];
@@ -92,7 +88,7 @@ __global__ void _BinaryElementWiseSimple(
   }
 
   id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = func(lvalue[i], rvalue[i]);
@@ -103,20 +99,20 @@ __global__ void _BinaryElementWiseSimple(
 }
 
 // for rhs per-channel broadcast case
-template <typename T, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T, typename T1, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWiseRhsPerChannelBatch1(
     const T* lhs_data,
-    const T* rhs_data,
+    const T1* rhs_data,
     const fast_divmod fdm_H,
     T* output_data,
-    const FuncT func,
+    FuncT func,
     HIP_LONG N) {
   HIP_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T lvalue[NumElementsPerThread];
-  T rvalue[NumElementsPerThread];
+  T1 rvalue[NumElementsPerThread];
 
   HIP_LONG id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       HIP_LONG rhs_id = fdm_H.div(id);
@@ -128,7 +124,7 @@ __global__ void _BinaryElementWiseRhsPerChannelBatch1(
   }
 
   id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = func(lvalue[i], rvalue[i]);
@@ -138,21 +134,21 @@ __global__ void _BinaryElementWiseRhsPerChannelBatch1(
   }
 }
 
-template <typename T, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
+template <typename T, typename T1, typename FuncT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _BinaryElementWiseRhsPerChannelBatchN(
     const T* lhs_data,
-    const T* rhs_data,
+    const T1* rhs_data,
     const fast_divmod fdm_H,
     const fast_divmod fdm_C,
     T* output_data,
-    const FuncT func,
+    FuncT func,
     HIP_LONG N) {
   HIP_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T lvalue[NumElementsPerThread];
-  T rvalue[NumElementsPerThread];
+  T1 rvalue[NumElementsPerThread];
 
   HIP_LONG id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       HIP_LONG rhs_id = fdm_H.div(id);
@@ -168,7 +164,7 @@ __global__ void _BinaryElementWiseRhsPerChannelBatchN(
   }
 
   id = start;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = func(lvalue[i], rvalue[i]);
@@ -178,10 +174,10 @@ __global__ void _BinaryElementWiseRhsPerChannelBatchN(
   }
 }
 
-template <typename T, typename FuncT>
+template <typename T, typename T1, typename FuncT>
 void BinaryElementWiseNoBroadcastImpl(
     const T* lhs_data,
-    const T* rhs_data,
+    const T1* rhs_data,
     T* output_data,
     const FuncT& func,
     size_t count) {
@@ -190,21 +186,21 @@ void BinaryElementWiseNoBroadcastImpl(
 
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   HIP_LONG N = static_cast<HIP_LONG>(count);
-  hipLaunchKernelGGL((_BinaryElementWiseSimple<true, true, T, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-          lhs_data,
-          rhs_data,
-          output_data,
-          func,
-          N);
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWiseSimple<true, true, T, T1, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+      lhs_data,
+      rhs_data,
+      output_data,
+      func,
+      N);
 }
 
-template <typename T, typename FuncT>
+template <typename T, typename T1, typename FuncT>
 void BinaryElementWiseImpl(
     int32_t output_rank_or_simple_broadcast,
     const int64_t* lhs_padded_strides,
     const T* lhs_data,
     const int64_t* rhs_padded_strides,
-    const T* rhs_data,
+    const T1* rhs_data,
     const fast_divmod* fdm_output_strides,
     const fast_divmod& fdm_H,
     const fast_divmod& fdm_C,
@@ -217,85 +213,78 @@ void BinaryElementWiseImpl(
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   HIP_LONG N = static_cast<HIP_LONG>(count);
   if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::NoBroadcast)) {
-    hipLaunchKernelGGL((_BinaryElementWiseSimple<true, true, T, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  lhs_data,
-                  rhs_data,
-                  output_data,
-                  func,
-                  N);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWiseSimple<true, true, T, T1, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+        lhs_data,
+        rhs_data,
+        output_data,
+        func,
+        N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::LeftScalar)) {
-    hipLaunchKernelGGL((_BinaryElementWiseSimple<false, true, T, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  lhs_data,
-                  rhs_data,
-                  output_data,
-                  func,
-                  N);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWiseSimple<false, true, T, T1, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+        lhs_data,
+        rhs_data,
+        output_data,
+        func,
+        N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightScalar)) {
-    hipLaunchKernelGGL((_BinaryElementWiseSimple<true, false, T, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0,
-                  lhs_data,
-                  rhs_data,
-                  output_data,
-                  func,
-                  N);
+    _BinaryElementWiseSimple<true, false, T, T1, FuncT, GridDim::maxThreadsPerBlock,
+                             GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+        lhs_data,
+        rhs_data,
+        output_data,
+        func,
+        N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatch1)) {
-    hipLaunchKernelGGL((_BinaryElementWiseRhsPerChannelBatch1<T, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  lhs_data,
-                  rhs_data,
-                  fdm_H,
-                  output_data,
-                  func,
-                  N);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWiseRhsPerChannelBatch1<T, T1, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+        lhs_data,
+        rhs_data,
+        fdm_H,
+        output_data,
+        func,
+        N);
   } else if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::RightPerChannelBatchN)) {
-    hipLaunchKernelGGL((_BinaryElementWiseRhsPerChannelBatchN<T, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  lhs_data,
-                  rhs_data,
-                  fdm_H,
-                  fdm_C,
-                  output_data,
-                  func,
-                  N);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWiseRhsPerChannelBatchN<T, T1, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+        lhs_data,
+        rhs_data,
+        fdm_H,
+        fdm_C,
+        output_data,
+        func,
+        N);
   } else {
     if (lhs_padded_strides && rhs_padded_strides)
-      hipLaunchKernelGGL((_BinaryElementWise<T, FuncT, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  output_rank_or_simple_broadcast,
-                  lhs_padded_strides,
-                  lhs_data,
-                  rhs_padded_strides,
-                  rhs_data,
-                  fdm_output_strides,
-                  output_data,
-                  func,
-                  N);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWise<T, T1, FuncT, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          output_rank_or_simple_broadcast,
+          lhs_padded_strides,
+          lhs_data,
+          rhs_padded_strides,
+          rhs_data,
+          fdm_output_strides,
+          output_data,
+          func,
+          N);
     else if (lhs_padded_strides)
-      hipLaunchKernelGGL((_BinaryElementWise<T, FuncT, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  output_rank_or_simple_broadcast,
-                  lhs_padded_strides,
-                  lhs_data,
-                  rhs_padded_strides,
-                  rhs_data,
-                  fdm_output_strides,
-                  output_data,
-                  func,
-                  N);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWise<T, T1, FuncT, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          output_rank_or_simple_broadcast,
+          lhs_padded_strides,
+          lhs_data,
+          rhs_padded_strides,
+          rhs_data,
+          fdm_output_strides,
+          output_data,
+          func,
+          N);
     else
-      hipLaunchKernelGGL((_BinaryElementWise<T, FuncT, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>),
-                  dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
-                  output_rank_or_simple_broadcast,
-                  lhs_padded_strides,
-                  lhs_data,
-                  rhs_padded_strides,
-                  rhs_data,
-                  fdm_output_strides,
-                  output_data,
-                  func,
-                  N);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(_BinaryElementWise<T, T1, FuncT, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>), dim3(blocksPerGrid), dim3(GridDim::maxThreadsPerBlock), 0, 0, 
+          output_rank_or_simple_broadcast,
+          lhs_padded_strides,
+          lhs_data,
+          rhs_padded_strides,
+          rhs_data,
+          fdm_output_strides,
+          output_data,
+          func,
+          N);
   }
 }
 

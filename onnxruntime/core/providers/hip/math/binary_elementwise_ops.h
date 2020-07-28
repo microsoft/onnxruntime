@@ -3,12 +3,9 @@
 
 #pragma once
 
-#include "core/providers/cpu/tensor/utils.h"
-
-#include "core/providers/hip/shared_inc/fast_divmod.h"
 #include "core/providers/hip/hip_common.h"
-#include "core/providers/hip/shared_inc/hip_utils.h"
-
+#include "core/providers/hip/shared_inc/fast_divmod.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 namespace hip {
@@ -151,6 +148,12 @@ struct BinaryElementwisePreparation {
   }
 };
 
+Status ComputeOutputShape(
+    const std::string& node_name,
+    const TensorShape& lhs_shape,
+    const TensorShape& rhs_shape,
+    TensorShape& out_shape);
+
 Status BinaryElementwiseBroadcastPrepare(
     const Tensor* lhs_tensor,
     const Tensor* rhs_tensor,
@@ -207,6 +210,13 @@ class Div final : public BinaryElementwise<ShouldBroadcast> {
 };
 
 template <typename T>
+class Pow_7 final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  Pow_7(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+// Since version 12
 class Pow final : public BinaryElementwise<ShouldBroadcast> {
  public:
   Pow(const OpKernelInfo& info) : BinaryElementwise(info) {}
@@ -240,54 +250,6 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
  public:
   PRelu(const OpKernelInfo& info) : BinaryElementwise(info) {
   }
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T, typename HipT>
-class VariadicInputBase : public HipKernel {
- public:
-  VariadicInputBase(const OpKernelInfo& info) : HipKernel(info) {}
-
-  Status ComputeInternal(OpKernelContext*) const override {
-    return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
-  }
-
-  typedef void (*ImplCompute)(int32_t output_rank_or_simple_broadcast,
-                              const int64_t* lhs_padded_strides,
-                              const HipT* lhs_data,
-                              const int64_t* rhs_padded_strides,
-                              const HipT* rhs_data,
-                              const fast_divmod* fdm_output_strides,
-                              const fast_divmod& fdm_H,
-                              const fast_divmod& fdm_C,
-                              HipT* output_data,
-                              size_t count);
-
-  Status ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const;
-};
-
-// Sum allows varadic inputs, and it uses binary elementwise Add in implementation
-template <typename T>
-class Sum final : public VariadicInputBase<T, typename ToHipType<T>::MappedType> {
- public:
-  Sum(const OpKernelInfo& info) : VariadicInputBase<T, typename ToHipType<T>::MappedType>(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Max final : public VariadicInputBase<T, typename ToHipType<T>::MappedType> {
- public:
-  Max(const OpKernelInfo& info) : VariadicInputBase<T, typename ToHipType<T>::MappedType>(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
-
-template <typename T>
-class Min final : public VariadicInputBase<T, typename ToHipType<T>::MappedType> {
- public:
-  Min(const OpKernelInfo& info) : VariadicInputBase<T, typename ToHipType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
