@@ -94,10 +94,16 @@ class ORTGlueTest(unittest.TestCase):
         assert_allclose(results['loss'], expected_loss, rtol=self.rtol)
 
     def test_bert_with_mrpc(self):
-        expected_acc = 0.8553921568627451
-        expected_f1 = 0.8970331588132635
-        expected_acc_and_f1 = 0.8762126578380043
-        expected_loss = 0.42737212419217707
+        if self.local_rank == -1:
+            expected_acc = 0.8553921568627451
+            expected_f1 = 0.8970331588132635
+            expected_acc_and_f1 = 0.8762126578380043
+            expected_loss = 0.42737212419217707
+        elif self.local_rank == 0:
+            expected_acc = 0.8431372549019608
+            expected_f1 = 0.8904109589041096
+            expected_acc_and_f1 = 0.8667741069030352
+            expected_loss = 0.4239199038083647
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=False)
         if self.local_rank in [-1, 0]:
