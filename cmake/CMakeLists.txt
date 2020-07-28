@@ -847,10 +847,6 @@ configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_c
 
 if (onnxruntime_USE_CUDA)
   add_definitions(-DUSE_CUDA=1)
-  if(NOT CMAKE_CUDA_COMPILER AND ${CMAKE_LIBRARY_ARCHITECTURE} STREQUAL "aarch64-linux-gnu")
-    # Cmake can't find NVCC in its usual place on Jetson
-    set (CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
-  endif()
   #The following 6 lines are copied from https://gitlab.kitware.com/cmake/cmake/issues/17559
   set( CMAKE_CUDA_FLAGS "" CACHE STRING "" )
   if ( CMAKE_CUDA_FLAGS )
