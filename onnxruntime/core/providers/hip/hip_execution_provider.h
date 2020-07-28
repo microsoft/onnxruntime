@@ -80,6 +80,7 @@ class HIPExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
+  void UpdateProviderOptionsInfo();
 
  private:
   OrtDevice::DeviceId device_id_;
