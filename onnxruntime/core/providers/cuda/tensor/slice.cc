@@ -67,7 +67,7 @@ static Status SliceImpCore(const void* input_data, void* output_data,
                            size_t element_size, size_t dimension_count,
                            const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer,
                            const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
-                           TensorShape output_shape) {
+                           TensorShape& output_shape) {
   if (output_shape.Size() == 0) {
     return Status::OK();
   }
@@ -88,21 +88,21 @@ namespace SliceCuda {
 Status Impl(const void* input_data,
             const TensorShape& input_shape,
             void* output_data,
-            SliceOp::PrepareForComputeMetadata& prepare_metadata,
+            SliceOp::PrepareForComputeMetadata& compute_metadata,
             size_t element_size) {
   const auto& input_dimensions = input_shape.GetDims();
   size_t dimension_count = input_dimensions.size();
   // if we are able to flatten the output dims we updated 'starts' and 'steps' to match the smaller number of dims.
   // update dimension_count to match.
-  if (prepare_metadata.p_flattened_output_dims) {
-    dimension_count = prepare_metadata.p_flattened_output_dims->size();
+  if (compute_metadata.p_flattened_output_dims_) {
+    dimension_count = compute_metadata.p_flattened_output_dims_->size();
   }
 
-  TArray<int64_t> starts_buffer(prepare_metadata.starts);
-  TArray<int64_t> steps_buffer(prepare_metadata.steps);
+  TArray<int64_t> starts_buffer(compute_metadata.starts_);
+  TArray<int64_t> steps_buffer(compute_metadata.steps_);
   TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
   const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.Data(), input_strides.Size());
-  if (prepare_metadata.p_flattened_output_dims != nullptr) {
+  if (compute_metadata.p_flattened_output_dims_ != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
     // the flattened output dimensions.
@@ -120,12 +120,13 @@ Status Impl(const void* input_data,
   }
 
   TensorPitches original_output_strides(
-      prepare_metadata.p_flattened_output_dims != nullptr ? prepare_metadata.flattened_output_dims : prepare_metadata.output_dims);
+      compute_metadata.p_flattened_output_dims_ != nullptr ? compute_metadata.flattened_output_dims_ : compute_metadata.output_dims_);
   TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
   for (int32_t i = 0; i < static_cast<int32_t>(original_output_strides.size()); ++i) {
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
+  TensorShape output_shape(compute_metadata.output_dims_);
   ORT_RETURN_IF_ERROR(SliceImpCore(input_data,
                                    output_data,
                                    element_size,
@@ -134,7 +135,7 @@ Status Impl(const void* input_data,
                                    steps_buffer,
                                    input_strides,
                                    output_strides,
-                                   TensorShape(prepare_metadata.output_dims)));
+                                   output_shape));
 
   return Status::OK();
 }
@@ -147,26 +148,24 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   auto& input_dimensions = input_tensor->Shape().GetDims();
   if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
 
-  SliceOp::PrepareForComputeMetadata prepare_metadata(input_dimensions);
+  SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
 
   if (dynamic) {
     std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
     FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
                          ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
-    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes,
-                                          input_steps, input_dimensions, prepare_metadata));
+    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
   } else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(),
-                                          input_dimensions, prepare_metadata));
+    ORT_RETURN_IF_ERROR(PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(), compute_metadata));
   }
 
-  auto* output_tensor = ctx->Output(0, prepare_metadata.output_dims);
+  auto* output_tensor = ctx->Output(0, compute_metadata.output_dims_);
 
   return SliceCuda::Impl(input_tensor->DataRaw(),
                          input_tensor->Shape(),
                          output_tensor->MutableDataRaw(),
-                         prepare_metadata,
+                         compute_metadata,
                          input_tensor->DataType()->Size());
 }
 

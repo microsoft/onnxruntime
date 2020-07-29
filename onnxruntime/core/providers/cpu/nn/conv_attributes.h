@@ -136,18 +136,20 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-  // TODO: Placeholder name
-  Status InferOutputShape2(const TensorShape& input_shape,
-                           const std::vector<int64_t>& kernel_shape,
-                           const std::vector<int64_t>& strides_p,
-                           const std::vector<int64_t>& dilations_p,
-                           std::vector<int64_t>& pads_p,
-                           std::vector<int64_t>& output_shape,
-                           std::vector<int64_t>& output_shape_with_revised_pads,
-                           bool& post_slicing_needed,
-                           std::vector<int64_t>& slice_starts,
-                           std::vector<int64_t>& slice_ends,
-                           std::vector<int64_t>& slice_axes) const {
+  // Use this method when pads are to be made symmetrical (if they are asymmetric)
+  // and to collect metadata regarding the portion of the output (with "adjusted" pads)
+  // to be sliced off to make the output correspond to the "actual" asymmetric paddings
+  Status InferOutputShapeWithAdjustedPads(const TensorShape& input_shape,
+                                          const std::vector<int64_t>& kernel_shape,
+                                          const std::vector<int64_t>& strides_p,
+                                          const std::vector<int64_t>& dilations_p,
+                                          std::vector<int64_t>& pads_p,
+                                          std::vector<int64_t>& output_shape,
+                                          std::vector<int64_t>& output_shape_with_revised_pads,
+                                          bool& post_slicing_needed,
+                                          std::vector<int64_t>& slice_starts,
+                                          std::vector<int64_t>& slice_ends,
+                                          std::vector<int64_t>& slice_axes) const {
     size_t rank = input_shape.NumDimensions();
     for (size_t dim = 0; dim < rank; ++dim) {
       if (dim >= strides_p.size() || dim >= kernel_shape.size() ||
@@ -191,8 +193,7 @@ struct ConvAttributes {
         if (pad_head < pad_tail) {
           int64_t excess_output_head = 0;
 
-          // pad_head is under-padded
-          // So "over-pad" it
+          // pad_head is under-padded, so "adjust" it by adding more padding
           while (pad_head < pad_tail) {
             // keep over-padding in multiples of 'strides' so that
             // the filter slides over correctly

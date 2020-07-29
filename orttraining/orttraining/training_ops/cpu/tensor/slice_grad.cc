@@ -35,19 +35,18 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3), context->Input<Tensor>(4),
                        context->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
 
-  SliceOp::PrepareForComputeMetadata prepare_for_compute(data_shape.GetDims());
-  ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
-                                        data_shape.GetDims(), prepare_for_compute));
+  SliceOp::PrepareForComputeMetadata compute_metadata(data_shape.GetDims());
+  ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
   MLDataType T_type = grad.DataType();
   if (T_type == DataTypeImpl::GetType<float>()) {
-    return ComputeImpl<float>(context, output, prepare_for_compute.output_dims, prepare_for_compute.p_flattened_output_dims,
-                              prepare_for_compute.starts, prepare_for_compute.steps);
+    return ComputeImpl<float>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_output_dims_,
+                              compute_metadata.starts_, compute_metadata.steps_);
   }
 
   if (T_type == DataTypeImpl::GetType<double>()) {
-    return ComputeImpl<double>(context, output, prepare_for_compute.output_dims, prepare_for_compute.p_flattened_output_dims,
-                               prepare_for_compute.starts, prepare_for_compute.steps);
+    return ComputeImpl<double>(context, output, compute_metadata.output_dims_, compute_metadata.p_flattened_output_dims_,
+                               compute_metadata.starts_, compute_metadata.steps_);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type for T or Tind not supported yet in SliceGrad.");

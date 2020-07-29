@@ -42,17 +42,14 @@ static Status SliceOutUnwantedOutputSection(const void* input_data,
                                             const std::vector<int64_t>& ends,
                                             const std::vector<int64_t>& axes,
                                             size_t element_size) {
-  ORT_ENFORCE(ends.size() == axes.size());
-  ORT_ENFORCE(starts.size() == axes.size());
+  SliceOp::PrepareForComputeMetadata compute_metadata(input_dims);
 
-  SliceOp::PrepareForComputeMetadata prepare_for_slice_compute(input_dims);
-
-  SliceBase::PrepareForCompute(starts, ends, axes, input_dims, prepare_for_slice_compute);
+  SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata);
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(prepare_for_slice_compute.output_dims == output_dims);
+  ORT_ENFORCE(compute_metadata.output_dims_ == output_dims);
 
-  return SliceCuda::Impl(input_data, input_dims, output_data, prepare_for_slice_compute, element_size);
+  return SliceCuda::Impl(input_data, input_dims, output_data, compute_metadata, element_size);
 }
 
 template <typename T>
@@ -86,7 +83,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneuously with different batch_size
     bool input_dims_changed = (s_.last_x_dims != x_dims);
     bool w_dims_changed = (s_.last_w_dims != w_dims);
-    if (input_dims_changed || w_dims_changed || true) {
+    if (input_dims_changed || w_dims_changed) {
       if (input_dims_changed)
         s_.last_x_dims = x_dims;
 
@@ -134,9 +131,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       std::vector<int64_t> slice_axes;
       slice_axes.reserve(rank);
 
-      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape2(x_shape.Slice(2), kernel_shape,
-                                                        strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                        post_slicing_required, slice_starts, slice_ends, slice_axes));
+      ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(x_shape.Slice(2), kernel_shape,
+                                                                       strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
+                                                                       post_slicing_required, slice_starts, slice_ends, slice_axes));
       ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
       s_.y_dims = y_dims;
       s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
@@ -151,8 +148,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
         y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
       } else {
         // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-        y_data = reinterpret_cast<CudaT*>(s_.AllocAndCache(allocator,
-                                                           TensorShape(y_dims_with_adjusted_pads).Size() * element_size));
+        y_data = reinterpret_cast<CudaT*>(s_.AllocMemoryForCuDnnConvResults(allocator,
+                                                                            TensorShape(y_dims_with_adjusted_pads).Size() * element_size));
       }
 
       std::vector<int64_t> x_dims_cudnn = x_dims;
@@ -238,7 +235,8 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
       if (Y->Shape().Size() == 0)
         return Status::OK();
 
-      y_data = !s_.post_slicing_required ? reinterpret_cast<CudaT*>(Y->template MutableData<T>()) : reinterpret_cast<CudaT*>(s_.cached_memory);
+      y_data = !s_.post_slicing_required ? reinterpret_cast<CudaT*>(Y->template MutableData<T>())
+                                         : reinterpret_cast<CudaT*>(s_.cached_memory_for_cudnn_results);
     }
 
     const auto alpha = Consts<CudaT>::One;
@@ -267,7 +265,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
                                            y_data));
     }
 
-    // To deal with asymmetric padding, we may have over-padded on one or both sides of a spatial dimension
+    // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
     // This may have lead to extra results that are unnecessary and hence we slice that off here
     if (s_.post_slicing_required) {
       SliceOutUnwantedOutputSection(y_data, s_.y_dims_with_adjusted_pads, Y->MutableDataRaw(),

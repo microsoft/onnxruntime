@@ -10,18 +10,20 @@ namespace onnxruntime {
 namespace SliceOp {
 struct PrepareForComputeMetadata {
   PrepareForComputeMetadata() = delete;
-  PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions) {
+  PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
+      : input_dimensions_(input_dimensions) {
     size_t dimension_count = input_dimensions.size();
-    starts.resize(dimension_count, 0);
-    steps.resize(dimension_count, 1);
-    output_dims = input_dimensions;
+    starts_.resize(dimension_count, 0);
+    steps_.resize(dimension_count, 1);
+    output_dims_ = input_dimensions;
   }
 
-  std::vector<int64_t> starts;
-  std::vector<int64_t> steps;
-  std::vector<int64_t> output_dims;
-  std::vector<int64_t> flattened_output_dims;
-  std::vector<int64_t>* p_flattened_output_dims = &flattened_output_dims;
+  const std::vector<int64_t>& input_dimensions_;
+  std::vector<int64_t> starts_;
+  std::vector<int64_t> steps_;
+  std::vector<int64_t> output_dims_;
+  std::vector<int64_t> flattened_output_dims_;
+  std::vector<int64_t>* p_flattened_output_dims_ = &flattened_output_dims_;
 };
 }  // namespace SliceOp
 
@@ -32,16 +34,14 @@ class SliceBase {
   static Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                   const std::vector<int64_t>& raw_ends,
                                   const std::vector<int64_t>& raw_axes,
-                                  const std::vector<int64_t>& input_dimensions,
-                                  SliceOp::PrepareForComputeMetadata& prepare_metadata);
+                                  SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // compute output_dims with steps (Slice V10)
   static Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                   const std::vector<int64_t>& raw_ends,
                                   const std::vector<int64_t>& raw_axes,
                                   const std::vector<int64_t>& raw_steps,
-                                  const std::vector<int64_t>& input_dimensions,
-                                  SliceOp::PrepareForComputeMetadata& prepare_metadata);
+                                  SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // Slice V10 & DynamicSlice
   static void FillVectorsFromInput(const Tensor& start_tensor,

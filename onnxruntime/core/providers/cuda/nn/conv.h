@@ -126,21 +126,31 @@ struct CudnnConvState {
   CudnnTensor y_tensor;
   CudnnConvolutionDescriptor conv_desc;
 
-  // Warning: Not thread-safe. Synchronization must be taken care of at call site.
-  void* AllocAndCache(AllocatorPtr allocator, size_t size_in_bytes) {
-    // Free already allocated and cached memory if any
-    if (cached_memory) {
-      cached_allocator->Free(cached_memory);
+  /*
+   Warning: Not thread-safe. Synchronization must be taken care of by the client code.
+   Will return cached memory if the requested size is the same as the cached memory's size
+  */
+  void* AllocMemoryForCuDnnConvResults(AllocatorPtr allocator, size_t size_in_bytes) {
+    // Memory has already been allocated and the requested size matches allocated memory's size
+    if (cached_memory_for_cudnn_results && size_in_bytes == cached_memory_size_in_bytes) {
+      return cached_memory_for_cudnn_results;
     }
 
-    cached_allocator = allocator;
-    cached_memory = cached_allocator->Alloc(size_in_bytes);
+    // Free already allocated memory if any
+    if (cached_memory_for_cudnn_results) {
+      cached_allocator->Free(cached_memory_for_cudnn_results);
+    }
 
-    if (!cached_memory) {
+    // This may be a different allocator than the one already cached, so cache it for releasing allocated memory
+    cached_allocator = allocator;
+    cached_memory_for_cudnn_results = cached_allocator->Alloc(size_in_bytes);
+    cached_memory_size_in_bytes = size_in_bytes;
+
+    if (!cached_memory_for_cudnn_results) {
       ORT_THROW(ONNXRUNTIME, RUNTIME_EXCEPTION, "Unable to allocate memory in CudnnConvState");
     }
 
-    return cached_memory;
+    return cached_memory_for_cudnn_results;
   }
 
   struct PerfResultParams {
@@ -159,16 +169,17 @@ struct CudnnConvState {
 
   // Some temporary buffer to write CuDNN Conv outputs to before
   // the slicing operation to remove extraneous results
-  void* cached_memory = nullptr;
-  AllocatorPtr cached_allocator;
+  void* cached_memory_for_cudnn_results = nullptr;
+  AllocatorPtr cached_allocator = nullptr;
+  size_t cached_memory_size_in_bytes = 0;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
 
   ~CudnnConvState() {
     // Free any cached memory if applicable
-    if (cached_memory) {
-      cached_allocator->Free(cached_memory);
+    if (cached_memory_for_cudnn_results) {
+      cached_allocator->Free(cached_memory_for_cudnn_results);
     }
   }
 };
