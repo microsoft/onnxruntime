@@ -41,9 +41,11 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
     RETURN_HR_IF_NOT_OK_MSG(ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value()),
                             ort_api);
   }
-  for (auto&& override : named_dimension_overrides_) {
-    std::string narrow_name = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(override.Key().c_str());
-    ort_api->AddFreeDimensionOverrideByName(session_options.get(), narrow_name.c_str(), override.Value());
+  if (named_dimension_overrides_) {
+    for (auto&& override : named_dimension_overrides_) {
+      std::string narrow_name = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(override.Key().c_str());
+      ort_api->AddFreeDimensionOverrideByName(session_options.get(), narrow_name.c_str(), override.Value());
+    }
   }
 
   OrtSession* ort_session = nullptr;
