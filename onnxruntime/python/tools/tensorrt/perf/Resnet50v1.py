@@ -7,27 +7,27 @@ import onnx
 from onnx import numpy_helper
 from BaseModel import *
 
-class Resnet50(BaseModel):
-    def __init__(self, model_name='Resnet50-v2', providers=None): 
+class Resnet50v1(BaseModel):
+    def __init__(self, model_name='Resnet50-v1', providers=None): 
         BaseModel.__init__(self, model_name, providers)
         self.inputs_ = []
         self.ref_outputs_ = []
 
-        self.model_path_ = os.path.join(os.getcwd(), "resnet50v2", "resnet50v2.onnx")
+        self.model_path_ = os.path.join(os.getcwd(), "resnet50v1", "resnet50v1.onnx")
 
         if not os.path.exists(self.model_path_):
-            subprocess.run("wget https://s3.amazonaws.com/onnx-model-zoo/resnet/resnet50v2/resnet50v2.tar.gz", shell=True, check=True)
+            subprocess.run("wget https://s3.amazonaws.com/onnx-model-zoo/resnet/resnet50v1/resnet50v1.tar.gz", shell=True, check=True)
             # subprocess.run("wget https://raw.githubusercontent.com/anishathalye/imagenet-simple-labels/master/imagenet-simple-labels.json", shell=True, check=True)
-            subprocess.run("tar zxf resnet50v2.tar.gz", shell=True, check=True)
+            subprocess.run("tar zxf resnet50v1.tar.gz", shell=True, check=True)
 
-        self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "resnet50v2") 
+        self.onnx_zoo_test_data_dir_ = os.path.join(os.getcwd(), "resnet50v1") 
 
 
     def preprocess(self):
         self.load_input_and_output()
 
     def load_input_and_output(self):
-        test_data_dir = 'resnet50v2/test_data_set'
+        test_data_dir = 'resnet50v1/test_data_set'
         test_data_num = 3
 
         # Load inputs

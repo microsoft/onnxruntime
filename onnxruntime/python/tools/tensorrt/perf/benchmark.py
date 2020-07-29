@@ -16,9 +16,13 @@ import pprint
 import torch
 
 from BERTSquad import *
-from Resnet50 import *
+from Resnet18v1 import *
+from Resnet18v2 import *
+from Resnet50v1 import *
+from Resnet50v2 import *
 from Resnet101 import *
-from Resnet152 import *
+from Resnet152v1 import *
+from Resnet152v2 import *
 from FastRCNN import *
 from MaskRCNN import *
 from SSD import *
@@ -38,7 +42,8 @@ from TinyYolov2 import *
 from TinyYolov3 import *
 from YoloV3 import *
 from YoloV4 import *
-from Vgg import *
+from Vgg19bn import *
+from Vgg16 import *
 from Zfnet512 import *
 from Retinanet import *
 from Resnet101DucHdc import *
@@ -57,12 +62,17 @@ MODELS = {
     "ssd": (SSD, "ssd"),
     "tiny-yolov2": (TinyYolov2, "tiny-yolov2"),
     "tiny-yolov3": (TinyYolov3, "tiny-yolov3"),
-    "resnet152": (Resnet152, "resnet152"),
+    "resnet152v1": (Resnet152v1, "resnet152v1"),
+    "resnet152v2": (Resnet152v2, "resnet152v2"),
     "inception-v2": (InceptionV2, "inception-v2"),
     "mobilenet-v2": (Mobilenet, "mobilenet-v2"),
     "zfnet512": (Zfnet512, "zfnet512"),
-    "vgg19-bn": (Vgg, "vgg19-bn"),
-    "resnet50": (Resnet50, "resnet50"),
+    "vgg16": (Vgg16, "vgg16"),
+    "vgg19-bn": (Vgg19bn, "vgg19-bn"),
+    "resnet18v1": (Resnet18v1, "resnet18v1"),
+    "resnet18v2": (Resnet18v2, "resnet18v2"),
+    "resnet50v1": (Resnet50v1, "resnet50v1"),
+    "resnet50v2": (Resnet50v2, "resnet50v2"),
     "resnet101": (Resnet101, "resnet101"),
     "inception-v1": (InceptionV1, "inception-v1"),
     "shufflenet-v1": (ShufflenetV1, "shufflenet-v1"),
