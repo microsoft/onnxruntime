@@ -766,7 +766,8 @@ void BroadcastOneSpan(concurrency::ThreadPool* tp, double unit_cost, TOutput* ou
                     const TInput* input0_ptr, int64_t input0_size, const TInput* input1_ptr, int64_t input1_size,
                              Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   if (input0_size == 1) {
-    concurrency::ThreadPool::TryParallelFor(tp, output_size, unit_cost,
+    concurrency::ThreadPool::TryParallelFor(tp, output_size, 
+                                {static_cast<float>(sizeof(TInput)), static_cast<float>(sizeof(TOutput)), unit_cost},
                                [=](std::ptrdiff_t first, std::ptrdiff_t last) {
                                  size_t count = static_cast<size_t>(last - first);
                                  EigenVectorMap<TOutput> output_map(output_ptr + first, count);
@@ -774,7 +775,8 @@ void BroadcastOneSpan(concurrency::ThreadPool* tp, double unit_cost, TOutput* ou
                                  input0scalar(output_map, *input0_ptr, input1_map);
                                });
   } else if (input1_size == 1) {
-    concurrency::ThreadPool::TryParallelFor(tp, output_size, unit_cost,
+    concurrency::ThreadPool::TryParallelFor(tp, output_size,
+                                {static_cast<float>(sizeof(TInput)), static_cast<float>(sizeof(TOutput)), unit_cost},
                                [=](std::ptrdiff_t first, std::ptrdiff_t last) {
                                  size_t count = static_cast<size_t>(last - first);
                                  EigenVectorMap<TOutput> output_map(output_ptr + first, count);
@@ -782,7 +784,8 @@ void BroadcastOneSpan(concurrency::ThreadPool* tp, double unit_cost, TOutput* ou
                                  input1scalar(output_map, input0_map, *input1_ptr);
                                });
   } else {
-    concurrency::ThreadPool::TryParallelFor(tp, output_size, unit_cost,
+    concurrency::ThreadPool::TryParallelFor(tp, output_size,
+                                {static_cast<float>(sizeof(TInput)), static_cast<float>(sizeof(TOutput)), unit_cost},
                                [=](std::ptrdiff_t first, std::ptrdiff_t last) {
                                  size_t count = static_cast<size_t>(last - first);
                                  EigenVectorMap<TOutput> output_map(output_ptr + first, count);
@@ -816,7 +819,8 @@ Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1S
                        input0scalar, input1scalar, general);
     } else {
       concurrency::ThreadPool::TryParallelFor(
-          tp, output_size / span_size, unit_cost * span_size,
+          tp, output_size / span_size,
+          {static_cast<float>(sizeof(TInput)) * span_size, static_cast<float>(sizeof(TOutput)) * span_size, unit_cost * span_size},
           [=, &bc, &output_tensor](std::ptrdiff_t first_span, std::ptrdiff_t last_span) {
             TBroadcaster<TInput, TInput> span_bc(bc);
             TBroadcastOutput<TOutput> span_output(span_size, output_tensor, first_span * span_size, last_span * span_size);
