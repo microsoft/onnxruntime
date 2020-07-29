@@ -38,6 +38,13 @@ class UsageError(BaseError):
         super().__init__(message)
 
 
+class TestFailure(BaseError):
+    """Test failure."""
+
+    def __init__(self, *messages):
+        super().__init__("\n".join(messages))
+
+
 def _check_python_version():
     # According to the BUILD.md, python 3.5+ is required:
     # Python 2 is definitely not supported and it should be safer to consider
@@ -1104,6 +1111,22 @@ def run_training_python_frontend_tests(cwd):
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
+
+    def mpirun_subprocess(mpicmd, cwd):
+        mpi = subprocess.Popen(
+            mpicmd,
+            cwd=cwd,
+            shell=True)
+        mpi.wait()
+        if mpi.returncode != 0:
+            raise TestFailure(mpicmd, "Test failed with returncode={}.".format(mpi.returncode))
+
+    import torch
+    ngpus = torch.cuda.device_count()
+    if ngpus > 1:
+        run_glue_mpicmd = 'mpirun -n {} python orttraining_run_glue.py'.format(ngpus)
+        print("RUN: ", run_glue_mpicmd)
+        mpirun_subprocess(run_glue_mpicmd, cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
