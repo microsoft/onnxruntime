@@ -628,8 +628,8 @@ class ORTTrainer():
         self.world_rank = world_rank
         self.world_size = world_size
         self.use_mixed_precision = use_mixed_precision
-        
-        self.original_model_state_keys = list(model.state_dict().keys())
+
+        self.original_model_state_keys = list(model.state_dict().keys()) if hasattr(model, 'state_dict') else []
 
         self.session = None
         self.device_ = device
@@ -777,9 +777,12 @@ class ORTTrainer():
 
         # Need to remove redundant initializers and name suffices to map back to original torch state names
         torch_state_to_return = {}
-        for key in self.original_model_state_keys:
-            if key in torch_state:
-                torch_state_to_return[key] = torch_state[key]
+        if self.original_model_state_keys:
+            for key in self.original_model_state_keys:
+                if key in torch_state:
+                    torch_state_to_return[key] = torch_state[key]
+        else:
+            torch_state_to_return = torch_state
         return torch_state_to_return
 
     def load_state_dict(self, state_dict, strict=False):
