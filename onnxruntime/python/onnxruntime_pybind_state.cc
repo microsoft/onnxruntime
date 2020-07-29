@@ -865,7 +865,6 @@ void addObjectMethods(py::module& m, Environment& env) {
   binding
       .def(py::init<InferenceSession*>())
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object arr_on_cpu) -> void {
-        std::cout << "zwwx1======================" << std::endl;
         OrtValue mlvalue;
 
         InferenceSession* sess = io_binding->GetInferenceSession();
@@ -902,7 +901,6 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
       })
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object element_type, std::vector<int64_t> shape, int64_t data_ptr) -> void {
-        std::cout << "zwwx2======================" << std::endl;
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype))
           throw std::runtime_error("Not a valid numpy type");
@@ -1160,7 +1158,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
-            std::cout<<"zwx=================================" << std::endl;
             OrtPybindThrowIfError(sess->Load());
             InitializeSession(sess, provider_types);
           },
