@@ -17,7 +17,6 @@ def run_postprocess(model):
     # this post pass is not required for pytorch > 1.6
     model = fuse_softmaxNLL_to_softmaxCE(model)
 
-    model = layer_norm_transform(model)
     model = fix_expand_shape(model)
     model = fix_expand_shape_pt_1_5(model)
     return model
@@ -207,20 +206,22 @@ def add_const(model, name, output, t_value = None, f_value = None):
     return const_node
 
 def layer_norm_transform(model):
+    # DEPRECATED: This pass is no longer needed as the transform is handled at the backend.
     # Converting below subgraph
     #
     # input
     #   |
     # ReduceMean
-    #  __|_____
-    # |        |
-    # Sub      Sub
-    # |        |
-    # |   (optional) Cast
-    # |        |
+    #   |
+    #  Sub                         Constant
+    #  _||_____                       |
+    # |        |                      |
+    # |        |                      |
+    # |   (optional) Cast      (optional) Cast
+    # |        |                      |
+    # |        |  ____________________|
+    # |        | |
     # |        Pow
-    # |        |
-    # |   (optional) Cast
     # |        |
     # |       ReduceMean
     # |        |

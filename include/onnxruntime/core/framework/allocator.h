@@ -54,10 +54,10 @@ struct OrtDevice {
 
   std::string ToString() const {
     std::ostringstream ostr;
-    ostr << "Device: ["
-         << " type:" << static_cast<int>(device_type)
-         << " memory_type:" << static_cast<int>(memory_type)
-         << " device_id:" << device_id
+    ostr << "Device:["
+         << "DeviceType:" << static_cast<int>(device_type)
+         << " MemoryType:" << static_cast<int>(memory_type)
+         << " DeviceId:" << device_id
          << "]";
     return ostr.str();
   }
@@ -118,11 +118,12 @@ struct OrtMemoryInfo {
 
   std::string ToString() const {
     std::ostringstream ostr;
-    ostr << "OrtMemoryInfo: ["
+    ostr << "OrtMemoryInfo:["
          << "name:" << name
          << " id:" << id
-         << " mem_type:" << mem_type
-         << " alloc_type:" << alloc_type
+         << " OrtMemType:" << mem_type
+         << " OrtAllocatorType:" << alloc_type
+         << " " << device.ToString()
          << "]";
     return ostr.str();
   }

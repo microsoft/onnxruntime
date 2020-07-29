@@ -49,7 +49,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   RuleBasedGraphTransformer* rule_transformer = nullptr;
   for (const auto& transformer : transformers) {
     if (transformer->Name() == l1_rule_transformer_name) {
-      rule_transformer = dynamic_cast<RuleBasedGraphTransformer*>(transformers[0].get());
+      rule_transformer = static_cast<RuleBasedGraphTransformer*>(transformers[0].get());
     }
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);

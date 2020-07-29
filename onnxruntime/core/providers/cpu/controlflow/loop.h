@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-class Loop : public OpKernel, public controlflow::IControlFlowKernel {
+class Loop : public controlflow::IControlFlowKernel {
  public:
   Loop(const OpKernelInfo& info);
 

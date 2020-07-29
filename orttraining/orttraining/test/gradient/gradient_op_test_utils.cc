@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -69,10 +70,12 @@ void GradientOpTester::Run(
         }
       }
 
+      training::GradientGraphConfiguration gradient_graph_config;
       training::GradientGraphBuilder grad_graph_builder(&graph,
                                                         dy_values,
                                                         weights_to_train,
                                                         "",
+                                                        gradient_graph_config,
                                                         true);
       status = grad_graph_builder.Build();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

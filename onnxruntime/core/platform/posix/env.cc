@@ -231,21 +231,30 @@ class PosixEnv : public Env {
 
   Status GetFileLength(const PathChar* file_path, size_t& length) const override {
     ScopedFileDescriptor file_descriptor{open(file_path, O_RDONLY)};
-    if (file_descriptor.Get() < 0) {
-      return ReportSystemError("open", file_path);
+    return GetFileLength(file_descriptor.Get(), length);
+  }
+
+  common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
+    using namespace common;
+    if (fd < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
     }
 
-    struct stat stbuf;
-    if (fstat(file_descriptor.Get(), &stbuf) != 0) {
-      return ReportSystemError("fstat", file_path);
+    struct stat buf;
+    int rc = fstat(fd, &buf);
+    if (rc < 0) {
+      return ReportSystemError("fstat", "");
     }
 
-    if (!S_ISREG(stbuf.st_mode)) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "GetFileLength: input is not a regular file");
+    if (buf.st_size < 0) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
     }
 
-    length = static_cast<size_t>(stbuf.st_size);
+    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    }
+
+    file_size = static_cast<size_t>(buf.st_size);
     return Status::OK();
   }
 
@@ -414,9 +423,9 @@ class PosixEnv : public Env {
   }
 
   common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
-    char* error_str = dlerror();  // clear any old error_str
+    dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_LOCAL);
-    error_str = dlerror();
+    char* error_str = dlerror();
     if (!*handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
                             "Failed to load library " + library_filename + " with error: " + error_str);
@@ -428,9 +437,9 @@ class PosixEnv : public Env {
     if (!handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
     }
-    char* error_str = dlerror();  // clear any old error_str
+    dlerror();  // clear any old error_str
     int retval = dlclose(handle);
-    error_str = dlerror();
+    char* error_str = dlerror();
     if (retval != 0) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
                             "Failed to unload library with error: " + std::string(error_str));
@@ -439,9 +448,9 @@ class PosixEnv : public Env {
   }
 
   common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
-    char* error_str = dlerror();  // clear any old error str
+    dlerror();  // clear any old error str
     *symbol = dlsym(handle, symbol_name.c_str());
-    error_str = dlerror();
+    char* error_str = dlerror();
     if (error_str) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
                             "Failed to get symbol " + symbol_name + " with error: " + error_str);

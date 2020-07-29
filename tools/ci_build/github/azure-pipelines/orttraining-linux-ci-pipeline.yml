@@ -13,6 +13,7 @@ jobs:
       --build_wheel
       --config $(buildConfig) 
       --enable_training
+      --use_dnnl
       --use_mklml
       "
     DoNugetPack: 'false'

@@ -57,6 +57,11 @@ add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
 
+if (onnxruntime_ENABLE_TRAINING)
+  #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
+  target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
+endif()
+
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 
 if (onnxruntime_ENABLE_TRAINING)

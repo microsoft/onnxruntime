@@ -92,4 +92,9 @@ static void BM_BatchNormOldEigen(benchmark::State& state) {
     }
   }
 }
-BENCHMARK(BM_BatchNormOldEigen)->Arg(1)->Arg(16)->Arg(64)->UseRealTime()->Unit(benchmark::TimeUnit::kMicrosecond);
+BENCHMARK(BM_BatchNormOldEigen)
+    ->Arg(1)
+    ->Arg(16)
+    ->Arg(64)
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond);
