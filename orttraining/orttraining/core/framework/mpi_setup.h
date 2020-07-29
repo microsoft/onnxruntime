@@ -11,6 +11,19 @@
 namespace onnxruntime {
 namespace training {
 
+#define MPI_CHECK(condition)                                 \
+  do {                                                       \
+    int error = (condition);                                 \
+    ORT_ENFORCE(                                             \
+        error == MPI_SUCCESS,                                \
+        "MPI Error at: ",                                    \
+        __FILE__,                                            \
+        ":",                                                 \
+        __LINE__,                                            \
+        ": ",                                                \
+        error);                                              \
+  } while (0)
+
 struct MPIContext {
   MPIContext(int world_rank = 0, int local_rank = 0, int world_size = 1, int local_size = 1);
   int world_rank;
