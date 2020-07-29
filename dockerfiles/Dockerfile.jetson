@@ -26,7 +26,8 @@ RUN apt update && \
 	cmake
 
 RUN pip3 install --upgrade pip
-RUN pip3 install setuptools wheel pybind11 pytest
+RUN pip3 install setuptools
+RUN pip3 install wheel pybind11 pytest
 
 WORKDIR /onnxruntime
 
