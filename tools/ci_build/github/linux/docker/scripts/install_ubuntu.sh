@@ -47,7 +47,6 @@ if [ "$OS_VERSION" = "16.04" ]; then
         libicu55 \
         libtinfo-dev \
         libtool \
-        libopenmpi-dev \
         openssh-server \
         aria2 \
         bzip2 \
@@ -82,7 +81,6 @@ else # ubuntu18.04
         libicu60 \
         libtinfo-dev \
         libtool \
-        libopenmpi-dev \
         openssh-server \
         aria2 \
         bzip2 \
