@@ -185,17 +185,22 @@ class WindowsEnv : public Env {
   }
 
   Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override {
-    std::ifstream file_stream(file_path, std::ifstream::ate | std::ifstream::binary);
-    if (file_stream.fail()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "std::ifstream ", ToMBString(file_path), " fail");
+#if WINVER >= _WIN32_WINNT_WIN8
+    wil::unique_hfile file_handle{
+        CreateFile2(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+#else
+    wil::unique_hfile file_handle{
+        CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+#endif
+    LARGE_INTEGER filesize;
+    if (!GetFileSizeEx(file_handle.get(), &filesize)) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(file_path), " fail, errcode = ", err);
     }
-    auto filesize = file_stream.tellg();
-    // FIXME signed/unsigned
-    if (std::numeric_limits<std::streampos>::max() > std::numeric_limits<size_t>::max() &&
-            filesize > static_cast<std::streampos>(std::numeric_limits<size_t>::max()))  {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
+    if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
     }
-    length = static_cast<size_t>(filesize);
+    length = static_cast<size_t>(filesize.QuadPart);
     return Status::OK();
   }
 
@@ -228,22 +233,49 @@ class WindowsEnv : public Env {
     ORT_RETURN_IF_NOT(file_path);
     ORT_RETURN_IF_NOT(offset >= 0);
     ORT_RETURN_IF_NOT(length <= buffer.size());
+#if WINVER >= _WIN32_WINNT_WIN8
+    wil::unique_hfile file_handle{
+        CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+#else
+    wil::unique_hfile file_handle{
+        CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+#endif
+    if (file_handle.get() == INVALID_HANDLE_VALUE) {
+      const int err = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
+    }
 
-    std::ifstream file_stream(file_path, std::ifstream::binary);
-    if (file_stream.fail()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail");
-    }
-    if (length == 0) {
+    if (length == 0)
       return Status::OK();
+
+    if (offset > 0) {
+      LARGE_INTEGER current_position;
+      current_position.QuadPart = offset;
+      if (!SetFilePointerEx(file_handle.get(), current_position, &current_position, FILE_BEGIN)) {
+        const int err = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(file_path), " fail, errcode = ", err);
+      }
     }
-    file_stream.seekg(offset);  // FIXME check type width
-    if (file_stream.bad()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "seekg ", ToMBString(file_path), " fail");
+
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < length) {
+      constexpr DWORD k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
+      const size_t bytes_remaining = length - total_bytes_read;
+      const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
+      DWORD bytes_read;
+
+      if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
+        const int err = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail, errcode = ", err);
+      }
+
+      if (bytes_read != bytes_to_read) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail: unexpected end");
+      }
+
+      total_bytes_read += bytes_read;
     }
-    file_stream.read(buffer.data(), length);  // FIXME check type width
-    if (file_stream.bad()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read ", ToMBString(file_path), " fail");
-    }
+
     return Status::OK();
   }
 
@@ -380,13 +412,16 @@ class WindowsEnv : public Env {
   common::Status GetCanonicalPath(
       const PathString& path,
       PathString& canonical_path) const override {
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
-    canonical_path = path;
-    return Status::OK();
-#else
     // adapted from MSVC STL std::filesystem::canonical() implementation
     // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
-
+#if WINVER >= _WIN32_WINNT_WIN8
+    wil::unique_hfile file_handle{CreateFile2(
+        path.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        OPEN_EXISTING,
+        NULL)};
+#else
     wil::unique_hfile file_handle{CreateFileW(
         path.c_str(),
         FILE_READ_ATTRIBUTES,
@@ -395,6 +430,7 @@ class WindowsEnv : public Env {
         OPEN_EXISTING,
         FILE_FLAG_BACKUP_SEMANTICS,
         nullptr)};
+#endif
 
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const int err = GetLastError();
@@ -439,7 +475,6 @@ class WindowsEnv : public Env {
     }
 
     return Status::OK();
-#endif
   }
 
   // Return the path of the executable/shared library for the current running code. This is to make it
