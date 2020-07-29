@@ -37,26 +37,67 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
 
 #define EXPECT_IS_TINY(max_error) \
   EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
-static void RunReductionTests(const OpDef& op_def,
-                              const input_x_vector& input_x,
-                              const input_y_vector& input_y,
-                              const attr_vector& attr_vector) {
-  EXPECT_TRUE(input_x.size() == input_y.size())
-      << "Input_x vector and input_y vector must contain same number of elements. "
-      << "Input_x size: " << input_x.size()
-      << "Input_y size:" << input_y.size();
-  EXPECT_TRUE(input_x.size() == attr_vector.size())
-      << "Input_x vector and attribute vector must contain same number of elements. "
-      << "Input_x size: " << input_x.size()
-      << "attr_vector size:" << attr_vector.size();
+
+static void RunReductionTests(const OpDef& op_def) {
+
+  TestDataVector test_data(
+                            // Input X
+                            {
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                              {{4, 3, 2}},
+                            },
+                            // Input Y
+                            {
+                              {{1, 1, 1}},
+                              {{}},
+                              {{1, 3, 1}},
+                              {{2}},
+                              {{4, 1, 2}},
+                              {{4, 3}},
+                              {{4, 1, 2}},
+                              {{4}}
+                            },
+                            // Attributes
+                            {
+                              // default
+                              {},
+                              // axes = [0, 1, 2], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
+                               MakeAttribute("keepdims", int64_t(0))},
+                              // axes = [0, 2], keepdims = 1
+                              {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
+                              // axes = [0, 1], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
+                               MakeAttribute("keepdims", int64_t(0))},
+                              // axes = [1], keepdims = 1
+                              {MakeAttribute("axes", std::vector<int64_t>{1}),
+                               MakeAttribute("keepdims", int64_t(1))},
+                              // axes = [2], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{2}),
+                               MakeAttribute("keepdims", int64_t(0))},
+                              // axes = [-2], keepdims = 1
+                              {MakeAttribute("axes", std::vector<int64_t>{-2}),
+                               MakeAttribute("keepdims", int64_t(1))},
+                              // axes = [-2, -1], keepdims = 0
+                              {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
+                               MakeAttribute("keepdims", int64_t(0))}
+                            });
 
   GradientChecker<float, float, float> gradient_checker;
 
   float max_error;
 
-  for (size_t i = 0; i < input_x.size(); i++) {
+  for (size_t i = 0; i < std::get<0>(test_data).size(); i++) {
     max_error = 0;
-    gradient_checker.ComputeGradientError(op_def, input_x[i], input_y[i], &max_error, attr_vector[i]);
+    gradient_checker.ComputeGradientError(op_def, std::get<0>(test_data)[i],
+                                          std::get<1>(test_data)[i], &max_error,
+                                          std::get<2>(test_data)[i]);
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -427,135 +468,21 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceMean", kOnnxDomain, 11};
 
-  input_x_vector input_x;
-  for (size_t i = 0; i < 8; i++) {
-    input_x.push_back({{4, 3, 2}});
-  }
-
-  input_y_vector input_y = {{{1, 1, 1}},
-                            {{}},
-                            {{1, 3, 1}},
-                            {{2}},
-                            {{4, 1, 2}},
-                            {{4, 3}},
-                            {{4, 1, 2}},
-                            {{4}}};
-
-  attr_vector attr_vector = {
-                             // default
-                             {},
-                             // axes = [0, 1, 2], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [0, 2], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
-                             // axes = [0, 1], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [1], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{1}),
-                              MakeAttribute("keepdims", int64_t(1))},
-                             // axes = [2], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{2}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [-2], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{-2}),
-                              MakeAttribute("keepdims", int64_t(1))},
-                             // axes = [-2, -1], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{-2, -1}),
-                              MakeAttribute("keepdims", int64_t(0))}};
-
-  RunReductionTests(op_def, input_x, input_y, attr_vector);
+  RunReductionTests(op_def);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceSum", kOnnxDomain, 11};
 
-  input_x_vector input_x;
-  for (size_t i = 0; i < 8; i++) {
-    input_x.push_back({{4, 3, 2}});
-  }
-
-  input_y_vector input_y = {{{1, 1, 1}},
-                            {{}},
-                            {{1, 3, 1}},
-                            {{2}},
-                            {{4, 1, 2}},
-                            {{4, 3}},
-                            {{4, 1, 2}},
-                            {{3}}};
-
-  attr_vector attr_vector = {
-                             // default
-                             {},
-                             // axes = [0, 1, 2], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [0, 2], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
-                             // axes = [0, 1], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [1], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{1}),
-                              MakeAttribute("keepdims", int64_t(1))},
-                             // axes = [2], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{2}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [-2], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{-2}),
-                              MakeAttribute("keepdims", int64_t(1))},
-                             // axes = [-1, -3], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{-1, -3}),
-                              MakeAttribute("keepdims", int64_t(0))}};
-
-  RunReductionTests(op_def, input_x, input_y, attr_vector);
+  RunReductionTests(op_def);
 }
 
 TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
 
-  input_x_vector input_x;
-  for (size_t i = 0; i < 8; i++) {
-    input_x.push_back({{4, 3, 2}});
-  }
-
-  input_y_vector input_y = {{{1, 1, 1}},
-                            {{}},
-                            {{1, 3, 1}},
-                            {{2}},
-                            {{4, 1, 2}},
-                            {{4, 3}},
-                            {{4, 1, 2}},
-                            {{3}}};
-
-  attr_vector attr_vector = {
-                             // default
-                             {},
-                             // axes = [0, 1, 2], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 1, 2}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [0, 2], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 2})},
-                             // axes = [0, 1], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{0, 1}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [1], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{1}),
-                              MakeAttribute("keepdims", int64_t(1))},
-                             // axes = [2], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{2}),
-                              MakeAttribute("keepdims", int64_t(0))},
-                             // axes = [-2], keepdims = 1
-                             {MakeAttribute("axes", std::vector<int64_t>{-2}),
-                              MakeAttribute("keepdims", int64_t(1))},
-                             // axes = [-1, -3], keepdims = 0
-                             {MakeAttribute("axes", std::vector<int64_t>{-1, -3}),
-                              MakeAttribute("keepdims", int64_t(0))}};
-
-  RunReductionTests(op_def, input_x, input_y, attr_vector);
+  RunReductionTests(op_def);
 }
 
 #ifndef USE_CUDA

@@ -776,13 +776,9 @@ class ORTTrainer():
                 torch_state[n.name] = torch.from_numpy(numpy_helper.to_array(n))
 
         # Need to remove redundant initializers and name suffices to map back to original torch state names
-        torch_state_to_return = {}
-        if self.original_model_state_keys:
-            for key in self.original_model_state_keys:
-                if key in torch_state:
-                    torch_state_to_return[key] = torch_state[key]
-        else:
-            torch_state_to_return = torch_state
+        torch_state_to_return = {key: torch_state[key] for key in self.original_model_state_keys if key in torch_state} \
+                                if self.original_model_state_keys \
+                                else torch_state
         return torch_state_to_return
 
     def load_state_dict(self, state_dict, strict=False):
