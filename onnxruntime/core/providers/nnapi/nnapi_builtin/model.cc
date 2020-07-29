@@ -57,7 +57,7 @@ const android::nn::wrapper::OperandType Model::GetOutputType(const std::string& 
   const auto& nnapi_output_name = onnx_to_nnapi_output_map_.at(name);
   const auto& output_type = operand_types_.at(nnapi_output_name);
   android::nn::wrapper::OperandType type(
-      output_type.type, shaper_for_exeuction_[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
+      output_type.type, shaper_for_execution_[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
 
   return type;
 }
@@ -94,7 +94,7 @@ Status Model::SetOutputBuffer(const int32_t index, const OutputBuffer& output) {
                         << Shape2String(output.type.dimensions);
 
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_setOutput(
-      execution_, index, &output.type.operandType, output.buffer, output.type.GetOperandBlobByteSize()));
+      execution_, index, &output.type.operandType, output.buffer, output.buffer_byte_size));
 
   return Status::OK();
 }
@@ -113,7 +113,7 @@ Status Model::PrepareForExecution() {
 
   // Copy the shaper for calculate the dynamic output shape
   // based on the input shape
-  shaper_for_exeuction_ = shaper_;
+  shaper_for_execution_ = shaper_;
 
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &execution_));
@@ -125,7 +125,7 @@ Status Model::PrepareForExecution() {
 void Model::ResetExecution() {
   nnapi_->ANeuralNetworksExecution_free(execution_);
   execution_ = nullptr;
-  shaper_for_exeuction_.Clear();
+  shaper_for_execution_.Clear();
   prepared_for_exe_ = false;
 }
 
@@ -162,10 +162,10 @@ Status Model::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     ORT_RETURN_IF_ERROR(SetInputBuffer(i, inputs[i]));
     ORT_RETURN_IF_ERROR(
-        shaper_for_exeuction_.UpdateShape(input_names_[i], inputs[i].type.dimensions));
+        shaper_for_execution_.UpdateShape(input_names_[i], inputs[i].type.dimensions));
   }
 
-  ORT_RETURN_IF_ERROR(shaper_for_exeuction_.UpdateDynamicDimensions());
+  shaper_for_execution_.UpdateDynamicDimensions();
 
   return Status::OK();
 }

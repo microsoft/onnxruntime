@@ -375,7 +375,6 @@ void ModelBuilder::RegisterModelOutputs() {
 }
 
 void ModelBuilder::RegisterModelShaper() {
-  shaper_.Finalize();
   nnapi_model_->SetShaper(shaper_);
 }
 

@@ -337,15 +337,17 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
           }
 
           void* output_buffer = nullptr;
+          size_t output_buffer_byte_size;
           if (!is_dynamic_shape_output) {
             ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
                                                 *model,
                                                 output_name, output_shape, model_output_type.type,
                                                 &output_buffer));
+            output_buffer_byte_size = model_output_type.GetOperandBlobByteSize();
           } else {
             // This output is dynamic (size unknown), will need allocate a buffer for the result
-            // and copy the content to ORT output tensors afte the execuctio (will know output shape after the execution)
-            size_t output_buffer_byte_size = model->GetDynamicOutputBufferSize() * model_output_type.GetElementByteSize();
+            // and copy the content to ORT output tensors afte the execution (will know output shape after the execution)
+            output_buffer_byte_size = model->GetDynamicOutputBufferSize() * model_output_type.GetElementByteSize();
             std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[output_buffer_byte_size]);
             output_buffer = buffer_holder.get();
             dynamic_shape_output_types.push_back(model_output_type);
@@ -353,7 +355,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
             dynamic_shape_output_buffers.push_back(std::move(buffer_holder));
           }
 
-          outputs.push_back({output_buffer, std::move(model_output_type)});
+          outputs.push_back({output_buffer, std::move(model_output_type), output_buffer_byte_size});
         }
 
         ORT_RETURN_IF_ERROR(model->SetOutputBuffers(outputs));

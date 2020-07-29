@@ -24,6 +24,7 @@ class Model {
   struct OutputBuffer {
     void* buffer{nullptr};
     android::nn::wrapper::OperandType type;
+    size_t buffer_byte_size;
   };
 
   // Memory for persist data such as initializers and intermediate result
@@ -93,7 +94,11 @@ class Model {
   // Do not use this for case a determined output shape can be returned from GetOutputType()
   bool SupportsDynamicOutputShape() const;
 
+  // Set and Get the number of elements in the buffer for a dynamic output
+  // If the buffer is not big enough, ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE will be returned by exection
+  // Note: this will return number of elements of the buffer not the byte size of the buffer
   size_t GetDynamicOutputBufferSize() const { return dynamic_output_buffer_size_; }
+  void SetDynamicOutputBufferSize(size_t size) { dynamic_output_buffer_size_ = size; }
 
   // Execute the NNAPI model
   // if there is dynamic output shape, will output the actual output shapes
@@ -108,6 +113,8 @@ class Model {
 
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
+
+  // TODO split the execution_ into a separated Execution class
   ANeuralNetworksExecution* execution_{nullptr};
 
   size_t dynamic_output_buffer_size_{1024};
@@ -121,7 +128,7 @@ class Model {
       operand_types_;
 
   Shaper shaper_;
-  Shaper shaper_for_exeuction_;
+  Shaper shaper_for_execution_;
 
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
