@@ -249,14 +249,15 @@ The Dockerfile used in these instructions specifically targets Raspberry Pi 3/3+
 
 ## NVIDIA Jetson TX1/TX2/Nano/N:
 
-The Dockerfile.jetson is using NGC JetPack 4.4 as base image and the build instructions are for the same.
+These instructions are for [JetPack SDK 4.4](https://developer.nvidia.com/embedded/jetpack).
+The Dockerfile.jetson is using [NVIDIA L4T 32.4.3](https://developer.nvidia.com/embedded/linux-tegra) as base image.
 You can probably used those instructions with earlier/later versions with appropriate modifications.
 Instructions assume you are on Jetson host in the root of onnxruntime git project clone.
 
 Two-step installation is required:
 
 1. Build Python 'wheel' for ONNXruntime on host Jetson system;
-2. Build Docker image using ONNXruntime wheel from step 1. (You can also install the wheel on the host directly)
+2. Build Docker image using ONNXruntime wheel from step 1. You can also install the wheel on the host directly.
 
 Here are the build commands for each step:
 
@@ -278,6 +279,8 @@ Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use 
 ```
 Note: Resulting Docker image will have ONNXruntime installed in /usr, and ONNXruntime wheel copied to /onnxruntime directory.
 Nothing else from ONNXruntime source tree will be copied/installed to the image.
+
+Note: When running the container you built in Docker, plasee make sure to [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
 ## Nuphar
 *Public Preview*
