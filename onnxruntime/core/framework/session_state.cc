@@ -275,7 +275,7 @@ Status ResolveSizeAndShape(
       }
       safe_size *= it->second;
       shape.push_back(it->second);
-    } else if (dim.has_dim_value()) {
+    } else if (dim.has_dim_value() && dim.dim_value() > 0) {
       safe_size *= dim.dim_value();
       shape.push_back(dim.dim_value());
     } else {
