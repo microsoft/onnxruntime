@@ -141,14 +141,26 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   if (reduction_ != ReductionType::NONE) {
     // ReduceSum on loss_per_sample
-    std::vector<int64_t> output_dims(1, 1);
-    ReduceKernelShared<T, T>(
-        tmp_loss_sample_buffer,
-        label_reshape,
-        total_loss_data,
-        TensorShape({}),
-        MIOPEN_REDUCE_TENSOR_ADD,
-        output_dims);
+    // std::vector<int64_t> output_dims(1, 1);
+    // ReduceKernelShared<T, T>(
+    //     tmp_loss_sample_buffer,
+    //     label_reshape,
+    //     total_loss_data,
+    //     TensorShape({}),
+    //     MIOPEN_REDUCE_TENSOR_ADD,
+    //     output_dims);
+    // Compute buffer size in byte for reduction APIs.
+    const auto tmp_buffer_size = static_cast<size_t>(
+        compute_reduction_buffer_size(
+            static_cast<int>(sizeof(T)), static_cast<int>(N_D)));
+    // Allocate reduction buffer whose size is buffer_size bytes.
+    IAllocatorUniquePtr<void> tmp_reduction_buffer = GetScratchBuffer<void>(
+        tmp_buffer_size);
+    reduce_sum(tmp_loss_sample_buffer,
+               total_loss_data,
+               static_cast<int>(N_D),
+               reinterpret_cast<T*>(tmp_reduction_buffer.get()));
+    return Status::OK();
   }
 
   return Status::OK();
