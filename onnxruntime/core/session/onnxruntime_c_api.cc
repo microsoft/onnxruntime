@@ -667,6 +667,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   OrtValue** out_ptr = ortvalues_alloc.get();
   for (const auto& out_value : outputs) {
     *out_ptr = new OrtValue(out_value);
+    ++out_ptr;
     ++created;
   }
 
