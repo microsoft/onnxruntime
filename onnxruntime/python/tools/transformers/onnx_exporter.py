@@ -127,15 +127,17 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
 
 
 def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_attention_heads, hidden_size, use_gpu,
-                        fp16, use_raw_attention_mask, overwrite, model_fusion_statistics):
+                        precision, use_raw_attention_mask, overwrite, model_fusion_statistics):
     if overwrite or not os.path.exists(optimized_model_path):
         from optimizer import optimize_model
         from onnx_model_bert import BertOptimizationOptions
         optimization_options = BertOptimizationOptions(model_type)
         if use_raw_attention_mask:
             optimization_options.use_raw_attention_mask()
-        if fp16:
+        if Precision.FLOAT16 == precision:
             optimization_options.enable_gelu_approximation = True
+        if Precision.INT8 == precision:
+            optimization_options.enable_embed_layer_norm = False
 
         # Use script to optimize model.
         # Use opt_level <= 1 for models to be converted to fp16, because some fused op (like FusedGemm) has only fp32 and no fp16.
@@ -150,7 +152,7 @@ def optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, num_a
                                    only_onnxruntime=False)
         model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
-        if fp16:
+        if Precision.FLOAT16 == precision:
             opt_model.convert_model_float32_to_float16()
         opt_model.save_model_to_file(optimized_model_path)
     else:
@@ -215,7 +217,7 @@ def export_onnx_model(model_name, opset_version, use_external_data_format, model
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
         optimize_onnx_model(onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
-                            config.hidden_size, use_gpu, precision == Precision.FLOAT16, use_raw_attention_mask,
+                            config.hidden_size, use_gpu, precision, use_raw_attention_mask,
                             overwrite, model_fusion_statistics)
 
         onnx_model_path = optimized_model_path

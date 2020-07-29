@@ -1438,7 +1438,11 @@ def check_opset_version(org_model, force_fusions):
         :return: fuse_dynamic_quant boolean value.
     '''
     global onnx_op_set_version
-    opset_version = org_model.opset_import[0].version
+    ai_onnx_domain = [opset for opset in org_model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+    if 1 != len(ai_onnx_domain):
+        raise ValueError('Failed to find proper ai.onnx domain')
+    opset_version = ai_onnx_domain[0].version
+
     fuse_dynamic_quant = False
 
     if opset_version < 11 and force_fusions == True:
