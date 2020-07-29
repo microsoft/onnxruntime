@@ -61,33 +61,47 @@ class ONNXCalibrater:
         :return: augmented ONNX model
         '''
 
+        model = onnx.load(self.model_path)
+        model = onnx.shape_inference.infer_shapes(model)
+        value_infos = {vi.name: vi for vi in model.graph.value_info} 
+        
         added_nodes = []
         added_outputs = []
-        model = onnx.load(self.model_path)
+        tensors_to_calibrate = set()
+
         for node in model.graph.node:
             should_be_calibrate = ((node.op_type in self.calibrate_op_types) and
                                 (node.name not in self.black_nodes)) or (node.name in self.white_nodes)
             if should_be_calibrate:
-                input_name = node.output[0]
-                # Adding ReduceMin nodes
-                reduce_min_name = ''
-                if node.name != '':
-                    reduce_min_name = node.name + '_ReduceMin'
-                reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name], [input_name + '_ReduceMin'],
-                                                        reduce_min_name,
-                                                        keepdims=0)
-                added_nodes.append(reduce_min_node)
-                added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+                for input_tensor_name in node.input:
+                    if input_tensor_name in value_infos.keys(): 
+                        vi = value_infos[input_tensor_name]
+                        if vi.type.HasField(
+                            'tensor_type') and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT and (
+                                input_tensor_name not in model.graph.initializer):
+                            tensors_to_calibrate.add(input_tensor_name)
 
-                # Adding ReduceMax nodes
-                reduce_max_name = ''
-                if node.name != '':
-                    reduce_max_name = node.name + '_ReduceMax'
-                reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name], [input_name + '_ReduceMax'],
-                                                        reduce_max_name,
-                                                        keepdims=0)
-                added_nodes.append(reduce_max_node)
-                added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
+                for output_tensor_name in node.output:
+                    if output_tensor_name in value_infos.keys(): 
+                        vi = value_infos[output_tensor_name]
+                        if vi.type.HasField(
+                            'tensor_type') and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                            tensors_to_calibrate.add(output_tensor_name)
+            
+        for tensor in tensors_to_calibrate:
+            # Adding ReduceMin nodes
+            reduce_min_name = tensor + '_ReduceMin'
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [tensor], [tensor + '_ReduceMin'], reduce_min_name, keepdims=0)
+       
+            added_nodes.append(reduce_min_node)
+            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+
+            # Adding ReduceMax nodes
+            reduce_max_name = tensor + '_ReduceMax'
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [tensor], [tensor + '_ReduceMax'], reduce_max_name, keepdims=0)
+       
+            added_nodes.append(reduce_max_node)
+            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
@@ -209,9 +223,9 @@ class ONNXCalibrater:
 
 def calibrate(model_path,
               data_reader:CalibrationDataReader,
-              op_types='Conv,MatMul',
-              black_nodes='',
-              white_nodes='',
+              op_types=['Conv','MatMul'],
+              black_nodes=[],
+              white_nodes=[],
               augmented_model_path ='augmented_model.onnx'):   
     '''
         Given an onnx model, augment and run the augmented model on calibration data set, aggregate and calculate the quantization parameters.
