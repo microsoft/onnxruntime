@@ -10,7 +10,7 @@
 - OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
 - Nuphar: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
 - ARM 32v7: [Dockerfile](Dockerfile.arm32v7), [Instructions](#arm-32v7)
-- NVIDIA Jetson TX1/TX2/Nano/N: [Dockerfile](Dockerfile.jetson), [Instructions](#jetson)
+- NVIDIA Jetson TX1/TX2/Nano/N: [Dockerfile](Dockerfile.jetson), [Instructions](#nvidia-jetson-tx1tx2nanon)
 - ONNX-Ecosystem (CPU + Converters): [Dockerfile](https://github.com/onnx/onnx-docker/blob/master/onnx-ecosystem/Dockerfile), [Instructions](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem)
 - ONNX Runtime Server: [Dockerfile](Dockerfile.server), [Instructions](#onnx-runtime-server)
 - MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
@@ -262,7 +262,8 @@ Two-step installation is required:
 Here are the build commands for each step:
 
 1.1 Install ONNXruntime build dependencies on Jetpack 4.4 host:
-```    apt install -y --no-install-recommends \
+```
+   sudo apt install -y --no-install-recommends \
     	build-essential software-properties-common cmake libopenblas-dev \
 	libpython3.6-dev python3-pip python3-dev
 ```
@@ -280,7 +281,7 @@ Note: You may add --use_tensorrt and --tensorrt_home options if you wish to use 
 Note: Resulting Docker image will have ONNXruntime installed in /usr, and ONNXruntime wheel copied to /onnxruntime directory.
 Nothing else from ONNXruntime source tree will be copied/installed to the image.
 
-Note: When running the container you built in Docker, plasee make sure to [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
+Note: When running the container you built in Docker, please either use 'nvidia-docker' command instead of 'docker', or use Docker command-line options to make sure NVIDIA runtime will be used and appropiate files mounted from host. Otherwise, CUDA libraries won't be found. You can also [set NVIDIA runtime as default in Docker](https://github.com/dusty-nv/jetson-containers#docker-default-runtime).
 
 ## Nuphar
 *Public Preview*
