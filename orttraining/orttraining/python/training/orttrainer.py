@@ -1,14 +1,12 @@
 import io
 import onnx
 import torch
-
-from distutils.version import LooseVersion
 from inspect import signature
 
-import onnxruntime.capi.postprocess as postprocess
 from . import ORTTrainerOptions
 from . import optim
 from .model_desc_validation import _ORTTrainerModelDesc
+from .. import postprocess
 
 
 class TrainStepInfo(object):
@@ -146,11 +144,7 @@ class ORTTrainer(object):
 
         self.model_desc = _ORTTrainerModelDesc(model_desc)
         self.optim_config = optim_config
-
-        if options:
-            self.options = ORTTrainerOptions(options)
-        else:
-            self.options = ORTTrainerOptions()
+        self.options = options
 
     def eval_step(self, *input, **kwargs):
         r"""Evaluation step method
@@ -162,7 +156,12 @@ class ORTTrainer(object):
         Returns:
             ordered :py:obj:`list` with model outputs as described by :py:attr:`.ORTTrainer.model_desc`
         """
-        pass
+        # Export model to ONNX
+        if self._onnx_model is None:
+            sample_input = self._prepare_model_input(
+                self.model_desc.inputs, None, None, *input, **kwargs)
+            self._init_onnx_model(sample_input)
+
 
     def save_as_onnx(self, path):
         r"""Persists ONNX model into :py:attr:`path`
@@ -192,11 +191,11 @@ class ORTTrainer(object):
 
         # Export model to ONNX
         if self._onnx_model is None:
-            sample_input = self._prepare_input_and_fetches(
+            sample_input = self._prepare_model_input(
                 self.model_desc.inputs, None, None, *input, **kwargs)
             self._init_onnx_model(sample_input)
 
-    def _combine_torch_model_with_loss(self):
+    def _combine_torch_model_with_loss_fn(self):
         # Don't need to wrap model when loss_fn is not set
         if not self.loss_fn:
             return self._torch_model
@@ -236,12 +235,11 @@ class ORTTrainer(object):
                 self.input_names = input_names
 
             def forward(self, *inputs):
-                # *inputs is given by torch trace. It is in the order of input_names.
-                # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
+                # '*inputs' is given by torch trace and matches the order of 'input_names'
+                # The 'model' input might differ from 'input_names'
                 if is_list_input:
                     input, label = inputs[:-1], inputs[-1]
                     preds = self.model(*input)
-                    # TODO: order this according to self.model_desc.outputs?
                     return self.loss_fn(preds, label), preds
                 else:
                     sig = signature(self.model.forward)
@@ -275,10 +273,9 @@ class ORTTrainer(object):
             raise RuntimeError(
                 "Unexpected input type. Only torch.Tensor, or dict/list/tuple of torch.Tensor is supported.")
 
-        # pytorch onnx exporter/trace does not try to match argument names.
-        # e.g. for models with optional inputs, it requires all inputs be present.
-        # this is a problem because the model graph depends on inputs provided.
-        model = self._combine_torch_model_with_loss()
+        # PyTorch ONNX exporter does not match argument names
+        # This is an issue because the ONNX graph depends on all inputs to be specified
+        model = self._combine_torch_model_with_loss_fn()
 
         # Do an inference to grab output types
         model.eval()
@@ -288,7 +285,7 @@ class ORTTrainer(object):
         if isinstance(sample_outputs, torch.Tensor):
             sample_outputs = [sample_outputs]
 
-        # Append 'dtypes' for model description inputs/outputs
+        # Append 'dtype' for model description's inputs/outputs
         for i, sample_input in enumerate(sample_inputs):
             if i < len(self.model_desc.inputs):
                 self.model_desc.add_type_to_input_description(
@@ -310,7 +307,7 @@ class ORTTrainer(object):
                            training=torch.onnx.TrainingMode.TRAINING)
         onnx_model = onnx.load_model_from_string(f.getvalue())
 
-        # Remove 'model.' prefix introduced by model wrapper for initializers.
+        # Remove 'model.' prefix introduced by CombineTorchModelLossFn class
         replace_name_dict = {}
         for n in onnx_model.graph.initializer:
             if n.name.startswith('model.'):
@@ -321,8 +318,8 @@ class ORTTrainer(object):
                 if name in replace_name_dict:
                     n.input[i] = replace_name_dict[name]
 
-        # onnx model initializer may contain non-trainable registered buffers that are not part
-        # of pytorch model named parameteres.
+        # ONNX model initializers may contain non-trainable registered buffers
+        # that are not part of PyTorch model named parameteres
         named_parameters = model.model.named_parameters() if hasattr(model, 'model') else model.named_parameters()
         assert set([n for n, t in named_parameters]).issubset(
             set([n.name for n in onnx_model.graph.initializer])), \
@@ -352,21 +349,23 @@ class ORTTrainer(object):
         if self._onnx_model is None:
             return
 
+        # Perform internal post-processing
         if self.options._internal_use.enable_internal_postprocess:
             self._onnx_model = postprocess.run_postprocess(self._onnx_model)
 
+        # Perform user-specified post-processing
         if self.options._internal_use.extra_postprocess:
             self.options._internal_use.extra_postprocess(self._onnx_model)
         return
 
-    def _prepare_input_and_fetches(self, inputs_desc, lr, loss_scale, *args, **kwargs):
+    def _prepare_model_input(self, inputs_desc, lr, loss_scale, *args, **kwargs):
         # Normalize input to tuple of samples
         if type(args) == tuple and len(args) == 1 and type(args[0]) == list:
             input = tuple(args[0])
         else:
             input = args
 
-        # Append input from kwargs
+        # Append input from 'kwargs'
         for input_desc in inputs_desc:
             if input_desc[0] in kwargs:
                 input = input + (kwargs[input_desc[0]],)

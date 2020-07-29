@@ -9,7 +9,6 @@ from numpy.testing import assert_allclose
 from onnxruntime.capi.training import orttrainer_options as orttrainer_options
 from onnxruntime.capi.training import model_desc_validation as md_val
 from onnxruntime.capi.training import orttrainer, amp, optim, TrainStepInfo, _utils
-#from pt_model import TransformerModel
 
 
 @pytest.mark.parametrize("test_input", [
@@ -449,17 +448,22 @@ def testLRSchedulerUpdateImpl(lr_scheduler, expected_values):
                         expected_values[step], rtol=rtol, err_msg="lr mismatch")
 
 
-def testInstantiateORTTrainer():
-
-    # Loading external samples for testing
-    pytorch_transformer_path = os.path.join('..','..','..','samples','python','pytorch_transformer')
-    pt_model_path = os.path.join(pytorch_transformer_path,'pt_model.py')
+@pytest.mark.parametrize("step_fn", [
+    ('train_step'),
+    ('eval_step')
+])
+def testInstantiateORTTrainer(step_fn):
+    # Loading external TransformerModel model for testing
+    # A manual import is done as this example is not part of onnxruntime package,
+    # but resides on the onnxruntime repo
+    pytorch_transformer_path = os.path.join('..', '..', '..', 'samples', 'python', 'pytorch_transformer')
+    pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
     pt_model_name = 'pt_model'
     pt_model = _utils.import_module_from_file(pt_model_path, pt_model_name)
-    ort_utils_path = os.path.join(pytorch_transformer_path,'ort_utils.py')
+    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
     ort_utils_name = 'ort_utils'
     ort_utils = _utils.import_module_from_file(ort_utils_path, ort_utils_name)
-    utils_path = os.path.join(pytorch_transformer_path,'utils.py')
+    utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
     utils_name = 'utils'
     utils = _utils.import_module_from_file(utils_path, utils_name)
 
@@ -468,73 +472,45 @@ def testInstantiateORTTrainer():
     my_loss = ort_utils.my_loss
     model_desc = ort_utils.transformer_model_description()
     optim_config = optim.LambConfig()
+    options = orttrainer.ORTTrainerOptions({'device': {'id': 'cpu'}})
 
     # Create ORTTrainer
-    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=None)
+    trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, loss_fn=my_loss, options=options)
 
-    # Prep data
+    # Preparing data
     train_data, val_data, test_data = utils.prepare_data('cpu', 20, 20)
 
-    # Train
-    for batch, i in enumerate(range(0, train_data.size(0)-1, 35)):
-        data, targets = utils.get_batch(train_data, i)
-        learning_rate = 0.001
-        trainer.train_step(data, targets, learning_rate) # removed learning rate here and in model desc
-        break
-
+    # Export model to ONNX
+    data, targets = utils.get_batch(train_data, 0)
+    if step_fn == 'eval_step':
+        trainer.eval_step(data, targets)
+    elif step_fn == 'train_step':
+        trainer.train_step(data, targets)
+    else:
+        raise ValueError('Invalid step_fn')
     assert trainer._onnx_model is not None
-    onnx_model = trainer._onnx_model
 
+    # Check name, shape and dtype of the first len(forward.parameters) ORT graph inputs
     sig = inspect.signature(model.forward)
-    sig_loss = inspect.signature(my_loss)
-    
-    # element 4 should be uint16, but this is not in pytorch
-    # element 8 should be string
-    int_to_type = [None, torch.float32, torch.uint8, torch.int8, torch.int16, torch.int16, torch.int32, torch.int64, type("test"), torch.bool]
-
-    # check that the first len(forward.parameters) inputs have the same name, dimensions and dtype
-    in_str = str(onnx_model.graph.input)
     for i in range(len(sig.parameters.keys())):
-        input_name = model_desc['inputs'][i][0]
-        input_dim = model_desc['inputs'][i][1]
+        input_name = trainer.model_desc.inputs[i][0]
+        input_dim = trainer.model_desc.inputs[i][1]
         input_type = trainer.model_desc.inputs[i][2]
-        
-        assert in_str.find(input_name) >= 0
-        start_index = in_str.index(input_name)
-        end_index = in_str.index("name", start_index+1) if i+1 < in_str.find("name", start_index+1)>0 else in_str.index(']')
-        sub = in_str[in_str.index(input_name):end_index]
-        dims = []
-        elem_type = 0
-        for item in sub.split("\n"):
-            if item.find("dim_value:")>0:
-                temp = item.replace(" ", "").replace("dim_value:", "")
-                dims.append(int(temp))
-            if item.find("elem_type:")>0:
-                temp = item.replace(" ", "").replace("elem_type:", "")
-                elem_type = int(temp)
-        assert int_to_type[elem_type] == input_type
-        assert dims == input_dim
 
-    # check that all the outputs of model desc match the name, dimensions and dtype of the ort graph
-    out_str = str(onnx_model.graph.output)
-    for i in range(len(model_desc['outputs'])):
-        output_name = model_desc['outputs'][i][0]
-        output_dim = model_desc['outputs'][i][1]
+        assert trainer._onnx_model.graph.input[i].name == input_name
+        for dim_idx, dim in enumerate(trainer._onnx_model.graph.input[i].type.tensor_type.shape.dim):
+            assert input_dim[dim_idx] == dim.dim_value
+            assert input_type == _utils.dtype_onnx_to_torch(
+                trainer._onnx_model.graph.input[i].type.tensor_type.elem_type)
+
+    # Check name, shape and dtype of the ORT graph outputs
+    for i in range(len(trainer.model_desc.outputs)):
+        output_name = trainer.model_desc.outputs[i][0]
+        output_dim = trainer.model_desc.outputs[i][1]
         output_type = trainer.model_desc.outputs[i][3]
-        
-        assert out_str.find(output_name) >= 0
-        start_index = out_str.index(output_name)
-        end_index = out_str.index("name", start_index+1) if i+1 < out_str.find("name", start_index+1)>0 else out_str.index(']')
-        sub = out_str[out_str.index(output_name):end_index]
-        dims = []
-        elem_type = 0
-        for item in sub.split("\n"):
-            if item.find("dim_value:")>0:
-                temp = item.replace(" ", "").replace("dim_value:", "")
-                dims.append(int(temp))
-            if item.find("elem_type:")>0:
-                temp = item.replace(" ", "").replace("elem_type:", "")
-                elem_type = int(temp)
-        assert int_to_type[elem_type] == output_type
-        assert dims == output_dim
-         
+
+        assert trainer._onnx_model.graph.output[i].name == output_name
+        for dim_idx, dim in enumerate(trainer._onnx_model.graph.output[i].type.tensor_type.shape.dim):
+            assert output_dim[dim_idx] == dim.dim_value
+            assert output_type == _utils.dtype_onnx_to_torch(
+                trainer._onnx_model.graph.output[i].type.tensor_type.elem_type)
