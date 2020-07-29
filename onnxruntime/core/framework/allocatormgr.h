@@ -26,6 +26,7 @@ struct DeviceAllocatorRegistrationInfo {
   DeviceAllocatorFactory factory;
   size_t max_mem;
   ArenaExtendStrategy arena_extend_strategy;
+  std::string session_id;
 };
 
 AllocatorPtr CreateAllocator(const DeviceAllocatorRegistrationInfo& info, OrtDevice::DeviceId device_id = 0,

@@ -2,11 +2,26 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
+#include "core/platform/env.h"
+#include <iostream>
 
 namespace onnxruntime {
+
+std::shared_ptr<IArenaAllocator> BFCArena::GetInstance(std::unique_ptr<IDeviceAllocator> resource_allocator,
+                                                       size_t total_memory,
+                                                       ArenaExtendStrategy arena_extend_strategy,
+                                                       std::string session_id) {
+  static std::shared_ptr<IArenaAllocator> bfc_arena(new BFCArena(std::move(resource_allocator),
+                                                                 total_memory,
+                                                                 arena_extend_strategy,
+                                                                 session_id));
+  return bfc_arena;
+}
+
 BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
                    size_t total_memory,
-                   ArenaExtendStrategy arena_extend_strategy)
+                   ArenaExtendStrategy arena_extend_strategy,
+                   std::string session_id)
     : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                     OrtAllocatorType::OrtArenaAllocator,
                                     resource_allocator->Info().device,
@@ -14,19 +29,38 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
                                     resource_allocator->Info().mem_type)),
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
-      next_allocation_id_(1) {
-  LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
+      next_allocation_id_(1),
+      session_id_(std::move(session_id)) {
+  LOGS_DEFAULT(INFO) << "Creating BFCArena for session: " << session_id_ << " and provider: " << device_allocator_->Info().name;
 
   // TODO - consider to make the initial chunk size and max 'fragmentation' (kMaxDeadBytesInChunk) values configurable.
   // But first we need to add a mechanism to allow that sort of low level configuration to be done
   // without adding separate parameters to SessionOptions for every single one of them.
-  curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
+  const std::string& env_var = Env::Default().GetEnvironmentVar("INITIAL_CHUNK_SIZE");
+  ORT_ENFORCE(!env_var.empty());
+  curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, static_cast<size_t>(std::stoi(env_var))));
+
+  const std::string& max_dead = Env::Default().GetEnvironmentVar("MAX_DEAD_BYTES");
+  if (!max_dead.empty()) {
+    kMaxDeadBytesInChunk = static_cast<int64_t>(std::stoi(max_dead));
+  } else {
+    kMaxDeadBytesInChunk = 128 << 20;  // 128mb
+  }
 
   // Allocate the requested amount of memory.
   memory_limit_ = total_memory;
   stats_.bytes_limit = static_cast<int64_t>(total_memory);
+  ORT_UNUSED_PARAMETER(arena_extend_strategy);
+  const std::string& ast = Env::Default().GetEnvironmentVar("ARENA_EXTEND_STRATEGY");
+  ORT_ENFORCE(!ast.empty());
+  if (ast == "0") {
+    arena_extend_strategy_ = ArenaExtendStrategy::kNextPowerOfTwo;
+  } else if (ast == "1") {
+    arena_extend_strategy_ = ArenaExtendStrategy::kSameAsRequested;
+  } else {
+    ORT_ENFORCE("Invalid value for arena extend strategy");
+  }
 
-  arena_extend_strategy_ = arena_extend_strategy;
   // Create a bunch of bins of various good sizes.
 
   // We create bins to fit all possible ranges that cover the
@@ -145,13 +179,13 @@ Status BFCArena::Extend(size_t rounded_bytes) {
                            "Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
-  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
+  LOGS_DEFAULT(INFO) << "Session: " << session_id_ << " Extended allocation by " << bytes << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
-  LOGS_DEFAULT(INFO) << "Total allocated bytes: "
+  LOGS_DEFAULT(INFO) << "Session: " << session_id_ << " Total allocated bytes: "
                      << stats_.total_allocated_bytes;
 
-  LOGS_DEFAULT(INFO) << "Allocated memory at " << mem_addr << " to "
+  LOGS_DEFAULT(INFO) << "Session: " << session_id_ << " Allocated memory at " << mem_addr << " to "
                      << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
   region_manager_.AddAllocationRegion(mem_addr, bytes);
 
@@ -260,7 +294,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
     return ptr;
   }
 
-  LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
+  LOGS_DEFAULT(INFO) << "Session: " << session_id_ << " Extending BFCArena for " << device_allocator_->Info().name
                      << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
 
   // Try to extend
@@ -313,9 +347,14 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
         // kMaxDeadBytesInChunk bytes on padding this alloc.
-        const int64_t kMaxDeadBytesInChunk = 128 << 20;  // 128mb
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64_t>(chunk->size) - rounded_bytes >= kMaxDeadBytesInChunk) {
+            static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= kMaxDeadBytesInChunk) {
+          // if (chunk->size >= rounded_bytes * 2) {
+          //   std::cout << "chunk size is >= rounded_bytes*2: " << chunk->size << " " << rounded_bytes << std::endl;
+          // } else if (static_cast<int64_t>(chunk->size) - rounded_bytes >= kMaxDeadBytesInChunk) {
+          //   std::cout << "chunk size - rounded_bytes >= kMax: " << chunk->size << " " << rounded_bytes << std::endl;
+          // }
+
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

@@ -12,7 +12,7 @@ namespace onnxruntime {
 // Information needed to construct CPU execution providers.
 struct CPUExecutionProviderInfo {
   bool create_arena{true};
-
+  std::string session_id;
   explicit CPUExecutionProviderInfo(bool use_arena)
       : create_arena(use_arena) {}
 
@@ -43,7 +43,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
     create_arena = false;
 #endif
-
+    device_info.session_id = info.session_id;
     InsertAllocator(CreateAllocator(device_info, 0, create_arena));
   }
 

@@ -21,8 +21,7 @@ AllocatorPtr CreateAllocator(const DeviceAllocatorRegistrationInfo& info,
     return std::shared_ptr<IArenaAllocator>(
         onnxruntime::make_unique<MiMallocArena>(std::move(device_allocator), info.max_mem));
 #else
-    return std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<BFCArena>(std::move(device_allocator), info.max_mem, info.arena_extend_strategy));
+    return BFCArena::GetInstance(std::move(device_allocator), info.max_mem, info.arena_extend_strategy, info.session_id);
 #endif
   }
 

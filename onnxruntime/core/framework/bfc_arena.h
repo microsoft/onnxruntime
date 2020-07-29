@@ -19,11 +19,13 @@ limitations under the License.
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <assert.h>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/env.h"
 #include "core/framework/arena.h"
 #include "core/common/safeint.h"
 #include "onnxruntime_config.h"
@@ -54,9 +56,15 @@ enum class ArenaExtendStrategy : int32_t {
 // all requests to allocate memory go through this interface.
 class BFCArena : public IArenaAllocator {
  public:
+  static std::shared_ptr<IArenaAllocator> GetInstance(std::unique_ptr<IDeviceAllocator> resource_allocator,
+                                                      size_t total_memory,
+                                                      ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                      std::string session_id = std::string());
+
   BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
            size_t total_memory,
-           ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+           ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+           std::string session_id = std::string());
 
   ~BFCArena() override;
 
@@ -370,7 +378,7 @@ class BFCArena : public IArenaAllocator {
 
   // Structures immutable after construction
   size_t memory_limit_ = 0;
-  ArenaExtendStrategy arena_extend_strategy_ = ArenaExtendStrategy::kNextPowerOfTwo;
+  ArenaExtendStrategy arena_extend_strategy_;
 
   int Log2FloorNonZeroSlow(uint64_t n) {
     int r = 0;
@@ -425,6 +433,7 @@ class BFCArena : public IArenaAllocator {
 
   // The size of the current region allocation.
   SafeInt<size_t> curr_region_allocation_bytes_;
+  int64_t kMaxDeadBytesInChunk;
 
   std::unique_ptr<IDeviceAllocator> device_allocator_;
 
@@ -442,6 +451,7 @@ class BFCArena : public IArenaAllocator {
   AllocatorStats stats_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;
+  std::string session_id_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

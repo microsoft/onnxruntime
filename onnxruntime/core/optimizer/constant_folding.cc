@@ -129,6 +129,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
 
       OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
+      LOGS(logger, INFO) << "Doing constant folding";
       ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
       std::vector<OrtValue> fetches;
