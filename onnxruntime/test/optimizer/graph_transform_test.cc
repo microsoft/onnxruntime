@@ -37,6 +37,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -2823,6 +2824,56 @@ TEST_F(GraphTransformationTests, ComputationReductionTransformer_GatherND_E2E) {
   }
 }
 #endif
+
+static void TestMatMulScaleFusion(
+    const PathString& model_path, const Logger& logger,
+    bool expect_fusion) {
+  SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, logger));
+  Graph& graph = model->MainGraph();
+
+  auto original_op_counts = CountOpsInGraph(graph);
+
+  onnxruntime::GraphTransformerManager graph_transformer_manager{5};
+  ASSERT_STATUS_OK(graph_transformer_manager.Register(make_unique<MatMulScaleFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformer_manager.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  auto transformed_op_counts = CountOpsInGraph(graph);
+
+  if (expect_fusion) {
+    EXPECT_EQ(transformed_op_counts["Mul"], 0);
+    EXPECT_EQ(transformed_op_counts["Div"], 0);
+    EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+    EXPECT_EQ(transformed_op_counts["TransposeScaleMatMul"], 1);
+  } else {
+    EXPECT_EQ(original_op_counts, transformed_op_counts);
+  }
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusion) {
+  const std::vector<PathString> fusable_model_paths{
+      MODEL_FOLDER "fusion/matmul_scale_in0.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_in0_in1.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_in0_in1_out.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_transposescalematmul_in0_in1_out.onnx",
+  };
+
+  for (const auto& path : fusable_model_paths) {
+    TestMatMulScaleFusion(path, *logger_, true);
+  }
+
+  const std::vector<PathString> unfusable_model_paths{
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_div_not_scale.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_scalar.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_constant.onnx",
+  };
+
+  for (const auto& path : unfusable_model_paths) {
+    TestMatMulScaleFusion(path, *logger_, false);
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime
