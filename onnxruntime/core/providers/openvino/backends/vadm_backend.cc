@@ -70,10 +70,10 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       exe_networks.push_back(exe_network);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-    for(size_t i = 0; i < num_inf_reqs_; i++) {
+    for(size_t j = 0; j < num_inf_reqs_; j++) {
       InferenceEngine::InferRequest::Ptr infRequest;
       try {
-        infRequest = exe_networks[i].CreateInferRequestPtr();
+        infRequest = exe_networks[j].CreateInferRequestPtr();
       } catch(InferenceEngine::details::InferenceEngineException e) {
         ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
       } catch (...) {
@@ -137,7 +137,12 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
     auto graph_input_buffer =
         graph_input_blob->buffer().as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
 
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[i]);
+    #else
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_name));
+    #endif
+
     size_t input_data_size = graph_input_blob->byteSize();
     auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
@@ -254,8 +259,13 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   if (subgraph_context_.enable_batching) {
     // Calculate the batch_size from the input tensor shape.
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[0]);
+    #else
     auto iter = subgraph_context_.input_names.begin();
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(iter->first));
+    #endif
+
     batch_size = DeduceBatchSize(ort, tensor,
                                  ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
   }

@@ -157,7 +157,11 @@ inline void CastFromStringData(const Tensor* in, Tensor* out, const TensorShape&
       mutable_data[i] = std::stoull(in->Data<std::string>()[i]);
     }
   } else {
+#ifdef ORT_NO_RTTI
+    ORT_THROW("Unsupported type in cast op");
+#else
     ORT_THROW("Unsupported type in cast op: from String to ", typeid(DstType).name());
+#endif
   }
 }  // namespace onnxruntime
 
@@ -232,7 +236,7 @@ const std::vector<MLDataType> castOpTypeConstraints{
   Status Cast<in_type>::Compute(OpKernelContext* context) const {                                                                  \
     const Tensor* X = context->Input<Tensor>(0);                                                                                   \
     const TensorShape& shape = X->Shape();                                                                                         \
-    Tensor* Y = context->Output(0, TensorShape(shape));                                                                            \
+    Tensor* Y = context->Output(0, shape);                                                                                         \
                                                                                                                                    \
     switch (to_) {                                                                                                                 \
       case TensorProto_DataType_BOOL:                                                                                              \
@@ -311,7 +315,7 @@ template <>
 Status Cast<MLFloat16>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
-  Tensor* Y = context->Output(0, TensorShape(shape));
+  Tensor* Y = context->Output(0, shape);
   Status st;
   switch (to_) {
     case TensorProto_DataType_BOOL:
@@ -381,7 +385,7 @@ Status Cast<std::string>::Compute(OpKernelContext* context) const {
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL,
                                   "Input is missing. The operator Cast expects one and only one input");
   const TensorShape& shape = X->Shape();
-  Tensor* Y = context->Output(0, TensorShape(shape));
+  Tensor* Y = context->Output(0, shape);
   Status st;
   switch (to_) {
     case TensorProto_DataType_INT16:

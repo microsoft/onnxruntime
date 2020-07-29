@@ -356,6 +356,8 @@ class ONNXQuantizer:
                     new_list += self._handle_activation_ops(node, new_list)
                 elif node.op_type == 'Attention':
                     new_list += self._quantize_attention(node, new_list)
+                elif node.op_type == 'EmbedLayerNormalization':
+                    new_list += self._quantize_embed_layernorm(node, new_list)
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -1132,6 +1134,15 @@ class ONNXQuantizer:
 
         return nodes
 
+    def _quantize_embed_layernorm(self, node, new_nodes_list):
+        assert (node.op_type == "EmbedLayerNormalization")
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [2, 3, 4], new_nodes_list)
+
+        nodes.append(node)
+
+        return nodes
+
     def _quantize_convolution_integer_ops(self, node, new_nodes_list):
         '''
         Used when self.mode is QuantizationMode.IntegerOps.
@@ -1427,7 +1438,11 @@ def check_opset_version(org_model, force_fusions):
         :return: fuse_dynamic_quant boolean value.
     '''
     global onnx_op_set_version
-    opset_version = org_model.opset_import[0].version
+    ai_onnx_domain = [opset for opset in org_model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+    if 1 != len(ai_onnx_domain):
+        raise ValueError('Failed to find proper ai.onnx domain')
+    opset_version = ai_onnx_domain[0].version
+
     fuse_dynamic_quant = False
 
     if opset_version < 11 and force_fusions == True:

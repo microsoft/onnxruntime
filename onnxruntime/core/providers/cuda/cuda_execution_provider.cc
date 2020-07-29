@@ -97,6 +97,31 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+/*
+ * This method should be called within the constructor,
+ * so that the configuration of provider related setting can be updated 
+ * and kept at IExecutionProvider level.
+ */
+void CUDAExecutionProvider::UpdateProviderOptionsInfo() {
+  UnorderedMapStringToString options;
+
+  options["device_id"] = std::to_string(device_id_); 
+  options["cuda_mem_limit"] = std::to_string(cuda_mem_limit_); 
+  std::string strategy;
+  if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
+    strategy = "kNextPowerOfTwo";
+  }
+  else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+    strategy = "kSameAsRequested";
+  }
+  else {
+    strategy = "unknown"; 
+  }
+  options["arena_extend_strategy"] = strategy; 
+
+  IExecutionProvider::SetProviderOptions(options);
+}
+
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
       device_id_(info.device_id),
@@ -142,6 +167,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
        std::numeric_limits<size_t>::max()});
 
   InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
+
+  UpdateProviderOptionsInfo();
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {

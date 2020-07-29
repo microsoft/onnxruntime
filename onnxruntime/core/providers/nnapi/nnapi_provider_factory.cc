@@ -2,12 +2,7 @@
 
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
-
-#ifdef USE_NNAPI_DNNLIBRARY
-#include "nnapi_dnnlibrary/nnapi_execution_provider.h"
-#elif USE_NNAPI_BUILTIN
 #include "nnapi_builtin/nnapi_execution_provider.h"
-#endif
 
 using namespace onnxruntime;
 
@@ -33,5 +28,3 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSess
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Nnapi());
   return nullptr;
 }
-
-

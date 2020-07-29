@@ -61,7 +61,7 @@ class MachineInfo():
         """Get CPU info"""
         cpu_info = cpuinfo.get_cpu_info()
         return {
-            "brand": cpu_info["brand"],
+            "brand": cpu_info["brand"] if "brand" in cpu_info else cpu_info["brand_raw"],
             "cores": psutil.cpu_count(logical=False),
             "logical_cores": psutil.cpu_count(logical=True),
             "hz": cpu_info["hz_actual"],

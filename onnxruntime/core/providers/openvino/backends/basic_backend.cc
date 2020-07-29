@@ -89,7 +89,12 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort,
                                   .as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
     size_t input_data_size = graph_input_blob->byteSize();
     
+    #if (defined OPENVINO_2020_2) || (defined OPENVINO_2020_3)
+    const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[i]);
+    #else
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_name));
+    #endif
+
     auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
     auto elem_type = ort.GetTensorElementType(tensor_shape);
 
