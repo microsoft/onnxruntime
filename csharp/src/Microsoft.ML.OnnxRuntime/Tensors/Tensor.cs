@@ -17,6 +17,8 @@ using System.Diagnostics;
 using System.Text;
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Reflection;
 
 // Making this assembly's internals visible to the internal Test assembly
 [assembly: InternalsVisibleTo("Microsoft.ML.OnnxRuntime.Tests," +
@@ -51,6 +53,79 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         Complex128 = 15,
         BFloat16 = 16,
         DataTypeMax = 17
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Float16
+    {
+        public ushort Value { get; private set; }
+        public Float16(ushort val)
+        {
+            Value = val;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BFloat16
+    {
+        public ushort Value { get; private set; }
+        public BFloat16(ushort val)
+        {
+            Value = val;
+        }
+    }
+
+    /// <summary>
+    /// Helps typecasting. Holds primitive type information
+    /// </summary>
+    internal class TensorTypeInfo
+    {
+        public TensorElementType ElementType { get; private set; }
+        public int TypeSize { get; private set; }
+        public bool IsString { get { return ElementType == TensorElementType.String; } }
+        public TensorTypeInfo(TensorElementType elementType, int typeSize)
+        {
+            ElementType = elementType;
+            TypeSize = typeSize;
+        }
+    }
+
+    internal class TensorBase
+    {
+        private static readonly Dictionary<Type, TensorTypeInfo> typeInfoMap =
+            new Dictionary<Type, TensorTypeInfo>()
+            {
+                { typeof(float), new TensorTypeInfo( TensorElementType.Float, sizeof(float)) },
+                { typeof(byte), new TensorTypeInfo( TensorElementType.UInt8, sizeof(byte)) },
+                { typeof(sbyte), new TensorTypeInfo( TensorElementType.Int8, sizeof(sbyte)) },
+                { typeof(ushort), new TensorTypeInfo( TensorElementType.UInt16, sizeof(ushort)) },
+                { typeof(short), new TensorTypeInfo( TensorElementType.Int16, sizeof(short)) },
+                { typeof(int), new TensorTypeInfo( TensorElementType.Int32, sizeof(int)) },
+                { typeof(long), new TensorTypeInfo( TensorElementType.Int64, sizeof(long)) },
+                { typeof(string), new TensorTypeInfo( TensorElementType.String, -1) },
+                { typeof(bool), new TensorTypeInfo( TensorElementType.Bool, sizeof(bool)) },
+                { typeof(Float16), new TensorTypeInfo( TensorElementType.Float16, sizeof(ushort)) },
+                { typeof(double), new TensorTypeInfo( TensorElementType.Double, sizeof(double)) },
+                { typeof(uint), new TensorTypeInfo( TensorElementType.UInt32, sizeof(uint)) },
+                { typeof(ulong), new TensorTypeInfo( TensorElementType.UInt64, sizeof(ulong)) },
+                { typeof(BFloat16), new TensorTypeInfo( TensorElementType.BFloat16, sizeof(ushort)) }
+            };
+
+        private readonly Type _primitiveType;
+        protected TensorBase(Type primitiveType)
+        {
+            _primitiveType = primitiveType;
+        }
+        /// <summary>
+        /// Queries the map returns result or null
+        /// </summary>
+        /// <returns></returns>
+        public TensorTypeInfo GetTypeInfo()
+        {
+            TensorTypeInfo result = null;
+            typeInfoMap.TryGetValue(_primitiveType, out result);
+            return result;
+        }
     }
 
     /// <summary>
