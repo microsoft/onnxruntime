@@ -38,6 +38,7 @@ class Gemm : public onnxruntime::Gemm<T> {
     bool useBias = B != nullptr && beta_ != 0;
     bool FC = alpha_ == 1 && (beta_ == 1 || beta_ == 0);
     if (!FC) {
+      LOGS_DEFAULT(WARNING) << "Implementation not supported ; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
@@ -51,20 +52,20 @@ class Gemm : public onnxruntime::Gemm<T> {
     auto Y = context->Output(0, TensorShape({M, N}));
 
     if (trans_A_ == CblasTrans) { // transpose input
+      LOGS_DEFAULT(WARNING) << "Transposed input not supported ; defaulting to cpu implementation";
       return onnxruntime::Gemm<T>::Compute(context);
     }
 
     int64_t K = helper.K();
-    LOGS_DEFAULT(VERBOSE) << "Gemm ArmNN:" << std::endl;
-    if (X) LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str() << std::endl;
-    if (W) LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str() << std::endl;
-    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str() << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str() << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_ << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans) << std::endl;
-    LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans) << std::endl;
-    LOGS_DEFAULT(VERBOSE) << std::endl;
+    LOGS_DEFAULT(VERBOSE) << "Gemm ArmNN:";
+    if (X) LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
+    if (W) LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
+    if (B) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
+    LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str();
+    LOGS_DEFAULT(VERBOSE) << "M " << (int)M << ", N " << (int)N << ", K " << (int)K;
+    LOGS_DEFAULT(VERBOSE) << "Alfa " << alpha_ << ", Beta " << beta_;
+    LOGS_DEFAULT(VERBOSE) << "trans_A_ " << (trans_A_ == CblasTrans);
+    LOGS_DEFAULT(VERBOSE) << "trans_B_ " << (trans_B_ == CblasTrans);
 
     const T* x_data = X->template Data<T>();
     const T* w_data = W->template Data<T>();
@@ -97,8 +98,10 @@ class Gemm : public onnxruntime::Gemm<T> {
       if (fcDescriptor.m_BiasEnabled) {
         armnn::TensorShape biasShape = ArmNNTensorShape(B->Shape());
         if(B->Shape().NumDimensions() == 2){
-          if(B->Shape().GetDims()[0] == 1 && B->Shape().GetDims()[1] > 1)
+          if(B->Shape().GetDims()[0] == 1 && B->Shape().GetDims()[1] > 1) {
             biasShape = {B->Shape().GetDims()[1]};
+            LOGS_DEFAULT(VERBOSE) << "Bias reshaped to: {" << B->Shape().GetDims()[1] << "}";
+          }
         }
         armnn::TensorInfo biasDesc(biasShape, armnn::DataType::Float32);
         armnn::ConstTensor bias(biasDesc, b_data);
@@ -130,6 +133,7 @@ class Gemm : public onnxruntime::Gemm<T> {
       armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Gemm::run->GetDeviceSpec());
 
       if (optNet == nullptr) {
+        LOGS_DEFAULT(WARNING) << "Got invalid operation; defaulting to cpu implementation";
         return onnxruntime::Gemm<T>::Compute(context);
       }
 
@@ -150,6 +154,8 @@ class Gemm : public onnxruntime::Gemm<T> {
                                                          y_data)}};
 
     Gemm::run->EnqueueWorkload(*pNetworkId, inputTensors, outputTensors);
+
+    LOGS_DEFAULT(VERBOSE) << std::endl;
 
     return Status::OK();
   }

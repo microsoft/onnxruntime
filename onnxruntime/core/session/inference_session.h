@@ -319,10 +319,17 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
+ 
   /*
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
+  
+  /*
+   * Get all the providers' options this session was initialized with.
+   */
+  const ProviderOptionsMap& GetAllProviderOptions() const;
+
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -345,6 +352,11 @@ class InferenceSession {
     @return the name of the profile file.
     */
   std::string EndProfiling();
+
+  /*
+   * Get InferenceSession logger.
+   */
+  const logging::Logger* GetLogger() const { return session_logger_; };
 
  protected:
   /**

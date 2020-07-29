@@ -190,6 +190,9 @@ target_compile_options(winml_lib_ort PRIVATE /GR- /await /wd4238)
 target_compile_definitions(winml_lib_ort PRIVATE WINML_ROOT_NS=${winml_root_ns})
 target_compile_definitions(winml_lib_ort PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_ort PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
+  target_compile_definitions(winml_lib_ort PRIVATE "BUILD_INBOX=1")
+endif()
 
 # Specify the usage of a precompiled header
 target_precompiled_header(winml_lib_ort pch.h)
@@ -253,6 +256,10 @@ if (onnxruntime_USE_DML)
 endif()
 
 add_library(winml_adapter ${winml_adapter_files})
+
+if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows") 
+  target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1") 
+endif()
 
 # wil requires C++17
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
@@ -618,7 +625,6 @@ add_dependencies(winml_dll winml_api_native)
 add_dependencies(winml_dll winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_dll PRIVATE onnxruntime)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)

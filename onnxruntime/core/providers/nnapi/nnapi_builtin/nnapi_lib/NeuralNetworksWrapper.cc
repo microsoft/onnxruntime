@@ -21,14 +21,14 @@ namespace android {
 namespace nn {
 namespace wrapper {
 
-bool isScalarType(const Type& type) {
+bool IsScalarType(const Type& type) {
   return type == Type::FLOAT16 || type == Type::FLOAT32 || type == Type::INT32 || type == Type::BOOL || type == Type::UINT32;
 }
 
 OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
-    : type(type), dimensions(std::move(d)) {
+    : type(type), dimensions(d) {
   if (dimensions.empty()) {
-    if (!isScalarType(type)) {
+    if (!IsScalarType(type)) {
       dimensions = {1};
     }
   }
@@ -45,38 +45,30 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
 OperandType::OperandType(const OperandType& other) {
   type = other.type;
   dimensions = other.dimensions;
+
   if (dimensions.empty()) {
-    if (!isScalarType(type)) {
+    if (!IsScalarType(type)) {
       dimensions = {1};
     }
   }
 
-  operandType = {
-      .type = static_cast<int32_t>(type),
-      .dimensionCount = static_cast<uint32_t>(dimensions.size()),
-      .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
-      .scale = other.operandType.scale,
-      .zeroPoint = other.operandType.zeroPoint,
-  };
-}  // namespace wrapper
+  operandType = other.operandType;
+  operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
+}
 
 OperandType& OperandType::operator=(const OperandType& other) {
   if (this != &other) {
     type = other.type;
     dimensions = other.dimensions;
+
     if (dimensions.empty()) {
-      if (!isScalarType(type)) {
+      if (!IsScalarType(type)) {
         dimensions = {1};
       }
     }
 
-    operandType = {
-        .type = static_cast<int32_t>(type),
-        .dimensionCount = static_cast<uint32_t>(dimensions.size()),
-        .dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr,
-        .scale = other.operandType.scale,
-        .zeroPoint = other.operandType.zeroPoint,
-    };
+    operandType = other.operandType;
+    operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
   }
 
   return *this;
@@ -119,6 +111,17 @@ size_t OperandType::GetElementByteSize() const {
 
 size_t OperandType::GetOperandBlobByteSize() const {
   return Product(dimensions) * GetElementByteSize();
+}
+
+void OperandType::SetDimensions(const std::vector<uint32_t>& d) {
+  dimensions = d;
+  if (dimensions.empty()) {
+    if (!IsScalarType(type)) {
+      dimensions = {1};
+    }
+  }
+  operandType.dimensionCount = dimensions.size();
+  operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;
 }
 
 }  // namespace wrapper
