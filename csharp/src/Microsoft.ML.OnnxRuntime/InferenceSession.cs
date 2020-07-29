@@ -1009,9 +1009,10 @@ namespace Microsoft.ML.OnnxRuntime
         internal static NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
         {
             OnnxValueType valueType;
-            unsafe
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(typeInfo, new IntPtr(&valueType)));
+                IntPtr valType;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(typeInfo, out valType));
+                valueType = (OnnxValueType)valType;
             }
             if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
@@ -1053,7 +1054,7 @@ namespace Microsoft.ML.OnnxRuntime
             string[] symbolicDimensions = new string[(int)numDimensions];
             for (var i = 0; i < (int)numDimensions; i++)
             {
-                symbolicDimensions[i] = Marshal.PtrToStringAnsi(dimensionNamePtrs[i]); //assumes charset = ANSI
+                symbolicDimensions[i] = NativeOnnxValueHelper.StringFromNativeUtf8(dimensionNamePtrs[i]);
             }
 
             return new NodeMetadata(valueType, intDimensions, symbolicDimensions, dotnetType);
