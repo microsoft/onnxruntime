@@ -42,7 +42,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_winml::IEngine** out) {
                             ort_api);
   }
   if (named_dimension_overrides_) {
-    for (const auto&& override : named_dimension_overrides_) {
+    for (const auto& override : named_dimension_overrides_) {
       std::string narrow_name = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(override.Key().c_str());
       ort_api->AddFreeDimensionOverrideByName(session_options.get(), narrow_name.c_str(), override.Value());
     }
