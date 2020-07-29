@@ -470,16 +470,14 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(const ModelBuilder& model
   return Status::OK();
 }
 
+// NNAPI has the qunatization scale and zero point embedded in the ANeuralNetworksOperandType
+// ONNX has the qunatization scale and zero point as the inputs of the qlinear operators
+// We want to verify the scale and zeropoint of the ONNX inputs matches the values embedded in the NNAPI inputs
 static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
                                         const std::string& input_name,
                                         float scale,
                                         int32_t zero_point) {
   const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
-  if (input_operand_type.type != Type::TENSOR_QUANT8_ASYMM) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "input type is " + TypeToStr(input_operand_type.type));
-  }
-
   if (input_operand_type.operandType.scale != scale) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input [" + input_name + "] NNAPI input scale: " +
