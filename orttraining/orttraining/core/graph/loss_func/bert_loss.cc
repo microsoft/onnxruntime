@@ -54,15 +54,14 @@ TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
 GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) {
   const std::string& total_loss = loss_func_info.loss_name;
   const VectorString& args = loss_func_info.loss_builder_args;
-  ORT_ENFORCE(args.size() == 8, " Invalid loss_func_info for BertLoss.");
+  ORT_ENFORCE(args.size() == 7, " Invalid loss_func_info for BertLoss.");
   const std::string& prediction_masked_lm = args[0];
   const std::string& prediction_next_sentence = args[1];
   const std::string& masked_lm_positions = args[2];
   const std::string& masked_lm_ids = args[3];
-  const std::string& masked_lm_weights = args[4];
-  const std::string& next_sentence_labels = args[5];
-  const std::string& mlm_loss = args[6];
-  const std::string& nsp_loss = args[7];
+  const std::string& next_sentence_labels = args[4];
+  const std::string& mlm_loss = args[5];
+  const std::string& nsp_loss = args[6];
 
   std::vector<NodeDef> new_nodes;
   GraphAugmenter::GraphDefs graph_defs;
@@ -87,11 +86,18 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
                                    {ONNX_NAMESPACE::MakeAttribute("batch_dims", static_cast<int64_t>(1))},
                                    "GATHERED_LM"));
+ 
+    ONNX_NAMESPACE::TensorProto t_proto;
+    t_proto.add_dims(2);
+    t_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    t_proto.add_int64_data(static_cast<int64_t>(-1));
+    t_proto.add_int64_data(prediction_arg->TypeAsProto()->tensor_type().shape().dim()[2].dim_value());
+    new_nodes.emplace_back(NodeDef("Constant",
+                                  {},
+                                  {ArgDef("logit_reshape", nullptr)},
+                                  {ONNX_NAMESPACE::MakeAttribute("value", t_proto)}));
 
-    TypeProto* masked_lm_float_type_proto = GetMaskedLMTypeProto(prediction_arg,
-                                                                 ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                                 graph_defs);
-    new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
+    new_nodes.emplace_back(NodeDef("Reshape",
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto),
                                     ArgDef("logit_reshape")},                // Inputs
                                    {ArgDef("gathered_prediction_reshaped")}, // Outputs
@@ -137,11 +143,11 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT64,
                                                                     graph_defs);
 
-    new_nodes.emplace_back(NodeDef("SparseSoftmaxCrossEntropy",
+    new_nodes.emplace_back(NodeDef("SoftmaxCrossEntropyLoss",
                                    {ArgDef(prediction_next_sentence),
-                                    ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
+                                    ArgDef(next_sentence_labels, next_sentence_labels_type_proto)}, // Inputs
                                    {ArgDef(nsp_loss, GetLossTypeProto(graph_defs)),
-                                    ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},  // Outputs
+                                    ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},    // Outputs
                                    {ONNX_NAMESPACE::MakeAttribute("reduction", "mean")},
                                    "Next_Sentence_Loss"));
   }
@@ -162,7 +168,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
   }
 
   graph_defs.AddNodeDefs(new_nodes);
-  graph_defs.AddGraphInputs({masked_lm_positions, masked_lm_ids, masked_lm_weights, next_sentence_labels});
+  graph_defs.AddGraphInputs({masked_lm_positions, masked_lm_ids, next_sentence_labels});
   graph_defs.AddGraphOutputs({mlm_loss, nsp_loss, total_loss});
 
   return graph_defs;
