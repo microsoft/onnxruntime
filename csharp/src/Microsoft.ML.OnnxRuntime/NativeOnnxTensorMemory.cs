@@ -34,14 +34,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         public NativeOnnxTensorMemory(IntPtr onnxValueHandle)
         {
+            Type type = null;
+            int width = 0;
+            _onnxValueHandle = onnxValueHandle;
             IntPtr typeAndShape = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
             try
             {
-                Type type = null;
-                int width = 0;
-                _onnxValueHandle = onnxValueHandle;
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(onnxValueHandle, out typeAndShape));
                 TensorElementType elemType;
                 {
                     IntPtr el_type;
@@ -58,9 +57,10 @@ namespace Microsoft.ML.OnnxRuntime
                 UIntPtr dimension;
                 long count;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(typeAndShape, out dimension));
-                unsafe
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShape, new IntPtr(&count)));  // count can be negative. 
+                    IntPtr el_count;
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShape, out el_count));  // count can be negative. 
+                    count = (long)el_count;
                 }
                 if (count < 0)
                 {
@@ -68,10 +68,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 long[] shape = new long[dimension.ToUInt64()];
-                unsafe
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, new UIntPtr(&dimension))); //Note: shape must be alive during the call
-                }
+                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(typeAndShape, shape, dimension)); //Note: shape must be alive during the call
 
                 _elementCount = (int)count;
                 _dimensions = new int[dimension.ToUInt64()];
@@ -116,20 +113,9 @@ namespace Microsoft.ML.OnnxRuntime
                     }
                 }
             }
-            catch (Exception e)
-            {
-                //TODO: cleanup any partially created state
-                //Do not call ReleaseTensor here. If the constructor has thrown exception, 
-                //then this NativeOnnxTensorWrapper is not created, so caller should take 
-                //appropriate action to dispose
-                throw e;
-            }
             finally
             {
-                if (typeAndShape != IntPtr.Zero)
-                {
-                    NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
-                }
+                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
             }
         }
 
