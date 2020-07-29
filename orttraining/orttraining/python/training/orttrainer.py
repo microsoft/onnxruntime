@@ -120,7 +120,7 @@ class ORTTrainer(object):
             "'optim_config' is required and must be any of 'AdamConfig', 'LambConfig' or 'SGDConfig'"
         assert loss_fn is None or (callable(loss_fn) and len(signature(loss_fn).parameters) == 2),\
             "'loss_fn' must be either 'None' or a callable with two parameters"
-        assert options is None or isinstance(options, dict),\
+        assert options is None or isinstance(options, ORTTrainerOptions),\
             "'loss_fn' must be either 'None' or 'ORTTrainerOptions'"
 
         #            Model + Loss validation
