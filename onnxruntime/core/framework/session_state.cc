@@ -240,8 +240,8 @@ Status SessionState::PrepackInitializedConstantTensors() {
           ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, is_packed));
           if (is_packed && node_arg_use_count.count(input_name) && --node_arg_use_count[input_name] == 0) {
             // release the constant intialized tensor
-            initialized_tensors_[ort_value_idx] = OrtValue();
-            constant_initialized_tensors_[ort_value_idx] = OrtValue();
+            initialized_tensors_.erase(ort_value_idx);
+            constant_initialized_tensors_.erase(ort_value_idx);
           }
         }
       }
