@@ -7,6 +7,7 @@
 import logging
 import torch
 import onnx
+import os
 from transformers.modeling_utils import Conv1D
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,12 @@ def conv1d_to_linear(model):
             conv1d_to_linear(module)
 
 
+def _get_size_of_pytorch_model(model):
+    torch.save(model.state_dict(), "temp.p")
+    size = os.path.getsize("temp.p")/(1024*1024)
+    os.remove('temp.p')
+    return size
+
 class QuantizeHelper:
     @staticmethod
     def quantize_torch_model(model, dtype=torch.qint8):
@@ -43,11 +50,15 @@ class QuantizeHelper:
         TODO: mix of in-place and return, but results are different
         '''
         conv1d_to_linear(model)
-        return torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+        quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+        logger.info(f'Size of full precision Torch model(MB):{_get_size_of_pytorch_model(model)}')
+        logger.info(f'Size of quantized Torch model(MB):{_get_size_of_pytorch_model(quantized_model)}')
+        return quantized_model
 
     @staticmethod
     def quantize_onnx_model(onnx_model_path, quantized_model_path):
         from onnxruntime.quantization import quantize, QuantizationMode
+        logger.info(f'Size of full precision ONNX model(MB):{os.path.getsize(onnx_model_path)/(1024*1024)}')
         onnx_opt_model = onnx.load(onnx_model_path)
         quantized_onnx_model = quantize(onnx_opt_model,
                                         quantization_mode=QuantizationMode.IntegerOps,
@@ -55,3 +66,4 @@ class QuantizeHelper:
                                         force_fusions=True)
         onnx.save(quantized_onnx_model, quantized_model_path)
         logger.info(f"quantized model saved to:{quantized_model_path}")
+        logger.info(f'Size of quantized ONNX model(MB):{os.path.getsize(quantized_model_path)/(1024*1024)}')

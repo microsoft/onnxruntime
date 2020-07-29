@@ -13,14 +13,20 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include <windows.h>
 #endif  // USE_DML
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 #ifdef USE_DML
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
+  DWORD flags = 0; 
+#ifdef BUILD_INBOX 
+  flags = LOAD_LIBRARY_SEARCH_SYSTEM32; 
+#endif
+
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-  wil::unique_hmodule dmlDll(LoadLibraryW(L"DirectML.dll"));
+  wil::unique_hmodule dmlDll(LoadLibraryExA("DirectML.dll", nullptr, flags));
   THROW_LAST_ERROR_IF(!dmlDll);
 
   auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
